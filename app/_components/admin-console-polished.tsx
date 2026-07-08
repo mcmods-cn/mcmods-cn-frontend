@@ -4,11 +4,32 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { canAccessAdmin, clearAuth } from "../_lib/auth";
-import { ApiError, apiRequest } from "../_lib/api";
+import { API_BASE_URL, ApiError, apiRequest } from "../_lib/api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { useTheme } from "./theme-provider";
 
-type PanelId = "overview" | "roles" | "user-roles" | "permission-list" | "users" | "mail" | "auth" | "i18n";
+type PanelId =
+  | "overview"
+  | "roles"
+  | "user-roles"
+  | "permission-list"
+  | "users"
+  | "mail"
+  | "auth"
+  | "i18n"
+  | "oss-config"
+  | "oss-files"
+  | "oss-uploads"
+  | "oss-scans"
+  | "oss-downloads"
+  | "logs-system"
+  | "logs-user"
+  | "logs-admin"
+  | "logs-permission"
+  | "logs-login"
+  | "logs-api"
+  | "logs-file-upload"
+  | "logs-ai";
 
 type User = {
   id: number;
@@ -40,9 +61,46 @@ type AdminConfig = {
   auth: Record<string, string | number | boolean | string[]>;
   oauth: OAuthConfig;
   mail: MailConfig;
+  oss?: OSSConfig;
   permissions: Record<string, string | number | boolean>;
   database: Record<string, string>;
   features: Record<string, boolean>;
+};
+
+type OSSConfig = {
+  enabled: boolean;
+  region: string;
+  endpoint: string;
+  bucket: string;
+  accessKeyId: string;
+  hasAccessKeySecret: boolean;
+  useCName: boolean;
+  prefix: string;
+  downloadUrlTtlMinutes: number;
+  bucketAccessPolicy?: string;
+  temporaryDownloadPolicy?: string;
+};
+
+type OSSFile = {
+  id: number;
+  bucket: string;
+  objectKey: string;
+  category: string;
+  source: string;
+  originalName: string;
+  contentType: string;
+  sizeBytes: number;
+  scanStatus: string;
+  status: string;
+  createdAt: string;
+};
+
+type LogRow = Record<string, string | number | boolean | null | Record<string, unknown>>;
+
+type LogRetentionConfig = {
+  enabled: boolean;
+  defaultDays: number;
+  categoryDays: Record<string, number>;
 };
 
 type OAuthConfig = {
@@ -106,38 +164,63 @@ type UserPermissionDetails = {
   effectivePermissions: string[];
 };
 
-const navGroups = [
+const adminNavGroups: Array<{
+  id: string;
+  label: string;
+  items: Array<{ id: PanelId; label: string; description: string }>;
+}> = [
   {
     id: "workbench",
-    label: "工作台",
-    items: [{ id: "overview" as const, label: "总览", description: "运行状态与功能开关" }],
+    label: "",
+    items: [{ id: "overview", label: "", description: "" }],
   },
   {
     id: "permission",
-    label: "权限",
+    label: "",
     items: [
-      { id: "roles" as const, label: "权限组编辑器", description: "新增、修改、绑定权限节点" },
-      { id: "user-roles" as const, label: "用户权限组", description: "为用户分配权限组" },
-      { id: "permission-list" as const, label: "权限列表", description: "维护权限名称与说明" },
+      { id: "roles", label: "", description: "" },
+      { id: "user-roles", label: "", description: "" },
+      { id: "permission-list", label: "", description: "" },
+    ],
+  },
+  {
+    id: "oss",
+    label: "",
+    items: [
+      { id: "oss-config", label: "", description: "" },
+      { id: "oss-files", label: "", description: "" },
+      { id: "oss-uploads", label: "", description: "" },
+      { id: "oss-scans", label: "", description: "" },
+      { id: "oss-downloads", label: "", description: "" },
+    ],
+  },
+  {
+    id: "logs",
+    label: "",
+    items: [
+      { id: "logs-system", label: "", description: "" },
+      { id: "logs-user", label: "", description: "" },
+      { id: "logs-admin", label: "", description: "" },
+      { id: "logs-permission", label: "", description: "" },
+      { id: "logs-login", label: "", description: "" },
+      { id: "logs-api", label: "", description: "" },
+      { id: "logs-file-upload", label: "", description: "" },
+      { id: "logs-ai", label: "", description: "" },
     ],
   },
   {
     id: "users",
-    label: "用户",
-    items: [{ id: "users" as const, label: "用户列表", description: "账号、状态与角色" }],
+    label: "",
+    items: [{ id: "users", label: "", description: "" }],
   },
   {
     id: "system",
-    label: "系统",
+    label: "",
     items: [
-      { id: "mail" as const, label: "邮件系统", description: "SMTP 配置与测试发送" },
-      { id: "auth" as const, label: "登录配置", description: "登录方式与账号安全" },
+      { id: "mail", label: "", description: "" },
+      { id: "auth", label: "", description: "" },
+      { id: "i18n", label: "", description: "" },
     ],
-  },
-  {
-    id: "language",
-    label: "多语言",
-    items: [{ id: "i18n" as const, label: "多语言管理", description: "对照两种语言并修改翻译" }],
   },
 ];
 
@@ -171,6 +254,19 @@ const emptyConfig: AdminConfig = {
     useTLS: true,
     hasPassword: false,
   },
+  oss: {
+    enabled: false,
+    region: "",
+    endpoint: "",
+    bucket: "",
+    accessKeyId: "",
+    hasAccessKeySecret: false,
+    useCName: true,
+    prefix: "mcmods",
+    downloadUrlTtlMinutes: 10,
+    bucketAccessPolicy: "private-read-write",
+    temporaryDownloadPolicy: "presigned-url",
+  },
   permissions: {
     mode: "RBAC + wildcard",
     temporaryGrant: true,
@@ -190,6 +286,8 @@ const emptyConfig: AdminConfig = {
     emailSystem: true,
     permissionRBAC: true,
     contentReview: true,
+    oss: true,
+    logSystem: true,
   },
 };
 
@@ -198,18 +296,30 @@ const emptyCatalog: PermissionCatalog = { roles: [], permissions: [] };
 export function AdminConsolePolished() {
   const router = useRouter();
   const { toggleTheme } = useTheme();
+  const { t } = useI18n();
   const auth = useStoredAuth();
   const [activePanel, setActivePanel] = useState<PanelId>("roles");
-  const [expanded, setExpanded] = useState(["workbench", "permission", "system", "language"]);
+  const [expanded, setExpanded] = useState(["workbench", "permission", "oss", "logs", "system"]);
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [config, setConfig] = useState(emptyConfig);
   const [catalog, setCatalog] = useState(emptyCatalog);
   const [users, setUsers] = useState<User[]>([]);
-  const [status, setStatus] = useState("后端未连接");
+  const [status, setStatus] = useState(t("admin.backendDisconnected"));
   const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null);
   const [reconnectIn, setReconnectIn] = useState(0);
+  const [permissionDialog, setPermissionDialog] = useState("");
   const authReady = auth.snapshot !== "";
   const allowed = canAccessAdmin(auth.user);
+
+  useEffect(() => {
+    function handlePermissionDenied(event: Event) {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      const message = typeof detail?.message === "string" ? detail.message : "";
+      setPermissionDialog(message || t("admin.permissionDeniedBody"));
+    }
+    window.addEventListener("mcmods-permission-denied", handlePermissionDenied);
+    return () => window.removeEventListener("mcmods-permission-denied", handlePermissionDenied);
+  }, [t]);
 
   useEffect(() => {
     if (!authReady) return;
@@ -246,7 +356,7 @@ export function AdminConsolePolished() {
 
     async function loadAdminData(attempt = 0) {
       try {
-        setStatus(attempt === 0 ? "正在连接后端服务" : "正在尝试重新连接后端");
+        setStatus(attempt === 0 ? t("admin.connecting") : t("admin.reconnecting"));
         const [dashboardData, configData, permissionData, userData] = await Promise.all([
           apiRequest<DashboardData>("/api/v1/admin/dashboard", {}, auth.token),
           apiRequest<AdminConfig>("/api/v1/admin/config", {}, auth.token),
@@ -258,7 +368,7 @@ export function AdminConsolePolished() {
           setConfig(configData);
           setCatalog(normalizePermissionCatalog(permissionData));
           setUsers(userData);
-          setStatus("已连接后端");
+          setStatus(t("common.connected"));
           setBackendAvailable(true);
           setReconnectIn(0);
           clearRetryTimers();
@@ -305,23 +415,26 @@ export function AdminConsolePolished() {
   }
 
   if (!authReady || !auth.token) {
-    return <AdminGateMessage text="正在检查登录状态" />;
+    return <AdminGateMessage text={t("admin.checkingAuth")} />;
   }
 
   if (!allowed) {
-    return <AdminGateMessage text="当前账号没有后台权限，正在返回首页" />;
+    return <AdminGateMessage text={t("admin.noPermissionReturning")} />;
   }
 
   if (backendAvailable === false) {
     return (
       <AdminGateMessage
-        text={`后端未连接，后台暂不可访问：${status}。${reconnectIn > 0 ? `${reconnectIn} 秒后自动重试` : "正在重新连接"}`}
+        text={t("admin.backendLockedRetry", {
+          reason: status,
+          retry: reconnectIn > 0 ? t("admin.retrySeconds", { seconds: reconnectIn }) : t("admin.reconnecting"),
+        })}
       />
     );
   }
 
   if (backendAvailable === null) {
-    return <AdminGateMessage text="正在连接后端服务" />;
+    return <AdminGateMessage text={t("admin.connecting")} />;
   }
 
   const displayStatus = status;
@@ -336,7 +449,7 @@ export function AdminConsolePolished() {
                 <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">M</span>
                 <span>
                   <span className="block text-sm font-semibold text-[var(--muted)]">Mcmods-cn</span>
-                  <span className="block text-xl font-bold">后台管理</span>
+                  <span className="block text-xl font-bold">{t("admin.title")}</span>
                 </span>
               </Link>
               <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm text-[var(--muted)]">
@@ -345,7 +458,7 @@ export function AdminConsolePolished() {
             </div>
 
             <nav className="min-h-0 flex-1 overflow-y-auto p-3">
-              {navGroups.map((group) => {
+              {adminNavGroups.map((group) => {
                 const open = expanded.includes(group.id);
                 return (
                   <section key={group.id} className="mb-2">
@@ -354,7 +467,7 @@ export function AdminConsolePolished() {
                       type="button"
                       onClick={() => toggleGroup(group.id)}
                     >
-                      {group.label}
+                      {adminNavGroupLabel(group.id, group.label, t)}
                       <span className="text-lg text-[var(--muted)]">{open ? "-" : "+"}</span>
                     </button>
                     {open ? (
@@ -370,8 +483,8 @@ export function AdminConsolePolished() {
                             type="button"
                             onClick={() => setActivePanel(item.id)}
                           >
-                            <span className="block text-sm font-semibold">{item.label}</span>
-                            <span className="mt-0.5 block text-xs opacity-80">{item.description}</span>
+                            <span className="block text-sm font-semibold">{panelTitleV2(item.id, t)}</span>
+                            <span className="mt-0.5 block text-xs opacity-80">{adminNavItemDescription(item.id, item.description, t)}</span>
                           </button>
                         ))}
                       </div>
@@ -383,15 +496,15 @@ export function AdminConsolePolished() {
 
             <div className="border-t border-[var(--line)] p-3">
               <button className="button-secondary focus-ring w-full" type="button" onClick={toggleTheme}>
-                切换主题
+                {t("common.toggleTheme")}
               </button>
               {auth.user ? (
                 <button className="button-secondary focus-ring mt-2 w-full" type="button" onClick={logout}>
-                  退出登录
+                  {t("common.logout")}
                 </button>
               ) : (
                 <Link className="button-primary focus-ring mt-2 block w-full text-center" href="/login?next=/admin">
-                  登录后台
+                  {t("admin.loginAdmin")}
                 </Link>
               )}
             </div>
@@ -402,11 +515,11 @@ export function AdminConsolePolished() {
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-[var(--accent)]">Admin Console</p>
-              <h1 className="text-2xl font-bold">{panelTitle(activePanel)}</h1>
+              <h1 className="text-2xl font-bold">{panelTitleV2(activePanel, t)}</h1>
             </div>
             {auth.user ? (
               <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm">
-                {auth.user.displayName || auth.user.username} / {auth.user.roles.join(", ") || "未分组"}
+                {auth.user.displayName || auth.user.username} / {auth.user.roles.join(", ") || t("admin.ungrouped")}
               </div>
             ) : null}
           </div>
@@ -427,13 +540,27 @@ export function AdminConsolePolished() {
             />
           ) : null}
           {activePanel === "users" ? (
-            <UsersPanel catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
+            <UsersPanelV2 catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
           ) : null}
-          {activePanel === "mail" ? <MailPanel config={config} token={auth.token} /> : null}
-          {activePanel === "auth" ? <AuthPanel config={config} token={auth.token} /> : null}
+          {activePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
+          {activePanel === "auth" ? <AuthPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "i18n" ? <TranslationManagerPanel /> : null}
+          {activePanel === "oss-config" ? <OSSConfigPanelV2 initialConfig={config.oss ?? emptyConfig.oss!} token={auth.token} /> : null}
+          {activePanel === "oss-files" ? <OSSFilesPanel token={auth.token} /> : null}
+          {activePanel === "oss-uploads" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-uploads", t)} endpoint="/api/v1/admin/oss/uploads" /> : null}
+          {activePanel === "oss-scans" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-scans", t)} endpoint="/api/v1/admin/oss/scans" /> : null}
+          {activePanel === "oss-downloads" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-downloads", t)} endpoint="/api/v1/admin/oss/downloads" /> : null}
+          {activePanel === "logs-system" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-system", t)} category="system" /> : null}
+          {activePanel === "logs-user" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-user", t)} category="user_interaction" /> : null}
+          {activePanel === "logs-admin" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-admin", t)} category="admin_operation" /> : null}
+          {activePanel === "logs-permission" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-permission", t)} category="permission_change" /> : null}
+          {activePanel === "logs-login" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-login", t)} category="login_security" /> : null}
+          {activePanel === "logs-api" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-api", t)} category="api_access" /> : null}
+          {activePanel === "logs-file-upload" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-file-upload", t)} category="file_upload" /> : null}
+          {activePanel === "logs-ai" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-ai", t)} category="ai_call" /> : null}
         </section>
       </div>
+      <PermissionDeniedDialog message={permissionDialog} onClose={() => setPermissionDialog("")} />
     </main>
   );
 }
@@ -447,7 +574,7 @@ function PermissionGroupEditor({
   token: string;
   refreshCatalog: () => Promise<void>;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const firstRole = catalog.roles[0]?.code ?? "";
   const [selectedCode, setSelectedCode] = useState(firstRole);
   const selectedRole = catalog.roles.find((role) => role.code === selectedCode) ?? catalog.roles[0];
@@ -535,7 +662,7 @@ function PermissionGroupEditor({
   async function saveRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!currentDraft || !token) {
-      setMessage("请先登录拥有权限管理权限的账号");
+      setMessage(t("admin.permissionLoginRequired"));
       return;
     }
     const payload = {
@@ -554,7 +681,7 @@ function PermissionGroupEditor({
       await refreshCatalog();
       setSelectedCode(saved.code);
       setDraft(cloneRole(saved));
-      setMessage("权限组已保存");
+      setMessage(t("admin.roleSaved"));
     } catch (error) {
       setMessage(cleanError(error));
     }
@@ -562,10 +689,10 @@ function PermissionGroupEditor({
 
   async function deleteRole() {
     if (!currentDraft || !selectedCode || !token) {
-      setMessage("请先选择一个已有权限组");
+      setMessage(t("admin.selectExistingRole"));
       return;
     }
-    if (!window.confirm(`确认删除权限组 ${currentDraft.code}？用户与该组的绑定也会被移除。`)) return;
+    if (!window.confirm(t("admin.confirmDeleteRole", { code: currentDraft.code }))) return;
     try {
       await apiRequest<{ ok: boolean }>(
         `/api/v1/admin/roles/${encodeURIComponent(currentDraft.code)}`,
@@ -575,7 +702,7 @@ function PermissionGroupEditor({
       await refreshCatalog();
       setSelectedCode("");
       setDraft({ code: "", name: "", description: "", translations: {}, weight: 0, parents: [], permissions: [], permissionEntries: [] });
-      setMessage("权限组已删除");
+      setMessage(t("admin.roleDeleted"));
     } catch (error) {
       setMessage(cleanError(error));
     }
@@ -583,12 +710,12 @@ function PermissionGroupEditor({
 
   async function addPermissionEntriesFromInput() {
     if (!currentDraft || !token) {
-      setMessage("请先选择权限组并登录拥有权限管理权限的账号");
+      setMessage(t("admin.selectRoleAndLoginRequired"));
       return;
     }
     const codes = parsePermissionInput(bulkPermissionInput);
     if (codes.length === 0) {
-      setMessage("请先输入要添加的权限");
+      setMessage(t("admin.permissionInputRequired"));
       return;
     }
     const existingCodes = new Set(catalog.permissions.map((permission) => permission.code));
@@ -600,12 +727,7 @@ function PermissionGroupEditor({
             "/api/v1/admin/permissions",
             {
               method: "POST",
-              body: JSON.stringify({
-                code,
-                module: permissionModule(code),
-                name: bulkPermissionName.trim() || code,
-                description: bulkPermissionDescription.trim() || "新建权限",
-              }),
+              body: JSON.stringify(buildNewPermissionPayload(code, bulkPermissionName, bulkPermissionDescription, targetLocale)),
             },
             token,
           );
@@ -628,14 +750,14 @@ function PermissionGroupEditor({
       setBulkPermissionName("");
       setBulkPermissionDescription("");
       await refreshCatalog();
-      setMessage("权限已添加");
+      setMessage(t("admin.permissionAdded"));
     } catch (error) {
       setMessage(cleanError(error));
     }
   }
 
   if (!currentDraft) {
-    return <EmptyState text="暂无权限组。可以先启动后端，或新增一个权限组。" />;
+    return <EmptyState text={t("admin.noRoles")} />;
   }
 
   const modules = Array.from(new Set(catalog.permissions.map((permission) => permission.module)));
@@ -647,8 +769,8 @@ function PermissionGroupEditor({
       ...permission,
       index,
       module: meta?.module ?? permission.code.split(".")[0] ?? "custom",
-      name: localizedMeta?.name ?? "自定义权限",
-      description: localizedMeta?.description ?? "手动输入的权限节点",
+      name: localizedMeta?.name ?? t("admin.customPermission"),
+      description: localizedMeta?.description ?? t("admin.manualPermissionNode"),
     };
   });
   const visibleDraftPermissions =
@@ -665,11 +787,11 @@ function PermissionGroupEditor({
       <section className="surface overflow-hidden rounded-lg">
         <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3">
           <div>
-            <h2 className="text-lg font-bold">权限组</h2>
-            <p className="text-sm text-[var(--muted)]">{catalog.roles.length} 个权限组</p>
+            <h2 className="text-lg font-bold">{t("admin.roleGroup")}</h2>
+            <p className="text-sm text-[var(--muted)]">{t("admin.roleCount", { count: catalog.roles.length })}</p>
           </div>
           <button className="button-secondary focus-ring px-3 py-2" type="button" onClick={startCreateRole}>
-            新增
+            {t("admin.newRole")}
           </button>
         </div>
         <div className="max-h-[calc(100vh-14rem)] overflow-y-auto">
@@ -703,12 +825,12 @@ function PermissionGroupEditor({
             <div className="min-w-0 flex-1">
               <div className="grid gap-3 lg:grid-cols-[auto_minmax(220px,360px)_auto] lg:items-center">
                 <span className="text-2xl font-bold">Group:</span>
-                <div className="field text-xl font-bold">{localizedText(currentDraft, locale).name || "未命名权限组"}</div>
+                <div className="field text-xl font-bold">{localizedText(currentDraft, locale).name || t("admin.unnamedRole")}</div>
                 <span className="break-all font-mono text-xl font-bold text-[var(--muted)]">({currentDraft.code || "new_group"})</span>
               </div>
               <div className="mt-3 grid gap-3 text-sm font-semibold md:grid-cols-[140px_minmax(220px,1fr)]">
                 <label className="grid gap-1">
-                  权重:
+                  {t("admin.weight")}:
                   <input
                     className="field px-2 py-1"
                     onChange={(event) => setDraft({ ...currentDraft, weight: Number(event.target.value) })}
@@ -717,7 +839,7 @@ function PermissionGroupEditor({
                   />
                 </label>
                 <label className="grid gap-1">
-                  权限组 ID
+                  {t("admin.roleId")}
                   <input
                     className="field font-mono"
                     disabled={selectedCode !== ""}
@@ -731,17 +853,17 @@ function PermissionGroupEditor({
             <div className="flex flex-wrap gap-2">
               {selectedCode ? (
                 <button className="button-secondary focus-ring border-red-500/40 text-red-600" type="button" onClick={deleteRole}>
-                  删除权限组
+                  {t("admin.deleteRole")}
                 </button>
               ) : null}
               <button className="button-primary focus-ring" type="submit">
-                保存权限组
+                {t("admin.saveRole")}
               </button>
             </div>
           </div>
           <div className="grid gap-3">
             <label className="text-sm font-semibold">
-              父权限组
+              {t("admin.parentGroups")}
               <ParentRolePicker
                 roles={catalog.roles.filter((role) => role.code !== currentDraft.code)}
                 value={currentDraft.parents}
@@ -749,9 +871,9 @@ function PermissionGroupEditor({
               />
             </label>
             <label className="text-sm font-semibold">
-              多语言显示名与说明
+              {t("admin.localizedDisplay")}
               <LocalizedTextPairEditor
-                description="权限组的显示名和说明会按用户当前语言显示；未填写时回退到默认文本。"
+                description={t("admin.localizedDisplayDesc")}
                 sourceLocale={sourceLocale}
                 targetLocale={targetLocale}
                 value={currentDraft}
@@ -766,18 +888,18 @@ function PermissionGroupEditor({
 
         <section className="surface rounded-lg">
           <div className="border-b border-[var(--line)] px-4 py-3">
-            <h2 className="text-lg font-bold">权限节点 ({currentDraft.permissions.length})</h2>
+            <h2 className="text-lg font-bold">{t("admin.permissionNodes")} ({currentDraft.permissions.length})</h2>
           </div>
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-4 py-3 text-sm">
-            <span className="font-semibold text-[var(--muted)]">已选择 {selectedPermissionIndexes.length} 项</span>
+            <span className="font-semibold text-[var(--muted)]">{t("admin.selectedCount", { count: selectedPermissionIndexes.length })}</span>
             <button className="button-secondary focus-ring px-3 py-2" disabled={selectedPermissionIndexes.length === 0} type="button" onClick={() => bulkUpdatePermissionAllow(true)}>
-              批量设为 true
+              {t("admin.bulkSetTrue")}
             </button>
             <button className="button-secondary focus-ring px-3 py-2" disabled={selectedPermissionIndexes.length === 0} type="button" onClick={() => bulkUpdatePermissionAllow(false)}>
-              批量设为 false
+              {t("admin.bulkSetFalse")}
             </button>
             <button className="button-secondary focus-ring border-red-500/40 px-3 py-2 text-red-600" disabled={selectedPermissionIndexes.length === 0} type="button" onClick={bulkRemovePermissions}>
-              批量删除
+              {t("admin.bulkDelete")}
             </button>
           </div>
           <div className="grid gap-4 p-4 xl:grid-cols-[160px_1fr]">
@@ -789,7 +911,7 @@ function PermissionGroupEditor({
                 type="button"
                 onClick={() => setSelectedModule("all")}
               >
-                全部
+                {t("admin.moduleAll")}
               </button>
               {modules.map((module) => (
                 <button
@@ -815,11 +937,11 @@ function PermissionGroupEditor({
                         onChange={(event) => setVisiblePermissionSelection(event.target.checked)}
                       />
                     </th>
-                    <th className="border-b border-[var(--line)] px-3 py-3">权限</th>
-                    <th className="border-b border-[var(--line)] px-3 py-3">值</th>
-                    <th className="border-b border-[var(--line)] px-3 py-3">有效期至</th>
-                    <th className="border-b border-[var(--line)] px-3 py-3">说明</th>
-                    <th className="border-b border-[var(--line)] px-3 py-3">操作</th>
+                    <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.permission")}</th>
+                    <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.value")}</th>
+                    <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.expiresAt")}</th>
+                    <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.description")}</th>
+                    <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.operation")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -856,12 +978,12 @@ function PermissionGroupEditor({
                       <td className="border-b border-[var(--line)] px-3 py-3">
                         <label className="grid gap-1">
                           <span className="text-xs font-semibold text-[var(--muted)]">
-                            {permission.expiresAt ? "到期时间" : "永不过期"}
+                            {permission.expiresAt ? t("admin.expireTime") : t("admin.neverExpires")}
                           </span>
                           <input
                             className="field px-3 py-2"
                             onChange={(event) => updatePermissionAt(permission.index, { expiresAt: event.target.value })}
-                            title="留空表示永不过期"
+                            title={t("admin.emptyDateMeansNever")}
                             type="date"
                             value={permission.expiresAt ? permission.expiresAt.slice(0, 10) : ""}
                           />
@@ -877,7 +999,7 @@ function PermissionGroupEditor({
                           type="button"
                           onClick={() => removePermissionAt(permission.index)}
                         >
-                          删除
+                          {t("common.delete")}
                         </button>
                       </td>
                     </tr>
@@ -885,7 +1007,7 @@ function PermissionGroupEditor({
                   {visibleDraftPermissions.length === 0 ? (
                     <tr>
                       <td className="px-3 py-8 text-center text-[var(--muted)]" colSpan={6}>
-                        当前筛选下没有权限节点
+                        {t("admin.noPermissionNodesInFilter")}
                       </td>
                     </tr>
                   ) : null}
@@ -936,6 +1058,7 @@ function UserPermissionNodeEditor({
   onBulkRemove: (indexes: number[]) => void;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
   const [selectedIndexes, setSelectedIndexes] = useState<number[]>([]);
   const roleMap = new Map(catalog.roles.map((role) => [`group.${role.code}`, role]));
   const rows = entries.map((entry, index) => {
@@ -946,7 +1069,7 @@ function UserPermissionNodeEditor({
       index,
       module: role ? "group" : permission?.module || permissionModule(entry.code),
       name: role?.name || permission?.name || entry.code,
-      description: role?.description || permission?.description || "未登记到权限目录",
+      description: role?.description || permission?.description || t("admin.permissionNotCataloged"),
     };
   });
   const modules = Array.from(new Set(rows.map((entry) => entry.module))).sort();
@@ -983,18 +1106,18 @@ function UserPermissionNodeEditor({
   return (
     <section className="surface rounded-lg">
       <div className="border-b border-[var(--line)] px-4 py-3">
-        <h2 className="text-lg font-bold">用户权限 ({entries.length})</h2>
+        <h2 className="text-lg font-bold">{t("admin.directPermissions")} ({entries.length})</h2>
       </div>
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-4 py-3 text-sm">
-        <span className="font-semibold text-[var(--muted)]">已选择 {selectedIndexes.length} 项</span>
+        <span className="font-semibold text-[var(--muted)]">{t("admin.selectedCount", { count: selectedIndexes.length })}</span>
         <button className="button-secondary focus-ring px-3 py-2" disabled={selectedIndexes.length === 0} type="button" onClick={() => bulkUpdateAllow(true)}>
-          批量设为 true
+          {t("admin.bulkSetTrue")}
         </button>
         <button className="button-secondary focus-ring px-3 py-2" disabled={selectedIndexes.length === 0} type="button" onClick={() => bulkUpdateAllow(false)}>
-          批量设为 false
+          {t("admin.bulkSetFalse")}
         </button>
         <button className="button-secondary focus-ring border-red-500/40 px-3 py-2 text-red-600" disabled={selectedIndexes.length === 0} type="button" onClick={bulkRemove}>
-          批量删除
+          {t("admin.bulkDelete")}
         </button>
       </div>
       <div className="grid gap-4 p-4 xl:grid-cols-[160px_1fr]">
@@ -1006,7 +1129,7 @@ function UserPermissionNodeEditor({
             type="button"
             onClick={() => onModuleChange("all")}
           >
-            全部
+            {t("admin.moduleAll")}
           </button>
           {modules.map((module) => (
             <button
@@ -1032,11 +1155,11 @@ function UserPermissionNodeEditor({
                     onChange={(event) => setVisibleSelection(event.target.checked)}
                   />
                 </th>
-                <th className="border-b border-[var(--line)] px-3 py-3">权限</th>
-                <th className="border-b border-[var(--line)] px-3 py-3">值</th>
-                <th className="border-b border-[var(--line)] px-3 py-3">有效期至</th>
-                <th className="border-b border-[var(--line)] px-3 py-3">说明</th>
-                <th className="border-b border-[var(--line)] px-3 py-3">操作</th>
+                <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.permission")}</th>
+                <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.value")}</th>
+                <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.expiresAt")}</th>
+                <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.description")}</th>
+                <th className="border-b border-[var(--line)] px-3 py-3">{t("admin.operation")}</th>
               </tr>
             </thead>
             <tbody>
@@ -1065,11 +1188,11 @@ function UserPermissionNodeEditor({
                   </td>
                   <td className="border-b border-[var(--line)] px-3 py-3">
                     <label className="grid gap-1">
-                      <span className="text-xs font-semibold text-[var(--muted)]">{entry.expiresAt ? "到期时间" : "永不过期"}</span>
+                      <span className="text-xs font-semibold text-[var(--muted)]">{entry.expiresAt ? t("admin.expireTime") : t("admin.neverExpires")}</span>
                       <input
                         className="field px-3 py-2"
                         onChange={(event) => onUpdate(entry.index, { expiresAt: event.target.value })}
-                        title="留空表示永不过期"
+                        title={t("admin.emptyDateMeansNever")}
                         type="date"
                         value={entry.expiresAt ? entry.expiresAt.slice(0, 10) : ""}
                       />
@@ -1081,7 +1204,7 @@ function UserPermissionNodeEditor({
                   </td>
                   <td className="border-b border-[var(--line)] px-3 py-3">
                     <button className="button-secondary focus-ring whitespace-nowrap px-3 py-2" type="button" onClick={() => removeOne(entry.index)}>
-                      删除
+                      {t("common.delete")}
                     </button>
                   </td>
                 </tr>
@@ -1089,7 +1212,7 @@ function UserPermissionNodeEditor({
               {visibleRows.length === 0 ? (
                 <tr>
                   <td className="px-3 py-8 text-center text-[var(--muted)]" colSpan={6}>
-                    当前筛选下没有权限节点
+                    {t("admin.noPermissionNodesInFilter")}
                   </td>
                 </tr>
               ) : null}
@@ -1111,7 +1234,7 @@ function ParentRolePicker({
   value: string[];
   onChange: (roles: string[]) => void;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
 
   function commit(nextValue: string) {
@@ -1188,7 +1311,7 @@ function PermissionBulkAdder({
   onInputChange: (value: string) => void;
   onNameChange: (value: string) => void;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
   const selected = parsePermissionInput(input);
   const suggestions = permissionSuggestions(permissions, input, selectedCodes, locale);
@@ -1234,7 +1357,7 @@ function PermissionBulkAdder({
                       {permissionText.description || permissionText.name}
                     </span>
                   </span>
-                  {isSelected ? <span className="font-mono text-sm font-bold">Selected</span> : null}
+                  {isSelected ? <span className="font-mono text-sm font-bold">{t("admin.selected")}</span> : null}
                 </button>
               );
             })}
@@ -1251,7 +1374,7 @@ function PermissionBulkAdder({
                   type="button"
                   onClick={() => removePermission(code)}
                 >
-                  {code} <span className="text-[var(--muted)]">×</span>
+                  {code} <span className="text-[var(--muted)]">x</span>
                 </button>
               ))}
             </div>
@@ -1264,7 +1387,7 @@ function PermissionBulkAdder({
               onInputChange(event.target.value);
             }}
             onFocus={() => setPickerOpen(true)}
-            placeholder="Enter permissions or paste many"
+            placeholder={t("admin.permissionBulkPlaceholder")}
             value={input}
           />
         </div>
@@ -1280,10 +1403,10 @@ function PermissionBulkAdder({
           </button>
         </div>
         <input className="field" type="date" value={expiresAt} onChange={(event) => onExpiresAtChange(event.target.value)} />
-        <input className="field" placeholder="显示名，不填则使用权限名" value={name} onChange={(event) => onNameChange(event.target.value)} />
-        <input className="field" placeholder="说明，不填则为 新建权限" value={description} onChange={(event) => onDescriptionChange(event.target.value)} />
+        <input className="field" placeholder={t("admin.permissionNamePlaceholder")} value={name} onChange={(event) => onNameChange(event.target.value)} />
+        <input className="field" placeholder={t("admin.permissionDescriptionPlaceholder")} value={description} onChange={(event) => onDescriptionChange(event.target.value)} />
         <button className="button-primary focus-ring" type="button" onClick={onAdd}>
-          添加
+          {t("common.create")}
         </button>
       </div>
     </div>
@@ -1299,7 +1422,7 @@ function PermissionCatalogEditor({
   token: string;
   refreshCatalog: () => Promise<void>;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<Permission[]>(() => catalog.permissions.map((permission) => ({ ...permission })));
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
@@ -1322,7 +1445,7 @@ function PermissionCatalogEditor({
 
   async function savePermissions() {
     if (!token) {
-      setMessage("请先登录拥有权限管理权限的账号");
+      setMessage(t("admin.permissionLoginRequired"));
       return;
     }
     setSaving(true);
@@ -1345,7 +1468,7 @@ function PermissionCatalogEditor({
         );
       }
       await refreshCatalog();
-      setMessage("权限列表已保存");
+      setMessage(t("admin.permissionListSaved"));
     } catch (error) {
       setMessage(cleanError(error));
     } finally {
@@ -1357,38 +1480,38 @@ function PermissionCatalogEditor({
     <section className="surface flex min-h-[calc(100vh-8rem)] flex-col rounded-lg p-4">
       <div className="mb-3 grid gap-3 xl:grid-cols-[minmax(220px,1fr)_auto] xl:items-center">
         <div className="min-w-0">
-          <h2 className="text-lg font-bold">权限列表</h2>
-          <p className="text-sm text-[var(--muted)]">权限说明和显示名可按语言单独维护。</p>
+          <h2 className="text-lg font-bold">{t("admin.permissionList")}</h2>
+          <p className="text-sm text-[var(--muted)]">{t("admin.permissionListI18nDesc")}</p>
         </div>
         <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(180px,1fr)_auto_auto_auto] sm:items-center xl:min-w-[760px]">
-          <input className="field min-w-0" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索权限" />
+          <input className="field min-w-0" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("admin.searchPermission")} />
           <select className="field w-auto py-2" value={sourceLocale} onChange={(event) => setSourceLocale(event.target.value as Locale)}>
             {supportedLocales.map((item) => (
               <option key={item.code} value={item.code}>
-                源: {item.label}
+                {t("admin.sourceLanguage")}: {item.label}
               </option>
             ))}
           </select>
           <select className="field w-auto py-2" value={targetLocale} onChange={(event) => setTargetLocale(event.target.value as Locale)}>
             {supportedLocales.map((item) => (
               <option key={item.code} value={item.code}>
-                目标: {item.label}
+                {t("admin.targetLanguage")}: {item.label}
               </option>
             ))}
           </select>
           <button className="button-primary focus-ring" disabled={saving} type="button" onClick={savePermissions}>
-            {saving ? "保存中" : "保存权限列表"}
+            {saving ? t("admin.saving") : t("admin.savePermissionList")}
           </button>
         </div>
       </div>
       {message ? <InlineMessage text={message} /> : null}
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="sticky top-0 z-10 grid gap-2 border-b border-[var(--line)] bg-[var(--panel)] py-3 text-xs font-bold uppercase text-[var(--muted)] lg:grid-cols-[1.2fr_140px_1.2fr_1.2fr_1.5fr]">
-          <div>权限节点</div>
-          <div>模块</div>
-          <div>{sourceLocale} 参考</div>
-          <div>{targetLocale} 显示名</div>
-          <div>{targetLocale} 说明</div>
+          <div>{t("admin.permissionNodes")}</div>
+          <div>{t("admin.module")}</div>
+          <div>{sourceLocale} {t("admin.reference")}</div>
+          <div>{targetLocale} {t("admin.displayName")}</div>
+          <div>{targetLocale} {t("admin.description")}</div>
         </div>
         {visible.map((permission) => (
           <div
@@ -1406,8 +1529,9 @@ function PermissionCatalogEditor({
               <span className="mt-1 block">{localizedText(permission, sourceLocale).description}</span>
             </div>
             <input
+              key={`${targetLocale}:${permission.code}:name`}
               className="field px-3 py-2"
-              value={localizedText(permission, targetLocale).name}
+              value={ownLocalizedText(permission, targetLocale).name}
               onChange={(event) =>
                 updatePermissionDraft(permission.code, {
                   translations: setLocalizedText(permission.translations, targetLocale, { name: event.target.value }),
@@ -1415,8 +1539,9 @@ function PermissionCatalogEditor({
               }
             />
             <input
+              key={`${targetLocale}:${permission.code}:description`}
               className="field px-3 py-2"
-              value={localizedText(permission, targetLocale).description}
+              value={ownLocalizedText(permission, targetLocale).description}
               onChange={(event) =>
                 updatePermissionDraft(permission.code, {
                   translations: setLocalizedText(permission.translations, targetLocale, { description: event.target.value }),
@@ -1441,7 +1566,7 @@ function UserRolePanel({
   users: User[];
   refreshUsers: () => Promise<void>;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? users[0] ?? null;
   const [details, setDetails] = useState<UserPermissionDetails | null>(null);
@@ -1489,7 +1614,7 @@ function UserRolePanel({
   async function saveUserPermissions() {
     if (!selectedUser) return;
     if (!token) {
-      setMessage("请先登录拥有权限管理权限的账号");
+      setMessage(t("admin.permissionLoginRequired"));
       return;
     }
     setSaving(true);
@@ -1501,7 +1626,7 @@ function UserRolePanel({
         token,
       );
       await refreshUsers();
-      setMessage("用户权限已保存");
+      setMessage(t("admin.userPermissionsSaved"));
     } catch (error) {
       setMessage(cleanError(error));
     } finally {
@@ -1511,12 +1636,12 @@ function UserRolePanel({
 
   async function addUserPermissionEntriesFromInput() {
     if (!token) {
-      setMessage("请先登录拥有权限管理权限的账号");
+      setMessage(t("admin.permissionLoginRequired"));
       return;
     }
     const codes = parsePermissionInput(bulkPermissionInput).filter((code) => !code.includes("[") && !code.includes("]"));
     if (codes.length === 0) {
-      setMessage("请先输入要添加的权限。用户直接权限不支持变量模板。");
+      setMessage(t("admin.userPermissionInputRequired"));
       return;
     }
     const existingCodes = new Set(catalog.permissions.map((permission) => permission.code));
@@ -1529,12 +1654,7 @@ function UserRolePanel({
             "/api/v1/admin/permissions",
             {
               method: "POST",
-              body: JSON.stringify({
-                code,
-                module: permissionModule(code),
-                name: bulkPermissionName.trim() || code,
-                description: bulkPermissionDescription.trim() || "新建权限",
-              }),
+              body: JSON.stringify(buildNewPermissionPayload(code, bulkPermissionName, bulkPermissionDescription, locale)),
             },
             token,
           );
@@ -1549,7 +1669,7 @@ function UserRolePanel({
       setBulkPermissionInput("");
       setBulkPermissionName("");
       setBulkPermissionDescription("");
-      setMessage("用户权限已添加");
+      setMessage(t("admin.userPermissionAdded"));
     } catch (error) {
       setMessage(cleanError(error));
     }
@@ -1577,8 +1697,8 @@ function UserRolePanel({
     <div className="grid min-h-[calc(100vh-8rem)] gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
       <section className="surface overflow-hidden rounded-lg">
         <div className="border-b border-[var(--line)] px-4 py-3">
-          <h2 className="text-lg font-bold">用户</h2>
-          <p className="text-sm text-[var(--muted)]">{users.length} 个用户</p>
+          <h2 className="text-lg font-bold">{t("admin.users")}</h2>
+          <p className="text-sm text-[var(--muted)]">{t("admin.userCount", { count: users.length })}</p>
         </div>
         <div className="max-h-[calc(100vh-14rem)] overflow-y-auto">
           {users.map((user) => (
@@ -1606,7 +1726,7 @@ function UserRolePanel({
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-[var(--muted)]">User</p>
-            <h2 className="text-xl font-bold">{selectedUser ? selectedUser.username : "未选择用户"}</h2>
+            <h2 className="text-xl font-bold">{selectedUser ? selectedUser.username : t("admin.noUserSelected")}</h2>
             {assignedRoleCodes.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 {assignedRoleCodes.map((roleCode) => (
@@ -1617,16 +1737,16 @@ function UserRolePanel({
                 ))}
               </div>
             ) : (
-              <p className="mt-2 text-sm text-[var(--muted)]">暂无权限组</p>
+              <p className="mt-2 text-sm text-[var(--muted)]">{t("admin.noRoleAssigned")}</p>
             )}
           </div>
           <button className="button-primary focus-ring" disabled={!selectedUser || saving} type="button" onClick={saveUserPermissions}>
-            {saving ? "保存中" : "保存用户权限"}
+            {saving ? t("admin.saving") : t("admin.saveUserPermissions")}
           </button>
         </div>
         {message ? <div className="px-4"><InlineMessage text={message} /></div> : null}
       {users.length === 0 ? (
-        <EmptyState text="暂无用户数据。后端启动并登录管理员账号后会显示真实用户。" />
+        <EmptyState text={t("admin.noUsers")} />
       ) : (
         <>
           <UserPermissionNodeEditor
@@ -1666,7 +1786,7 @@ function UserRolePanel({
           </UserPermissionNodeEditor>
           {details ? (
             <div className="border-t border-[var(--line)] p-4 text-sm text-[var(--muted)]">
-              当前生效权限：{details.effectivePermissions.length} 个
+              {t("admin.effectivePermissions", { count: details.effectivePermissions.length })}
             </div>
           ) : null}
         </>
@@ -1680,6 +1800,8 @@ function UserRolePanel({
   }
 }
 function OverviewPanel({ dashboard, config }: { dashboard: DashboardData; config: AdminConfig }) {
+  const { t } = useI18n();
+
   return (
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1691,12 +1813,12 @@ function OverviewPanel({ dashboard, config }: { dashboard: DashboardData; config
         ))}
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
-        <ConfigBlock title="已接入功能">
+        <ConfigBlock title={t("admin.featureFlags")}>
           {Object.entries(config.features).map(([key, enabled]) => (
-            <ConfigLine key={key} label={featureLabel(key)} value={enabled ? "已启用" : "未启用"} />
+            <ConfigLine key={key} label={featureLabel(key)} value={enabled ? t("common.enabled") : t("common.disabled")} />
           ))}
         </ConfigBlock>
-        <ConfigBlock title="近期事项">
+        <ConfigBlock title={t("admin.recentTasks")}>
           {dashboard.todo.map((item) => (
             <div key={item} className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm">
               {item}
@@ -1708,31 +1830,33 @@ function OverviewPanel({ dashboard, config }: { dashboard: DashboardData; config
   );
 }
 
-function AuthPanel({ config, token }: { config: AdminConfig; token: string }) {
+function AuthPanelV2({ config, token }: { config: AdminConfig; token: string }) {
+  const { t } = useI18n();
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <ConfigBlock title="登录方式">
-        <ConfigLine label="邮箱 + 密码" value={valueText(config.auth.emailPasswordLogin)} />
-        <ConfigLine label="用户名 + 密码" value={valueText(config.auth.usernamePasswordLogin)} />
-        <ConfigLine label="用户 ID + 密码" value={valueText(config.auth.userIDPasswordLogin)} />
-        <ConfigLine label="邮箱验证码登录" value={valueText(config.auth.emailCodeLogin)} />
-        <ConfigLine label="允许注册" value={valueText(config.auth.allowRegistration)} />
+      <ConfigBlock title={t("admin.authMethods")}>
+        <ConfigLine label={t("admin.emailPassword")} value={valueText(config.auth.emailPasswordLogin)} />
+        <ConfigLine label={t("admin.usernamePassword")} value={valueText(config.auth.usernamePasswordLogin)} />
+        <ConfigLine label={t("admin.userIdPassword")} value={valueText(config.auth.userIDPasswordLogin)} />
+        <ConfigLine label={t("admin.emailCode")} value={valueText(config.auth.emailCodeLogin)} />
+        <ConfigLine label={t("admin.allowRegistration")} value={valueText(config.auth.allowRegistration)} />
       </ConfigBlock>
-      <ConfigBlock title="账号安全">
-        <ConfigLine label="密码最小长度" value={`${config.auth.passwordMinLength ?? 8}`} />
-        <ConfigLine label="Token 有效期" value={`${config.auth.tokenTTLHours ?? 24} 小时`} />
-        <ConfigLine label="邮箱验证" value={valueText(config.auth.requireEmailVerification)} />
-        <ConfigLine label="密码存储" value="PBKDF2-SHA256 + 独立 salt" />
+      <ConfigBlock title={t("admin.accountSecurity")}>
+        <ConfigLine label={t("admin.passwordMinLength")} value={`${config.auth.passwordMinLength ?? 8}`} />
+        <ConfigLine label={t("admin.tokenTtl")} value={`${config.auth.tokenTTLHours ?? 24} h`} />
+        <ConfigLine label={t("admin.emailVerification")} value={valueText(config.auth.requireEmailVerification)} />
+        <ConfigLine label={t("admin.passwordStorage")} value="PBKDF2-SHA256 + salt" />
       </ConfigBlock>
-      <OAuthConfigPanel config={config.oauth} token={token} />
+      <OAuthConfigPanelV2 config={config.oauth} token={token} />
     </div>
   );
 }
 
-function OAuthConfigPanel({ config, token }: { config: OAuthConfig; token: string }) {
+function OAuthConfigPanelV2({ config, token }: { config: OAuthConfig; token: string }) {
+  const { t } = useI18n();
   const [message, setMessage] = useState("");
   const providers = [
-    ["wechat", "微信"],
+    ["wechat", "WeChat"],
     ["qq", "QQ"],
     ["google", "Google"],
     ["github", "GitHub"],
@@ -1740,10 +1864,6 @@ function OAuthConfigPanel({ config, token }: { config: OAuthConfig; token: strin
 
   async function saveOAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token) {
-      setMessage("请先登录拥有系统配置权限的账号");
-      return;
-    }
     const form = new FormData(event.currentTarget);
     const payload: { providers: Record<string, Record<string, string | boolean>> } = { providers: {} };
     for (const [key] of providers) {
@@ -1756,7 +1876,7 @@ function OAuthConfigPanel({ config, token }: { config: OAuthConfig; token: strin
     }
     try {
       await apiRequest<OAuthConfig>("/api/v1/admin/config/oauth", { method: "PUT", body: JSON.stringify(payload) }, token);
-      setMessage("第三方登录配置已保存");
+      setMessage(t("admin.saveSuccess"));
     } catch (error) {
       setMessage(cleanError(error));
     }
@@ -1764,7 +1884,7 @@ function OAuthConfigPanel({ config, token }: { config: OAuthConfig; token: strin
 
   return (
     <section className="surface rounded-lg p-4 lg:col-span-2">
-      <h2 className="mb-3 text-lg font-bold">第三方登录配置</h2>
+      <h2 className="mb-3 text-lg font-bold">{t("admin.oauthConfig")}</h2>
       <form className="grid gap-4" onSubmit={saveOAuth}>
         {providers.map(([key, label]) => {
           const current = config.providers[key] ?? { enabled: false, clientId: "", redirectUri: "", hasClientSecret: false };
@@ -1778,7 +1898,7 @@ function OAuthConfigPanel({ config, token }: { config: OAuthConfig; token: strin
               <input
                 className="field"
                 name={`${key}.clientSecret`}
-                placeholder={current.hasClientSecret ? "已保存，留空保持不变" : "AppSecret / Client Secret"}
+                placeholder={current.hasClientSecret ? t("admin.clientSecretSaved") : "AppSecret / Client Secret"}
                 type="password"
               />
               <input className="field" defaultValue={current.redirectUri} name={`${key}.redirectUri`} placeholder={`https://mcmods.cn/api/v1/auth/oauth/${key}/callback`} />
@@ -1787,7 +1907,7 @@ function OAuthConfigPanel({ config, token }: { config: OAuthConfig; token: strin
         })}
         <div className="flex flex-wrap items-center gap-3">
           <button className="button-primary focus-ring" type="submit">
-            保存第三方登录配置
+            {t("admin.saveOauth")}
           </button>
           {message ? <span className="text-sm text-[var(--muted)]">{message}</span> : null}
         </div>
@@ -1796,7 +1916,8 @@ function OAuthConfigPanel({ config, token }: { config: OAuthConfig; token: strin
   );
 }
 
-function MailPanel({ config, token }: { config: AdminConfig; token: string }) {
+function MailPanelV2({ config, token }: { config: AdminConfig; token: string }) {
+  const { t } = useI18n();
   const [message, setMessage] = useState("");
   const [testTo, setTestTo] = useState("");
   const [saving, setSaving] = useState(false);
@@ -1804,10 +1925,6 @@ function MailPanel({ config, token }: { config: AdminConfig; token: string }) {
 
   async function saveMail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token) {
-      setMessage("请先登录拥有邮件管理权限的账号");
-      return;
-    }
     setSaving(true);
     setMessage("");
     const form = new FormData(event.currentTarget);
@@ -1822,7 +1939,7 @@ function MailPanel({ config, token }: { config: AdminConfig; token: string }) {
     };
     try {
       await apiRequest<MailConfig>("/api/v1/admin/config/mail", { method: "PUT", body: JSON.stringify(payload) }, token);
-      setMessage("邮件配置已保存");
+      setMessage(t("admin.saveSuccess"));
     } catch (error) {
       setMessage(cleanError(error));
     } finally {
@@ -1831,15 +1948,11 @@ function MailPanel({ config, token }: { config: AdminConfig; token: string }) {
   }
 
   async function testMail() {
-    if (!token) {
-      setMessage("请先登录拥有邮件管理权限的账号");
-      return;
-    }
     setTesting(true);
     setMessage("");
     try {
       await apiRequest<{ sent: boolean }>("/api/v1/admin/mail/test", { method: "POST", body: JSON.stringify({ to: testTo }) }, token);
-      setMessage("测试邮件已发送");
+      setMessage(t("admin.saveSuccess"));
     } catch (error) {
       setMessage(cleanError(error));
     } finally {
@@ -1849,48 +1962,47 @@ function MailPanel({ config, token }: { config: AdminConfig; token: string }) {
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      <ConfigBlock title="SMTP 配置">
+      <ConfigBlock title={t("admin.smtpConfig")}>
         <form className="grid gap-3" onSubmit={saveMail}>
           <label className="text-sm font-semibold">
-            服务器
+            {t("admin.server")}
             <input className="field mt-2" defaultValue={config.mail.host} name="host" />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-semibold">
-              端口
+              {t("admin.port")}
               <input className="field mt-2" defaultValue={config.mail.port} min={1} name="port" type="number" />
             </label>
             <label className="text-sm font-semibold">
-              发件人
+              {t("admin.sender")}
               <input className="field mt-2" defaultValue={config.mail.from} name="from" />
             </label>
           </div>
           <label className="text-sm font-semibold">
-            用户名
+            {t("admin.username")}
             <input className="field mt-2" defaultValue={config.mail.username} name="username" />
           </label>
           <label className="text-sm font-semibold">
-            密码
-            <input className="field mt-2" name="password" placeholder={config.mail.hasPassword ? "已保存，留空保持不变" : ""} type="password" />
+            Password
+            <input className="field mt-2" name="password" placeholder={config.mail.hasPassword ? t("admin.clientSecretSaved") : ""} type="password" />
           </label>
           <label className="flex items-center gap-2 text-sm font-semibold">
             <input defaultChecked={config.mail.useTLS} name="useTLS" type="checkbox" />
             TLS / STARTTLS
           </label>
           <button className="button-primary focus-ring" disabled={saving} type="submit">
-            {saving ? "保存中" : "保存邮件配置"}
+            {saving ? t("admin.saving") : t("admin.saveMail")}
           </button>
         </form>
       </ConfigBlock>
-
-      <ConfigBlock title="测试发送">
-        <ConfigLine label="状态" value={config.mail.enabled ? "已配置" : "未配置"} />
-        <ConfigLine label="服务器" value={config.mail.host || "未设置"} />
-        <ConfigLine label="发件人" value={config.mail.from || "未设置"} />
+      <ConfigBlock title={t("admin.testSend")}>
+        <ConfigLine label={t("admin.status")} value={config.mail.enabled ? t("admin.configured") : t("admin.notConfigured")} />
+        <ConfigLine label={t("admin.server")} value={config.mail.host || t("admin.notConfigured")} />
+        <ConfigLine label={t("admin.sender")} value={config.mail.from || t("admin.notConfigured")} />
         <div className="grid gap-2 pt-2">
           <input className="field" onChange={(event) => setTestTo(event.target.value)} placeholder="test@example.com" type="email" value={testTo} />
           <button className="button-secondary focus-ring" disabled={testing} type="button" onClick={testMail}>
-            {testing ? "发送中" : "发送测试邮件"}
+            {testing ? t("admin.sending") : t("admin.sendTestMail")}
           </button>
           {message ? <InlineMessage text={message} /> : null}
         </div>
@@ -1899,7 +2011,7 @@ function MailPanel({ config, token }: { config: AdminConfig; token: string }) {
   );
 }
 
-function UsersPanel({
+function UsersPanelV2({
   catalog,
   token,
   users,
@@ -1910,6 +2022,7 @@ function UsersPanel({
   users: User[];
   refreshUsers: () => Promise<void>;
 }) {
+  const { t } = useI18n();
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -1934,7 +2047,7 @@ function UsersPanel({
       await apiRequest<User>("/api/v1/admin/users", { method: "POST", body: JSON.stringify(payload) }, token);
       await refreshUsers();
       event.currentTarget.reset();
-      setMessage("用户已创建");
+      setMessage(t("admin.userCreated"));
     } catch (error) {
       setMessage(cleanError(error));
     } finally {
@@ -1943,53 +2056,47 @@ function UsersPanel({
   }
 
   return (
-    <PanelShell title="用户列表">
+    <PanelShell title={t("admin.userList")}>
       <form className="mb-5 grid gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4" onSubmit={createUser}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="font-bold">新增用户</h3>
-            <p className="text-sm text-[var(--muted)]">管理员创建的账号会直接写入后端数据库。</p>
+            <h3 className="font-bold">{t("admin.createUser")}</h3>
+            <p className="text-sm text-[var(--muted)]">{t("admin.createUserHint")}</p>
           </div>
           <button className="button-primary focus-ring" disabled={creating} type="submit">
-            {creating ? "创建中" : "创建用户"}
+            {creating ? t("admin.saving") : t("admin.createUser")}
           </button>
         </div>
         <div className="grid gap-3 lg:grid-cols-3">
           <label className="text-sm font-semibold">
-            用户名
-            <input className="field mt-2" name="username" placeholder="例如 steve" required />
+            {t("admin.username")}
+            <input className="field mt-2" name="username" placeholder="steve" required />
           </label>
           <label className="text-sm font-semibold">
-            邮箱
+            {t("admin.email")}
             <input className="field mt-2" name="email" placeholder="name@example.com" required type="email" />
           </label>
           <label className="text-sm font-semibold">
-            初始密码
+            {t("admin.initialPassword")}
             <input className="field mt-2" minLength={8} name="password" required type="password" />
           </label>
         </div>
         <div className="grid gap-3 lg:grid-cols-[1fr_180px_1fr]">
           <label className="text-sm font-semibold">
-            显示名
-            <input className="field mt-2" name="displayName" placeholder="留空使用用户名" />
+            {t("admin.displayName")}
+            <input className="field mt-2" name="displayName" />
           </label>
           <label className="text-sm font-semibold">
-            状态
+            {t("admin.status")}
             <select className="field mt-2" defaultValue="active" name="status">
-              <option value="active">正常</option>
-              <option value="disabled">停用</option>
-              <option value="banned">封禁</option>
-              <option value="deleted">注销</option>
+              <option value="active">{t("admin.active")}</option>
+              <option value="banned">{t("admin.banned")}</option>
+              <option value="deleted">{t("admin.deleted")}</option>
             </select>
           </label>
           <label className="text-sm font-semibold">
-            权限组
-            <input
-              className="field mt-2"
-              list="create-user-role-options"
-              name="roles"
-              placeholder="留空表示暂不分配，或输入 project_editor.112345"
-            />
+            {t("admin.roleList")}
+            <input className="field mt-2" list="create-user-role-options" name="roles" />
           </label>
         </div>
         <datalist id="create-user-role-options">
@@ -2000,18 +2107,18 @@ function UsersPanel({
         {message ? <InlineMessage text={message} /> : null}
       </form>
       {users.length === 0 ? (
-        <EmptyState text="暂无用户数据。后端启动并登录管理员账号后会显示真实用户。" />
+        <EmptyState text={t("admin.noUsers")} />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-[var(--line)]">
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="text-[var(--muted)]">
               <tr>
                 <th className="border-b border-[var(--line)] py-2">ID</th>
-                <th className="border-b border-[var(--line)] py-2">用户</th>
-                <th className="border-b border-[var(--line)] py-2">邮箱</th>
-                <th className="border-b border-[var(--line)] py-2">注册时间</th>
-                <th className="border-b border-[var(--line)] py-2">状态</th>
-                <th className="border-b border-[var(--line)] py-2">权限组</th>
+                <th className="border-b border-[var(--line)] py-2">{t("admin.users")}</th>
+                <th className="border-b border-[var(--line)] py-2">{t("admin.email")}</th>
+                <th className="border-b border-[var(--line)] py-2">{t("admin.registeredAt")}</th>
+                <th className="border-b border-[var(--line)] py-2">{t("admin.status")}</th>
+                <th className="border-b border-[var(--line)] py-2">{t("admin.roleList")}</th>
               </tr>
             </thead>
             <tbody>
@@ -2036,32 +2143,33 @@ function UsersPanel({
 function TranslationManagerPanel() {
   const {
     locale,
-    setLocale,
     t,
     translationKeys,
     getTranslation,
     getBaseTranslation,
+    getOwnTranslation,
     setTranslation,
     resetTranslation,
   } = useI18n();
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
   const [targetLocale, setTargetLocale] = useState<Locale>(locale);
   const [query, setQuery] = useState("");
-  const [message, setMessage] = useState("");
+  const [missingOnly, setMissingOnly] = useState(false);
 
   const visibleKeys = translationKeys.filter((key) => {
     const keyword = query.trim().toLowerCase();
+    const targetOwn = getOwnTranslation(targetLocale, key);
+    if (missingOnly && targetOwn.trim() !== "") return false;
     if (!keyword) return true;
     return (
       key.toLowerCase().includes(keyword) ||
       getTranslation(sourceLocale, key).toLowerCase().includes(keyword) ||
-      getTranslation(targetLocale, key).toLowerCase().includes(keyword)
+      targetOwn.toLowerCase().includes(keyword)
     );
   });
 
   function saveTranslation(key: string, value: string) {
     setTranslation(targetLocale, key, value);
-    setMessage(t("admin.translationSaved"));
   }
 
   return (
@@ -2087,15 +2195,11 @@ function TranslationManagerPanel() {
         </label>
         <label className="text-sm font-semibold">
           {t("admin.targetLanguage")}
-          <select
-            className="field mt-2"
-            value={targetLocale}
-            onChange={(event) => {
-              const nextLocale = event.target.value as Locale;
-              setTargetLocale(nextLocale);
-              setLocale(nextLocale);
-            }}
-          >
+            <select
+              className="field mt-2"
+              value={targetLocale}
+              onChange={(event) => setTargetLocale(event.target.value as Locale)}
+            >
             {supportedLocales.map((item) => (
               <option key={item.code} value={item.code}>
                 {item.label}
@@ -2106,13 +2210,18 @@ function TranslationManagerPanel() {
       </div>
 
       <div className="border-b border-[var(--line)] p-4">
-        <input
-          className="field"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={`${t("common.search")} key / text`}
-        />
-        {message ? <InlineMessage text={message} /> : null}
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            className="field min-w-0 flex-1"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={`${t("common.search")} key / text`}
+          />
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold">
+            <input checked={missingOnly} type="checkbox" onChange={(event) => setMissingOnly(event.target.checked)} />
+            {t("admin.missingOnly")}
+          </label>
+        </div>
       </div>
 
       <div className="max-h-[calc(100vh-18rem)] overflow-y-auto">
@@ -2128,16 +2237,18 @@ function TranslationManagerPanel() {
           <tbody>
             {visibleKeys.map((key) => {
               const baseTarget = getBaseTranslation(targetLocale, key);
-              const target = getTranslation(targetLocale, key);
-              const edited = target !== baseTarget;
+              const target = getOwnTranslation(targetLocale, key);
+              const edited = target !== "" && target !== baseTarget;
               return (
                 <tr key={key}>
                   <td className="border-b border-[var(--line)] px-4 py-3 font-mono text-xs">{key}</td>
                   <td className="border-b border-[var(--line)] px-4 py-3">{getTranslation(sourceLocale, key)}</td>
                   <td className="border-b border-[var(--line)] px-4 py-3">
                     <textarea
+                      key={`${targetLocale}:${key}`}
                       className="field min-h-20"
                       defaultValue={target}
+                      placeholder={target ? "" : t("admin.missingTranslation")}
                       onBlur={(event) => saveTranslation(key, event.currentTarget.value)}
                     />
                     {edited ? <span className="mt-1 block text-xs text-[var(--accent)]">{t("admin.editedLocally")}</span> : null}
@@ -2157,6 +2268,558 @@ function TranslationManagerPanel() {
   );
 }
 
+function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; token: string }) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState({ ...initialConfig, accessKeySecret: "" });
+  const [message, setMessage] = useState("");
+  const endpointPreview = draft.endpoint
+    ? draft.endpoint.startsWith("http://") || draft.endpoint.startsWith("https://")
+      ? draft.endpoint
+      : `https://${draft.endpoint}`
+    : "https://oss.mcmods.cn";
+  const objectPrefix = (draft.prefix || "mcmods").replace(/^\/+|\/+$/g, "");
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<OSSConfig>("/api/v1/admin/config/oss", {}, token)
+      .then((config) => {
+        if (!cancelled) setDraft({ ...config, accessKeySecret: "" });
+      })
+      .catch((error) => {
+        if (!cancelled) setMessage(cleanError(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  async function save() {
+    setMessage("");
+    try {
+      const payload = {
+        enabled: draft.enabled,
+        region: draft.region,
+        endpoint: draft.endpoint,
+        bucket: draft.bucket,
+        accessKeyId: draft.accessKeyId,
+        accessKeySecret: draft.accessKeySecret,
+        useCName: draft.useCName,
+        prefix: draft.prefix,
+        downloadUrlTtlMinutes: draft.downloadUrlTtlMinutes,
+      };
+      const saved = await apiRequest<OSSConfig>(
+        "/api/v1/admin/config/oss",
+        { method: "PUT", body: JSON.stringify(payload) },
+        token,
+      );
+      setDraft({ ...saved, accessKeySecret: "" });
+      setMessage(t("admin.oss.configSaved"));
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="surface rounded-lg p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-bold">{t("admin.oss.configTitle")}</h2>
+              <span
+                className={`rounded-md px-2 py-1 text-xs font-bold ${
+                  draft.enabled ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-subtle)] text-[var(--muted)]"
+                }`}
+              >
+                {draft.enabled ? t("admin.oss.enabled") : t("admin.oss.disabled")}
+              </span>
+              <span className="rounded-md bg-[var(--panel-subtle)] px-2 py-1 text-xs font-bold text-[var(--muted)]">{t("admin.oss.connectedByPrivateBucket")}</span>
+              {draft.useCName ? (
+                <span className="rounded-md bg-[var(--panel-subtle)] px-2 py-1 text-xs font-bold text-[var(--muted)]">{t("admin.oss.cnameMode")}</span>
+              ) : null}
+            </div>
+            <p className="max-w-3xl text-sm text-[var(--muted)]">
+              {t("admin.oss.configIntro")}
+            </p>
+          </div>
+          <button className="button-primary focus-ring" type="button" onClick={save}>
+            {t("admin.oss.saveConfig")}
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">
+            <div className="text-xs font-bold uppercase text-[var(--muted)]">{t("admin.oss.accessDomain")}</div>
+            <div className="mt-1 truncate font-mono text-sm">{endpointPreview}</div>
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">
+            <div className="text-xs font-bold uppercase text-[var(--muted)]">Bucket</div>
+            <div className="mt-1 truncate font-mono text-sm">{draft.bucket || t("admin.notConfigured")}</div>
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">
+            <div className="text-xs font-bold uppercase text-[var(--muted)]">{t("admin.oss.temporaryUrl")}</div>
+            <div className="mt-1 font-mono text-sm">{draft.downloadUrlTtlMinutes || 10} min</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
+        <div className="surface rounded-lg p-5">
+          <div className="mb-4">
+            <h3 className="font-bold">{t("admin.oss.connection")}</h3>
+            <p className="text-sm text-[var(--muted)]">{t("admin.oss.connectionDesc")}</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 md:col-span-2">
+              <input
+                checked={draft.enabled}
+                type="checkbox"
+                onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))}
+              />
+              <span>
+                <span className="block font-bold">{t("admin.oss.enableOSS")}</span>
+                <span className="text-sm text-[var(--muted)]">{t("admin.oss.enableOSSDesc")}</span>
+              </span>
+            </label>
+            <label className="grid gap-1 text-sm font-semibold">
+              Region
+              <input
+                className="field"
+                placeholder="cn-beijing"
+                value={draft.region}
+                onChange={(event) => setDraft((current) => ({ ...current, region: event.target.value }))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold">
+              Bucket
+              <input
+                className="field"
+                placeholder="mcmods-cn"
+                value={draft.bucket}
+                onChange={(event) => setDraft((current) => ({ ...current, bucket: event.target.value }))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold md:col-span-2">
+              Endpoint / {t("admin.customDomain")}
+              <input
+                className="field font-mono"
+                placeholder="oss.mcmods.cn"
+                value={draft.endpoint}
+                onChange={(event) => setDraft((current) => ({ ...current, endpoint: event.target.value }))}
+              />
+            </label>
+            <label className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 md:col-span-2">
+              <input
+                checked={draft.useCName}
+                type="checkbox"
+                onChange={(event) => setDraft((current) => ({ ...current, useCName: event.target.checked }))}
+              />
+              <span>
+                <span className="block font-bold">{t("admin.oss.useCName")}</span>
+                <span className="text-sm text-[var(--muted)]">{t("admin.oss.useCNameDesc")}</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <div className="surface rounded-lg p-5">
+          <div className="mb-4">
+            <h3 className="font-bold">{t("admin.oss.credentials")}</h3>
+            <p className="text-sm text-[var(--muted)]">{t("admin.oss.credentialsDesc")}</p>
+          </div>
+          <div className="grid gap-3">
+            <label className="grid gap-1 text-sm font-semibold">
+              AccessKey ID
+              <input
+                className="field font-mono"
+                value={draft.accessKeyId}
+                onChange={(event) => setDraft((current) => ({ ...current, accessKeyId: event.target.value }))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold">
+              AccessKey Secret
+              <input
+                className="field font-mono"
+                placeholder={draft.hasAccessKeySecret ? t("admin.oss.secretPlaceholderSaved") : t("admin.oss.secretPlaceholderEmpty")}
+                type="password"
+                value={draft.accessKeySecret}
+                onChange={(event) => setDraft((current) => ({ ...current, accessKeySecret: event.target.value }))}
+              />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div className="surface rounded-lg p-5">
+        <div className="mb-4">
+          <h3 className="font-bold">{t("admin.oss.storagePolicy")}</h3>
+          <p className="text-sm text-[var(--muted)]">{t("admin.oss.storagePolicyDesc")}</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1 text-sm font-semibold">
+            {t("admin.oss.objectKeyPrefix")}
+            <input
+              className="field font-mono"
+              placeholder="mcmods"
+              value={draft.prefix}
+              onChange={(event) => setDraft((current) => ({ ...current, prefix: event.target.value }))}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-semibold">
+            {t("admin.oss.temporaryUrlMinutes")}
+            <input
+              className="field"
+              min={1}
+              type="number"
+              value={draft.downloadUrlTtlMinutes}
+              onChange={(event) => setDraft((current) => ({ ...current, downloadUrlTtlMinutes: Number(event.target.value) }))}
+            />
+          </label>
+        </div>
+        <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm text-[var(--muted)]">
+          {t("admin.oss.objectKeyExample")}
+          <span className="ml-1 font-mono text-[var(--foreground)]">{objectPrefix}/project/2026/07/07/a1b2c3d4-image.png</span>
+        </div>
+      </div>
+
+      {message ? <InlineMessage text={message} /> : null}
+    </section>
+  );
+}
+
+function OSSFilesPanel({ token }: { token: string }) {
+  const { t } = useI18n();
+  const [files, setFiles] = useState<OSSFile[]>([]);
+  const [message, setMessage] = useState("");
+  const [category, setCategory] = useState("project");
+  const [source, setSource] = useState("admin");
+  const [uploading, setUploading] = useState(false);
+
+  async function load() {
+    try {
+      setFiles(await apiRequest<OSSFile[]>("/api/v1/admin/oss/files", {}, token));
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [token]);
+
+  async function upload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    data.set("category", category);
+    data.set("source", source);
+    setUploading(true);
+    setMessage("");
+    try {
+      await apiUpload("/api/v1/admin/oss/upload", data, token);
+      form.reset();
+      setMessage(t("admin.oss.uploadSuccess"));
+      await load();
+    } catch (error) {
+      setMessage(cleanError(error));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function copyDownloadLink(objectKey: string) {
+    try {
+      const result = await apiRequest<{ url: string; expiresAt: string }>(
+        "/api/v1/admin/oss/files/presign",
+        { method: "POST", body: JSON.stringify({ objectKey }) },
+        token,
+      );
+      await navigator.clipboard.writeText(result.url);
+      setMessage(t("admin.oss.tempUrlCopied", { time: formatDateTime(result.expiresAt) }));
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }
+
+  return (
+    <section className="surface rounded-lg p-4">
+      <div className="mb-4">
+        <h2 className="text-lg font-bold">{t("admin.oss.filesTitle")}</h2>
+        <p className="text-sm text-[var(--muted)]">{t("admin.oss.filesDesc")}</p>
+      </div>
+      <form className="mb-4 grid gap-3 rounded-lg border border-[var(--line)] p-3 lg:grid-cols-[1fr_160px_160px_auto]" onSubmit={upload}>
+        <input className="field" name="file" required type="file" />
+        <input className="field" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="category" />
+        <input className="field" value={source} onChange={(event) => setSource(event.target.value)} placeholder="source" />
+        <button className="button-primary focus-ring" disabled={uploading} type="submit">
+          {uploading ? t("admin.oss.uploading") : t("admin.oss.uploadFile")}
+        </button>
+      </form>
+      {message ? <InlineMessage text={message} /> : null}
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[960px] text-left text-sm">
+          <thead className="text-[var(--muted)]">
+            <tr>
+              <th className="border-b border-[var(--line)] py-2">{t("admin.oss.file")}</th>
+              <th className="border-b border-[var(--line)] py-2">{t("admin.oss.category")}</th>
+              <th className="border-b border-[var(--line)] py-2">{t("admin.oss.size")}</th>
+              <th className="border-b border-[var(--line)] py-2">{t("admin.oss.scan")}</th>
+              <th className="border-b border-[var(--line)] py-2">{t("admin.oss.uploadedAt")}</th>
+              <th className="border-b border-[var(--line)] py-2">{t("admin.oss.operation")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {files.map((file) => (
+              <tr key={file.objectKey}>
+                <td className="border-b border-[var(--line)] py-2">
+                  <div className="font-semibold">{file.originalName || file.objectKey}</div>
+                  <div className="max-w-xl truncate font-mono text-xs text-[var(--muted)]">{file.objectKey}</div>
+                </td>
+                <td className="border-b border-[var(--line)] py-2">{file.category}</td>
+                <td className="border-b border-[var(--line)] py-2">{formatBytes(file.sizeBytes)}</td>
+                <td className="border-b border-[var(--line)] py-2">{file.scanStatus}</td>
+                <td className="border-b border-[var(--line)] py-2">{formatDateTime(file.createdAt)}</td>
+                <td className="border-b border-[var(--line)] py-2">
+                  <button className="button-secondary focus-ring" type="button" onClick={() => copyDownloadLink(file.objectKey)}>
+                    {t("admin.oss.copyTempUrl")}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {files.length === 0 ? <EmptyState text={t("admin.oss.noFiles")} /> : null}
+      </div>
+    </section>
+  );
+}
+
+function OSSRowsPanel({ token, title, endpoint }: { token: string; title: string; endpoint: string }) {
+  const [rows, setRows] = useState<LogRow[]>([]);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    apiRequest<LogRow[]>(endpoint, {}, token)
+      .then(setRows)
+      .catch((error) => setMessage(cleanError(error)));
+  }, [endpoint, token]);
+  return <RowsPanel title={title} rows={rows} message={message} />;
+}
+
+function LogsPanel({ token, title, category }: { token: string; title: string; category: string }) {
+  const { t } = useI18n();
+  const [rows, setRows] = useState<LogRow[]>([]);
+  const [message, setMessage] = useState("");
+  const [query, setQuery] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [level, setLevel] = useState("");
+  const [status, setStatus] = useState("");
+  const [limit, setLimit] = useState(100);
+  const [showRetention, setShowRetention] = useState(false);
+  const [retention, setRetention] = useState<LogRetentionConfig>({
+    enabled: true,
+    defaultDays: 180,
+    categoryDays: {},
+  });
+  const displayTitle = logCategoryTitle(category, t) || title;
+
+  async function load() {
+    const params = new URLSearchParams({
+      category,
+      limit: String(limit),
+    });
+    if (query.trim()) params.set("q", query.trim());
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    if (level) params.set("level", level);
+    if (status) params.set("status", status);
+    try {
+      setRows(await apiRequest<LogRow[]>(`/api/v1/admin/logs?${params.toString()}`, {}, token));
+      setMessage("");
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [category, token]);
+
+  useEffect(() => {
+    apiRequest<LogRetentionConfig>("/api/v1/admin/logs/config", {}, token)
+      .then(setRetention)
+      .catch(() => undefined);
+  }, [token]);
+
+  async function saveRetention() {
+    try {
+      const result = await apiRequest<{ config: LogRetentionConfig; deleted: Record<string, number> }>(
+        "/api/v1/admin/logs/config",
+        { method: "PUT", body: JSON.stringify(retention) },
+        token,
+      );
+      setRetention(result.config);
+      const deletedCount = Object.values(result.deleted ?? {}).reduce((sum, value) => sum + Number(value || 0), 0);
+      setMessage(t("admin.logs.policySaved", { count: deletedCount }));
+      await load();
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }
+
+  return (
+    <section className="surface rounded-lg p-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold">{displayTitle}</h2>
+          <p className="text-sm text-[var(--muted)]">{t("admin.logs.titleDesc")}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="button-secondary focus-ring" type="button" onClick={() => setShowRetention((current) => !current)}>
+            {t("admin.logs.cleanupPolicy")}
+          </button>
+          <button className="button-primary focus-ring" type="button" onClick={load}>
+            {t("admin.logs.query")}
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-4 grid gap-3 lg:grid-cols-[1.4fr_repeat(5,minmax(120px,0.6fr))]">
+        <input className="field" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("admin.logs.searchPlaceholder")} />
+        <input className="field" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+        <input className="field" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+        <select className="field" value={level} onChange={(event) => setLevel(event.target.value)}>
+          <option value="">{t("admin.logs.allLevels")}</option>
+          <option value="info">info</option>
+          <option value="warn">warn</option>
+          <option value="error">error</option>
+        </select>
+        <input className="field" value={status} onChange={(event) => setStatus(event.target.value)} placeholder={t("admin.logs.status")} />
+        <input className="field" min={1} max={500} type="number" value={limit} onChange={(event) => setLimit(Number(event.target.value))} />
+      </div>
+
+      {showRetention ? (
+        <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-bold">{t("admin.logs.rollingCleanup")}</h3>
+              <p className="text-sm text-[var(--muted)]">{t("admin.logs.rollingCleanupDesc")}</p>
+            </div>
+            <button className="button-primary focus-ring" type="button" onClick={saveRetention}>
+              {t("admin.logs.saveCleanupPolicy")}
+            </button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3">
+              <input
+                checked={retention.enabled}
+                type="checkbox"
+                onChange={(event) => setRetention((current) => ({ ...current, enabled: event.target.checked }))}
+              />
+              {t("admin.logs.enableRollingCleanup")}
+            </label>
+            <label className="grid gap-1 text-sm font-semibold">
+              {t("admin.logs.defaultRetentionDays")}
+              <input
+                className="field"
+                min={1}
+                max={3650}
+                type="number"
+                value={retention.defaultDays}
+                onChange={(event) => setRetention((current) => ({ ...current, defaultDays: Number(event.target.value) }))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold">
+              {t("admin.logs.categoryRetentionDays")}
+              <input
+                className="field"
+                min={1}
+                max={3650}
+                type="number"
+                value={retention.categoryDays?.[category] ?? retention.defaultDays}
+                onChange={(event) =>
+                  setRetention((current) => ({
+                    ...current,
+                    categoryDays: { ...(current.categoryDays ?? {}), [category]: Number(event.target.value) },
+                  }))
+                }
+              />
+            </label>
+          </div>
+        </div>
+      ) : null}
+
+      <RowsPanel title={displayTitle} rows={rows} message={message} />
+    </section>
+  );
+}
+
+function RowsPanel({ title, rows, message }: { title: string; rows: LogRow[]; message?: string }) {
+  const { t } = useI18n();
+  const keys = useMemo(() => orderedLogKeys(rows).slice(0, 12), [rows]);
+  return (
+    <section className="surface rounded-lg p-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-bold">{title}</h2>
+          <span className="text-sm text-[var(--muted)]">{t("admin.logs.records", { count: rows.length })}</span>
+      </div>
+      {message ? <InlineMessage text={message} /> : null}
+      <div className="max-h-[calc(100vh-14rem)] overflow-auto">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="sticky top-0 bg-[var(--panel)] text-[var(--muted)]">
+            <tr>{keys.map((key) => <th key={key} className="border-b border-[var(--line)] px-3 py-2">{key}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={index}>
+                {keys.map((key) => (
+                  <td key={key} className="max-w-xs truncate border-b border-[var(--line)] px-3 py-2">
+                    {displayCell(row[key])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 ? <EmptyState text={t("admin.logs.noRecords")} /> : null}
+      </div>
+    </section>
+  );
+}
+
+function orderedLogKeys(rows: LogRow[]) {
+  const allKeys = Array.from(new Set(rows.flatMap((row) => Object.keys(row))));
+  const preferred = [
+    "id",
+    "actor_username",
+    "operator_username",
+    "target_username",
+    "username",
+    "uploader_username",
+    "actor_display_name",
+    "operator_display_name",
+    "target_display_name",
+    "display_name",
+    "uploader_display_name",
+    "actor_id",
+    "operator_id",
+    "target_user_id",
+    "user_id",
+    "uploader_id",
+    "category",
+    "level",
+    "action",
+    "method",
+    "path",
+    "status",
+    "success",
+    "result",
+    "ip",
+    "created_at",
+  ];
+  return [...preferred.filter((key) => allKeys.includes(key)), ...allKeys.filter((key) => !preferred.includes(key))];
+}
+
 function LocalizedTextPairEditor({
   value,
   sourceLocale,
@@ -2174,8 +2837,9 @@ function LocalizedTextPairEditor({
   onSourceLocaleChange: (locale: Locale) => void;
   onTargetLocaleChange: (locale: Locale) => void;
 }) {
+  const { t } = useI18n();
   const source = localizedText(value, sourceLocale);
-  const target = localizedText(value, targetLocale);
+  const target = ownLocalizedText(value, targetLocale);
 
   return (
     <div className="mt-2 grid gap-3 rounded-lg border border-[var(--line)] p-3">
@@ -2183,14 +2847,14 @@ function LocalizedTextPairEditor({
         <select className="field w-auto py-2" value={sourceLocale} onChange={(event) => onSourceLocaleChange(event.target.value as Locale)}>
           {supportedLocales.map((item) => (
             <option key={item.code} value={item.code}>
-              源: {item.label}
+              {t("admin.sourceLanguage")}: {item.label}
             </option>
           ))}
         </select>
         <select className="field w-auto py-2" value={targetLocale} onChange={(event) => onTargetLocaleChange(event.target.value as Locale)}>
           {supportedLocales.map((item) => (
             <option key={item.code} value={item.code}>
-              目标: {item.label}
+              {t("admin.targetLanguage")}: {item.label}
             </option>
           ))}
         </select>
@@ -2198,22 +2862,24 @@ function LocalizedTextPairEditor({
       {description ? <p className="text-sm font-normal text-[var(--muted)]">{description}</p> : null}
       <div className="grid gap-3 lg:grid-cols-2">
         <div className="grid gap-2 rounded-md bg-[var(--panel-subtle)] p-3">
-          <div className="text-xs font-bold uppercase text-[var(--muted)]">{sourceLocale} 参考</div>
-          <div className="font-bold">{source.name || "未填写"}</div>
-          <div className="text-sm font-normal text-[var(--muted)]">{source.description || "未填写"}</div>
+          <div className="text-xs font-bold uppercase text-[var(--muted)]">{sourceLocale} {t("admin.reference")}</div>
+          <div className="font-bold">{source.name || t("admin.emptyTranslation")}</div>
+          <div className="text-sm font-normal text-[var(--muted)]">{source.description || t("admin.emptyTranslation")}</div>
         </div>
         <div className="grid gap-2">
           <label className="grid gap-1">
-            {targetLocale} 显示名
+            {targetLocale} {t("admin.displayName")}
             <input
+              key={`${targetLocale}:name`}
               className="field"
               value={target.name}
               onChange={(event) => onChange(setLocalizedText(value.translations, targetLocale, { name: event.target.value }))}
             />
           </label>
           <label className="grid gap-1">
-            {targetLocale} 说明
+            {targetLocale} {t("admin.description")}
             <textarea
+              key={`${targetLocale}:description`}
               className="field min-h-20"
               value={target.description}
               onChange={(event) => onChange(setLocalizedText(value.translations, targetLocale, { description: event.target.value }))}
@@ -2261,31 +2927,106 @@ function EmptyState({ text }: { text: string }) {
 }
 
 function AdminGateMessage({ text }: { text: string }) {
+  const { t } = useI18n();
+
   return (
     <main className="grid min-h-screen place-items-center bg-[var(--background)] px-4 text-[var(--foreground)]">
       <div className="surface w-full max-w-md rounded-lg p-6 text-center">
         <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">
           M
         </div>
-        <h1 className="text-xl font-bold">后台管理</h1>
+        <h1 className="text-xl font-bold">{t("admin.title")}</h1>
         <p className="mt-2 text-sm text-[var(--muted)]">{text}</p>
       </div>
     </main>
   );
 }
 
-function panelTitle(panel: PanelId) {
+function PermissionDeniedDialog({ message, onClose }: { message: string; onClose: () => void }) {
+  const { t } = useI18n();
+
+  if (!message) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4" role="alertdialog" aria-modal="true">
+      <div className="surface w-full max-w-md rounded-lg p-6 text-center shadow-2xl">
+        <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-red-100 text-2xl font-black text-red-700">
+          !
+        </div>
+        <h2 className="text-xl font-bold">{t("admin.permissionDeniedTitle")}</h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{message}</p>
+        <button className="button-primary focus-ring mt-5 min-w-32" type="button" onClick={onClose} autoFocus>
+          {t("common.close")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, string | number>) => string) {
   const titles: Record<PanelId, string> = {
-    overview: "总览",
-    roles: "权限组编辑器",
-    "user-roles": "用户权限组",
-    "permission-list": "权限列表",
-    users: "用户列表",
-    mail: "邮件系统",
-    auth: "登录配置",
-    i18n: "多语言管理",
+    overview: t("admin.overview"),
+    roles: t("admin.roles"),
+    "user-roles": t("admin.userRoles"),
+    "permission-list": t("admin.permissionList"),
+    users: t("admin.userList"),
+    mail: t("admin.mail"),
+    auth: t("admin.auth"),
+    i18n: t("admin.i18n"),
+    "oss-config": t("admin.panels.ossConfig"),
+    "oss-files": t("admin.panels.ossFiles"),
+    "oss-uploads": t("admin.panels.ossUploads"),
+    "oss-scans": t("admin.panels.ossScans"),
+    "oss-downloads": t("admin.panels.ossDownloads"),
+    "logs-system": t("admin.panels.logsSystem"),
+    "logs-user": t("admin.panels.logsUser"),
+    "logs-admin": t("admin.panels.logsAdmin"),
+    "logs-permission": t("admin.panels.logsPermission"),
+    "logs-login": t("admin.panels.logsLogin"),
+    "logs-api": t("admin.panels.logsApi"),
+    "logs-file-upload": t("admin.panels.logsFileUpload"),
+    "logs-ai": t("admin.panels.logsAi"),
   };
   return titles[panel];
+}
+
+function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, params?: Record<string, string | number>) => string) {
+  const labels: Record<string, string> = {
+    workbench: t("admin.workbench"),
+    permission: t("admin.permission"),
+    oss: t("admin.nav.oss"),
+    logs: t("admin.nav.logs"),
+    users: t("admin.users"),
+    system: t("admin.system"),
+  };
+  return labels[groupId] ?? fallback;
+}
+
+function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: string, params?: Record<string, string | number>) => string) {
+  const descriptions: Partial<Record<PanelId, string>> = {
+    overview: t("admin.overviewDesc"),
+    roles: t("admin.rolesDesc"),
+    "user-roles": t("admin.userRolesDesc"),
+    "permission-list": t("admin.permissionListDesc"),
+    users: t("admin.usersDesc"),
+    mail: t("admin.mailDesc"),
+    auth: t("admin.authDesc"),
+    i18n: t("admin.i18nDesc"),
+    "oss-config": t("admin.nav.ossConfigDesc"),
+    "oss-files": t("admin.nav.ossFilesDesc"),
+    "oss-uploads": t("admin.nav.ossUploadsDesc"),
+    "oss-scans": t("admin.nav.ossScansDesc"),
+    "oss-downloads": t("admin.nav.ossDownloadsDesc"),
+    "logs-system": t("admin.nav.logsSystemDesc"),
+    "logs-user": t("admin.nav.logsUserDesc"),
+    "logs-admin": t("admin.nav.logsAdminDesc"),
+    "logs-permission": t("admin.nav.logsPermissionDesc"),
+    "logs-login": t("admin.nav.logsLoginDesc"),
+    "logs-api": t("admin.nav.logsApiDesc"),
+    "logs-file-upload": t("admin.nav.logsFileDesc"),
+    "logs-ai": t("admin.nav.logsAiDesc"),
+  };
+  return descriptions[panel] ?? fallback;
 }
 
 function toneClass(tone: string) {
@@ -2300,7 +3041,7 @@ function toneClass(tone: string) {
 }
 
 function valueText(value: unknown) {
-  return value ? "启用" : "关闭";
+  return value ? "true" : "false";
 }
 
 function formatDateTime(value?: string) {
@@ -2320,15 +3061,61 @@ function formatDateTime(value?: string) {
   });
 }
 
+function formatBytes(value?: number) {
+  const bytes = Number(value ?? 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function displayCell(value: unknown) {
+  if (value === null || typeof value === "undefined") return "-";
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "object") return JSON.stringify(value);
+  const text = String(value);
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text)) return formatDateTime(text);
+  return text;
+}
+
+function logCategoryTitle(category: string, t: (key: string, params?: Record<string, string | number>) => string) {
+  const titles: Record<string, string> = {
+    system: t("admin.panels.logsSystem"),
+    user_interaction: t("admin.panels.logsUser"),
+    admin_operation: t("admin.panels.logsAdmin"),
+    permission_change: t("admin.panels.logsPermission"),
+    login_security: t("admin.panels.logsLogin"),
+    api_access: t("admin.panels.logsApi"),
+    file_upload: t("admin.panels.logsFileUpload"),
+    ai_call: t("admin.panels.logsAi"),
+  };
+  return titles[category] ?? category;
+}
+
+async function apiUpload(path: string, form: FormData, token: string) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: form,
+  });
+  const envelope = (await response.json().catch(() => ({}))) as { data?: unknown; error?: string };
+  if (!response.ok) {
+    throw new ApiError(envelope.error ?? "Request failed", response.status);
+  }
+  return envelope.data;
+}
+
 function featureLabel(key: string) {
   const labels: Record<string, string> = {
-    contentReview: "内容审核",
-    emailSystem: "邮件系统",
-    permissionRBAC: "权限 RBAC",
-    oss: "对象存储",
-    redis: "Redis 缓存",
-    crawler: "爬虫",
-    ai: "AI 能力",
+    contentReview: "contentReview",
+    emailSystem: "emailSystem",
+    permissionRBAC: "permissionRBAC",
+    oss: "oss",
+    redis: "redis",
+    crawler: "crawler",
+    ai: "ai",
   };
   return labels[key] ?? key;
 }
@@ -2343,8 +3130,8 @@ function normalizePermissionCatalog(catalog: PermissionCatalog): PermissionCatal
       code,
       module: permission.module || permissionModule(code),
       name: permission.name || code,
-      description: permission.description || "新建权限",
-      translations: normalizeLocalizedTexts(permission.translations),
+      description: permission.description || "New permission",
+      translations: normalizeEntityTranslations(permission),
     };
     if (!existing || permission.code === code || isTemplatePermissionCode(permission.code)) {
       grouped.set(code, normalized);
@@ -2352,7 +3139,7 @@ function normalizePermissionCatalog(catalog: PermissionCatalog): PermissionCatal
   }
   return {
     ...catalog,
-    roles: catalog.roles.map((role) => ({ ...role, translations: normalizeLocalizedTexts(role.translations) })),
+    roles: catalog.roles.map((role) => ({ ...role, translations: normalizeEntityTranslations(role) })),
     permissions: Array.from(grouped.values()).sort((left, right) =>
       left.module === right.module ? left.code.localeCompare(right.code) : left.module.localeCompare(right.module),
     ),
@@ -2391,10 +3178,23 @@ function isTemplatePermissionCode(code: string) {
 }
 
 function localizedText(value: { name: string; description: string; translations?: LocalizedTexts }, locale: Locale) {
-  const localized = value.translations?.[locale];
+  const translations = normalizeEntityTranslations(value);
+  const localized = translations[locale];
   return {
     name: localized?.name?.trim() || value.name || "",
     description: localized?.description?.trim() || value.description || "",
+  };
+}
+
+function ownLocalizedText(value: { name?: string; description?: string; translations?: LocalizedTexts }, locale: Locale) {
+  const localized = normalizeEntityTranslations({
+    name: value.name ?? "",
+    description: value.description ?? "",
+    translations: value.translations,
+  })[locale];
+  return {
+    name: localized?.name ?? "",
+    description: localized?.description ?? "",
   };
 }
 
@@ -2419,15 +3219,61 @@ function normalizeLocalizedTexts(translations: LocalizedTexts | undefined): Loca
   return result;
 }
 
+function normalizeEntityTranslations(value: { name: string; description: string; translations?: LocalizedTexts }): LocalizedTexts {
+  const result = normalizeLocalizedTexts(value.translations);
+  const baseName = value.name.trim();
+  const baseDescription = value.description.trim();
+  if (!baseName && !baseDescription) return result;
+
+  const baseLocale = detectTextLocale(`${baseName} ${baseDescription}`.trim(), preferredTranslationLocale(result));
+  result[baseLocale] = {
+    name: result[baseLocale]?.name?.trim() || baseName,
+    description: result[baseLocale]?.description?.trim() || baseDescription,
+  };
+  return normalizeLocalizedTexts(result);
+}
+
+function preferredTranslationLocale(translations: LocalizedTexts): Locale {
+  if (translations["zh-CN"]) return "zh-CN";
+  if (translations.en) return "en";
+  const first = Object.keys(translations).find((key): key is Locale =>
+    supportedLocales.some((locale) => locale.code === key),
+  );
+  return first ?? "en";
+}
+
 function withFallbackLocalizedText<T extends { name: string; description: string; translations?: LocalizedTexts }>(value: T): T {
-  const translations = normalizeLocalizedTexts(value.translations);
+  const translations = normalizeEntityTranslations(value);
   const fallback = translations["zh-CN"] ?? translations.en ?? Object.values(translations)[0];
   return {
     ...value,
-    name: value.name.trim() || fallback?.name || "未命名",
+    name: value.name.trim() || fallback?.name || "Unnamed",
     description: value.description.trim() || fallback?.description || "",
     translations,
   };
+}
+
+function buildNewPermissionPayload(code: string, nameInput: string, descriptionInput: string, preferredLocale: Locale) {
+  const name = nameInput.trim() || code;
+  const description = descriptionInput.trim() || newPermissionDescription(preferredLocale);
+  const detectedLocale = detectTextLocale(`${nameInput} ${descriptionInput}`.trim(), preferredLocale);
+  return {
+    code,
+    module: permissionModule(code),
+    name,
+    description,
+    translations: setLocalizedText(undefined, detectedLocale, { name, description }),
+  };
+}
+
+function detectTextLocale(text: string, preferredLocale: Locale): Locale {
+  if (/[\u3040-\u30ff]/.test(text)) return "ja";
+  if (/[\u3400-\u9fff]/.test(text)) return "zh-CN";
+  return preferredLocale || "en";
+}
+
+function newPermissionDescription(locale: Locale) {
+  return "New permission";
 }
 
 function cloneRole(role: Role): Role {
@@ -2437,7 +3283,7 @@ function cloneRole(role: Role): Role {
       : role.permissions.map((code) => ({ code, allow: true }));
   return {
     ...role,
-    translations: normalizeLocalizedTexts(role.translations),
+    translations: normalizeEntityTranslations(role),
     parents: [...role.parents],
     permissionEntries,
     permissions: permissionEntries.map((permission) => permission.code),
@@ -2455,7 +3301,7 @@ function parsePermissionInput(value: string) {
   return Array.from(
     new Set(
       value
-        .split(/[\s,;，；]+/)
+        .split(/[\s,;锛岋紱]+/)
         .map((item) => item.trim())
         .filter(Boolean),
     ),
@@ -2469,7 +3315,7 @@ function permissionModule(code: string) {
 
 function permissionSuggestions(permissions: Permission[], input: string, selectedCodes: string[], locale: Locale) {
   const assigned = new Set(selectedCodes);
-  const keyword = input.split(/[\s,;，；]+/).at(-1)?.trim().toLowerCase() ?? "";
+  const keyword = input.split(/[\s,;锛岋紱]+/).at(-1)?.trim().toLowerCase() ?? "";
   return permissions
     .filter((permission) => {
       if (assigned.has(permission.code)) return false;
@@ -2481,11 +3327,25 @@ function permissionSuggestions(permissions: Permission[], input: string, selecte
 }
 
 function cleanError(error: unknown) {
-  const message = error instanceof Error ? error.message : "请求失败";
+  const message = error instanceof Error ? error.message : "Request failed";
+  if (isPermissionError(error, message)) {
+    notifyPermissionDenied(message);
+    return "";
+  }
   if (message === "Failed to fetch") {
-    return "后端未连接或接口请求失败";
+    return "Backend is unavailable or the request failed";
   }
   return message;
+}
+
+function isPermissionError(error: unknown, message: string) {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) return true;
+  return /(没有权限|权限不足|未授权|unauthorized|forbidden|permission denied|no permission)/i.test(message);
+}
+
+function notifyPermissionDenied(message: string) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("mcmods-permission-denied", { detail: { message } }));
 }
 
 function useStoredAuth() {
@@ -2529,3 +3389,10 @@ function parseStoredAuth(snapshot: string): { snapshot: string; token: string; u
     return { snapshot, token: "", user: null };
   }
 }
+
+
+
+
+
+
+

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import en from "../_locales/en";
@@ -49,6 +49,7 @@ const I18nContext = createContext<{
   resetTranslation: (locale: Locale, key: string) => void;
   getTranslation: (locale: Locale, key: string) => string;
   getBaseTranslation: (locale: Locale, key: string) => string;
+  getOwnTranslation: (locale: Locale, key: string) => string;
   translationKeys: string[];
 } | null>(null);
 
@@ -72,6 +73,18 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     [getBaseTranslation, overrides],
   );
 
+  const getOwnTranslation = useCallback(
+    (nextLocale: Locale, key: string) => {
+      if (typeof overrides[nextLocale]?.[key] === "string") return overrides[nextLocale]?.[key] ?? "";
+      const value = readMessage(dictionaries[nextLocale], key);
+      if (!value) return "";
+      if (nextLocale !== "en" && value === readMessage(en, key)) return "";
+      if (nextLocale !== "zh-CN" && value === readMessage(zhCN, key)) return "";
+      return value;
+    },
+    [overrides],
+  );
+
   const setTranslation = useCallback((nextLocale: Locale, key: string, value: string) => {
     const nextOverrides = parseOverrides(window.localStorage.getItem(overrideStorageKey) ?? "{}");
     nextOverrides[nextLocale] = { ...(nextOverrides[nextLocale] ?? {}), [key]: value };
@@ -92,8 +105,8 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ locale, setLocale, t, setTranslation, resetTranslation, getTranslation, getBaseTranslation, translationKeys }),
-    [getBaseTranslation, getTranslation, locale, resetTranslation, setLocale, setTranslation, t, translationKeys],
+    () => ({ locale, setLocale, t, setTranslation, resetTranslation, getTranslation, getBaseTranslation, getOwnTranslation, translationKeys }),
+    [getBaseTranslation, getOwnTranslation, getTranslation, locale, resetTranslation, setLocale, setTranslation, t, translationKeys],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
