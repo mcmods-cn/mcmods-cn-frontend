@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo, useSyncExternalStore } from "react";
+
 export type AuthUser = {
   id: number;
   username: string;
@@ -12,6 +14,12 @@ export type AuthUser = {
 export type AuthResult = {
   token: string;
   user: AuthUser;
+};
+
+export type AuthSnapshot = {
+  ready: boolean;
+  token: string;
+  user: AuthUser | null;
 };
 
 const tokenKeys = ["mcmods-token", "mcmods-admin-token"] as const;
@@ -38,13 +46,18 @@ export function clearAuth() {
   window.dispatchEvent(new Event("mcmods-auth-change"));
 }
 
-export function readAuthSnapshot() {
+function readAuthSnapshot() {
   const token = readFirst(tokenKeys);
   const savedUser = readFirst(userKeys);
   return {
     token,
     user: parseStoredUser(savedUser),
   };
+}
+
+export function useAuthSnapshot(): AuthSnapshot {
+  const serialized = useSyncExternalStore(subscribeAuth, readSerializedAuth, () => "");
+  return useMemo(() => parseSerializedAuth(serialized), [serialized]);
 }
 
 export function canAccessAdmin(user: AuthUser | null) {
@@ -67,6 +80,32 @@ function readFirst(keys: readonly string[]) {
     }
   }
   return "";
+}
+
+function subscribeAuth(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  window.addEventListener("mcmods-auth-change", onStoreChange);
+  return () => {
+    window.removeEventListener("storage", onStoreChange);
+    window.removeEventListener("mcmods-auth-change", onStoreChange);
+  };
+}
+
+function readSerializedAuth() {
+  const { token, user } = readAuthSnapshot();
+  return JSON.stringify({ token, user });
+}
+
+function parseSerializedAuth(serialized: string): AuthSnapshot {
+  if (!serialized) {
+    return { ready: false, token: "", user: null };
+  }
+  try {
+    const snapshot = JSON.parse(serialized) as Omit<AuthSnapshot, "ready">;
+    return { ready: true, token: snapshot.token ?? "", user: snapshot.user ?? null };
+  } catch {
+    return { ready: true, token: "", user: null };
+  }
 }
 
 function parseStoredUser(savedUser: string) {

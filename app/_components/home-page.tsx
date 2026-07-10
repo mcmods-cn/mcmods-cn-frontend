@@ -1,163 +1,144 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useSyncExternalStore } from "react";
-import { canAccessAdmin, clearAuth, type AuthUser } from "../_lib/auth";
-import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
-import { useTheme } from "./theme-provider";
+import { useI18n } from "../_lib/i18n-provider";
 
-type NavItem = {
-  key: string;
+type HomeCategory = {
+  titleKey: string;
+  descriptionKey: string;
   href: string;
-  children?: NavItem[];
+  meta: string;
+  children?: Array<{ titleKey: string; href: string }>;
 };
 
-const moduleNav: NavItem[] = [
-  { key: "nav.mods", href: "/mods" },
-  { key: "nav.modpacks", href: "/modpacks" },
-  { key: "nav.plugins", href: "/plugins" },
+const primaryCategories: HomeCategory[] = [
+  { titleKey: "nav.mods", descriptionKey: "home.categories.modsDesc", href: "/mods", meta: "Mods" },
+  { titleKey: "nav.modpacks", descriptionKey: "home.categories.modpacksDesc", href: "/modpacks", meta: "Modpacks" },
+  { titleKey: "nav.plugins", descriptionKey: "home.categories.pluginsDesc", href: "/plugins", meta: "Plugin" },
   {
-    key: "nav.derivatives",
+    titleKey: "nav.derivatives",
+    descriptionKey: "home.categories.derivativesDesc",
     href: "/derivatives",
+    meta: "Resources",
     children: [
-      { key: "nav.tacz", href: "/derivatives/tacz" },
-      { key: "nav.kubejs", href: "/derivatives/kubejs" },
-      { key: "nav.modConfigs", href: "/derivatives/mod-configs" },
-      { key: "nav.pluginConfigs", href: "/derivatives/plugin-configs" },
+      { titleKey: "nav.tacz", href: "/derivatives/tacz" },
+      { titleKey: "nav.kubejs", href: "/derivatives/kubejs" },
+      { titleKey: "nav.modConfigs", href: "/derivatives/mod-configs" },
+      { titleKey: "nav.pluginConfigs", href: "/derivatives/plugin-configs" },
     ],
   },
-  { key: "nav.datapacks", href: "/datapacks" },
-  { key: "nav.maps", href: "/maps" },
-  { key: "nav.resourcePacks", href: "/resource-packs" },
-  { key: "nav.shaders", href: "/shaders" },
-  { key: "nav.skins", href: "/skins" },
-  { key: "nav.authors", href: "/authors" },
-  { key: "nav.tutorials", href: "/tutorials" },
-  { key: "nav.news", href: "/news" },
-  { key: "nav.discussions", href: "/discussions" },
-  { key: "nav.tools", href: "/tools" },
+  { titleKey: "nav.datapacks", descriptionKey: "home.categories.datapacksDesc", href: "/datapacks", meta: "Datapack" },
+  { titleKey: "nav.maps", descriptionKey: "home.categories.mapsDesc", href: "/maps", meta: "Map" },
+  { titleKey: "nav.resourcePacks", descriptionKey: "home.categories.resourcePacksDesc", href: "/resource-packs", meta: "Resource Pack" },
+  { titleKey: "nav.shaders", descriptionKey: "home.categories.shadersDesc", href: "/shaders", meta: "Shader" },
+  { titleKey: "nav.skins", descriptionKey: "home.categories.skinsDesc", href: "/skins", meta: "Skin" },
+  { titleKey: "nav.authors", descriptionKey: "home.categories.authorsDesc", href: "/authors", meta: "Creators" },
+  { titleKey: "nav.tutorials", descriptionKey: "home.categories.tutorialsDesc", href: "/tutorials", meta: "Guides" },
+  { titleKey: "nav.news", descriptionKey: "home.categories.newsDesc", href: "/news", meta: "News" },
+  { titleKey: "nav.discussions", descriptionKey: "home.categories.discussionsDesc", href: "/discussions", meta: "Community" },
+  { titleKey: "nav.tools", descriptionKey: "home.categories.toolsDesc", href: "/tools", meta: "Tools" },
   {
-    key: "nav.servers",
+    titleKey: "nav.servers",
+    descriptionKey: "home.categories.serversDesc",
     href: "/servers",
+    meta: "Servers",
     children: [
-      { key: "nav.serverList", href: "/servers/list" },
-      { key: "nav.serverPacks", href: "/servers/packs" },
+      { titleKey: "nav.serverList", href: "/servers/list" },
+      { titleKey: "nav.serverPacks", href: "/servers/packs" },
     ],
   },
 ];
 
-const topNav: NavItem[] = [
-  { key: "common.home", href: "/" },
-  { key: "nav.mods", href: "/mods" },
-  { key: "nav.modpacks", href: "/modpacks" },
-  { key: "nav.plugins", href: "/plugins" },
-  { key: "nav.derivatives", href: "/derivatives" },
-  { key: "nav.tutorials", href: "/tutorials" },
-  { key: "nav.news", href: "/news" },
-  { key: "nav.discussions", href: "/discussions" },
-  { key: "nav.tools", href: "/tools" },
-  { key: "nav.servers", href: "/servers" },
-  { key: "nav.authors", href: "/authors" },
+const quickLinks = [
+  { titleKey: "home.quickSubmit", href: "/projects/new" },
+  { titleKey: "home.quickTools", href: "/tools" },
+  { titleKey: "home.quickPlayground", href: "/tools/playground" },
+  { titleKey: "home.quickDiscussions", href: "/discussions" },
 ];
 
 export function HomePage() {
-  const { t, locale, setLocale } = useI18n();
-  const { toggleTheme } = useTheme();
-  const authSnapshot = useSyncExternalStore(subscribeAuth, readAuthText, () => "");
-  const auth = useMemo(() => parseAuthText(authSnapshot), [authSnapshot]);
-  const showAdmin = canAccessAdmin(auth.user);
-
+  const { t } = useI18n();
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="border-b border-[var(--line)] bg-[var(--panel)]">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4">
-          <Link className="flex items-center gap-3" href="/">
-            <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">
-              M
-            </span>
-            <span className="text-xl font-bold">{t("common.appName")}</span>
-          </Link>
-          <nav className="order-last flex w-full gap-1 overflow-x-auto lg:order-none lg:w-auto" aria-label={t("common.home")}>
-            {topNav.map((item) => (
-              <Link
-                key={item.key}
-                className="whitespace-nowrap rounded-md px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]"
-                href={item.href}
-              >
-                {t(item.key)}
+      <section className="border-b border-[var(--line)] bg-[var(--panel)]">
+        <div className="mx-auto grid max-w-7xl gap-6 px-4 py-8 lg:grid-cols-[1fr_360px] lg:py-12">
+          <div>
+            <p className="text-sm font-bold text-[var(--accent)]">{t("home.kicker")}</p>
+            <h1 className="mt-3 max-w-4xl text-3xl font-black leading-tight md:text-5xl">{t("home.heroTitle")}</h1>
+            <p className="mt-4 max-w-2xl text-base leading-8 text-[var(--muted)]">{t("home.heroDescription")}</p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-[1fr_auto]">
+              <input className="field h-12" placeholder={t("home.searchPlaceholder")} />
+              <button className="button-primary focus-ring h-12 px-6" type="button">
+                {t("home.searchAction")}
+              </button>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {quickLinks.map((link) => (
+                <Link key={link.href} className="button-secondary focus-ring px-3 py-2 text-sm" href={link.href}>
+                  {t(link.titleKey)}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <aside className="surface rounded-lg p-5">
+            <h2 className="text-lg font-black">{t("home.siteActivity")}</h2>
+            <div className="mt-4 grid gap-3">
+              <StatLine label={t("home.projectCount")} value={t("home.preparing")} />
+              <StatLine label={t("home.updatedToday")} value={t("home.preparing")} />
+              <StatLine label={t("home.pendingReview")} value={t("home.preparing")} />
+            </div>
+            <p className="mt-4 text-sm leading-6 text-[var(--muted)]">{t("home.activityHint")}</p>
+          </aside>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-8 lg:grid-cols-[260px_1fr]">
+        <aside className="h-fit rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
+          <h2 className="font-black">{t("home.quickBrowse")}</h2>
+          <div className="mt-3 grid gap-1">
+            {primaryCategories.slice(0, 10).map((item) => (
+              <Link key={item.href} className="rounded-md px-3 py-2 text-sm font-bold text-[var(--muted)] hover:bg-[var(--panel)] hover:text-[var(--foreground)]" href={item.href}>
+                {t(item.titleKey)}
               </Link>
             ))}
-          </nav>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="sr-only" htmlFor="ui-locale">
-              {t("common.language")}
-            </label>
-            <select
-              id="ui-locale"
-              className="field w-auto min-w-36 py-2"
-              value={locale}
-              onChange={(event) => setLocale(event.target.value as Locale)}
-            >
-              {supportedLocales.map((item) => (
-                <option key={item.code} value={item.code}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-            <button className="button-secondary focus-ring" type="button" onClick={toggleTheme}>
-              {t("common.toggleTheme")}
-            </button>
-            {showAdmin ? (
-              <Link className="button-secondary focus-ring" href="/admin">
-                {t("common.admin")}
-              </Link>
-            ) : null}
-            {auth.user ? (
-              <button className="button-secondary focus-ring" type="button" onClick={clearAuth}>
-                {t("common.logout")}
-              </button>
-            ) : (
-              <Link className="button-primary focus-ring" href="/login">
-                {t("common.login")}
-              </Link>
-            )}
           </div>
-        </div>
-      </header>
-
-      <section className="mx-auto grid max-w-7xl gap-6 px-4 py-8 lg:grid-cols-[320px_1fr]">
-        <aside className="surface h-fit rounded-lg p-4">
-          <h1 className="text-2xl font-bold">{t("home.title")}</h1>
-          <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("home.subtitle")}</p>
-          <input className="field mt-4" placeholder={t("home.searchPlaceholder")} />
         </aside>
 
-        <nav className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label={t("home.title")}>
-          {moduleNav.map((item) => (
-            <ModuleLink key={item.key} item={item} />
-          ))}
-        </nav>
+        <div>
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-[var(--accent)]">{t("home.categoryKicker")}</p>
+              <h2 className="text-2xl font-black">{t("home.categoryTitle")}</h2>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {primaryCategories.map((item) => (
+              <CategoryCard key={item.href} item={item} />
+            ))}
+          </div>
+        </div>
       </section>
     </main>
   );
 }
 
-function ModuleLink({ item }: { item: NavItem }) {
+function CategoryCard({ item }: { item: HomeCategory }) {
   const { t } = useI18n();
   return (
-    <section className="surface rounded-lg p-4">
-      <Link className="block text-lg font-bold hover:text-[var(--accent)]" href={item.href}>
-        {t(item.key)}
-      </Link>
+    <section className="surface flex min-h-44 flex-col rounded-lg p-5 transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg">
+      <div className="flex items-start justify-between gap-3">
+        <Link className="text-xl font-black hover:text-[var(--accent)]" href={item.href}>
+          {t(item.titleKey)}
+        </Link>
+        <span className="rounded-md bg-[var(--panel-subtle)] px-2 py-1 text-xs font-black text-[var(--muted)]">{item.meta}</span>
+      </div>
+      <p className="mt-3 flex-1 text-sm leading-6 text-[var(--muted)]">{t(item.descriptionKey)}</p>
       {item.children ? (
-        <div className="mt-3 grid gap-2">
+        <div className="mt-4 flex flex-wrap gap-2">
           {item.children.map((child) => (
-            <Link
-              key={child.key}
-              className="rounded-md border border-[var(--line)] px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]"
-              href={child.href}
-            >
-              {t(child.key)}
+            <Link key={child.href} className="rounded-md border border-[var(--line)] px-2 py-1 text-xs font-bold hover:border-[var(--accent)] hover:text-[var(--accent)]" href={child.href}>
+              {t(child.titleKey)}
             </Link>
           ))}
         </div>
@@ -166,35 +147,11 @@ function ModuleLink({ item }: { item: NavItem }) {
   );
 }
 
-function subscribeAuth(onStoreChange: () => void) {
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener("mcmods-auth-change", onStoreChange);
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener("mcmods-auth-change", onStoreChange);
-  };
-}
-
-function readAuthText() {
-  const token =
-    window.localStorage.getItem("mcmods-token") ??
-    window.localStorage.getItem("mcmods-admin-token") ??
-    "";
-  const savedUser =
-    window.localStorage.getItem("mcmods-user") ??
-    window.localStorage.getItem("mcmods-admin-user") ??
-    "";
-  return JSON.stringify({ token, savedUser });
-}
-
-function parseAuthText(snapshot: string): { token: string; user: AuthUser | null } {
-  if (!snapshot) {
-    return { token: "", user: null };
-  }
-  try {
-    const parsed = JSON.parse(snapshot) as { token: string; savedUser: string };
-    return { token: parsed.token, user: parsed.savedUser ? JSON.parse(parsed.savedUser) : null };
-  } catch {
-    return { token: "", user: null };
-  }
+function StatLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2">
+      <span className="text-sm font-bold text-[var(--muted)]">{label}</span>
+      <span className="font-black">{value}</span>
+    </div>
+  );
 }

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, ReactNode, useEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { canAccessAdmin, clearAuth } from "../_lib/auth";
-import { API_BASE_URL, ApiError, apiRequest } from "../_lib/api";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { canAccessAdmin, clearAuth, useAuthSnapshot } from "../_lib/auth";
+import { ApiError, apiRequest } from "../_lib/api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
+import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
+import { computeFileSHA256, formatBytes } from "../_lib/oss-upload";
 import { useTheme } from "./theme-provider";
 
 type PanelId =
@@ -17,6 +19,8 @@ type PanelId =
   | "mail"
   | "auth"
   | "i18n"
+  | "markdown"
+  | "nats"
   | "oss-config"
   | "oss-files"
   | "oss-uploads"
@@ -29,7 +33,12 @@ type PanelId =
   | "logs-login"
   | "logs-api"
   | "logs-file-upload"
-  | "logs-ai";
+  | "logs-ai"
+  | "ai-providers"
+  | "ai-models"
+  | "ai-task-models"
+  | "ai-costs"
+  | "ai-task-logs";
 
 type User = {
   id: number;
@@ -61,22 +70,143 @@ type AdminConfig = {
   auth: Record<string, string | number | boolean | string[]>;
   oauth: OAuthConfig;
   mail: MailConfig;
+  markdown: MarkdownRendererConfig;
   oss?: OSSConfig;
+  ai?: AIConfig;
   permissions: Record<string, string | number | boolean>;
   database: Record<string, string>;
   features: Record<string, boolean>;
+};
+
+type AIConfig = {
+  providers: AIProviderConfig[];
+  models: AIModelConfig[];
+  taskModels: AITaskModelConfig[];
+  quotas: AIQuotaConfig[];
+  translation: AITranslationConfig;
+};
+
+type NATSTaskConfig = {
+  code: string;
+  enabled: boolean;
+  subject: string;
+  queueGroup: string;
+  maxConcurrent: number;
+  timeoutSeconds: number;
+};
+
+type NATSStatus = {
+  enabled: boolean;
+  connected: boolean;
+  url: string;
+  subjectPrefix: string;
+  tasks: NATSTaskConfig[];
+  lastError?: string;
+};
+
+type NATSConfig = {
+  enabled: boolean;
+  url: string;
+  username: string;
+  password?: string;
+  hasPassword: boolean;
+  token?: string;
+  hasToken: boolean;
+  subjectPrefix: string;
+  tasks: NATSTaskConfig[];
+  status: NATSStatus;
+};
+
+type AIProviderConfig = {
+  code: string;
+  name: string;
+  enabled: boolean;
+  baseUrl: string;
+  apiKey?: string;
+  hasApiKey?: boolean;
+  protocol: AIProviderProtocol;
+  notes: string;
+};
+
+type AIProviderProtocol = "openai-compatible" | "anthropic";
+
+const aiProviderProtocols: Array<{ value: AIProviderProtocol; label: string }> = [
+  { value: "openai-compatible", label: "OpenAI Compatible" },
+  { value: "anthropic", label: "Anthropic" },
+];
+
+type AIModelConfig = {
+  provider: string;
+  model: string;
+  displayName: string;
+  enabled: boolean;
+  contextTokens: number;
+  maxOutputTokens: number;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+};
+
+type AITaskModelConfig = {
+  taskType: string;
+  modelKey: string;
+  concurrencyLimit: number;
+  timeoutSeconds: number;
+  prompt: string;
+};
+
+type AITaskStatus = {
+  id: number;
+  status: "queued" | "running" | "completed" | "failed";
+  result?: AITranslationResult;
+  error?: string;
+};
+
+type AITranslationResult = {
+  items?: Array<{
+    key: string;
+    text?: string;
+    name?: string;
+    description?: string;
+  }>;
+};
+
+const aiTranslationTaskTypes = {
+  permission: "permission_translation_completion",
+  i18n: "i18n_translation_completion",
+} as const;
+
+type AIQuotaConfig = {
+  scope: string;
+  subject: string;
+  period: string;
+  requestLimit: number;
+  tokenLimit: number;
+  costLimitCny: number;
+};
+
+type AITranslationConfig = {
+  enabled: boolean;
+  sourceLocale: string;
+  targetLocales: string[];
+  taskType: string;
+  autoSubmit: boolean;
+  glossary: string;
 };
 
 type OSSConfig = {
   enabled: boolean;
   region: string;
   endpoint: string;
+  publicEndpoint: string;
   bucket: string;
   accessKeyId: string;
   hasAccessKeySecret: boolean;
+  hasSecurityToken: boolean;
   useCName: boolean;
   prefix: string;
   downloadUrlTtlMinutes: number;
+  downloadUrlMode: string;
+  allowedExtensions: string[];
   bucketAccessPolicy?: string;
   temporaryDownloadPolicy?: string;
 };
@@ -90,9 +220,27 @@ type OSSFile = {
   originalName: string;
   contentType: string;
   sizeBytes: number;
+  sha256: string;
   scanStatus: string;
   status: string;
   createdAt: string;
+};
+
+type OSSDirectUploadTicket = {
+  method: string;
+  url: string;
+  headers: Record<string, string>;
+  bucket: string;
+  objectKey: string;
+  category: string;
+  source: string;
+  originalName: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+  uploadRequired?: boolean;
+  file?: OSSFile;
+  expiresAt: string;
 };
 
 type LogRow = Record<string, string | number | boolean | null | Record<string, unknown>>;
@@ -209,6 +357,22 @@ const adminNavGroups: Array<{
     ],
   },
   {
+    id: "ai",
+    label: "",
+    items: [
+      { id: "ai-providers", label: "", description: "" },
+      { id: "ai-models", label: "", description: "" },
+      { id: "ai-task-models", label: "", description: "" },
+      { id: "ai-costs", label: "", description: "" },
+      { id: "ai-task-logs", label: "", description: "" },
+    ],
+  },
+  {
+    id: "infrastructure",
+    label: "",
+    items: [{ id: "nats", label: "", description: "" }],
+  },
+  {
     id: "users",
     label: "",
     items: [{ id: "users", label: "", description: "" }],
@@ -219,6 +383,7 @@ const adminNavGroups: Array<{
     items: [
       { id: "mail", label: "", description: "" },
       { id: "auth", label: "", description: "" },
+      { id: "markdown", label: "", description: "" },
       { id: "i18n", label: "", description: "" },
     ],
   },
@@ -254,18 +419,53 @@ const emptyConfig: AdminConfig = {
     useTLS: true,
     hasPassword: false,
   },
+  markdown: defaultMarkdownConfig,
   oss: {
     enabled: false,
-    region: "",
-    endpoint: "",
+    region: "cn-beijing",
+    endpoint: "https://oss-cn-beijing.aliyuncs.com",
+    publicEndpoint: "https://oss.mcmods.cn",
     bucket: "",
     accessKeyId: "",
     hasAccessKeySecret: false,
-    useCName: true,
+    hasSecurityToken: false,
+    useCName: false,
     prefix: "mcmods",
     downloadUrlTtlMinutes: 10,
+    downloadUrlMode: "esa_private_origin",
+    allowedExtensions: [
+      ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg",
+      ".mp4", ".webm", ".mov", ".avi",
+      ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".md",
+      ".txt", ".log", ".json", ".nbt", ".schem", ".schematic",
+      ".zip", ".rar", ".7z", ".jar", ".gz", ".tar",
+    ],
     bucketAccessPolicy: "private-read-write",
     temporaryDownloadPolicy: "presigned-url",
+  },
+  ai: {
+    providers: [
+      { code: "openai", name: "OpenAI", enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", hasApiKey: false, protocol: "openai-compatible", notes: "" },
+      { code: "aliyun", name: "阿里云百炼", enabled: false, baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", apiKey: "", hasApiKey: false, protocol: "openai-compatible", notes: "" },
+    ],
+    models: [
+      { provider: "openai", model: "gpt-4.1-mini", displayName: "GPT-4.1 mini", enabled: false, contextTokens: 1047576, maxOutputTokens: 32768, inputPricePerMillion: 0, outputPricePerMillion: 0 },
+    ],
+    taskModels: [
+      { taskType: aiTranslationTaskTypes.permission, modelKey: "", concurrencyLimit: 2, timeoutSeconds: 120, prompt: "" },
+      { taskType: aiTranslationTaskTypes.i18n, modelKey: "", concurrencyLimit: 2, timeoutSeconds: 120, prompt: "" },
+    ],
+    quotas: [
+      { scope: "site", subject: "default", period: "day", requestLimit: 1000, tokenLimit: 1000000, costLimitCny: 10000 },
+    ],
+    translation: {
+      enabled: false,
+      sourceLocale: "zh-CN",
+      targetLocales: ["en"],
+      taskType: "translation",
+      autoSubmit: false,
+      glossary: "",
+    },
   },
   permissions: {
     mode: "RBAC + wildcard",
@@ -288,18 +488,25 @@ const emptyConfig: AdminConfig = {
     contentReview: true,
     oss: true,
     logSystem: true,
+    ai: true,
   },
 };
 
 const emptyCatalog: PermissionCatalog = { roles: [], permissions: [] };
 
+type AdminNotice = {
+  title: string;
+  message: string;
+  tone?: "info" | "danger";
+};
+
 export function AdminConsolePolished() {
   const router = useRouter();
   const { toggleTheme } = useTheme();
   const { t } = useI18n();
-  const auth = useStoredAuth();
+  const auth = useAuthSnapshot();
   const [activePanel, setActivePanel] = useState<PanelId>("roles");
-  const [expanded, setExpanded] = useState(["workbench", "permission", "oss", "logs", "system"]);
+  const [expanded, setExpanded] = useState(["workbench", "permission", "oss", "logs", "ai", "infrastructure", "system"]);
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [config, setConfig] = useState(emptyConfig);
   const [catalog, setCatalog] = useState(emptyCatalog);
@@ -307,18 +514,34 @@ export function AdminConsolePolished() {
   const [status, setStatus] = useState(t("admin.backendDisconnected"));
   const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null);
   const [reconnectIn, setReconnectIn] = useState(0);
-  const [permissionDialog, setPermissionDialog] = useState("");
-  const authReady = auth.snapshot !== "";
+  const [noticeDialog, setNoticeDialog] = useState<AdminNotice | null>(null);
+  const authReady = auth.ready;
   const allowed = canAccessAdmin(auth.user);
 
   useEffect(() => {
     function handlePermissionDenied(event: Event) {
       const detail = event instanceof CustomEvent ? event.detail : null;
       const message = typeof detail?.message === "string" ? detail.message : "";
-      setPermissionDialog(message || t("admin.permissionDeniedBody"));
+      setNoticeDialog({
+        title: t("admin.permissionDeniedTitle"),
+        message: message || t("admin.permissionDeniedBody"),
+        tone: "danger",
+      });
+    }
+    function handleAdminNotice(event: Event) {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      const message = typeof detail?.message === "string" ? detail.message : "";
+      if (!message) return;
+      const title = typeof detail?.title === "string" ? detail.title : t("admin.noticeTitle");
+      const tone = detail?.tone === "danger" ? "danger" : "info";
+      setNoticeDialog({ title, message, tone });
     }
     window.addEventListener("mcmods-permission-denied", handlePermissionDenied);
-    return () => window.removeEventListener("mcmods-permission-denied", handlePermissionDenied);
+    window.addEventListener("mcmods-admin-notice", handleAdminNotice);
+    return () => {
+      window.removeEventListener("mcmods-permission-denied", handlePermissionDenied);
+      window.removeEventListener("mcmods-admin-notice", handleAdminNotice);
+    };
   }, [t]);
 
   useEffect(() => {
@@ -365,7 +588,7 @@ export function AdminConsolePolished() {
         ]);
         if (!cancelled) {
           setDashboard(dashboardData);
-          setConfig(configData);
+          setConfig({ ...configData, markdown: normalizeMarkdownConfig(configData.markdown) });
           setCatalog(normalizePermissionCatalog(permissionData));
           setUsers(userData);
           setStatus(t("common.connected"));
@@ -380,7 +603,9 @@ export function AdminConsolePolished() {
             router.replace("/login?next=/admin");
             return;
           }
-          setStatus(cleanError(error));
+          const message = cleanError(error) || t("admin.backendDisconnected");
+          setStatus(message);
+          notifyAdminNotice(message, t("admin.noticeTitle"), "danger");
           setBackendAvailable(false);
           scheduleReconnect(attempt);
         }
@@ -391,7 +616,7 @@ export function AdminConsolePolished() {
       cancelled = true;
       clearRetryTimers();
     };
-  }, [allowed, auth.token, authReady, router]);
+  }, [allowed, auth.token, authReady, router, t]);
 
   async function refreshCatalog() {
     if (!auth.token) return;
@@ -414,27 +639,52 @@ export function AdminConsolePolished() {
     router.push("/login");
   }
 
+  const noticeModal = (
+    <AdminNoticeDialog
+      notice={noticeDialog}
+      onClose={() => setNoticeDialog(null)}
+    />
+  );
+
   if (!authReady || !auth.token) {
-    return <AdminGateMessage text={t("admin.checkingAuth")} />;
+    return (
+      <>
+        <AdminGateMessage text={t("admin.checkingAuth")} />
+        {noticeModal}
+      </>
+    );
   }
 
   if (!allowed) {
-    return <AdminGateMessage text={t("admin.noPermissionReturning")} />;
+    return (
+      <>
+        <AdminGateMessage text={t("admin.noPermissionReturning")} />
+        {noticeModal}
+      </>
+    );
   }
 
   if (backendAvailable === false) {
     return (
-      <AdminGateMessage
-        text={t("admin.backendLockedRetry", {
-          reason: status,
-          retry: reconnectIn > 0 ? t("admin.retrySeconds", { seconds: reconnectIn }) : t("admin.reconnecting"),
-        })}
-      />
+      <>
+        <AdminGateMessage
+          text={t("admin.backendLockedRetry", {
+            reason: status,
+            retry: reconnectIn > 0 ? t("admin.retrySeconds", { seconds: reconnectIn }) : t("admin.reconnecting"),
+          })}
+        />
+        {noticeModal}
+      </>
     );
   }
 
   if (backendAvailable === null) {
-    return <AdminGateMessage text={t("admin.connecting")} />;
+    return (
+      <>
+        <AdminGateMessage text={t("admin.connecting")} />
+        {noticeModal}
+      </>
+    );
   }
 
   const displayStatus = status;
@@ -544,7 +794,9 @@ export function AdminConsolePolished() {
           ) : null}
           {activePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "auth" ? <AuthPanelV2 config={config} token={auth.token} /> : null}
-          {activePanel === "i18n" ? <TranslationManagerPanel /> : null}
+          {activePanel === "markdown" ? <MarkdownConfigPanel initialConfig={config.markdown} token={auth.token} /> : null}
+          {activePanel === "nats" ? <NATSConfigPanel token={auth.token} /> : null}
+          {activePanel === "i18n" ? <TranslationManagerPanel token={auth.token} /> : null}
           {activePanel === "oss-config" ? <OSSConfigPanelV2 initialConfig={config.oss ?? emptyConfig.oss!} token={auth.token} /> : null}
           {activePanel === "oss-files" ? <OSSFilesPanel token={auth.token} /> : null}
           {activePanel === "oss-uploads" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-uploads", t)} endpoint="/api/v1/admin/oss/uploads" /> : null}
@@ -558,9 +810,14 @@ export function AdminConsolePolished() {
           {activePanel === "logs-api" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-api", t)} category="api_access" /> : null}
           {activePanel === "logs-file-upload" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-file-upload", t)} category="file_upload" /> : null}
           {activePanel === "logs-ai" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-ai", t)} category="ai_call" /> : null}
+          {activePanel === "ai-providers" ? <AIProvidersPanel initialConfig={config.ai ?? emptyConfig.ai!} token={auth.token} /> : null}
+          {activePanel === "ai-models" ? <AIModelsPanel initialConfig={config.ai ?? emptyConfig.ai!} token={auth.token} /> : null}
+          {activePanel === "ai-task-models" ? <AITaskModelsPanel initialConfig={config.ai ?? emptyConfig.ai!} token={auth.token} /> : null}
+          {activePanel === "ai-costs" ? <AICostsPanel token={auth.token} /> : null}
+          {activePanel === "ai-task-logs" ? <AITaskLogsPanel token={auth.token} /> : null}
         </section>
       </div>
-      <PermissionDeniedDialog message={permissionDialog} onClose={() => setPermissionDialog("")} />
+      {noticeModal}
     </main>
   );
 }
@@ -946,7 +1203,7 @@ function PermissionGroupEditor({
                 </thead>
                 <tbody>
                   {visibleDraftPermissions.map((permission) => (
-                    <tr key={`${permission.code}:${permission.index}`} className="hover:bg-[var(--panel-subtle)]">
+                    <tr key={`permission-${permission.index}`} className="hover:bg-[var(--panel-subtle)]">
                       <td className="border-b border-[var(--line)] px-3 py-3">
                         <input
                           checked={selectedPermissionIndexes.includes(permission.index)}
@@ -1164,7 +1421,7 @@ function UserPermissionNodeEditor({
             </thead>
             <tbody>
               {visibleRows.map((entry) => (
-                <tr key={`${entry.code}:${entry.index}`} className="hover:bg-[var(--panel-subtle)]">
+                <tr key={`user-permission-${entry.index}`} className="hover:bg-[var(--panel-subtle)]">
                   <td className="border-b border-[var(--line)] px-3 py-3">
                     <input checked={selectedIndexes.includes(entry.index)} type="checkbox" onChange={() => toggleSelection(entry.index)} />
                   </td>
@@ -1234,7 +1491,7 @@ function ParentRolePicker({
   value: string[];
   onChange: (roles: string[]) => void;
 }) {
-  const { locale, t } = useI18n();
+  const { locale } = useI18n();
   const [open, setOpen] = useState(false);
 
   function commit(nextValue: string) {
@@ -1428,6 +1685,7 @@ function PermissionCatalogEditor({
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
   const [targetLocale, setTargetLocale] = useState<Locale>(locale);
   const [saving, setSaving] = useState(false);
+  const [aiCompleting, setAICompleting] = useState(false);
   const [message, setMessage] = useState("");
 
   const visible = draft.filter((permission) => {
@@ -1476,6 +1734,50 @@ function PermissionCatalogEditor({
     }
   }
 
+  async function completePermissionTranslations() {
+    if (sourceLocale === targetLocale) {
+      notifyAdminNotice(t("admin.ai.sameLanguage"), t("admin.noticeTitle"), "danger");
+      return;
+    }
+    const candidates = visible.filter((permission) => {
+      const target = ownLocalizedText(permission, targetLocale);
+      return target.name.trim() === "" || target.description.trim() === "";
+    }).slice(0, 100);
+    if (candidates.length === 0) {
+      notifyAdminNotice(t("admin.ai.noMissingTranslations"));
+      return;
+    }
+    setAICompleting(true);
+    try {
+      const result = await runAITranslationTask(token, aiTranslationTaskTypes.permission, {
+        sourceLocale,
+        targetLocale,
+        items: candidates.map((permission) => ({ key: permission.code, ...localizedText(permission, sourceLocale) })),
+      });
+      const translated = new Map((result.items ?? []).map((item) => [item.key, item]));
+      let completed = 0;
+      const nextDraft = draft.map((permission) => {
+        const item = translated.get(permission.code);
+        if (!item) return permission;
+        const target = ownLocalizedText(permission, targetLocale);
+        const name = target.name || item.name?.trim() || "";
+        const description = target.description || item.description?.trim() || "";
+        if (name === target.name && description === target.description) return permission;
+        completed += 1;
+        return {
+          ...permission,
+          translations: setLocalizedText(permission.translations, targetLocale, { name, description }),
+        };
+      });
+      setDraft(nextDraft);
+      notifyAdminNotice(t("admin.ai.translationCompleted", { count: completed }));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setAICompleting(false);
+    }
+  }
+
   return (
     <section className="surface flex min-h-[calc(100vh-8rem)] flex-col rounded-lg p-4">
       <div className="mb-3 grid gap-3 xl:grid-cols-[minmax(220px,1fr)_auto] xl:items-center">
@@ -1483,7 +1785,7 @@ function PermissionCatalogEditor({
           <h2 className="text-lg font-bold">{t("admin.permissionList")}</h2>
           <p className="text-sm text-[var(--muted)]">{t("admin.permissionListI18nDesc")}</p>
         </div>
-        <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(180px,1fr)_auto_auto_auto] sm:items-center xl:min-w-[760px]">
+        <div className="grid min-w-0 gap-2 sm:grid-cols-[minmax(180px,1fr)_auto_auto_auto_auto] sm:items-center xl:min-w-[940px]">
           <input className="field min-w-0" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("admin.searchPermission")} />
           <select className="field w-auto py-2" value={sourceLocale} onChange={(event) => setSourceLocale(event.target.value as Locale)}>
             {supportedLocales.map((item) => (
@@ -1499,6 +1801,9 @@ function PermissionCatalogEditor({
               </option>
             ))}
           </select>
+          <button className="button-secondary focus-ring whitespace-nowrap" disabled={aiCompleting} type="button" onClick={completePermissionTranslations}>
+            {aiCompleting ? t("admin.ai.completingTranslation") : t("admin.ai.completeTranslation")}
+          </button>
           <button className="button-primary focus-ring" disabled={saving} type="button" onClick={savePermissions}>
             {saving ? t("admin.saving") : t("admin.savePermissionList")}
           </button>
@@ -1799,6 +2104,535 @@ function UserRolePanel({
     setDraft((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
   }
 }
+
+function NATSConfigPanel({ token }: { token: string }) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState<NATSConfig | null>(null);
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<NATSConfig>("/api/v1/admin/config/nats", {}, token)
+      .then((config) => {
+        if (!cancelled) setDraft({ ...config, password: "", token: "" });
+      })
+      .catch((error) => {
+        if (!cancelled) setMessage(cleanError(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  async function save() {
+    if (!draft) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      const saved = await apiRequest<NATSConfig>(
+        "/api/v1/admin/config/nats",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            enabled: draft.enabled,
+            url: draft.url,
+            username: draft.username,
+            password: draft.password ?? "",
+            token: draft.token ?? "",
+            subjectPrefix: draft.subjectPrefix,
+            tasks: draft.tasks,
+          }),
+        },
+        token,
+      );
+      setDraft({ ...saved, password: "", token: "" });
+      notifyAdminNotice(t("admin.nats.saved"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function updateTask(index: number, patch: Partial<NATSTaskConfig>) {
+    if (!draft) return;
+    setDraft({ ...draft, tasks: draft.tasks.map((task, taskIndex) => taskIndex === index ? { ...task, ...patch } : task) });
+  }
+
+  if (!draft) {
+    return <EmptyState text={message || t("common.loading")} />;
+  }
+
+  const connected = draft.status.connected;
+  const statusText = !draft.enabled
+    ? t("admin.nats.disabledStatus")
+    : connected
+      ? t("admin.nats.connectedStatus")
+      : t("admin.nats.disconnectedStatus");
+
+  return (
+    <div className="grid gap-4">
+      <section className="surface rounded-lg p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold">{t("admin.nats.title")}</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.nats.description")}</p>
+            <p className={`mt-2 text-sm font-bold ${connected ? "text-[var(--accent)]" : "text-[var(--warning)]"}`}>
+              {statusText}{draft.status.lastError ? ` / ${draft.status.lastError}` : ""}
+            </p>
+          </div>
+          <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>
+            {saving ? t("admin.saving") : t("admin.nats.save")}
+          </button>
+        </div>
+      </section>
+
+      <section className="surface rounded-lg p-4">
+        <h3 className="mb-4 font-bold">{t("admin.nats.connection")}</h3>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--line)] p-3 text-sm font-semibold">
+            <input checked={draft.enabled} type="checkbox" onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} />
+            {t("admin.nats.enabled")}
+          </label>
+          <label className="text-sm font-semibold xl:col-span-2">
+            {t("admin.nats.url")}
+            <input className="field mt-2" value={draft.url} placeholder="nats://127.0.0.1:4222" onChange={(event) => setDraft({ ...draft, url: event.target.value })} />
+          </label>
+          <label className="text-sm font-semibold">
+            {t("admin.nats.subjectPrefix")}
+            <input className="field mt-2" value={draft.subjectPrefix} placeholder="mcmods" onChange={(event) => setDraft({ ...draft, subjectPrefix: event.target.value })} />
+          </label>
+          <label className="text-sm font-semibold">
+            {t("admin.nats.username")}
+            <input className="field mt-2" value={draft.username} autoComplete="off" onChange={(event) => setDraft({ ...draft, username: event.target.value })} />
+          </label>
+          <label className="text-sm font-semibold">
+            {t("admin.nats.password")}
+            <input className="field mt-2" value={draft.password ?? ""} autoComplete="new-password" placeholder={draft.hasPassword ? t("admin.nats.secretSaved") : ""} type="password" onChange={(event) => setDraft({ ...draft, password: event.target.value })} />
+          </label>
+          <label className="text-sm font-semibold md:col-span-2 xl:col-span-3">
+            {t("admin.nats.token")}
+            <input className="field mt-2" value={draft.token ?? ""} autoComplete="off" placeholder={draft.hasToken ? t("admin.nats.secretSaved") : t("admin.nats.tokenHint")} type="password" onChange={(event) => setDraft({ ...draft, token: event.target.value })} />
+          </label>
+        </div>
+      </section>
+
+      <section className="surface rounded-lg p-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold">{t("admin.nats.tasks")}</h3>
+            <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.nats.tasksDescription")}</p>
+          </div>
+          <button
+            className="button-secondary focus-ring"
+            type="button"
+            onClick={() => setDraft({ ...draft, tasks: [...draft.tasks, { code: "", enabled: true, subject: "", queueGroup: "", maxConcurrent: 1, timeoutSeconds: 300 }] })}
+          >
+            {t("admin.nats.addTask")}
+          </button>
+        </div>
+        <div className="overflow-x-auto">
+          <div className="min-w-[980px]">
+            <div className="grid grid-cols-[90px_1fr_1.2fr_1.4fr_130px_130px_80px] gap-3 border-b border-[var(--line)] px-3 py-2 text-xs font-bold text-[var(--muted)]">
+              <span>{t("common.enabled")}</span>
+              <span>{t("admin.nats.taskCode")}</span>
+              <span>Subject</span>
+              <span>{t("admin.nats.queueGroup")}</span>
+              <span>{t("admin.nats.maxConcurrent")}</span>
+              <span>{t("admin.nats.timeout")}</span>
+              <span>{t("admin.operation")}</span>
+            </div>
+            <div className="grid gap-2 pt-2">
+              {draft.tasks.map((task, index) => (
+                <div key={`nats-task-${index}`} className="grid grid-cols-[90px_1fr_1.2fr_1.4fr_130px_130px_80px] items-center gap-3 rounded-lg border border-[var(--line)] p-3">
+                  <input aria-label={t("common.enabled")} checked={task.enabled} type="checkbox" onChange={(event) => updateTask(index, { enabled: event.target.checked })} />
+                  <input className="field" value={task.code} placeholder="ai" onChange={(event) => updateTask(index, { code: event.target.value })} />
+                  <input className="field" value={task.subject} placeholder="ai.tasks" onChange={(event) => updateTask(index, { subject: event.target.value })} />
+                  <input className="field" value={task.queueGroup} placeholder="mcmods-ai-workers" onChange={(event) => updateTask(index, { queueGroup: event.target.value })} />
+                  <input className="field" min={1} max={1000} type="number" value={task.maxConcurrent} onChange={(event) => updateTask(index, { maxConcurrent: Number(event.target.value) })} />
+                  <input className="field" min={1} max={86400} type="number" value={task.timeoutSeconds} onChange={(event) => updateTask(index, { timeoutSeconds: Number(event.target.value) })} />
+                  <button className="button-secondary focus-ring" type="button" onClick={() => setDraft({ ...draft, tasks: draft.tasks.filter((_, taskIndex) => taskIndex !== index) })}>
+                    {t("common.delete")}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {draft.tasks.length === 0 ? <EmptyState text={t("admin.nats.noTasks")} /> : null}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AIProvidersPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(() => normalizeAIProtocols(initialConfig));
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    await saveAIConfig(draft, token, setDraft, setSaving, t);
+  }
+
+  return (
+    <div className="grid gap-4">
+      <AISettingsHeader title={t("admin.ai.providers")} description={t("admin.ai.providersDesc")} saving={saving} onSave={save} />
+      <section className="surface rounded-lg p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="font-bold">{t("admin.ai.providerList")}</h3>
+          <button className="button-secondary focus-ring" type="button" onClick={() => setDraft({ ...draft, providers: [...draft.providers, { code: "", name: "", enabled: false, baseUrl: "", apiKey: "", protocol: "openai-compatible", notes: "" }] })}>
+            {t("admin.ai.addProvider")}
+          </button>
+        </div>
+        <div className="grid gap-3">
+          {draft.providers.map((provider, index) => (
+            <div key={`ai-provider-${index}`} className="grid gap-3 rounded-lg border border-[var(--line)] p-3 xl:grid-cols-[90px_1fr_1fr_1fr_1fr_80px]">
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input checked={provider.enabled} type="checkbox" onChange={(event) => setAIProvider(draft, setDraft, index, { enabled: event.target.checked })} />
+                {t("common.enabled")}
+              </label>
+              <input className="field" value={provider.code} placeholder={t("admin.ai.providerCode")} onChange={(event) => setAIProvider(draft, setDraft, index, { code: event.target.value })} />
+              <input className="field" value={provider.name} placeholder={t("admin.name")} onChange={(event) => setAIProvider(draft, setDraft, index, { name: event.target.value })} />
+              <input className="field" value={provider.baseUrl} placeholder="Base URL" onChange={(event) => setAIProvider(draft, setDraft, index, { baseUrl: event.target.value })} />
+              <input className="field" value={provider.apiKey ?? ""} placeholder={provider.hasApiKey ? t("admin.clientSecretSaved") : "API Key"} type="password" onChange={(event) => setAIProvider(draft, setDraft, index, { apiKey: event.target.value })} />
+              <button className="button-secondary focus-ring" type="button" onClick={() => setDraft({ ...draft, providers: draft.providers.filter((_, itemIndex) => itemIndex !== index) })}>
+                {t("common.delete")}
+              </button>
+              <label className="text-sm font-semibold xl:col-span-2">
+                {t("admin.ai.protocol")}
+                <select
+                  className="field mt-2"
+                  value={provider.protocol}
+                  onChange={(event) => setAIProvider(draft, setDraft, index, { protocol: event.target.value as AIProviderProtocol })}
+                >
+                  {aiProviderProtocols.map((protocol) => (
+                    <option key={protocol.value} value={protocol.value}>{protocol.label}</option>
+                  ))}
+                </select>
+              </label>
+              <input className="field xl:col-span-4" value={provider.notes} placeholder={t("admin.description")} onChange={(event) => setAIProvider(draft, setDraft, index, { notes: event.target.value })} />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AIModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(() => normalizeAIModelProviders(initialConfig));
+  const [saving, setSaving] = useState(false);
+  const availableProviders = draft.providers.filter((provider) => provider.code.trim());
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<AIConfig>("/api/v1/admin/ai/config", {}, token)
+      .then((config) => {
+        if (!cancelled) setDraft(normalizeAIModelProviders(config));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  return (
+    <div className="grid gap-4">
+      <AISettingsHeader title={t("admin.ai.models")} description={t("admin.ai.modelsDesc")} saving={saving} onSave={() => saveAIConfig(draft, token, setDraft, setSaving, t)} />
+      <section className="surface rounded-lg p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="font-bold">{t("admin.ai.modelList")}</h3>
+          <button className="button-secondary focus-ring" type="button" onClick={() => setDraft({ ...draft, models: [...draft.models, { provider: availableProviders[0]?.code ?? "", model: "", displayName: "", enabled: false, contextTokens: 0, maxOutputTokens: 0, inputPricePerMillion: 0, outputPricePerMillion: 0 }] })}>
+            {t("admin.ai.addModel")}
+          </button>
+        </div>
+        <div className="grid gap-3">
+          <div className="hidden gap-3 px-3 text-xs font-bold text-[var(--muted)] xl:grid xl:grid-cols-[90px_repeat(7,minmax(0,1fr))_80px]">
+            <span>{t("common.enabled")}</span>
+            <span>{t("admin.ai.provider")}</span>
+            <span>{t("admin.ai.modelId")}</span>
+            <span>{t("admin.displayName")}</span>
+            <span>{t("admin.ai.contextTokens")}</span>
+            <span>{t("admin.ai.maxOutputTokens")}</span>
+            <span>{t("admin.ai.inputPrice")}</span>
+            <span>{t("admin.ai.outputPrice")}</span>
+            <span>{t("admin.operation")}</span>
+          </div>
+          {draft.models.map((model, index) => (
+            <div key={`ai-model-${index}`} className="grid gap-3 rounded-lg border border-[var(--line)] p-3 xl:grid-cols-[90px_repeat(7,minmax(0,1fr))_80px]">
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input checked={model.enabled} type="checkbox" onChange={(event) => setAIModel(draft, setDraft, index, { enabled: event.target.checked })} />
+                {t("common.enabled")}
+              </label>
+              <select className="field" value={model.provider} onChange={(event) => setAIModel(draft, setDraft, index, { provider: event.target.value })}>
+                <option disabled value="">{t("admin.ai.selectProvider")}</option>
+                {availableProviders.map((provider) => (
+                  <option key={provider.code} value={provider.code}>{provider.name ? `${provider.name} (${provider.code})` : provider.code}</option>
+                ))}
+              </select>
+              <input className="field" value={model.model} placeholder={t("admin.ai.modelId")} onChange={(event) => setAIModel(draft, setDraft, index, { model: event.target.value })} />
+              <input className="field" value={model.displayName} placeholder={t("admin.displayName")} onChange={(event) => setAIModel(draft, setDraft, index, { displayName: event.target.value })} />
+              <input className="field" type="number" value={model.contextTokens} placeholder={t("admin.ai.contextTokens")} onChange={(event) => setAIModel(draft, setDraft, index, { contextTokens: Number(event.target.value) })} />
+              <input className="field" type="number" value={model.maxOutputTokens} placeholder={t("admin.ai.maxOutputTokens")} onChange={(event) => setAIModel(draft, setDraft, index, { maxOutputTokens: Number(event.target.value) })} />
+              <input className="field" type="number" value={model.inputPricePerMillion} placeholder={t("admin.ai.inputPrice")} onChange={(event) => setAIModel(draft, setDraft, index, { inputPricePerMillion: Number(event.target.value) })} />
+              <input className="field" type="number" value={model.outputPricePerMillion} placeholder={t("admin.ai.outputPrice")} onChange={(event) => setAIModel(draft, setDraft, index, { outputPricePerMillion: Number(event.target.value) })} />
+              <button className="button-secondary focus-ring" type="button" onClick={() => setDraft({ ...draft, models: draft.models.filter((_, itemIndex) => itemIndex !== index) })}>
+                {t("common.delete")}
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AITaskModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(() => normalizeAIProtocols(initialConfig));
+  const [saving, setSaving] = useState(false);
+  const enabledProviderCodes = new Set(draft.providers.filter((provider) => provider.enabled).map((provider) => provider.code));
+  const availableModels = draft.models.filter((model) => model.enabled && enabledProviderCodes.has(model.provider));
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<AIConfig>("/api/v1/admin/ai/config", {}, token)
+      .then((config) => {
+        if (!cancelled) setDraft(normalizeAIProtocols(config));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  return (
+    <div className="grid gap-4">
+      <AISettingsHeader title={t("admin.ai.taskModels")} description={t("admin.ai.taskModelsDesc")} saving={saving} onSave={() => saveAIConfig(draft, token, setDraft, setSaving, t)} />
+      <section className="surface rounded-lg p-4">
+        <div className="grid gap-3">
+          <div className="hidden gap-3 px-3 text-xs font-bold text-[var(--muted)] xl:grid xl:grid-cols-[minmax(190px,1.2fr)_minmax(240px,1.4fr)_120px_120px_minmax(300px,2fr)]">
+            <span>{t("admin.ai.taskType")}</span>
+            <span>{t("admin.ai.model")}</span>
+            <span>{t("admin.ai.concurrencyLimit")}</span>
+            <span>{t("admin.ai.timeoutSeconds")}</span>
+            <span>{t("admin.ai.prompt")}</span>
+          </div>
+          {draft.taskModels.map((item, index) => (
+            <div key={item.taskType} className="grid gap-3 rounded-lg border border-[var(--line)] p-3 xl:grid-cols-[minmax(190px,1.2fr)_minmax(240px,1.4fr)_120px_120px_minmax(300px,2fr)]">
+              <div className="flex min-h-11 items-center font-semibold">{aiTaskTypeLabel(item.taskType, t)}</div>
+              <select className="field" value={item.modelKey} onChange={(event) => setAITaskModel(draft, setDraft, index, { modelKey: event.target.value })}>
+                <option value="">{t("admin.ai.selectModel")}</option>
+                {availableModels.map((model) => {
+                  const key = `${model.provider}/${model.model}`;
+                  return <option key={key} value={key}>{model.displayName ? `${model.displayName} (${key})` : key}</option>;
+                })}
+              </select>
+              <input className="field" type="number" value={item.concurrencyLimit} placeholder={t("admin.ai.concurrencyLimit")} onChange={(event) => setAITaskModel(draft, setDraft, index, { concurrencyLimit: Number(event.target.value) })} />
+              <input className="field" type="number" value={item.timeoutSeconds} placeholder={t("admin.ai.timeoutSeconds")} onChange={(event) => setAITaskModel(draft, setDraft, index, { timeoutSeconds: Number(event.target.value) })} />
+              <textarea
+                className="field min-h-24 resize-y py-2"
+                value={item.prompt ?? ""}
+                placeholder={t("admin.ai.promptPlaceholder")}
+                onChange={(event) => setAITaskModel(draft, setDraft, index, { prompt: event.target.value })}
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function AICostsPanel({ token }: { token: string }) {
+  const { t } = useI18n();
+  const [stats, setStats] = useState<Record<string, unknown> | null>(null);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<Record<string, unknown>>("/api/v1/admin/ai/stats", {}, token)
+      .then((data) => {
+        if (!cancelled) setStats(data);
+      })
+      .catch((error) => setMessage(cleanError(error)));
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const byStatus = Array.isArray(stats?.byStatus) ? stats.byStatus as LogRow[] : [];
+  const byProvider = Array.isArray(stats?.byProvider) ? stats.byProvider as LogRow[] : [];
+
+  return (
+    <div className="grid gap-4">
+      <section className="surface rounded-lg p-4">
+        <h2 className="text-xl font-bold">{t("admin.ai.costs")}</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.ai.costsDesc")}</p>
+        {message ? <InlineMessage text={message} /> : null}
+      </section>
+      <AIStatsTable title={t("admin.ai.byStatus")} rows={byStatus} />
+      <AIStatsTable title={t("admin.ai.byProvider")} rows={byProvider} />
+    </div>
+  );
+}
+
+function AITaskLogsPanel({ token }: { token: string }) {
+  const { t } = useI18n();
+  const [rows, setRows] = useState<LogRow[]>([]);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (status) params.set("status", status);
+    try {
+      setRows(await apiRequest<LogRow[]>(`/api/v1/admin/ai/tasks?${params.toString()}`, {}, token));
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }, [query, status, token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (status) params.set("status", status);
+    apiRequest<LogRow[]>(`/api/v1/admin/ai/tasks?${params.toString()}`, {}, token)
+      .then((data) => {
+        if (!cancelled) setRows(data);
+      })
+      .catch((error) => {
+        if (!cancelled) setMessage(cleanError(error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [query, status, token]);
+
+  async function createTestTask() {
+    setMessage("");
+    try {
+      await apiRequest<{ id: number; taskUid: string; status: string }>(
+        "/api/v1/admin/ai/tasks",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            taskType: aiTranslationTaskTypes.i18n,
+            payload: { sourceLocale: "zh-CN", targetLocale: "en", items: [{ key: "test", text: "测试" }] },
+          }),
+        },
+        token,
+      );
+      await load();
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }
+
+  return (
+    <section className="surface rounded-lg p-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">{t("admin.ai.taskLogs")}</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.ai.taskLogsDesc")}</p>
+        </div>
+        <button className="button-primary focus-ring" type="button" onClick={createTestTask}>
+          {t("admin.ai.createTestTask")}
+        </button>
+      </div>
+      <div className="mb-4 grid gap-3 md:grid-cols-[1fr_180px_120px]">
+        <input className="field" value={query} placeholder={t("admin.logs.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
+        <select className="field" value={status} onChange={(event) => setStatus(event.target.value)}>
+          <option value="">{t("admin.ai.allStatuses")}</option>
+          <option value="queued">queued</option>
+          <option value="running">running</option>
+          <option value="completed">completed</option>
+          <option value="failed">failed</option>
+        </select>
+        <button className="button-secondary focus-ring" type="button" onClick={load}>
+          {t("admin.logs.query")}
+        </button>
+      </div>
+      {message ? <InlineMessage text={message} /> : null}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] text-left text-sm">
+          <thead>
+            <tr>
+              {["ID", t("admin.ai.taskType"), t("admin.ai.provider"), t("admin.ai.model"), t("admin.status"), t("admin.ai.tokens"), t("admin.ai.cost"), t("admin.createdAt")].map((heading) => (
+                <th key={heading} className="border-b border-[var(--line)] py-2">{heading}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={String(row.id)} className="align-top">
+                <td className="border-b border-[var(--line)] py-2 font-mono text-xs">{String(row.task_uid ?? row.id)}</td>
+                <td className="border-b border-[var(--line)] py-2">{displayCell(row.task_type)}</td>
+                <td className="border-b border-[var(--line)] py-2">{displayCell(row.provider)}</td>
+                <td className="border-b border-[var(--line)] py-2">{displayCell(row.model)}</td>
+                <td className="border-b border-[var(--line)] py-2">{displayCell(row.status)}</td>
+                <td className="border-b border-[var(--line)] py-2">{displayCell(row.input_tokens)} / {displayCell(row.output_tokens)}</td>
+                <td className="border-b border-[var(--line)] py-2">{displayCell(row.cost_micros)}</td>
+                <td className="border-b border-[var(--line)] py-2">{displayCell(row.created_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {rows.length === 0 ? <EmptyState text={t("admin.logs.noRecords")} /> : null}
+    </section>
+  );
+}
+
+function AISettingsHeader({ title, description, saving, onSave }: { title: string; description: string; saving: boolean; onSave: () => void }) {
+  const { t } = useI18n();
+
+  return (
+    <section className="surface rounded-lg p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold">{title}</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">{description}</p>
+        </div>
+        <button className="button-primary focus-ring" disabled={saving} type="button" onClick={onSave}>
+          {saving ? t("admin.saving") : t("admin.ai.saveConfig")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function AIStatsTable({ title, rows }: { title: string; rows: LogRow[] }) {
+  const { t } = useI18n();
+  const columns = rows[0] ? Object.keys(rows[0]) : [];
+  return (
+    <section className="surface rounded-lg p-4">
+      <h3 className="mb-3 font-bold">{title}</h3>
+      {rows.length === 0 ? <EmptyState text={t("admin.logs.noRecords")} /> : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr>{columns.map((column) => <th key={column} className="border-b border-[var(--line)] py-2">{column}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => (
+                <tr key={index}>
+                  {columns.map((column) => <td key={column} className="border-b border-[var(--line)] py-2">{displayCell(row[column])}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function OverviewPanel({ dashboard, config }: { dashboard: DashboardData; config: AdminConfig }) {
   const { t } = useI18n();
 
@@ -1848,6 +2682,106 @@ function AuthPanelV2({ config, token }: { config: AdminConfig; token: string }) 
         <ConfigLine label={t("admin.passwordStorage")} value="PBKDF2-SHA256 + salt" />
       </ConfigBlock>
       <OAuthConfigPanelV2 config={config.oauth} token={token} />
+    </div>
+  );
+}
+
+function MarkdownConfigPanel({ initialConfig, token }: { initialConfig: MarkdownRendererConfig; token: string }) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(() => normalizeMarkdownConfig(initialConfig));
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const toggles: Array<keyof MarkdownRendererConfig> = [
+    "core",
+    "abbreviations",
+    "emoji",
+    "footnotes",
+    "subscript",
+    "superscript",
+    "taskLists",
+    "katex",
+    "expandTabs",
+    "imageSize",
+    "plantUML",
+    "codeHighlight",
+    "enhancedTables",
+    "collapsibleBlocks",
+    "alertBlocks",
+    "toc",
+  ];
+
+  async function saveMarkdownConfig() {
+    setSaving(true);
+    setMessage("");
+    try {
+      const saved = await apiRequest<MarkdownRendererConfig>(
+        "/api/v1/admin/config/markdown",
+        { method: "PUT", body: JSON.stringify(normalizeMarkdownConfig(draft)) },
+        token,
+      );
+      setDraft(normalizeMarkdownConfig(saved));
+      setMessage(t("admin.markdown.configSaved"));
+    } catch (error) {
+      setMessage(cleanError(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-4">
+      <section className="surface rounded-lg p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold">{t("admin.markdown.title")}</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.markdown.description")}</p>
+          </div>
+          <button className="button-primary focus-ring" disabled={saving} type="button" onClick={saveMarkdownConfig}>
+            {saving ? t("admin.saving") : t("admin.markdown.save")}
+          </button>
+        </div>
+        {message ? <InlineMessage text={message} /> : null}
+      </section>
+
+      <section className="surface rounded-lg p-4">
+        <h3 className="mb-3 font-bold">{t("admin.markdown.parserSwitches")}</h3>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {toggles.map((key) => (
+            <label key={key} className="flex items-center justify-between gap-3 rounded-lg border border-[var(--line)] p-3 text-sm font-semibold">
+              <span>{t(`admin.markdown.parsers.${key}`)}</span>
+              <input
+                checked={Boolean(draft[key])}
+                type="checkbox"
+                onChange={(event) => setDraft((current) => ({ ...current, [key]: event.target.checked }))}
+              />
+            </label>
+          ))}
+        </div>
+      </section>
+
+      <section className="surface rounded-lg p-4">
+        <h3 className="mb-3 font-bold">{t("admin.markdown.options")}</h3>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <label className="text-sm font-semibold">
+            {t("admin.markdown.tabSize")}
+            <input className="field mt-2" min={1} max={8} type="number" value={draft.tabSize} onChange={(event) => setDraft((current) => ({ ...current, tabSize: Number(event.target.value) }))} />
+          </label>
+          <label className="text-sm font-semibold xl:col-span-2">
+            {t("admin.markdown.plantUMLServer")}
+            <input className="field mt-2" value={draft.plantUMLServer} onChange={(event) => setDraft((current) => ({ ...current, plantUMLServer: event.target.value }))} />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm font-semibold">
+              {t("admin.markdown.tocMinDepth")}
+              <input className="field mt-2" min={1} max={6} type="number" value={draft.tocMinDepth} onChange={(event) => setDraft((current) => ({ ...current, tocMinDepth: Number(event.target.value) }))} />
+            </label>
+            <label className="text-sm font-semibold">
+              {t("admin.markdown.tocMaxDepth")}
+              <input className="field mt-2" min={1} max={6} type="number" value={draft.tocMaxDepth} onChange={(event) => setDraft((current) => ({ ...current, tocMaxDepth: Number(event.target.value) }))} />
+            </label>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
@@ -1909,7 +2843,7 @@ function OAuthConfigPanelV2({ config, token }: { config: OAuthConfig; token: str
           <button className="button-primary focus-ring" type="submit">
             {t("admin.saveOauth")}
           </button>
-          {message ? <span className="text-sm text-[var(--muted)]">{message}</span> : null}
+          {message ? <InlineMessage text={message} /> : null}
         </div>
       </form>
     </section>
@@ -2140,7 +3074,7 @@ function UsersPanelV2({
   );
 }
 
-function TranslationManagerPanel() {
+function TranslationManagerPanel({ token }: { token: string }) {
   const {
     locale,
     t,
@@ -2149,12 +3083,14 @@ function TranslationManagerPanel() {
     getBaseTranslation,
     getOwnTranslation,
     setTranslation,
+    setTranslations,
     resetTranslation,
   } = useI18n();
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
   const [targetLocale, setTargetLocale] = useState<Locale>(locale);
   const [query, setQuery] = useState("");
   const [missingOnly, setMissingOnly] = useState(false);
+  const [aiCompleting, setAICompleting] = useState(false);
 
   const visibleKeys = translationKeys.filter((key) => {
     const keyword = query.trim().toLowerCase();
@@ -2170,6 +3106,39 @@ function TranslationManagerPanel() {
 
   function saveTranslation(key: string, value: string) {
     setTranslation(targetLocale, key, value);
+  }
+
+  async function completeMissingTranslations() {
+    if (sourceLocale === targetLocale) {
+      notifyAdminNotice(t("admin.ai.sameLanguage"), t("admin.noticeTitle"), "danger");
+      return;
+    }
+    const candidates = visibleKeys
+      .filter((key) => getOwnTranslation(targetLocale, key).trim() === "" && getTranslation(sourceLocale, key).trim() !== "")
+      .slice(0, 100);
+    if (candidates.length === 0) {
+      notifyAdminNotice(t("admin.ai.noMissingTranslations"));
+      return;
+    }
+    setAICompleting(true);
+    try {
+      const result = await runAITranslationTask(token, aiTranslationTaskTypes.i18n, {
+        sourceLocale,
+        targetLocale,
+        items: candidates.map((key) => ({ key, text: getTranslation(sourceLocale, key) })),
+      });
+      const translations: Record<string, string> = {};
+      for (const item of result.items ?? []) {
+        const value = item.text?.trim() ?? "";
+        if (candidates.includes(item.key) && value) translations[item.key] = value;
+      }
+      setTranslations(targetLocale, translations);
+      notifyAdminNotice(t("admin.ai.translationCompleted", { count: Object.keys(translations).length }));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setAICompleting(false);
+    }
   }
 
   return (
@@ -2221,6 +3190,9 @@ function TranslationManagerPanel() {
             <input checked={missingOnly} type="checkbox" onChange={(event) => setMissingOnly(event.target.checked)} />
             {t("admin.missingOnly")}
           </label>
+          <button className="button-primary focus-ring whitespace-nowrap" disabled={aiCompleting} type="button" onClick={completeMissingTranslations}>
+            {aiCompleting ? t("admin.ai.completingTranslation") : t("admin.ai.completeTranslation")}
+          </button>
         </div>
       </div>
 
@@ -2245,7 +3217,7 @@ function TranslationManagerPanel() {
                   <td className="border-b border-[var(--line)] px-4 py-3">{getTranslation(sourceLocale, key)}</td>
                   <td className="border-b border-[var(--line)] px-4 py-3">
                     <textarea
-                      key={`${targetLocale}:${key}`}
+                      key={`${targetLocale}:${key}:${target}`}
                       className="field min-h-20"
                       defaultValue={target}
                       placeholder={target ? "" : t("admin.missingTranslation")}
@@ -2268,22 +3240,64 @@ function TranslationManagerPanel() {
   );
 }
 
+function normalizeOSSConfigForUI(config: OSSConfig): OSSConfig {
+  const region = config.region || "cn-beijing";
+  const endpoint = config.endpoint || `https://oss-${region}.aliyuncs.com`;
+  const customEndpoint = endpoint && !endpoint.includes(".aliyuncs.com") && !endpoint.includes(".aliyun.com");
+  return {
+    ...config,
+    region,
+    endpoint: customEndpoint ? `https://oss-${region}.aliyuncs.com` : endpoint,
+    publicEndpoint: config.publicEndpoint || (customEndpoint ? endpoint : "https://oss.mcmods.cn"),
+    useCName: customEndpoint ? false : config.useCName,
+    downloadUrlMode: config.downloadUrlMode || "esa_private_origin",
+    allowedExtensions: normalizeExtensionList(config.allowedExtensions),
+  };
+}
+
+function previewEndpoint(value: string, fallback: string) {
+  const endpoint = value || fallback;
+  return endpoint.startsWith("http://") || endpoint.startsWith("https://") ? endpoint : `https://${endpoint}`;
+}
+
+function splitExtensionText(value: string) {
+  return normalizeExtensionList(value.split(/[\s,;，；]+/));
+}
+
+function normalizeExtensionList(values: string[] | undefined) {
+  const fallback = emptyConfig.oss!.allowedExtensions;
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values && values.length > 0 ? values : fallback) {
+    let ext = String(value ?? "").trim().toLowerCase();
+    if (!ext) continue;
+    if (!ext.startsWith(".")) ext = `.${ext}`;
+    if (!/^\.[a-z0-9_+-]+$/.test(ext)) continue;
+    if (seen.has(ext)) continue;
+    seen.add(ext);
+    result.push(ext);
+  }
+  return result.length > 0 ? result : fallback;
+}
+
+function isAllowedFileName(fileName: string, allowedExtensions: string[]) {
+  const lowerName = fileName.toLowerCase();
+  return normalizeExtensionList(allowedExtensions).some((ext) => lowerName.endsWith(ext));
+}
+
 function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; token: string }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState({ ...initialConfig, accessKeySecret: "" });
+  const [draft, setDraft] = useState({ ...normalizeOSSConfigForUI(initialConfig), accessKeySecret: "", securityToken: "" });
   const [message, setMessage] = useState("");
-  const endpointPreview = draft.endpoint
-    ? draft.endpoint.startsWith("http://") || draft.endpoint.startsWith("https://")
-      ? draft.endpoint
-      : `https://${draft.endpoint}`
-    : "https://oss.mcmods.cn";
+  const uploadEndpointPreview = previewEndpoint(draft.endpoint, "https://oss-cn-beijing.aliyuncs.com");
+  const publicEndpointPreview = previewEndpoint(draft.publicEndpoint, "https://oss.mcmods.cn");
   const objectPrefix = (draft.prefix || "mcmods").replace(/^\/+|\/+$/g, "");
 
   useEffect(() => {
     let cancelled = false;
     apiRequest<OSSConfig>("/api/v1/admin/config/oss", {}, token)
       .then((config) => {
-        if (!cancelled) setDraft({ ...config, accessKeySecret: "" });
+        if (!cancelled) setDraft({ ...normalizeOSSConfigForUI(config), accessKeySecret: "", securityToken: "" });
       })
       .catch((error) => {
         if (!cancelled) setMessage(cleanError(error));
@@ -2300,19 +3314,23 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
         enabled: draft.enabled,
         region: draft.region,
         endpoint: draft.endpoint,
+        publicEndpoint: draft.publicEndpoint,
         bucket: draft.bucket,
         accessKeyId: draft.accessKeyId,
         accessKeySecret: draft.accessKeySecret,
+        securityToken: draft.securityToken,
         useCName: draft.useCName,
         prefix: draft.prefix,
         downloadUrlTtlMinutes: draft.downloadUrlTtlMinutes,
+        downloadUrlMode: draft.downloadUrlMode,
+        allowedExtensions: normalizeExtensionList(draft.allowedExtensions),
       };
       const saved = await apiRequest<OSSConfig>(
         "/api/v1/admin/config/oss",
         { method: "PUT", body: JSON.stringify(payload) },
         token,
       );
-      setDraft({ ...saved, accessKeySecret: "" });
+      setDraft({ ...normalizeOSSConfigForUI(saved), accessKeySecret: "", securityToken: "" });
       setMessage(t("admin.oss.configSaved"));
     } catch (error) {
       setMessage(cleanError(error));
@@ -2334,7 +3352,7 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
                 {draft.enabled ? t("admin.oss.enabled") : t("admin.oss.disabled")}
               </span>
               <span className="rounded-md bg-[var(--panel-subtle)] px-2 py-1 text-xs font-bold text-[var(--muted)]">{t("admin.oss.connectedByPrivateBucket")}</span>
-              {draft.useCName ? (
+              {draft.publicEndpoint ? (
                 <span className="rounded-md bg-[var(--panel-subtle)] px-2 py-1 text-xs font-bold text-[var(--muted)]">{t("admin.oss.cnameMode")}</span>
               ) : null}
             </div>
@@ -2347,10 +3365,14 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
           </button>
         </div>
 
-        <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">
-            <div className="text-xs font-bold uppercase text-[var(--muted)]">{t("admin.oss.accessDomain")}</div>
-            <div className="mt-1 truncate font-mono text-sm">{endpointPreview}</div>
+            <div className="text-xs font-bold uppercase text-[var(--muted)]">{t("admin.oss.uploadEndpoint")}</div>
+            <div className="mt-1 truncate font-mono text-sm">{uploadEndpointPreview}</div>
+          </div>
+          <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">
+            <div className="text-xs font-bold uppercase text-[var(--muted)]">{t("admin.oss.publicEndpoint")}</div>
+            <div className="mt-1 truncate font-mono text-sm">{publicEndpointPreview}</div>
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">
             <div className="text-xs font-bold uppercase text-[var(--muted)]">Bucket</div>
@@ -2358,7 +3380,7 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
           </div>
           <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">
             <div className="text-xs font-bold uppercase text-[var(--muted)]">{t("admin.oss.temporaryUrl")}</div>
-            <div className="mt-1 font-mono text-sm">{draft.downloadUrlTtlMinutes || 10} min</div>
+            <div className="mt-1 truncate text-sm font-semibold">{draft.downloadUrlMode === "oss_presigned" ? t("admin.oss.downloadModeOSSPresignedShort") : t("admin.oss.downloadModeESAPrivateOriginShort")}</div>
           </div>
         </div>
       </div>
@@ -2400,12 +3422,21 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
               />
             </label>
             <label className="grid gap-1 text-sm font-semibold md:col-span-2">
-              Endpoint / {t("admin.customDomain")}
+              {t("admin.oss.uploadEndpoint")}
               <input
                 className="field font-mono"
-                placeholder="oss.mcmods.cn"
+                placeholder="https://oss-cn-beijing.aliyuncs.com"
                 value={draft.endpoint}
                 onChange={(event) => setDraft((current) => ({ ...current, endpoint: event.target.value }))}
+              />
+            </label>
+            <label className="grid gap-1 text-sm font-semibold md:col-span-2">
+              {t("admin.oss.publicEndpoint")}
+              <input
+                className="field font-mono"
+                placeholder="https://oss.mcmods.cn"
+                value={draft.publicEndpoint}
+                onChange={(event) => setDraft((current) => ({ ...current, publicEndpoint: event.target.value }))}
               />
             </label>
             <label className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 md:col-span-2">
@@ -2446,6 +3477,16 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
                 onChange={(event) => setDraft((current) => ({ ...current, accessKeySecret: event.target.value }))}
               />
             </label>
+            <label className="grid gap-1 text-sm font-semibold">
+              SecurityToken / STS Token
+              <input
+                className="field font-mono"
+                placeholder={draft.hasSecurityToken ? t("admin.oss.tokenPlaceholderSaved") : t("admin.oss.tokenPlaceholderEmpty")}
+                type="password"
+                value={draft.securityToken}
+                onChange={(event) => setDraft((current) => ({ ...current, securityToken: event.target.value }))}
+              />
+            </label>
           </div>
         </div>
       </div>
@@ -2466,6 +3507,18 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
             />
           </label>
           <label className="grid gap-1 text-sm font-semibold">
+            {t("admin.oss.downloadUrlMode")}
+            <select
+              className="field"
+              value={draft.downloadUrlMode}
+              onChange={(event) => setDraft((current) => ({ ...current, downloadUrlMode: event.target.value }))}
+            >
+              <option value="esa_private_origin">{t("admin.oss.downloadModeESAPrivateOrigin")}</option>
+              <option value="oss_presigned">{t("admin.oss.downloadModeOSSPresigned")}</option>
+            </select>
+            <span className="text-xs font-normal text-[var(--muted)]">{t("admin.oss.downloadUrlModeDesc")}</span>
+          </label>
+          <label className="grid gap-1 text-sm font-semibold">
             {t("admin.oss.temporaryUrlMinutes")}
             <input
               className="field"
@@ -2474,6 +3527,15 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
               value={draft.downloadUrlTtlMinutes}
               onChange={(event) => setDraft((current) => ({ ...current, downloadUrlTtlMinutes: Number(event.target.value) }))}
             />
+          </label>
+          <label className="grid gap-1 text-sm font-semibold md:col-span-2">
+            {t("admin.oss.allowedExtensions")}
+            <textarea
+              className="field min-h-28 font-mono"
+              value={draft.allowedExtensions.join(", ")}
+              onChange={(event) => setDraft((current) => ({ ...current, allowedExtensions: splitExtensionText(event.target.value) }))}
+            />
+            <span className="text-xs font-normal text-[var(--muted)]">{t("admin.oss.allowedExtensionsDesc")}</span>
           </label>
         </div>
         <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm text-[var(--muted)]">
@@ -2493,35 +3555,85 @@ function OSSFilesPanel({ token }: { token: string }) {
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState("project");
   const [source, setSource] = useState("admin");
+  const [allowedExtensions, setAllowedExtensions] = useState(emptyConfig.oss!.allowedExtensions);
   const [uploading, setUploading] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setFiles(await apiRequest<OSSFile[]>("/api/v1/admin/oss/files", {}, token));
     } catch (error) {
       setMessage(cleanError(error));
     }
-  }
+  }, [token]);
 
   useEffect(() => {
-    void load();
-  }, [token]);
+    const timer = window.setTimeout(() => {
+      void load();
+      void apiRequest<OSSConfig>("/api/v1/admin/config/oss", {}, token)
+        .then((config) => setAllowedExtensions(normalizeExtensionList(config.allowedExtensions)))
+        .catch(() => setAllowedExtensions(emptyConfig.oss!.allowedExtensions));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load, token]);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    data.set("category", category);
-    data.set("source", source);
+    const file = data.get("file");
+    if (!(file instanceof File)) {
+      setMessage(t("admin.oss.selectFile"));
+      return;
+    }
+    if (!isAllowedFileName(file.name, allowedExtensions)) {
+      setMessage(t("admin.oss.fileTypeNotAllowed"));
+      return;
+    }
     setUploading(true);
     setMessage("");
     try {
-      await apiUpload("/api/v1/admin/oss/upload", data, token);
+      const sha256 = await computeFileSHA256(file);
+      const ticket = await apiRequest<OSSDirectUploadTicket>(
+        "/api/v1/admin/oss/uploads/presign",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            originalName: file.name,
+            contentType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
+            sha256,
+            category,
+            source,
+          }),
+        },
+        token,
+      );
+      if (ticket.uploadRequired === false) {
+        setMessage(t("admin.oss.fileReused", { id: ticket.file?.id ?? ticket.objectKey }));
+      } else {
+        await uploadFileToOSS(ticket, file);
+        await apiRequest(
+          "/api/v1/admin/oss/uploads/complete",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              objectKey: ticket.objectKey,
+              originalName: ticket.originalName,
+              contentType: ticket.contentType,
+              sizeBytes: ticket.sizeBytes,
+              sha256: ticket.sha256,
+              category: ticket.category,
+              source: ticket.source,
+            }),
+          },
+          token,
+        );
+        setMessage(t("admin.oss.uploadSuccess"));
+      }
       form.reset();
-      setMessage(t("admin.oss.uploadSuccess"));
       await load();
     } catch (error) {
-      setMessage(cleanError(error));
+      setMessage(cleanOSSError(error));
     } finally {
       setUploading(false);
     }
@@ -2548,7 +3660,7 @@ function OSSFilesPanel({ token }: { token: string }) {
         <p className="text-sm text-[var(--muted)]">{t("admin.oss.filesDesc")}</p>
       </div>
       <form className="mb-4 grid gap-3 rounded-lg border border-[var(--line)] p-3 lg:grid-cols-[1fr_160px_160px_auto]" onSubmit={upload}>
-        <input className="field" name="file" required type="file" />
+        <input className="field" accept={allowedExtensions.join(",")} name="file" required type="file" />
         <input className="field" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="category" />
         <input className="field" value={source} onChange={(event) => setSource(event.target.value)} placeholder="source" />
         <button className="button-primary focus-ring" disabled={uploading} type="submit">
@@ -2573,7 +3685,9 @@ function OSSFilesPanel({ token }: { token: string }) {
               <tr key={file.objectKey}>
                 <td className="border-b border-[var(--line)] py-2">
                   <div className="font-semibold">{file.originalName || file.objectKey}</div>
+                  <div className="font-mono text-xs text-[var(--muted)]">ID: {file.id}</div>
                   <div className="max-w-xl truncate font-mono text-xs text-[var(--muted)]">{file.objectKey}</div>
+                  {file.sha256 ? <div className="max-w-xl truncate font-mono text-xs text-[var(--muted)]">SHA-256: {file.sha256}</div> : null}
                 </td>
                 <td className="border-b border-[var(--line)] py-2">{file.category}</td>
                 <td className="border-b border-[var(--line)] py-2">{formatBytes(file.sizeBytes)}</td>
@@ -2592,6 +3706,32 @@ function OSSFilesPanel({ token }: { token: string }) {
       </div>
     </section>
   );
+}
+
+async function uploadFileToOSS(ticket: OSSDirectUploadTicket, file: File) {
+  const headers = new Headers();
+  for (const [key, value] of Object.entries(ticket.headers ?? {})) {
+    if (key.toLowerCase() !== "host") {
+      headers.set(key, value);
+    }
+  }
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", ticket.contentType || file.type || "application/octet-stream");
+  }
+  let response: Response;
+  try {
+    response = await fetch(ticket.url, {
+      method: ticket.method || "PUT",
+      headers,
+      body: file,
+    });
+  } catch (error) {
+    throw new Error(cleanOSSError(error));
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(text || `OSS 直传失败（HTTP ${response.status}）`);
+  }
 }
 
 function OSSRowsPanel({ token, title, endpoint }: { token: string; title: string; endpoint: string }) {
@@ -2623,7 +3763,7 @@ function LogsPanel({ token, title, category }: { token: string; title: string; c
   });
   const displayTitle = logCategoryTitle(category, t) || title;
 
-  async function load() {
+  const load = useCallback(async () => {
     const params = new URLSearchParams({
       category,
       limit: String(limit),
@@ -2639,11 +3779,27 @@ function LogsPanel({ token, title, category }: { token: string; title: string; c
     } catch (error) {
       setMessage(cleanError(error));
     }
-  }
+  }, [category, from, level, limit, query, status, to, token]);
+
+  const loadInitial = useCallback(async () => {
+    const params = new URLSearchParams({
+      category,
+      limit: String(limit),
+    });
+    try {
+      setRows(await apiRequest<LogRow[]>(`/api/v1/admin/logs?${params.toString()}`, {}, token));
+      setMessage("");
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }, [category, limit, token]);
 
   useEffect(() => {
-    void load();
-  }, [category, token]);
+    const timer = window.setTimeout(() => {
+      void loadInitial();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadInitial]);
 
   useEffect(() => {
     apiRequest<LogRetentionConfig>("/api/v1/admin/logs/config", {}, token)
@@ -2919,7 +4075,10 @@ function ConfigLine({ label, value }: { label: string; value: string | number })
 }
 
 function InlineMessage({ text }: { text: string }) {
-  return <div className="mt-3 rounded-lg border border-[var(--line)] px-3 py-2 text-sm text-[var(--muted)]">{text}</div>;
+  useEffect(() => {
+    notifyAdminNotice(text);
+  }, [text]);
+  return null;
 }
 
 function EmptyState({ text }: { text: string }) {
@@ -2942,19 +4101,22 @@ function AdminGateMessage({ text }: { text: string }) {
   );
 }
 
-function PermissionDeniedDialog({ message, onClose }: { message: string; onClose: () => void }) {
+function AdminNoticeDialog({ notice, onClose }: { notice: AdminNotice | null; onClose: () => void }) {
   const { t } = useI18n();
 
-  if (!message) return null;
+  if (!notice?.message) return null;
+  const danger = notice.tone === "danger";
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4" role="alertdialog" aria-modal="true">
       <div className="surface w-full max-w-md rounded-lg p-6 text-center shadow-2xl">
-        <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-red-100 text-2xl font-black text-red-700">
+        <div className={`mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full text-2xl font-black ${
+          danger ? "bg-red-100 text-red-700" : "bg-[var(--accent-soft)] text-[var(--accent)]"
+        }`}>
           !
         </div>
-        <h2 className="text-xl font-bold">{t("admin.permissionDeniedTitle")}</h2>
-        <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{message}</p>
+        <h2 className="text-xl font-bold">{notice.title || t("admin.noticeTitle")}</h2>
+        <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{notice.message}</p>
         <button className="button-primary focus-ring mt-5 min-w-32" type="button" onClick={onClose} autoFocus>
           {t("common.close")}
         </button>
@@ -2972,6 +4134,8 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     users: t("admin.userList"),
     mail: t("admin.mail"),
     auth: t("admin.auth"),
+    markdown: t("admin.markdown.navTitle"),
+    nats: t("admin.nats.navTitle"),
     i18n: t("admin.i18n"),
     "oss-config": t("admin.panels.ossConfig"),
     "oss-files": t("admin.panels.ossFiles"),
@@ -2986,6 +4150,11 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "logs-api": t("admin.panels.logsApi"),
     "logs-file-upload": t("admin.panels.logsFileUpload"),
     "logs-ai": t("admin.panels.logsAi"),
+    "ai-providers": t("admin.panels.aiProviders"),
+    "ai-models": t("admin.panels.aiModels"),
+    "ai-task-models": t("admin.panels.aiTaskModels"),
+    "ai-costs": t("admin.panels.aiCosts"),
+    "ai-task-logs": t("admin.panels.aiTaskLogs"),
   };
   return titles[panel];
 }
@@ -2996,6 +4165,8 @@ function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, 
     permission: t("admin.permission"),
     oss: t("admin.nav.oss"),
     logs: t("admin.nav.logs"),
+    ai: t("admin.nav.ai"),
+    infrastructure: t("admin.nats.infrastructure"),
     users: t("admin.users"),
     system: t("admin.system"),
   };
@@ -3011,6 +4182,8 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     users: t("admin.usersDesc"),
     mail: t("admin.mailDesc"),
     auth: t("admin.authDesc"),
+    markdown: t("admin.markdown.navDesc"),
+    nats: t("admin.nats.navDescription"),
     i18n: t("admin.i18nDesc"),
     "oss-config": t("admin.nav.ossConfigDesc"),
     "oss-files": t("admin.nav.ossFilesDesc"),
@@ -3025,6 +4198,11 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "logs-api": t("admin.nav.logsApiDesc"),
     "logs-file-upload": t("admin.nav.logsFileDesc"),
     "logs-ai": t("admin.nav.logsAiDesc"),
+    "ai-providers": t("admin.nav.aiProvidersDesc"),
+    "ai-models": t("admin.nav.aiModelsDesc"),
+    "ai-task-models": t("admin.nav.aiTaskModelsDesc"),
+    "ai-costs": t("admin.nav.aiCostsDesc"),
+    "ai-task-logs": t("admin.nav.aiTaskLogsDesc"),
   };
   return descriptions[panel] ?? fallback;
 }
@@ -3061,14 +4239,6 @@ function formatDateTime(value?: string) {
   });
 }
 
-function formatBytes(value?: number) {
-  const bytes = Number(value ?? 0);
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
-
 function displayCell(value: unknown) {
   if (value === null || typeof value === "undefined") return "-";
   if (typeof value === "boolean") return value ? "true" : "false";
@@ -3092,21 +4262,6 @@ function logCategoryTitle(category: string, t: (key: string, params?: Record<str
   return titles[category] ?? category;
 }
 
-async function apiUpload(path: string, form: FormData, token: string) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-    body: form,
-  });
-  const envelope = (await response.json().catch(() => ({}))) as { data?: unknown; error?: string };
-  if (!response.ok) {
-    throw new ApiError(envelope.error ?? "Request failed", response.status);
-  }
-  return envelope.data;
-}
-
 function featureLabel(key: string) {
   const labels: Record<string, string> = {
     contentReview: "contentReview",
@@ -3118,6 +4273,85 @@ function featureLabel(key: string) {
     ai: "ai",
   };
   return labels[key] ?? key;
+}
+
+function cloneAIConfig(config: AIConfig): AIConfig {
+  return JSON.parse(JSON.stringify(config)) as AIConfig;
+}
+
+function normalizeAIProtocols(config: AIConfig): AIConfig {
+  const draft = cloneAIConfig(config);
+  draft.providers = draft.providers.map((provider) => ({
+    ...provider,
+    protocol: provider.protocol === "anthropic" ? "anthropic" : "openai-compatible",
+  }));
+  return draft;
+}
+
+function normalizeAIModelProviders(config: AIConfig): AIConfig {
+  const draft = normalizeAIProtocols(config);
+  const providerCodes = new Set(draft.providers.map((provider) => provider.code.trim()).filter(Boolean));
+  draft.models = draft.models.map((model) => ({
+    ...model,
+    provider: providerCodes.has(model.provider) ? model.provider : "",
+  }));
+  return draft;
+}
+
+async function saveAIConfig(
+  draft: AIConfig,
+  token: string,
+  setDraft: (config: AIConfig) => void,
+  setSaving: (saving: boolean) => void,
+  t: (key: string, params?: Record<string, string | number>) => string,
+) {
+  setSaving(true);
+  try {
+    const payload = normalizeAIProtocols(draft);
+    const saved = await apiRequest<AIConfig>("/api/v1/admin/ai/config", { method: "PUT", body: JSON.stringify(payload) }, token);
+    setDraft(normalizeAIProtocols(saved));
+    notifyAdminNotice(t("admin.ai.configSaved"));
+  } catch (error) {
+    notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+  } finally {
+    setSaving(false);
+  }
+}
+
+function setAIProvider(draft: AIConfig, setDraft: (config: AIConfig) => void, index: number, patch: Partial<AIProviderConfig>) {
+  setDraft({ ...draft, providers: draft.providers.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) });
+}
+
+function setAIModel(draft: AIConfig, setDraft: (config: AIConfig) => void, index: number, patch: Partial<AIModelConfig>) {
+  setDraft({ ...draft, models: draft.models.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) });
+}
+
+function setAITaskModel(draft: AIConfig, setDraft: (config: AIConfig) => void, index: number, patch: Partial<AITaskModelConfig>) {
+  setDraft({ ...draft, taskModels: draft.taskModels.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) });
+}
+
+function aiTaskTypeLabel(taskType: string, t: (key: string, params?: Record<string, string | number>) => string) {
+  const labels: Record<string, string> = {
+    [aiTranslationTaskTypes.permission]: t("admin.ai.permissionTranslationTask"),
+    [aiTranslationTaskTypes.i18n]: t("admin.ai.i18nTranslationTask"),
+  };
+  return labels[taskType] ?? taskType;
+}
+
+async function runAITranslationTask(token: string, taskType: string, payload: Record<string, unknown>) {
+  const created = await apiRequest<{ id: number; taskUid: string; status: string }>(
+    "/api/v1/admin/ai/tasks",
+    { method: "POST", body: JSON.stringify({ taskType, payload }) },
+    token,
+  );
+  const deadline = Date.now() + 180_000;
+  while (Date.now() < deadline) {
+    const task = await apiRequest<AITaskStatus>(`/api/v1/admin/ai/tasks/${created.id}`, {}, token);
+    if (task.status === "completed") return task.result ?? { items: [] };
+    if (task.status === "failed") throw new Error(task.error || "AI translation task failed");
+    await new Promise((resolve) => window.setTimeout(resolve, 800));
+  }
+  throw new Error("AI translation task timed out");
 }
 
 function normalizePermissionCatalog(catalog: PermissionCatalog): PermissionCatalog {
@@ -3255,7 +4489,7 @@ function withFallbackLocalizedText<T extends { name: string; description: string
 
 function buildNewPermissionPayload(code: string, nameInput: string, descriptionInput: string, preferredLocale: Locale) {
   const name = nameInput.trim() || code;
-  const description = descriptionInput.trim() || newPermissionDescription(preferredLocale);
+  const description = descriptionInput.trim() || newPermissionDescription();
   const detectedLocale = detectTextLocale(`${nameInput} ${descriptionInput}`.trim(), preferredLocale);
   return {
     code,
@@ -3272,7 +4506,7 @@ function detectTextLocale(text: string, preferredLocale: Locale): Locale {
   return preferredLocale || "en";
 }
 
-function newPermissionDescription(locale: Locale) {
+function newPermissionDescription() {
   return "New permission";
 }
 
@@ -3301,7 +4535,7 @@ function parsePermissionInput(value: string) {
   return Array.from(
     new Set(
       value
-        .split(/[\s,;锛岋紱]+/)
+        .split(/[\s,;，；]+/)
         .map((item) => item.trim())
         .filter(Boolean),
     ),
@@ -3315,7 +4549,7 @@ function permissionModule(code: string) {
 
 function permissionSuggestions(permissions: Permission[], input: string, selectedCodes: string[], locale: Locale) {
   const assigned = new Set(selectedCodes);
-  const keyword = input.split(/[\s,;锛岋紱]+/).at(-1)?.trim().toLowerCase() ?? "";
+  const keyword = input.split(/[\s,;，；]+/).at(-1)?.trim().toLowerCase() ?? "";
   return permissions
     .filter((permission) => {
       if (assigned.has(permission.code)) return false;
@@ -3333,7 +4567,19 @@ function cleanError(error: unknown) {
     return "";
   }
   if (message === "Failed to fetch") {
-    return "Backend is unavailable or the request failed";
+    return "后端不可用或请求失败";
+  }
+  return message;
+}
+
+function cleanOSSError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Request failed";
+  if (isPermissionError(error, message)) {
+    notifyPermissionDenied(message);
+    return "";
+  }
+  if (message === "Failed to fetch") {
+    return "OSS 直传请求失败。请检查阿里云 OSS Bucket 的 CORS 是否允许当前前端域名、PUT 方法以及 Content-Type / x-oss-forbid-overwrite 请求头。";
   }
   return message;
 }
@@ -3348,46 +4594,9 @@ function notifyPermissionDenied(message: string) {
   window.dispatchEvent(new CustomEvent("mcmods-permission-denied", { detail: { message } }));
 }
 
-function useStoredAuth() {
-  const snapshot = useSyncExternalStore(subscribeAuth, readStoredAuthText, () => "");
-  return useMemo(() => parseStoredAuth(snapshot), [snapshot]);
-}
-
-function subscribeAuth(onStoreChange: () => void) {
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener("mcmods-auth-change", onStoreChange);
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener("mcmods-auth-change", onStoreChange);
-  };
-}
-
-function readStoredAuthText() {
-  const token =
-    window.localStorage.getItem("mcmods-token") ??
-    window.localStorage.getItem("mcmods-admin-token") ??
-    "";
-  const savedUser =
-    window.localStorage.getItem("mcmods-user") ??
-    window.localStorage.getItem("mcmods-admin-user") ??
-    "";
-  return JSON.stringify({ token, savedUser });
-}
-
-function parseStoredAuth(snapshot: string): { snapshot: string; token: string; user: User | null } {
-  if (!snapshot) {
-    return { snapshot: "", token: "", user: null };
-  }
-  try {
-    const parsed = JSON.parse(snapshot) as { token: string; savedUser: string };
-    return {
-      snapshot,
-      token: parsed.token,
-      user: parsed.savedUser ? (JSON.parse(parsed.savedUser) as User) : null,
-    };
-  } catch {
-    return { snapshot, token: "", user: null };
-  }
+function notifyAdminNotice(message: string, title?: string, tone: "info" | "danger" = "info") {
+  if (typeof window === "undefined" || !message.trim()) return;
+  window.dispatchEvent(new CustomEvent("mcmods-admin-notice", { detail: { message, title, tone } }));
 }
 
 

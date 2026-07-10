@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "./_components/theme-provider";
+import { SiteShell } from "./_components/site-shell";
 import { I18nProvider } from "./_lib/i18n-provider";
 
 export const metadata: Metadata = {
@@ -17,7 +18,9 @@ export default function RootLayout({
     <html lang="zh-CN" className="h-full" suppressHydrationWarning>
       <body className="min-h-full">
         <ThemeProvider>
-          <I18nProvider>{children}</I18nProvider>
+          <I18nProvider>
+            <SiteShell>{children}</SiteShell>
+          </I18nProvider>
         </ThemeProvider>
       </body>
     </html>

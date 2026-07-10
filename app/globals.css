@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
+@import "highlight.js/styles/github-dark.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -122,4 +124,254 @@ a {
 .focus-ring:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 30%, transparent);
   outline-offset: 2px;
+}
+
+.markdown-preview-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.markdown-preview {
+  line-height: 1.75;
+}
+
+.markdown-preview :where(h1, h2, h3, h4, h5, h6) {
+  font-weight: 750;
+  line-height: 1.25;
+  scroll-margin-top: 6rem;
+}
+
+.markdown-preview h1 {
+  font-size: 1.875rem;
+}
+
+.markdown-preview h2 {
+  border-bottom: 1px solid var(--line);
+  font-size: 1.5rem;
+  padding-bottom: 0.35rem;
+}
+
+.markdown-preview h3 {
+  font-size: 1.25rem;
+}
+
+.markdown-preview :where(ul, ol) {
+  padding-left: 1.5rem;
+}
+
+.markdown-preview ul {
+  list-style: disc;
+}
+
+.markdown-preview ol {
+  list-style: decimal;
+}
+
+.markdown-preview li + li {
+  margin-top: 0.25rem;
+}
+
+.markdown-preview :where(pre, table) {
+  overflow: auto;
+}
+
+.markdown-preview :not(pre) > code {
+  border-radius: 6px;
+  background: var(--panel-subtle);
+  padding: 0.15rem 0.35rem;
+  font-size: 0.92em;
+}
+
+.markdown-codeblock {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0d1117;
+  box-shadow: 0 12px 30px color-mix(in srgb, #000 14%, transparent);
+}
+
+.markdown-codeblock figcaption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, white 10%, transparent);
+  background: #161b22;
+  color: #c9d1d9;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.55rem 0.75rem;
+  text-transform: uppercase;
+}
+
+.markdown-codeblock button {
+  border: 1px solid color-mix(in srgb, white 18%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, white 8%, transparent);
+  color: #f0f6fc;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0.25rem 0.55rem;
+}
+
+.markdown-codeblock pre {
+  margin: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.markdown-codeblock code {
+  color: #e6edf3;
+  font-size: 0.9rem;
+}
+
+.markdown-codeblock .hljs {
+  background: transparent;
+  color: #e6edf3;
+}
+
+.markdown-codeblock :where(.hljs-keyword, .hljs-selector-tag, .hljs-built_in) {
+  color: #ff7b72;
+}
+
+.markdown-codeblock :where(.hljs-string, .hljs-attr, .hljs-symbol) {
+  color: #a5d6ff;
+}
+
+.markdown-codeblock :where(.hljs-title, .hljs-name, .hljs-function) {
+  color: #d2a8ff;
+}
+
+.markdown-codeblock :where(.hljs-number, .hljs-literal, .hljs-variable) {
+  color: #79c0ff;
+}
+
+.markdown-codeblock :where(.hljs-comment, .hljs-quote) {
+  color: #8b949e;
+}
+
+.markdown-preview blockquote {
+  border-left: 4px solid var(--line);
+  background: var(--panel-subtle);
+  padding: 0.8rem 1rem;
+  color: var(--muted);
+}
+
+.markdown-preview .markdown-alert {
+  border-left-color: var(--accent);
+  color: var(--foreground);
+}
+
+.markdown-preview .markdown-alert-warning,
+.markdown-preview .markdown-alert-danger {
+  border-left-color: var(--warning);
+}
+
+.markdown-preview .plantuml-preview {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-subtle);
+  padding: 1rem;
+}
+
+.markdown-preview .markdown-video-embed-group {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+}
+
+.markdown-preview .markdown-embed {
+  display: block;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-subtle);
+}
+
+.markdown-preview .markdown-embed iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+}
+
+.markdown-preview .markdown-video-embed iframe {
+  aspect-ratio: 16 / 9;
+  height: auto;
+}
+
+.markdown-preview .markdown-geogebra-embed {
+  margin: 1rem 0;
+}
+
+.markdown-preview .markdown-geogebra-embed iframe {
+  aspect-ratio: 16 / 9;
+  height: auto;
+}
+
+.markdown-preview .drawio-preview {
+  margin: 1rem 0;
+  overflow: auto;
+}
+
+.markdown-preview .drawio-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-preview .drawio-preview iframe {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.markdown-preview .drawio-preview-loading {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.markdown-preview .markdown-details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-subtle);
+  padding: 0.85rem 1rem;
+}
+
+.markdown-preview .markdown-details-summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.markdown-preview abbr {
+  cursor: help;
+  text-decoration: underline dotted;
+}
+
+.markdown-preview .mc-icon-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.18rem;
+  line-height: 1;
+  white-space: nowrap;
+  vertical-align: -0.12em;
+}
+
+.markdown-preview .mc-icon-group {
+  margin-inline: 0.08rem;
+}
+
+.markdown-preview .mc-icon-stack {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.04rem;
+}
+
+.markdown-preview .mc-icon-image {
+  width: 1.1em;
+  height: 1.1em;
+  image-rendering: pixelated;
 }
