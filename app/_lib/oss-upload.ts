@@ -9,8 +9,11 @@ export type OSSFileRecord = {
   category: string;
   source: string;
   originalName: string;
+  sourceOriginalName?: string;
   contentType: string;
   sizeBytes: number;
+  sourceSizeBytes?: number;
+  converted?: boolean;
   sha256: string;
   status: string;
   scanStatus: string;
@@ -136,8 +139,11 @@ function normalizeUploadResult(record: OSSFileRecord | undefined, ticket: OSSDir
     category: ticket.category,
     source: ticket.source,
     originalName: ticket.originalName,
+    sourceOriginalName: ticket.originalName,
     contentType: ticket.contentType,
     sizeBytes: ticket.sizeBytes,
+    sourceSizeBytes: ticket.sizeBytes,
+    converted: false,
     sha256: ticket.sha256,
     status: "active",
     scanStatus: "pending",

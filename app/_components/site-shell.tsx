@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { apiRequest } from "../_lib/api";
 import { canAccessAdmin, type AuthUser, useAuthSnapshot } from "../_lib/auth";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { useTheme } from "./theme-provider";
@@ -64,10 +66,58 @@ export function SiteShell({ children }: SiteShellProps) {
 function SiteHeader() {
   const { t, locale, setLocale } = useI18n();
   const { toggleTheme } = useTheme();
-  const { user } = useAuthSnapshot();
+  const { token, user } = useAuthSnapshot();
+  const [unread, setUnread] = useState(0);
+  const [backendAvailable, setBackendAvailable] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const checkBackend = () => {
+      void apiRequest<{ status: string }>("/health")
+        .then(() => {
+          if (!cancelled) setBackendAvailable(true);
+        })
+        .catch(() => {
+          if (!cancelled) setBackendAvailable(false);
+        });
+    };
+    checkBackend();
+    const timer = window.setInterval(checkBackend, 10_000);
+    window.addEventListener("online", checkBackend);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("online", checkBackend);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    const load = () => {
+      void apiRequest<{ total: number }>("/api/v1/notifications/unread", {}, token)
+        .then((result) => {
+          if (!cancelled) setUnread(result.total);
+        })
+        .catch(() => undefined);
+    };
+    load();
+    const timer = window.setInterval(load, 20_000);
+    window.addEventListener("mcmods-unread-change", load);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("mcmods-unread-change", load);
+    };
+  }, [token]);
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--panel)_94%,transparent)] backdrop-blur">
+      {!backendAvailable ? (
+        <div className="bg-red-700 px-4 py-2 text-center text-sm font-bold text-white" role="alert">
+          {t("site.backendUnavailable")}
+        </div>
+      ) : null}
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
         <Link className="flex shrink-0 items-center gap-3" href="/" aria-label={t("common.home")}>
           <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-black text-white">M</span>
@@ -104,11 +154,14 @@ function SiteHeader() {
           {user ? (
             <>
               <Link
-                className="focus-ring grid h-10 w-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--panel-subtle)] text-sm font-black text-[var(--accent)]"
-                href="/user"
+                className="focus-ring grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-[var(--line)] bg-[var(--panel-subtle)] text-sm font-black text-[var(--accent)]"
+                href={`/user/${user.id}`}
                 title={user.displayName || user.username}
               >
-                {avatarText(user)}
+                {user.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img alt="" className="h-full w-full object-cover" src={user.avatarUrl} />
+                ) : avatarText(user)}
               </Link>
               <Link
                 className="focus-ring relative grid h-10 min-w-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--panel)] px-3 text-sm font-bold hover:border-[var(--accent)]"
@@ -116,6 +169,7 @@ function SiteHeader() {
                 title={t("site.messageCenter")}
               >
                 {t("common.messages")}
+                {token && unread > 0 ? <span className="ml-1 rounded-full bg-[var(--red)] px-1.5 py-0.5 text-[10px] leading-none text-white">{unread > 99 ? "99+" : unread}</span> : null}
               </Link>
             </>
           ) : (

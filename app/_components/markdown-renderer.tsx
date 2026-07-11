@@ -3,7 +3,8 @@
 /* eslint-disable @next/next/no-img-element */
 import GithubSlugger from "github-slugger";
 import plantumlEncoder from "plantuml-encoder";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { isValidElement, ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
@@ -13,9 +14,11 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { visit } from "unist-util-visit";
 import type { PluggableList } from "unified";
+import { apiRequest } from "../_lib/api";
 import { DRAWIO_ORIGIN, parseDrawioMessage } from "../_lib/drawio";
 import { useI18n } from "../_lib/i18n-provider";
 import { MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
+import { IconFont } from "./iconfont";
 
 type MarkdownRendererProps = {
   markdown: string;
@@ -38,6 +41,14 @@ type Root = {
 
 type Parent = {
   children: HastNode[];
+  tagName?: string;
+};
+
+type SourcePositionNode = {
+  position?: {
+    start?: { line?: number };
+    end?: { line?: number };
+  };
 };
 
 type Text = {
@@ -80,13 +91,17 @@ const visitMarkdownTree = visit as unknown as (
 const iconSyntaxPattern = /\[icon:([a-zA-Z0-9_-]+)(?:=([^\],]+))?(?:,([^\]]+))?\]/g;
 const videoSyntaxPattern = /\[(?:vedio|video):([^\]]+)]/gi;
 const geogebraSyntaxPattern = /\[GeoGebra:([^\]]+)]/gi;
-const iconMarkerStart = "\uE000MCICON:";
-const videoMarkerStart = "\uE000MCVIDEO:";
-const geogebraMarkerStart = "\uE000MCGEOGEBRA:";
-const iconMarkerEnd = "\uE001";
+const timeSyntaxPattern = /\[time:utc[+-]\d{1,2}(?::?\d{2})?;\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}]/gi;
+const iconMarkerStart = "\uE000MCICON_";
+const videoMarkerStart = "\uE000MCVIDEO_";
+const geogebraMarkerStart = "\uE000MCGEOGEBRA_";
+const timeMarkerStart = "\uE000MCTIME_";
+const customMarkerEnd = "\uE001";
+let mainlandChinaRequest: Promise<boolean> | null = null;
 
 export function MarkdownRenderer({ markdown, config, emptyText }: MarkdownRendererProps) {
   const { t } = useI18n();
+  const [isMainlandChina, setIsMainlandChina] = useState(true);
   const normalized = normalizeMarkdownConfig(config);
   const source = normalized.expandTabs ? markdown.replaceAll("\t", " ".repeat(normalized.tabSize)) : markdown;
   const abbreviations = normalized.abbreviations ? extractAbbreviations(source) : new Map<string, string>();
@@ -99,10 +114,28 @@ export function MarkdownRenderer({ markdown, config, emptyText }: MarkdownRender
     normalized.katex ? remarkMath : null,
   ].filter(Boolean) as PluggableList;
   const rehypePlugins = [
-    normalized.katex ? rehypeKatex : null,
+    normalized.katex ? [rehypeKatex, { output: "mathml" }] : null,
     normalized.codeHighlight ? rehypeHighlight : null,
-    () => rehypeMcmodsExtensions(normalized, abbreviations),
+    () => rehypeMcmodsExtensions(normalized, abbreviations, isMainlandChina),
   ].filter(Boolean) as PluggableList;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!mainlandChinaRequest) {
+      mainlandChinaRequest = apiRequest<{ isMainlandChina: boolean }>("/api/v1/location")
+        .then((location) => location.isMainlandChina)
+        .catch(() => {
+          mainlandChinaRequest = null;
+          return true;
+        });
+    }
+    void mainlandChinaRequest.then((value) => {
+      if (!cancelled) setIsMainlandChina(value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!source.trim()) return <p className="text-[var(--muted)]">{emptyText}</p>;
 
@@ -139,6 +172,17 @@ function MarkdownBody({
   return (
     <ReactMarkdown
       components={{
+        h1: ({ node, ...props }) => <h1 {...props} {...sourceLineAttributes(node)} />,
+        h2: ({ node, ...props }) => <h2 {...props} {...sourceLineAttributes(node)} />,
+        h3: ({ node, ...props }) => <h3 {...props} {...sourceLineAttributes(node)} />,
+        h4: ({ node, ...props }) => <h4 {...props} {...sourceLineAttributes(node)} />,
+        h5: ({ node, ...props }) => <h5 {...props} {...sourceLineAttributes(node)} />,
+        h6: ({ node, ...props }) => <h6 {...props} {...sourceLineAttributes(node)} />,
+        p: ({ node, ...props }) => <p {...props} {...sourceLineAttributes(node)} />,
+        ul: ({ node, ...props }) => <ul {...props} {...sourceLineAttributes(node)} />,
+        ol: ({ node, ...props }) => <ol {...props} {...sourceLineAttributes(node)} />,
+        li: ({ node, ...props }) => <li {...props} {...sourceLineAttributes(node)} />,
+        blockquote: ({ node, ...props }) => <blockquote {...props} {...sourceLineAttributes(node)} />,
         a: ({ href, children }) =>
           isSafeHref(href) ? (
             <a
@@ -152,17 +196,28 @@ function MarkdownBody({
           ) : (
             <span>{children}</span>
           ),
-        table: ({ children }) => <table className="w-full min-w-96 text-left text-sm">{children}</table>,
+        table: ({ node, children }) => <table {...sourceLineAttributes(node)} className="w-full min-w-96 text-left text-sm">{children}</table>,
         th: ({ children }) => <th className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2">{children}</th>,
         td: ({ children }) => <td className="border-b border-[var(--line)] px-3 py-2">{children}</td>,
         pre: ({ children }) => <>{children}</>,
-        code: ({ className, children }) => {
+        time: ({ dateTime, className, children }) =>
+          String(className ?? "").includes("markdown-local-time") && dateTime ? (
+            <LocalizedMarkdownTime fallback={reactNodeToText(children)} instant={dateTime} />
+          ) : (
+            <time className={className} dateTime={dateTime}>{children}</time>
+          ),
+        span: ({ className, children }) =>
+          String(className ?? "").includes("markdown-geogebra-embed") ? (
+            <GeoGebraZoomEmbed>{children}</GeoGebraZoomEmbed>
+          ) : <span className={className}>{children}</span>,
+        code: ({ node, className, children }) => {
           const language = /language-(\S+)/.exec(className ?? "")?.[1] ?? "";
           const code = reactNodeToText(children).replace(/\n$/, "");
           if (!language) return <code>{children}</code>;
-          if (language.toLowerCase() === "drawio") return <DrawioDiagramPreview xml={code} />;
+          const sourcePosition = sourceLineAttributes(node);
+          if (language.toLowerCase() === "drawio") return <DrawioDiagramPreview sourcePosition={sourcePosition} xml={code} />;
           return (
-            <CopyableCodeBlock code={code} language={language}>
+            <CopyableCodeBlock code={code} language={language} sourcePosition={sourcePosition}>
               {children}
             </CopyableCodeBlock>
           );
@@ -195,7 +250,16 @@ function MarkdownBody({
   );
 }
 
-function DrawioDiagramPreview({ xml }: { xml: string }) {
+function sourceLineAttributes(node?: SourcePositionNode) {
+  const startLine = node?.position?.start?.line;
+  const endLine = node?.position?.end?.line;
+  return {
+    ...(typeof startLine === "number" ? { "data-source-start-line": startLine } : {}),
+    ...(typeof endLine === "number" ? { "data-source-end-line": endLine } : {}),
+  };
+}
+
+function DrawioDiagramPreview({ xml, sourcePosition }: { xml: string; sourcePosition: ReturnType<typeof sourceLineAttributes> }) {
   const { t } = useI18n();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [imageSrc, setImageSrc] = useState("");
@@ -227,7 +291,7 @@ function DrawioDiagramPreview({ xml }: { xml: string }) {
   }, [xml]);
 
   return (
-    <figure className="drawio-preview">
+    <figure {...sourcePosition} className="drawio-preview">
       {imageSrc ? (
         <img alt={t("tools.playground.diagramPreviewAlt")} src={imageSrc} />
       ) : (
@@ -236,6 +300,83 @@ function DrawioDiagramPreview({ xml }: { xml: string }) {
       <iframe key={xml} ref={iframeRef} src={drawioPreviewUrl()} title="draw.io diagram exporter" />
     </figure>
   );
+}
+
+function GeoGebraZoomEmbed({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
+  const [expandedViewport, setExpandedViewport] = useState({ height: 900, width: 1600 });
+  const src = findIframeSource(children);
+
+  useEffect(() => {
+    if (!expanded) return;
+    const previousOverflow = document.body.style.overflow;
+    const updateViewport = () => setExpandedViewport(geoGebraViewport());
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExpanded(false);
+    };
+    updateViewport();
+    document.body.style.overflow = "hidden";
+    window.addEventListener("resize", updateViewport);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("resize", updateViewport);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [expanded]);
+
+  return (
+    <>
+      <span className="markdown-embed markdown-geogebra-embed">
+        {children}
+        {src ? <button className="button-secondary focus-ring geogebra-expand-button" title={t("tools.playground.expandGeoGebra")} type="button" onClick={() => { setExpandedViewport(geoGebraViewport()); setExpanded(true); }}><IconFont name="expand" fallback={t("tools.playground.expandGeoGebra")} /></button> : null}
+      </span>
+      {expanded && src ? createPortal(
+        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={t("tools.playground.geogebraExpanded")} onMouseDown={() => setExpanded(false)}>
+          <section className="flex h-[min(92vh,1200px)] w-full flex-col overflow-hidden rounded-lg bg-[var(--panel)] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3"><h2 className="font-bold">{t("tools.playground.geogebraExpanded")}</h2><button className="button-secondary focus-ring" type="button" onClick={() => setExpanded(false)}>{t("common.close")}</button></header>
+            <iframe className="min-h-0 w-full flex-1 border-0" allowFullScreen src={geoGebraSourceForViewport(src, expandedViewport)} title={t("tools.playground.geogebraExpanded")} />
+          </section>
+        </div>,
+        document.body,
+      ) : null}
+    </>
+  );
+}
+
+function geoGebraViewport() {
+  if (typeof window === "undefined") return { height: 900, width: 1600 };
+  return {
+    height: Math.max(540, Math.floor(window.innerHeight * 0.88) - 72),
+    width: Math.max(960, Math.floor(window.innerWidth - 48)),
+  };
+}
+
+function geoGebraSourceForViewport(src: string, viewport: { height: number; width: number }) {
+  const interactiveSource = src
+    .replace(/\/width\/\d+\/height\/\d+/, `/width/${viewport.width}/height/${viewport.height}`)
+    .replace("/rc/false", "/rc/true")
+    .replace("/sdz/false", "/sdz/true")
+    .replace(/\/at\/[^/?#]+/, "/at/preferred");
+  if (interactiveSource.includes("/szb/")) {
+    return interactiveSource.replace(/\/szb\/(?:true|false)/, "/szb/true");
+  }
+  return interactiveSource.replace("/smb/", "/szb/true/smb/");
+}
+
+function findIframeSource(node: ReactNode): string {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const src = findIframeSource(child);
+      if (src) return src;
+    }
+    return "";
+  }
+  if (!isValidElement(node)) return "";
+  const props = node.props as { children?: ReactNode; src?: unknown };
+  if (node.type === "iframe" && typeof props.src === "string") return props.src;
+  return findIframeSource(props.children);
 }
 
 function drawioPreviewUrl() {
@@ -260,7 +401,7 @@ function drawioExportToImageSrc(data: string) {
   return trimmed;
 }
 
-function CopyableCodeBlock({ children, code, language }: { children: ReactNode; code: string; language: string }) {
+function CopyableCodeBlock({ children, code, language, sourcePosition }: { children: ReactNode; code: string; language: string; sourcePosition: ReturnType<typeof sourceLineAttributes> }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
@@ -271,7 +412,7 @@ function CopyableCodeBlock({ children, code, language }: { children: ReactNode; 
   }
 
   return (
-    <figure className="markdown-codeblock">
+    <figure {...sourcePosition} className="markdown-codeblock">
       <figcaption>
         <span>{language}</span>
         <button className="focus-ring" type="button" onClick={copyCode}>
@@ -314,7 +455,7 @@ function remarkDetailsDirective() {
   };
 }
 
-function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: Map<string, string>) {
+function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: Map<string, string>, isMainlandChina: boolean) {
   return (tree: Root) => {
     const slugger = new GithubSlugger();
 
@@ -337,7 +478,8 @@ function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: M
     visitTree(tree, "text", (node, index, parent) => {
       if (node.type !== "text") return;
       if (!parent || typeof index !== "number") return;
-      const replacements = splitTextNode(node.value, config, abbreviations);
+      if (["code", "pre", "annotation", "script", "style"].includes(parent.tagName ?? "")) return;
+      const replacements = splitTextNode(node.value, config, abbreviations, isMainlandChina);
       if (replacements.length > 1 || replacements[0] !== node) {
         parent.children.splice(index, 1, ...replacements);
       }
@@ -345,18 +487,21 @@ function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: M
   };
 }
 
-function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviations: Map<string, string>) {
+function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviations: Map<string, string>, isMainlandChina: boolean) {
   const nodes: Array<Text | Element> = [];
   const tokens = Array.from(abbreviations.keys()).sort((a, b) => b.length - a.length).map(escapeRegExp);
-  const protectedIconPattern = `${escapeRegExp(iconMarkerStart)}([^${iconMarkerEnd}]+)${escapeRegExp(iconMarkerEnd)}`;
-  const protectedVideoPattern = `${escapeRegExp(videoMarkerStart)}([^${iconMarkerEnd}]+)${escapeRegExp(iconMarkerEnd)}`;
-  const protectedGeogebraPattern = `${escapeRegExp(geogebraMarkerStart)}([^${iconMarkerEnd}]+)${escapeRegExp(iconMarkerEnd)}`;
+  const protectedIconPattern = `${escapeRegExp(iconMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
+  const protectedVideoPattern = `${escapeRegExp(videoMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
+  const protectedGeogebraPattern = `${escapeRegExp(geogebraMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
+  const protectedTimePattern = `${escapeRegExp(timeMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
   const iconPattern = String.raw`\[icon:([a-zA-Z0-9_-]+)(?:=([^\],]+))?(?:,([^\]]+))?\]`;
+  const videoPattern = String.raw`\[(?:vedio|video):([^\]]+)\]`;
+  const geogebraPattern = String.raw`\[[Gg]eo[Gg]ebra:([^\]]+)\]`;
   const superscriptPattern = config.superscript ? String.raw`\^([^\^\s][^\^]*?)\^` : String.raw`(?!)`;
   const subscriptPattern = config.subscript ? String.raw`~([^~\s][^~]*?)~` : String.raw`(?!)`;
   const abbrPattern = tokens.length > 0 ? String.raw`\b(${tokens.join("|")})\b` : String.raw`(?!)`;
   const matcher = new RegExp(
-    `${protectedIconPattern}|${protectedVideoPattern}|${protectedGeogebraPattern}|${iconPattern}|${superscriptPattern}|${subscriptPattern}|${abbrPattern}`,
+    `${protectedIconPattern}|${protectedVideoPattern}|${protectedGeogebraPattern}|${protectedTimePattern}|${iconPattern}|${videoPattern}|${geogebraPattern}|${superscriptPattern}|${subscriptPattern}|${abbrPattern}`,
     "g",
   );
   let lastIndex = 0;
@@ -369,21 +514,30 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
       nodes.push(icon ? createIconNode(icon.name, icon.value, icon.unit) : { type: "text", value: token });
     } else if (match[2]) {
       const token = decodeURIComponent(match[2]);
-      const video = createVideoEmbedNode(token);
+      const video = createVideoEmbedNode(token, isMainlandChina);
       nodes.push(video ?? { type: "text", value: `[vedio:${token}]` });
     } else if (match[3]) {
       const token = decodeURIComponent(match[3]);
       const geogebra = createGeoGebraEmbedNode(token);
       nodes.push(geogebra ?? { type: "text", value: `[GeoGebra:${token}]` });
-    } else if (match[4]) nodes.push(createIconNode(match[4], match[5], match[6]));
-    else if (match[7]) nodes.push({ type: "element", tagName: "sup", properties: {}, children: [{ type: "text", value: match[7] }] });
-    else if (match[8]) nodes.push({ type: "element", tagName: "sub", properties: {}, children: [{ type: "text", value: match[8] }] });
-    else if (match[9]) {
+    } else if (match[4]) {
+      const token = decodeURIComponent(match[4]);
+      nodes.push(createTimeNode(token) ?? { type: "text", value: token });
+    } else if (match[5]) nodes.push(createIconNode(match[5], match[6], match[7]));
+    else if (match[8]) {
+      const video = createVideoEmbedNode(match[8], isMainlandChina);
+      nodes.push(video ?? { type: "text", value: match[0] });
+    } else if (match[9]) {
+      const geogebra = createGeoGebraEmbedNode(match[9]);
+      nodes.push(geogebra ?? { type: "text", value: match[0] });
+    } else if (match[10]) nodes.push({ type: "element", tagName: "sup", properties: {}, children: [{ type: "text", value: match[10] }] });
+    else if (match[11]) nodes.push({ type: "element", tagName: "sub", properties: {}, children: [{ type: "text", value: match[11] }] });
+    else if (match[12]) {
       nodes.push({
         type: "element",
         tagName: "abbr",
-        properties: { title: abbreviations.get(match[9]) ?? "" },
-        children: [{ type: "text", value: match[9] }],
+        properties: { title: abbreviations.get(match[12]) ?? "" },
+        children: [{ type: "text", value: match[12] }],
       });
     }
     lastIndex = matcher.lastIndex;
@@ -394,9 +548,57 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
 
 function protectCustomSyntax(markdown: string) {
   return markdown
-    .replace(iconSyntaxPattern, (token) => `${iconMarkerStart}${encodeURIComponent(token)}${iconMarkerEnd}`)
-    .replace(videoSyntaxPattern, (_token, payload: string) => `${videoMarkerStart}${encodeURIComponent(payload)}${iconMarkerEnd}`)
-    .replace(geogebraSyntaxPattern, (_token, payload: string) => `${geogebraMarkerStart}${encodeURIComponent(payload)}${iconMarkerEnd}`);
+    .replace(iconSyntaxPattern, (token) => `${iconMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
+    .replace(videoSyntaxPattern, (_token, payload: string) => `${videoMarkerStart}${encodeURIComponent(payload)}${customMarkerEnd}`)
+    .replace(geogebraSyntaxPattern, (_token, payload: string) => `${geogebraMarkerStart}${encodeURIComponent(payload)}${customMarkerEnd}`)
+    .replace(timeSyntaxPattern, (token) => `${timeMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`);
+}
+
+function createTimeNode(token: string): Element | null {
+  const match = /^\[time:utc([+-])(\d{1,2})(?::?(\d{2}))?;(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})]$/i.exec(token);
+  if (!match) return null;
+  const [, sign, hours, minutes = "0", year, month, day, hour, minute, second] = match;
+  const offsetMinutes = (Number(hours) * 60 + Number(minutes)) * (sign === "+" ? 1 : -1);
+  if (
+    Number(hours) > 23 || Number(minutes) > 59 || Number(month) < 1 || Number(month) > 12 ||
+    Number(day) < 1 || Number(day) > 31 || Number(hour) > 23 || Number(minute) > 59 || Number(second) > 59
+  ) return null;
+  const wallClock = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second)));
+  if (
+    wallClock.getUTCFullYear() !== Number(year) || wallClock.getUTCMonth() !== Number(month) - 1 ||
+    wallClock.getUTCDate() !== Number(day) || wallClock.getUTCHours() !== Number(hour) ||
+    wallClock.getUTCMinutes() !== Number(minute) || wallClock.getUTCSeconds() !== Number(second)
+  ) return null;
+  const instant = new Date(wallClock.getTime() - offsetMinutes * 60_000);
+  if (Number.isNaN(instant.getTime())) return null;
+  return {
+    type: "element",
+    tagName: "time",
+    properties: { className: ["markdown-local-time"], dateTime: instant.toISOString(), title: token },
+    children: [{ type: "text", value: `${year}-${month}-${day} ${hour}:${minute}:${second} UTC${sign}${hours}${minutes === "0" ? "" : `:${minutes}`}` }],
+  };
+}
+
+function LocalizedMarkdownTime({ fallback, instant }: { fallback: string; instant: string }) {
+  const text = useSyncExternalStore(
+    () => () => undefined,
+    () => {
+    const date = new Date(instant);
+      if (Number.isNaN(date.getTime())) return fallback;
+      return new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZoneName: "short",
+      hour12: false,
+      }).format(date);
+    },
+    () => fallback,
+  );
+  return <time className="markdown-local-time" dateTime={instant} title={fallback}>{text}</time>;
 }
 
 function parseIconSyntax(token: string) {
@@ -405,14 +607,16 @@ function parseIconSyntax(token: string) {
   return { name: match[1], value: match[2], unit: match[3] };
 }
 
-function createVideoEmbedNode(payload: string): Element | null {
+function createVideoEmbedNode(payload: string, isMainlandChina: boolean): Element | null {
   const embeds = parseVideoEmbeds(payload);
   if (embeds.length === 0) return null;
+  const preferredProvider = isMainlandChina ? "bilibili" : "youtube";
+  const embed = embeds.find((item) => item.provider === preferredProvider) ?? embeds[0];
   return {
     type: "element",
     tagName: "span",
     properties: { className: ["markdown-video-embed-group"] },
-    children: embeds.map((embed) => ({
+    children: [{
       type: "element",
       tagName: "span",
       properties: { className: ["markdown-embed", "markdown-video-embed"] },
@@ -431,7 +635,7 @@ function createVideoEmbedNode(payload: string): Element | null {
           children: [],
         },
       ],
-    })),
+    }],
   };
 }
 
@@ -446,16 +650,16 @@ function parseVideoEmbeds(payload: string) {
         const id = extractBilibiliID(pair.value);
         if (!id) return null;
         const query = id.toLowerCase().startsWith("av") ? `aid=${encodeURIComponent(id.slice(2))}` : `bvid=${encodeURIComponent(id)}`;
-        return { src: `https://player.bilibili.com/player.html?${query}&page=1&high_quality=1&autoplay=0`, title: `Bilibili ${id}` };
+        return { provider, src: `https://player.bilibili.com/player.html?${query}&page=1&high_quality=1&autoplay=0`, title: `Bilibili ${id}` };
       }
       if (provider === "youtube") {
         const id = extractYouTubeID(pair.value);
         if (!id) return null;
-        return { src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}`, title: `YouTube ${id}` };
+        return { provider, src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}`, title: `YouTube ${id}` };
       }
       return null;
     })
-    .filter((embed): embed is { src: string; title: string } => Boolean(embed));
+    .filter((embed): embed is { provider: string; src: string; title: string } => Boolean(embed));
 }
 
 function parseProviderPair(part: string) {

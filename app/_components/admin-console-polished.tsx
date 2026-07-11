@@ -15,11 +15,14 @@ type PanelId =
   | "roles"
   | "user-roles"
   | "permission-list"
+  | "role-tracks"
   | "users"
+  | "notifications"
   | "mail"
   | "auth"
   | "i18n"
   | "markdown"
+  | "profile-settings"
   | "nats"
   | "oss-config"
   | "oss-files"
@@ -49,6 +52,32 @@ type User = {
   roles: string[];
   permissions: string[];
   createdAt?: string;
+  lastLoginAt?: string;
+};
+
+type AdminUserDetails = {
+  user: User & { emailVerified: boolean };
+  country: string;
+  timezone: string;
+  primaryLanguage: string;
+  secondaryLanguage: string;
+  registrationIp: string;
+  registrationCountryCode: string;
+  registrationCity: string;
+  oauthProviders: string[];
+  lastLogin?: {
+    at: string;
+    ip: string;
+    countryCode: string;
+    city: string;
+    userAgent: string;
+  };
+  rootPermissions: Array<{
+    code: string;
+    allow: boolean;
+    priority: number;
+    source: string;
+  }>;
 };
 
 type DashboardData = {
@@ -71,6 +100,7 @@ type AdminConfig = {
   oauth: OAuthConfig;
   mail: MailConfig;
   markdown: MarkdownRendererConfig;
+  profile: { signatureMaxBytes: number };
   oss?: OSSConfig;
   ai?: AIConfig;
   permissions: Record<string, string | number | boolean>;
@@ -173,6 +203,7 @@ type AITranslationResult = {
 const aiTranslationTaskTypes = {
   permission: "permission_translation_completion",
   i18n: "i18n_translation_completion",
+  notification: "notification_translation_completion",
 } as const;
 
 type AIQuotaConfig = {
@@ -218,8 +249,11 @@ type OSSFile = {
   category: string;
   source: string;
   originalName: string;
+  sourceOriginalName?: string;
   contentType: string;
   sizeBytes: number;
+  sourceSizeBytes?: number;
+  converted?: boolean;
   sha256: string;
   scanStatus: string;
   status: string;
@@ -235,8 +269,11 @@ type OSSDirectUploadTicket = {
   category: string;
   source: string;
   originalName: string;
+  sourceOriginalName?: string;
   contentType: string;
   sizeBytes: number;
+  sourceSizeBytes?: number;
+  converted?: boolean;
   sha256: string;
   uploadRequired?: boolean;
   file?: OSSFile;
@@ -329,6 +366,7 @@ const adminNavGroups: Array<{
       { id: "roles", label: "", description: "" },
       { id: "user-roles", label: "", description: "" },
       { id: "permission-list", label: "", description: "" },
+      { id: "role-tracks", label: "", description: "" },
     ],
   },
   {
@@ -375,7 +413,10 @@ const adminNavGroups: Array<{
   {
     id: "users",
     label: "",
-    items: [{ id: "users", label: "", description: "" }],
+    items: [
+      { id: "users", label: "", description: "" },
+      { id: "notifications", label: "", description: "" },
+    ],
   },
   {
     id: "system",
@@ -384,6 +425,7 @@ const adminNavGroups: Array<{
       { id: "mail", label: "", description: "" },
       { id: "auth", label: "", description: "" },
       { id: "markdown", label: "", description: "" },
+      { id: "profile-settings", label: "", description: "" },
       { id: "i18n", label: "", description: "" },
     ],
   },
@@ -420,6 +462,7 @@ const emptyConfig: AdminConfig = {
     hasPassword: false,
   },
   markdown: defaultMarkdownConfig,
+  profile: { signatureMaxBytes: 256 },
   oss: {
     enabled: false,
     region: "cn-beijing",
@@ -454,6 +497,7 @@ const emptyConfig: AdminConfig = {
     taskModels: [
       { taskType: aiTranslationTaskTypes.permission, modelKey: "", concurrencyLimit: 2, timeoutSeconds: 120, prompt: "" },
       { taskType: aiTranslationTaskTypes.i18n, modelKey: "", concurrencyLimit: 2, timeoutSeconds: 120, prompt: "" },
+      { taskType: aiTranslationTaskTypes.notification, modelKey: "", concurrencyLimit: 4, timeoutSeconds: 90, prompt: "" },
     ],
     quotas: [
       { scope: "site", subject: "default", period: "day", requestLimit: 1000, tokenLimit: 1000000, costLimitCny: 10000 },
@@ -492,6 +536,18 @@ const emptyConfig: AdminConfig = {
   },
 };
 
+type RoleTrack = {
+  code: string;
+  name: string;
+  description: string;
+  roles: string[];
+};
+
+type PermissionDefaults = {
+  registeredRole: string;
+  bannedRole: string;
+};
+
 const emptyCatalog: PermissionCatalog = { roles: [], permissions: [] };
 
 type AdminNotice = {
@@ -506,7 +562,7 @@ export function AdminConsolePolished() {
   const { t } = useI18n();
   const auth = useAuthSnapshot();
   const [activePanel, setActivePanel] = useState<PanelId>("roles");
-  const [expanded, setExpanded] = useState(["workbench", "permission", "oss", "logs", "ai", "infrastructure", "system"]);
+  const [expanded, setExpanded] = useState(["workbench", "permission", "oss", "logs", "ai", "infrastructure", "users", "system"]);
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [config, setConfig] = useState(emptyConfig);
   const [catalog, setCatalog] = useState(emptyCatalog);
@@ -713,6 +769,7 @@ export function AdminConsolePolished() {
                 return (
                   <section key={group.id} className="mb-2">
                     <button
+                      data-admin-group={group.id}
                       className="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-3 text-left font-bold hover:bg-[var(--panel-subtle)]"
                       type="button"
                       onClick={() => toggleGroup(group.id)}
@@ -725,6 +782,7 @@ export function AdminConsolePolished() {
                         {group.items.map((item) => (
                           <button
                             key={item.id}
+                            data-admin-panel={item.id}
                             className={`focus-ring rounded-lg px-3 py-2 text-left ${
                               activePanel === item.id
                                 ? "bg-[var(--accent)] text-white"
@@ -789,12 +847,17 @@ export function AdminConsolePolished() {
               refreshCatalog={refreshCatalog}
             />
           ) : null}
+          {activePanel === "role-tracks" ? (
+            <RoleTracksPanel catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
+          ) : null}
           {activePanel === "users" ? (
             <UsersPanelV2 catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
           ) : null}
+          {activePanel === "notifications" ? <SystemNotificationPanel token={auth.token} /> : null}
           {activePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "auth" ? <AuthPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "markdown" ? <MarkdownConfigPanel initialConfig={config.markdown} token={auth.token} /> : null}
+          {activePanel === "profile-settings" ? <ProfileSettingsPanel initialConfig={config.profile ?? emptyConfig.profile} token={auth.token} /> : null}
           {activePanel === "nats" ? <NATSConfigPanel token={auth.token} /> : null}
           {activePanel === "i18n" ? <TranslationManagerPanel token={auth.token} /> : null}
           {activePanel === "oss-config" ? <OSSConfigPanelV2 initialConfig={config.oss ?? emptyConfig.oss!} token={auth.token} /> : null}
@@ -2686,6 +2749,250 @@ function AuthPanelV2({ config, token }: { config: AdminConfig; token: string }) 
   );
 }
 
+function RoleTracksPanel({
+  catalog,
+  token,
+  users,
+  refreshUsers,
+}: {
+  catalog: PermissionCatalog;
+  token: string;
+  users: User[];
+  refreshUsers: () => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const [tracks, setTracks] = useState<RoleTrack[]>([]);
+  const [defaults, setDefaults] = useState<PermissionDefaults>({ registeredRole: "", bannedRole: "" });
+  const [selectedCode, setSelectedCode] = useState("");
+  const [draft, setDraft] = useState<RoleTrack>({ code: "", name: "", description: "", roles: [] });
+  const [selectedUser, setSelectedUser] = useState("");
+  const [selectedTrack, setSelectedTrack] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const [nextTracks, nextDefaults] = await Promise.all([
+      apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", {}, token),
+      apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", {}, token),
+    ]);
+    setTracks(nextTracks);
+    setDefaults(nextDefaults);
+    if (selectedCode) {
+      const selected = nextTracks.find((track) => track.code === selectedCode);
+      if (selected) setDraft(selected);
+    }
+  }, [selectedCode, token]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void load().catch((error) => notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"));
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load, t]);
+
+  function selectTrack(code: string) {
+    setSelectedCode(code);
+    const track = tracks.find((item) => item.code === code);
+    if (track) setDraft({ ...track, roles: [...track.roles] });
+  }
+
+  function newTrack() {
+    setSelectedCode("");
+    setDraft({ code: "", name: "", description: "", roles: [] });
+  }
+
+  async function saveDefaults() {
+    setSaving(true);
+    try {
+      const result = await apiRequest<PermissionDefaults>(
+        "/api/v1/admin/permission-defaults",
+        { method: "PUT", body: JSON.stringify(defaults) },
+        token,
+      );
+      setDefaults(result);
+      notifyAdminNotice(t("admin.roleTracks.defaultsSaved"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveTrack() {
+    setSaving(true);
+    try {
+      const endpoint = selectedCode ? `/api/v1/admin/role-tracks/${encodeURIComponent(selectedCode)}` : "/api/v1/admin/role-tracks";
+      const result = await apiRequest<RoleTrack>(endpoint, { method: selectedCode ? "PUT" : "POST", body: JSON.stringify(draft) }, token);
+      setSelectedCode(result.code);
+      await load();
+      notifyAdminNotice(t("admin.roleTracks.saved"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteTrack() {
+    if (!selectedCode || !window.confirm(t("admin.roleTracks.deleteConfirm", { code: selectedCode }))) return;
+    setSaving(true);
+    try {
+      await apiRequest(`/api/v1/admin/role-tracks/${encodeURIComponent(selectedCode)}`, { method: "DELETE" }, token);
+      newTrack();
+      await load();
+      notifyAdminNotice(t("admin.roleTracks.deleted"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function moveUser(direction: "upgrade" | "downgrade") {
+    if (!selectedUser || !selectedTrack) return;
+    setSaving(true);
+    try {
+      const result = await apiRequest<{ changed: boolean; roles: string[] }>(
+        `/api/v1/admin/users/${selectedUser}/role-tracks/${encodeURIComponent(selectedTrack)}/${direction}`,
+        { method: "POST" },
+        token,
+      );
+      await refreshUsers();
+      notifyAdminNotice(result.changed ? t("admin.roleTracks.userAdjusted") : t("admin.roleTracks.userUnaffected"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function updateRoleAt(index: number, role: string) {
+    setDraft((current) => ({ ...current, roles: current.roles.map((item, itemIndex) => itemIndex === index ? role : item) }));
+  }
+
+  function moveRole(index: number, offset: number) {
+    setDraft((current) => {
+      const target = index + offset;
+      if (target < 0 || target >= current.roles.length) return current;
+      const roles = [...current.roles];
+      [roles[index], roles[target]] = [roles[target], roles[index]];
+      return { ...current, roles };
+    });
+  }
+
+  return (
+    <PanelShell title={t("admin.roleTracks.title")}>
+      <section className="grid gap-4 border-b border-[var(--line)] pb-5 lg:grid-cols-[220px_1fr]">
+        <div>
+          <h3 className="font-bold">{t("admin.roleTracks.defaultRoles")}</h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.roleTracks.defaultRolesDescription")}</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="text-sm font-semibold">{t("admin.roleTracks.registeredRole")}
+            <select className="field mt-2" value={defaults.registeredRole} onChange={(event) => setDefaults((current) => ({ ...current, registeredRole: event.target.value }))}>
+              <option value="">{t("admin.roleTracks.noAutomaticRole")}</option>
+              {catalog.roles.map((role) => <option key={role.code} value={role.code}>{role.name || role.code} ({role.code})</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-semibold">{t("admin.roleTracks.bannedRole")}
+            <select className="field mt-2" value={defaults.bannedRole} onChange={(event) => setDefaults((current) => ({ ...current, bannedRole: event.target.value }))}>
+              <option value="">{t("admin.roleTracks.noAutomaticRole")}</option>
+              {catalog.roles.map((role) => <option key={role.code} value={role.code}>{role.name || role.code} ({role.code})</option>)}
+            </select>
+          </label>
+          <div className="md:col-span-2"><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void saveDefaults()}>{t("common.save")}</button></div>
+        </div>
+      </section>
+
+      <section className="grid min-h-[520px] gap-4 pt-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <aside className="border-r border-[var(--line)] pr-4">
+          <button className="button-primary focus-ring mb-3 w-full" type="button" onClick={newTrack}>{t("admin.roleTracks.newTrack")}</button>
+          <div className="grid gap-1">
+            {tracks.map((track) => (
+              <button key={track.code} className={`focus-ring rounded-md px-3 py-2 text-left ${selectedCode === track.code ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => selectTrack(track.code)}>
+                <span className="block font-semibold">{track.name}</span><span className="block font-mono text-xs opacity-75">{track.code}</span>
+              </button>
+            ))}
+            {tracks.length === 0 ? <p className="py-4 text-sm text-[var(--muted)]">{t("admin.roleTracks.noTracks")}</p> : null}
+          </div>
+        </aside>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div><h3 className="text-lg font-bold">{selectedCode ? t("admin.roleTracks.editTrack") : t("admin.roleTracks.newTrack")}</h3><p className="text-sm text-[var(--muted)]">{t("admin.roleTracks.orderHint")}</p></div>
+            <div className="flex gap-2">
+              {selectedCode ? <button className="button-secondary focus-ring border-red-600 text-red-600" disabled={saving} type="button" onClick={() => void deleteTrack()}>{t("common.delete")}</button> : null}
+              <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void saveTrack()}>{t("common.save")}</button>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <label className="text-sm font-semibold">{t("admin.roleTracks.code")}<input className="field mt-2 font-mono" value={draft.code} onChange={(event) => setDraft((current) => ({ ...current, code: event.target.value }))} /></label>
+            <label className="text-sm font-semibold">{t("admin.roleTracks.name")}<input className="field mt-2" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} /></label>
+            <label className="text-sm font-semibold md:col-span-2">{t("admin.description")}<textarea className="field mt-2 min-h-20 resize-y" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} /></label>
+          </div>
+          <div className="mt-5">
+            <div className="flex items-center justify-between gap-3"><h4 className="font-bold">{t("admin.roleTracks.orderedRoles")}</h4><button className="button-secondary focus-ring" type="button" onClick={() => setDraft((current) => ({ ...current, roles: [...current.roles, ""] }))}>{t("admin.roleTracks.addRole")}</button></div>
+            <div className="mt-3 grid gap-2">
+              {draft.roles.map((role, index) => (
+                <div key={`${index}-${role}`} className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2 border-b border-[var(--line)] py-2">
+                  <span className="text-center font-mono text-sm text-[var(--muted)]">{index + 1}</span>
+                  <select className="field" value={role} onChange={(event) => updateRoleAt(index, event.target.value)}><option value="">{t("admin.roleTracks.selectRole")}</option>{catalog.roles.map((item) => <option key={item.code} value={item.code}>{item.name || item.code} ({item.code})</option>)}</select>
+                  <div className="flex gap-1"><button className="button-secondary focus-ring px-3" disabled={index === 0} title={t("admin.roleTracks.moveUp")} type="button" onClick={() => moveRole(index, -1)}>↑</button><button className="button-secondary focus-ring px-3" disabled={index === draft.roles.length - 1} title={t("admin.roleTracks.moveDown")} type="button" onClick={() => moveRole(index, 1)}>↓</button><button className="button-secondary focus-ring px-3" title={t("common.delete")} type="button" onClick={() => setDraft((current) => ({ ...current, roles: current.roles.filter((_, itemIndex) => itemIndex !== index) }))}>×</button></div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-[var(--line)] pt-5">
+            <h4 className="font-bold">{t("admin.roleTracks.quickAdjust")}</h4>
+            <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.roleTracks.quickAdjustDescription")}</p>
+            <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+              <select className="field" value={selectedUser} onChange={(event) => setSelectedUser(event.target.value)}><option value="">{t("admin.roleTracks.selectUser")}</option>{users.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.username} (UID {item.id})</option>)}</select>
+              <select className="field" value={selectedTrack} onChange={(event) => setSelectedTrack(event.target.value)}><option value="">{t("admin.roleTracks.selectTrack")}</option>{tracks.map((track) => <option key={track.code} value={track.code}>{track.name}</option>)}</select>
+              <button className="button-primary focus-ring" disabled={saving || !selectedUser || !selectedTrack} type="button" onClick={() => void moveUser("upgrade")}>{t("admin.roleTracks.upgrade")}</button>
+              <button className="button-secondary focus-ring" disabled={saving || !selectedUser || !selectedTrack} type="button" onClick={() => void moveUser("downgrade")}>{t("admin.roleTracks.downgrade")}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </PanelShell>
+  );
+}
+
+function ProfileSettingsPanel({ initialConfig, token }: { initialConfig: { signatureMaxBytes: number }; token: string }) {
+  const { t } = useI18n();
+  const [signatureMaxBytes, setSignatureMaxBytes] = useState(initialConfig.signatureMaxBytes || 256);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await apiRequest<{ signatureMaxBytes: number }>(
+        "/api/v1/admin/config/profile",
+        { method: "PUT", body: JSON.stringify({ signatureMaxBytes }) },
+        token,
+      );
+      setSignatureMaxBytes(result.signatureMaxBytes);
+      notifyAdminNotice(t("admin.profileSettings.saved"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <PanelShell title={t("admin.profileSettings.title")}>
+      <div className="grid max-w-3xl gap-5 md:grid-cols-[240px_1fr]">
+        <div><h3 className="font-bold">{t("admin.profileSettings.signature")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.profileSettings.description")}</p></div>
+        <div>
+          <label className="text-sm font-semibold">{t("admin.profileSettings.signatureMaxBytes")}<input className="field mt-2" min={1} max={4096} type="number" value={signatureMaxBytes} onChange={(event) => setSignatureMaxBytes(Number(event.target.value))} /></label>
+          <p className="mt-2 text-xs text-[var(--muted)]">{t("admin.profileSettings.signatureMaxBytesHint")}</p>
+          <button className="button-primary focus-ring mt-4" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button>
+        </div>
+      </div>
+    </PanelShell>
+  );
+}
+
 function MarkdownConfigPanel({ initialConfig, token }: { initialConfig: MarkdownRendererConfig; token: string }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState(() => normalizeMarkdownConfig(initialConfig));
@@ -2959,6 +3266,46 @@ function UsersPanelV2({
   const { t } = useI18n();
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<User[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [selectedUserDetails, setSelectedUserDetails] = useState<AdminUserDetails | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      try {
+        const result = await apiRequest<User[]>(`/api/v1/admin/users?q=${encodeURIComponent(query)}`, {}, token);
+        if (!cancelled) setSearchResults(result);
+      } catch (error) {
+        if (!cancelled) notifyAdminNotice(cleanError(error), t("admin.userSearchFailed"), "danger");
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery, t, token]);
+
+  async function openUserDetails(userID: number) {
+    setSelectedUserDetails(null);
+    setDetailsLoading(true);
+    try {
+      setSelectedUserDetails(await apiRequest<AdminUserDetails>(`/api/v1/admin/users/${userID}`, {}, token));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.userDetailsLoadFailed"), "danger");
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -3040,7 +3387,29 @@ function UsersPanelV2({
         </datalist>
         {message ? <InlineMessage text={message} /> : null}
       </form>
-      {users.length === 0 ? (
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <label className="min-w-64 flex-1">
+          <span className="sr-only">{t("admin.searchUsers")}</span>
+          <input
+            className="field"
+            placeholder={t("admin.searchUsersPlaceholder")}
+            type="search"
+            value={searchQuery}
+            onChange={(event) => {
+              const value = event.target.value;
+              setSearchQuery(value);
+              if (!value.trim()) {
+                setSearchResults(null);
+                setSearching(false);
+              }
+            }}
+          />
+        </label>
+        <span className="text-sm text-[var(--muted)]">
+          {searching ? t("admin.searchingUsers") : t("admin.userCount", { count: (searchResults ?? users).length })}
+        </span>
+      </div>
+      {(searchResults ?? users).length === 0 ? (
         <EmptyState text={t("admin.noUsers")} />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-[var(--line)]">
@@ -3056,10 +3425,18 @@ function UsersPanelV2({
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {(searchResults ?? users).map((user) => (
                 <tr key={user.id}>
                   <td className="border-b border-[var(--line)] py-3">{user.id}</td>
-                  <td className="border-b border-[var(--line)] py-3">{user.displayName || user.username}</td>
+                  <td className="border-b border-[var(--line)] py-3">
+                    <button
+                      className="focus-ring text-left font-semibold text-[var(--accent)] hover:underline"
+                      type="button"
+                      onClick={() => void openUserDetails(user.id)}
+                    >
+                      {user.displayName || user.username}
+                    </button>
+                  </td>
                   <td className="border-b border-[var(--line)] py-3">{user.email}</td>
                   <td className="border-b border-[var(--line)] py-3">{formatDateTime(user.createdAt)}</td>
                   <td className="border-b border-[var(--line)] py-3">{user.status}</td>
@@ -3070,7 +3447,240 @@ function UsersPanelV2({
           </table>
         </div>
       )}
+      {detailsLoading ? <UserDetailsLoadingDialog /> : null}
+      {selectedUserDetails ? (
+        <AdminUserDetailsDialog
+          details={selectedUserDetails}
+          token={token}
+          onClose={() => setSelectedUserDetails(null)}
+          onStatusChanged={async () => {
+            await refreshUsers();
+            await openUserDetails(selectedUserDetails.user.id);
+          }}
+        />
+      ) : null}
     </PanelShell>
+  );
+}
+
+function UserDetailsLoadingDialog() {
+  const { t } = useI18n();
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4" role="dialog" aria-modal="true">
+      <div className="surface w-full max-w-sm rounded-lg p-6 text-center shadow-2xl">
+        <p className="font-bold">{t("admin.loadingUserDetails")}</p>
+      </div>
+    </div>
+  );
+}
+
+function AdminUserDetailsDialog({
+  details,
+  token,
+  onClose,
+  onStatusChanged,
+}: {
+  details: AdminUserDetails;
+  token: string;
+  onClose: () => void;
+  onStatusChanged: () => Promise<void>;
+}) {
+  const { t } = useI18n();
+  const user = details.user;
+  const [status, setStatus] = useState(user.status);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const registrationLocation = formatUserLocation(details.registrationCountryCode, details.registrationCity);
+  const lastLoginLocation = formatUserLocation(details.lastLogin?.countryCode, details.lastLogin?.city);
+
+  async function saveStatus() {
+    setSavingStatus(true);
+    try {
+      await apiRequest(`/api/v1/admin/users/${user.id}/status`, { method: "PUT", body: JSON.stringify({ status }) }, token);
+      notifyAdminNotice(t("admin.userStatusSaved"));
+      await onStatusChanged();
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" role="presentation" onMouseDown={onClose}>
+      <section
+        className="surface flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-[var(--line)] shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="admin-user-details-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-start justify-between gap-4 border-b border-[var(--line)] px-5 py-4">
+          <div>
+            <p className="text-sm font-semibold text-[var(--muted)]">UID {user.id}</p>
+            <h2 id="admin-user-details-title" className="text-xl font-bold">{user.displayName || user.username}</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">@{user.username} · {user.email}</p>
+          </div>
+          <button className="focus-ring grid h-10 w-10 place-items-center rounded-md text-xl hover:bg-[var(--panel-subtle)]" title={t("common.close")} type="button" onClick={onClose}>
+            ×
+          </button>
+        </header>
+
+        <div className="min-h-0 overflow-y-auto">
+          <section className="flex flex-wrap items-end gap-3 border-b border-[var(--line)] px-5 py-4">
+            <label className="min-w-52 text-sm font-semibold">{t("admin.status")}
+              <select className="field mt-2" value={status} onChange={(event) => setStatus(event.target.value)}>
+                <option value="active">{t("admin.active")}</option>
+                <option value="banned">{t("admin.banned")}</option>
+                <option value="disabled">{t("admin.disabled")}</option>
+                <option value="deleted">{t("admin.deleted")}</option>
+              </select>
+            </label>
+            <button className="button-primary focus-ring" disabled={savingStatus || status === user.status} type="button" onClick={() => void saveStatus()}>{savingStatus ? t("admin.saving") : t("common.save")}</button>
+          </section>
+          <section className="grid gap-x-8 gap-y-4 px-5 py-5 sm:grid-cols-2 lg:grid-cols-3">
+            <UserDetailValue label={t("admin.status")} value={user.status} />
+            <UserDetailValue label={t("admin.registeredAt")} value={formatDateTime(user.createdAt)} />
+            <UserDetailValue label={t("admin.lastLoginAt")} value={formatDateTime(details.lastLogin?.at || user.lastLoginAt)} />
+            <UserDetailValue label={t("admin.timezone")} value={details.timezone || "-"} />
+            <UserDetailValue label={t("admin.primaryLanguage")} value={details.primaryLanguage || "-"} />
+            <UserDetailValue label={t("admin.secondaryLanguage")} value={details.secondaryLanguage || "-"} />
+            <UserDetailValue label={t("admin.selectedCountry")} value={details.country || "-"} />
+            <UserDetailValue label={t("admin.emailVerified")} value={user.emailVerified ? t("common.yes") : t("common.no")} />
+            <UserDetailValue label={t("admin.oauthBound")} value={details.oauthProviders.length > 0 ? details.oauthProviders.join(", ") : t("common.no")} />
+            <UserDetailValue label={t("admin.registrationIp")} value={details.registrationIp || "-"} />
+            <UserDetailValue label={t("admin.registrationLocation")} value={registrationLocation} />
+            <UserDetailValue label={t("admin.lastLoginIp")} value={details.lastLogin?.ip || "-"} />
+            <UserDetailValue label={t("admin.lastLoginLocation")} value={lastLoginLocation} />
+            <UserDetailValue label={t("admin.lastLoginDevice")} value={details.lastLogin?.userAgent || "-"} wide />
+          </section>
+
+          <section className="border-t border-[var(--line)] px-5 py-5">
+            <h3 className="font-bold">{t("admin.roleList")}</h3>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {user.roles.length > 0 ? user.roles.map((role) => (
+                <span key={role} className="rounded-md bg-[var(--panel-subtle)] px-2.5 py-1 font-mono text-xs">{role}</span>
+              )) : <span className="text-sm text-[var(--muted)]">{t("admin.noRoleAssigned")}</span>}
+            </div>
+          </section>
+
+          <section className="border-t border-[var(--line)] px-5 py-5">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <h3 className="font-bold">{t("admin.rootPermissions")}</h3>
+                <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.rootPermissionsHint")}</p>
+              </div>
+              <span className="text-sm text-[var(--muted)]">{t("admin.permissionCount", { count: details.rootPermissions.length })}</span>
+            </div>
+            {details.rootPermissions.length === 0 ? (
+              <p className="mt-4 text-sm text-[var(--muted)]">{t("admin.noRootPermissions")}</p>
+            ) : (
+              <div className="mt-4 max-h-80 overflow-auto rounded-lg border border-[var(--line)]">
+                <table className="w-full min-w-[680px] text-left text-sm">
+                  <thead className="sticky top-0 bg-[var(--panel)] text-[var(--muted)]">
+                    <tr>
+                      <th className="border-b border-[var(--line)] px-3 py-2">{t("admin.permissionCode")}</th>
+                      <th className="border-b border-[var(--line)] px-3 py-2">{t("admin.permissionValue")}</th>
+                      <th className="border-b border-[var(--line)] px-3 py-2">{t("admin.permissionSource")}</th>
+                      <th className="border-b border-[var(--line)] px-3 py-2">{t("admin.permissionPriority")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {details.rootPermissions.map((permission) => (
+                      <tr key={permission.code}>
+                        <td className="border-b border-[var(--line)] px-3 py-2 font-mono">{permission.code}</td>
+                        <td className={`border-b border-[var(--line)] px-3 py-2 font-mono font-bold ${permission.allow ? "text-[var(--accent)]" : "text-red-600"}`}>
+                          {String(permission.allow)}
+                        </td>
+                        <td className="border-b border-[var(--line)] px-3 py-2 font-mono text-xs">{permission.source === "user" ? t("admin.directUserPermission") : permission.source}</td>
+                        <td className="border-b border-[var(--line)] px-3 py-2">{permission.priority >= 1_000_000_000 ? t("admin.highestPriority") : permission.priority}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function UserDetailValue({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return (
+    <div className={wide ? "sm:col-span-2 lg:col-span-3" : ""}>
+      <p className="text-xs font-semibold text-[var(--muted)]">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function formatUserLocation(countryCode?: string, city?: string) {
+  return [countryCode, city].filter(Boolean).join(" / ") || "-";
+}
+
+function SystemNotificationPanel({ token }: { token: string }) {
+  const { locale, t } = useI18n();
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [sourceLocale, setSourceLocale] = useState<Locale>(locale);
+  const [sendEmail, setSendEmail] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+
+  async function publish(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPublishing(true);
+    try {
+      await apiRequest(
+        "/api/v1/admin/notifications",
+        { method: "POST", body: JSON.stringify({ title, body, sourceLocale, sendEmail }) },
+        token,
+      );
+      setTitle("");
+      setBody("");
+      notifyAdminNotice(t("admin.notifications.queued"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  return (
+    <section className="surface rounded-lg p-5">
+      <div className="mb-5">
+        <h2 className="text-xl font-bold">{t("admin.notifications.title")}</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.notifications.description")}</p>
+      </div>
+      <form className="grid gap-4" onSubmit={publish}>
+        <label className="text-sm font-semibold">
+          {t("admin.notifications.sourceLanguage")}
+          <select className="field mt-2" value={sourceLocale} onChange={(event) => setSourceLocale(event.target.value as Locale)}>
+            {supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+          </select>
+        </label>
+        <label className="text-sm font-semibold">
+          {t("admin.notifications.notificationTitle")}
+          <input className="field mt-2" maxLength={200} required value={title} onChange={(event) => setTitle(event.target.value)} />
+        </label>
+        <label className="text-sm font-semibold">
+          {t("admin.notifications.body")}
+          <textarea className="field mt-2 min-h-56 resize-y" maxLength={10000} required value={body} onChange={(event) => setBody(event.target.value)} />
+        </label>
+        <label className="flex items-start gap-3 rounded-lg border border-[var(--line)] p-4">
+          <input checked={sendEmail} type="checkbox" onChange={(event) => setSendEmail(event.target.checked)} />
+          <span>
+            <span className="block font-semibold">{t("admin.notifications.sendEmail")}</span>
+            <span className="mt-1 block text-sm text-[var(--muted)]">{t("admin.notifications.sendEmailDescription")}</span>
+          </span>
+        </label>
+        <div className="flex justify-end">
+          <button className="button-primary focus-ring" disabled={publishing} type="submit">
+            {publishing ? t("admin.notifications.publishing") : t("admin.notifications.publish")}
+          </button>
+        </div>
+      </form>
+    </section>
   );
 }
 
@@ -3684,13 +4294,24 @@ function OSSFilesPanel({ token }: { token: string }) {
             {files.map((file) => (
               <tr key={file.objectKey}>
                 <td className="border-b border-[var(--line)] py-2">
-                  <div className="font-semibold">{file.originalName || file.objectKey}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">{file.originalName || file.objectKey}</span>
+                    {file.converted ? <span className="rounded-md bg-[var(--panel-subtle)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t("admin.oss.convertedToWebP")}</span> : null}
+                  </div>
+                  {file.converted ? <div className="mt-1 text-xs text-[var(--muted)]">{t("admin.oss.sourceFile")}: {file.sourceOriginalName}</div> : null}
                   <div className="font-mono text-xs text-[var(--muted)]">ID: {file.id}</div>
                   <div className="max-w-xl truncate font-mono text-xs text-[var(--muted)]">{file.objectKey}</div>
                   {file.sha256 ? <div className="max-w-xl truncate font-mono text-xs text-[var(--muted)]">SHA-256: {file.sha256}</div> : null}
                 </td>
                 <td className="border-b border-[var(--line)] py-2">{file.category}</td>
-                <td className="border-b border-[var(--line)] py-2">{formatBytes(file.sizeBytes)}</td>
+                <td className="border-b border-[var(--line)] py-2">
+                  {file.converted ? (
+                    <div className="space-y-1 text-xs">
+                      <div>{t("admin.oss.sourceSize")}: <strong>{formatBytes(file.sourceSizeBytes ?? file.sizeBytes)}</strong></div>
+                      <div>{t("admin.oss.storedSize")}: <strong>{formatBytes(file.sizeBytes)}</strong></div>
+                    </div>
+                  ) : formatBytes(file.sizeBytes)}
+                </td>
                 <td className="border-b border-[var(--line)] py-2">{file.scanStatus}</td>
                 <td className="border-b border-[var(--line)] py-2">{formatDateTime(file.createdAt)}</td>
                 <td className="border-b border-[var(--line)] py-2">
@@ -4131,10 +4752,13 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     roles: t("admin.roles"),
     "user-roles": t("admin.userRoles"),
     "permission-list": t("admin.permissionList"),
+    "role-tracks": t("admin.roleTracks.title"),
     users: t("admin.userList"),
+    notifications: t("admin.notifications.title"),
     mail: t("admin.mail"),
     auth: t("admin.auth"),
     markdown: t("admin.markdown.navTitle"),
+    "profile-settings": t("admin.profileSettings.navTitle"),
     nats: t("admin.nats.navTitle"),
     i18n: t("admin.i18n"),
     "oss-config": t("admin.panels.ossConfig"),
@@ -4179,10 +4803,13 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     roles: t("admin.rolesDesc"),
     "user-roles": t("admin.userRolesDesc"),
     "permission-list": t("admin.permissionListDesc"),
+    "role-tracks": t("admin.roleTracks.navDescription"),
     users: t("admin.usersDesc"),
+    notifications: t("admin.notifications.navDescription"),
     mail: t("admin.mailDesc"),
     auth: t("admin.authDesc"),
     markdown: t("admin.markdown.navDesc"),
+    "profile-settings": t("admin.profileSettings.navDescription"),
     nats: t("admin.nats.navDescription"),
     i18n: t("admin.i18nDesc"),
     "oss-config": t("admin.nav.ossConfigDesc"),
@@ -4334,6 +4961,7 @@ function aiTaskTypeLabel(taskType: string, t: (key: string, params?: Record<stri
   const labels: Record<string, string> = {
     [aiTranslationTaskTypes.permission]: t("admin.ai.permissionTranslationTask"),
     [aiTranslationTaskTypes.i18n]: t("admin.ai.i18nTranslationTask"),
+    [aiTranslationTaskTypes.notification]: t("admin.ai.notificationTranslationTask"),
   };
   return labels[taskType] ?? taskType;
 }

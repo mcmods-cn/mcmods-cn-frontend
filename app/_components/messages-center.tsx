@@ -1,0 +1,339 @@
+"use client";
+
+import Link from "next/link";
+import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { apiRequest } from "../_lib/api";
+import { useAuthSnapshot } from "../_lib/auth";
+import { useI18n } from "../_lib/i18n-provider";
+
+type NotificationKind = "system" | "reply_mention" | "review" | "new_follower";
+
+type NotificationItem = {
+  id: number;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  sourceLocale: string;
+  read: boolean;
+  actors: Array<{ id: number; username: string; displayName: string }>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type Conversation = {
+  id: number;
+  partnerId: number;
+  username: string;
+  displayName: string;
+  lastMessage: string;
+  lastAt?: string;
+  unreadCount: number;
+};
+
+type DirectMessage = {
+  id: number;
+  conversationId: number;
+  senderId: number;
+  recipientId: number;
+  body: string;
+  readAt?: string;
+  createdAt: string;
+};
+
+type AIBalance = {
+  usedTokens: number;
+  reservedTokens: number;
+  limitTokens: number;
+  remainingTokens: number;
+  unlimited: boolean;
+};
+
+type Translation = { title: string; body: string };
+
+const notificationKinds: NotificationKind[] = ["system", "reply_mention", "review", "new_follower"];
+
+export function MessagesCenter() {
+  const { t, locale } = useI18n();
+  const { ready, token, user } = useAuthSnapshot();
+  const searchParams = useSearchParams();
+  const targetUserID = Number(searchParams.get("user") ?? 0);
+  const [mode, setMode] = useState<"notifications" | "chats">(targetUserID > 0 ? "chats" : "notifications");
+  const [kind, setKind] = useState<NotificationKind>("system");
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversationID, setSelectedConversationID] = useState<number | null>(null);
+  const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [messageDraft, setMessageDraft] = useState("");
+  const [translations, setTranslations] = useState<Record<number, Translation>>({});
+  const [translatingID, setTranslatingID] = useState<number | null>(null);
+  const [aiBalance, setAIBalance] = useState<AIBalance | null>(null);
+  const [status, setStatus] = useState("");
+
+  const selectedConversation = conversations.find((item) => item.id === selectedConversationID) ?? null;
+
+  const loadNotifications = useCallback(async () => {
+    if (!token) return;
+    const result = await apiRequest<NotificationItem[]>(`/api/v1/notifications?kind=${kind}`, {}, token);
+    setNotifications(result);
+  }, [kind, token]);
+
+  const loadConversations = useCallback(async () => {
+    if (!token) return;
+    const result = await apiRequest<Conversation[]>("/api/v1/messages/conversations", {}, token);
+    setConversations(result);
+  }, [token]);
+
+  const loadBalance = useCallback(async () => {
+    if (!token) return;
+    setAIBalance(await apiRequest<AIBalance>("/api/v1/notifications/ai-balance", {}, token));
+  }, [token]);
+
+  const loadMessages = useCallback(async (conversationID: number) => {
+    if (!token) return;
+    const result = await apiRequest<DirectMessage[]>(`/api/v1/messages/conversations/${conversationID}`, {}, token);
+    setMessages(result);
+    await apiRequest(`/api/v1/messages/conversations/${conversationID}/presence`, { method: "PUT" }, token);
+    window.dispatchEvent(new Event("mcmods-unread-change"));
+  }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const timer = window.setTimeout(() => {
+      void Promise.all([loadNotifications(), loadConversations(), loadBalance()]).catch((error) => {
+        setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadBalance, loadConversations, loadNotifications, t, token]);
+
+  useEffect(() => {
+    if (!token || targetUserID <= 0 || targetUserID === user?.id) return;
+    let cancelled = false;
+    apiRequest<{ id: number }>(
+      "/api/v1/messages/conversations",
+      { method: "POST", body: JSON.stringify({ userId: targetUserID }) },
+      token,
+    ).then(async (result) => {
+      if (cancelled) return;
+      setMode("chats");
+      setSelectedConversationID(result.id);
+      await loadConversations();
+    }).catch((error) => setStatus(error instanceof Error ? error.message : t("messages.startFailed")));
+    return () => {
+      cancelled = true;
+    };
+  }, [loadConversations, t, targetUserID, token, user?.id]);
+
+  useEffect(() => {
+    if (!selectedConversationID || !token) return;
+    const initialTimer = window.setTimeout(() => {
+      void loadMessages(selectedConversationID).catch((error) => setStatus(error instanceof Error ? error.message : t("messages.loadFailed")));
+    }, 0);
+    const timer = window.setInterval(() => {
+      void loadMessages(selectedConversationID);
+      void loadConversations();
+    }, 5000);
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearInterval(timer);
+    };
+  }, [loadConversations, loadMessages, selectedConversationID, t, token]);
+
+  async function markRead(item: NotificationItem) {
+    if (!token || item.read) return;
+    try {
+      await apiRequest(`/api/v1/notifications/${item.id}/read`, { method: "POST" }, token);
+      setNotifications((current) => current.map((entry) => entry.id === item.id ? { ...entry, read: true } : entry));
+      window.dispatchEvent(new Event("mcmods-unread-change"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t("messages.markReadFailed"));
+    }
+  }
+
+  async function translate(item: NotificationItem) {
+    if (!token || translatingID) return;
+    setTranslatingID(item.id);
+    setStatus("");
+    try {
+      const started = await apiRequest<{ cached: boolean; taskId?: number; translation?: Translation }>(
+        `/api/v1/notifications/${item.id}/translate`,
+        { method: "POST", body: JSON.stringify({ targetLocale: locale }) },
+        token,
+      );
+      let translation = started.translation;
+      if (!started.cached && started.taskId) {
+        translation = await waitForTranslation(started.taskId, token);
+      }
+      if (translation) setTranslations((current) => ({ ...current, [item.id]: translation! }));
+      await loadBalance();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t("messages.translationFailed"));
+    } finally {
+      setTranslatingID(null);
+    }
+  }
+
+  async function sendMessage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token || !selectedConversationID || !messageDraft.trim()) return;
+    try {
+      const result = await apiRequest<{ message: DirectMessage }>(
+        `/api/v1/messages/conversations/${selectedConversationID}`,
+        { method: "POST", body: JSON.stringify({ body: messageDraft }) },
+        token,
+      );
+      setMessages((current) => [...current, result.message]);
+      setMessageDraft("");
+      await loadConversations();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t("messages.sendFailed"));
+    }
+  }
+
+  if (!ready) return <MessageState text={t("common.loading")} />;
+  if (!user || !token) {
+    return (
+      <MessageState text={t("messages.loginRequired")}>
+        <Link className="button-primary focus-ring mt-4 inline-flex" href="/login?next=/messages">{t("common.login")}</Link>
+      </MessageState>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <section className="mx-auto max-w-7xl px-4 py-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-[var(--accent)]">{t("messages.kicker")}</p>
+            <h1 className="text-2xl font-black">{t("messages.title")}</h1>
+          </div>
+          <div className="flex rounded-lg border border-[var(--line)] bg-[var(--panel)] p-1">
+            <ModeButton active={mode === "notifications"} onClick={() => setMode("notifications")}>{t("messages.notifications")}</ModeButton>
+            <ModeButton active={mode === "chats"} onClick={() => setMode("chats")}>{t("messages.privateChats")}</ModeButton>
+          </div>
+        </div>
+        {status ? <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] px-4 py-3 text-sm">{status}</div> : null}
+
+        {mode === "notifications" ? (
+          <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
+            <aside className="surface h-fit p-3">
+              <nav className="grid gap-1">
+                {notificationKinds.map((item) => (
+                  <button key={item} className={`focus-ring rounded-md px-3 py-3 text-left text-sm font-bold ${kind === item ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setKind(item)}>
+                    {t(`messages.kinds.${item}`)}
+                  </button>
+                ))}
+              </nav>
+              {aiBalance ? <AIBalanceCard balance={aiBalance} /> : null}
+            </aside>
+            <section className="grid content-start gap-3">
+              {notifications.map((item) => {
+                const translated = translations[item.id];
+                return (
+                  <article key={item.id} className={`surface p-5 ${item.read ? "opacity-75" : "border-l-4 border-l-[var(--accent)]"}`} onClick={() => void markRead(item)}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-bold">{translated?.title || item.title}</h2>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[var(--muted)]">{translated?.body || item.body}</p>
+                      </div>
+                      {!item.read ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent)]" /> : null}
+                    </div>
+                    {item.actors.length > 0 ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {item.actors.slice(0, 3).map((actor) => <Link key={actor.id} className="text-xs font-semibold text-[var(--accent)]" href={`/user/${actor.id}`}>{actor.displayName || actor.username}</Link>)}
+                      </div>
+                    ) : null}
+                    <div className="mt-4 flex items-end justify-between gap-3 border-t border-[var(--line)] pt-3">
+                      <time className="text-xs text-[var(--muted)]">{new Date(item.updatedAt).toLocaleString()}</time>
+                      <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={translatingID !== null || item.sourceLocale === locale} type="button" onClick={(event) => { event.stopPropagation(); void translate(item); }}>
+                        {translatingID === item.id ? t("messages.translating") : t("messages.aiTranslate")}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+              {notifications.length === 0 ? <MessageState text={t("messages.emptyNotifications")} /> : null}
+            </section>
+          </div>
+        ) : (
+          <div className="grid min-h-[620px] overflow-hidden border border-[var(--line)] bg-[var(--panel)] lg:grid-cols-[300px_minmax(0,1fr)]">
+            <aside className="border-b border-[var(--line)] lg:border-b-0 lg:border-r">
+              <div className="border-b border-[var(--line)] p-4 font-bold">{t("messages.conversations")}</div>
+              <div className="max-h-[620px] overflow-y-auto">
+                {conversations.map((item) => (
+                  <button key={item.id} className={`focus-ring flex w-full items-start gap-3 border-b border-[var(--line)] p-4 text-left ${selectedConversationID === item.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setSelectedConversationID(item.id)}>
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--panel-subtle)] font-black text-[var(--accent)]">{(item.displayName || item.username).slice(0, 1)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center justify-between gap-2"><strong className="truncate">{item.displayName || item.username}</strong>{item.unreadCount > 0 ? <b className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">{item.unreadCount}</b> : null}</span>
+                      <span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.lastMessage || t("messages.noMessages")}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </aside>
+            <section className="flex min-h-0 flex-col">
+              {selectedConversation ? (
+                <>
+                  <div className="flex items-center justify-between border-b border-[var(--line)] p-4">
+                    <Link className="font-bold hover:text-[var(--accent)]" href={`/user/${selectedConversation.partnerId}`}>{selectedConversation.displayName || selectedConversation.username}</Link>
+                  </div>
+                  <div className="flex-1 space-y-3 overflow-y-auto bg-[var(--background)] p-4">
+                    {messages.map((item) => <MessageBubble key={item.id} item={item} own={item.senderId === user.id} />)}
+                  </div>
+                  <form className="flex gap-3 border-t border-[var(--line)] p-4" onSubmit={sendMessage}>
+                    <textarea className="field min-h-16 flex-1 resize-none" maxLength={4000} value={messageDraft} placeholder={t("messages.messagePlaceholder")} onChange={(event) => setMessageDraft(event.target.value)} />
+                    <button className="button-primary focus-ring self-end" type="submit">{t("messages.send")}</button>
+                  </form>
+                </>
+              ) : <MessageState text={t("messages.selectConversation")} />}
+            </section>
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function ModeButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
+  return <button className={`focus-ring rounded-md px-4 py-2 text-sm font-bold ${active ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`} type="button" onClick={onClick}>{children}</button>;
+}
+
+function MessageBubble({ item, own }: { item: DirectMessage; own: boolean }) {
+  return (
+    <div className={`flex ${own ? "justify-end" : "justify-start"}`}>
+      <div className={`max-w-[75%] rounded-lg px-4 py-3 text-sm leading-6 ${own ? "bg-[var(--accent)] text-white" : "border border-[var(--line)] bg-[var(--panel)]"}`}>
+        <p className="whitespace-pre-wrap break-words">{item.body}</p>
+        <time className={`mt-1 block text-right text-[11px] ${own ? "text-white/75" : "text-[var(--muted)]"}`}>{new Date(item.createdAt).toLocaleTimeString()}</time>
+      </div>
+    </div>
+  );
+}
+
+function AIBalanceCard({ balance }: { balance: AIBalance }) {
+  const { t } = useI18n();
+  const used = balance.usedTokens + balance.reservedTokens;
+  const percent = balance.unlimited || balance.limitTokens <= 0 ? 0 : Math.min(100, Math.round((used / balance.limitTokens) * 100));
+  return (
+    <div className="mt-4 border-t border-[var(--line)] pt-4 text-xs">
+      <div className="flex justify-between gap-2 font-semibold"><span>{t("messages.aiBalance")}</span><span>{balance.unlimited ? t("user.unlimited") : `${balance.remainingTokens}`}</span></div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)]" style={{ width: balance.unlimited ? "100%" : `${percent}%` }} /></div>
+      <div className="mt-1 text-[var(--muted)]">{t("messages.tokensUsed", { used, limit: balance.unlimited ? "∞" : balance.limitTokens })}</div>
+    </div>
+  );
+}
+
+function MessageState({ text, children }: { text: string; children?: React.ReactNode }) {
+  return <div className="grid min-h-56 place-items-center p-6 text-center text-sm text-[var(--muted)]"><div>{text}{children}</div></div>;
+}
+
+async function waitForTranslation(taskID: number, token: string): Promise<Translation> {
+  const deadline = Date.now() + 120_000;
+  while (Date.now() < deadline) {
+    const task = await apiRequest<{ status: string; error?: string; translation?: Translation }>(`/api/v1/notifications/translations/${taskID}`, {}, token);
+    if (task.status === "completed" && task.translation) return task.translation;
+    if (task.status === "failed") throw new Error(task.error || "AI translation failed");
+    await new Promise((resolve) => window.setTimeout(resolve, 800));
+  }
+  throw new Error("AI translation timed out");
+}

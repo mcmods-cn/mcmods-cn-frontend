@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useI18n } from "../_lib/i18n-provider";
+import { IconFont } from "./iconfont";
 
 const tools = [
   {
@@ -13,6 +14,11 @@ const tools = [
     key: "drawio",
     href: "/tools/drawio",
     accent: "bg-sky-500",
+  },
+  {
+    key: "permissions",
+    href: "/permissions/compare",
+    accent: "bg-amber-600",
   },
 ];
 
@@ -36,7 +42,7 @@ export function ToolsIndex() {
               href={tool.href}
             >
               <span className={`grid h-12 w-12 place-items-center rounded-lg ${tool.accent} font-bold text-white`}>
-                {t(`tools.cards.${tool.key}.short`)}
+                <IconFont className="text-2xl" name={tool.key} fallback={t(`tools.cards.${tool.key}.short`)} />
               </span>
               <span>
                 <span className="block text-xl font-bold group-hover:text-[var(--accent)]">

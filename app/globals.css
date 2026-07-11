@@ -54,6 +54,14 @@ body {
   letter-spacing: 0;
 }
 
+.iconfont-symbol {
+  width: 1em;
+  height: 1em;
+  overflow: hidden;
+  fill: currentColor;
+  vertical-align: -0.15em;
+}
+
 button,
 input,
 select,
@@ -133,6 +141,16 @@ a {
 
 .markdown-preview {
   line-height: 1.75;
+}
+
+article.markdown-preview {
+  scrollbar-width: none;
+}
+
+article.markdown-preview::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .markdown-preview :where(h1, h2, h3, h4, h5, h6) {
@@ -269,6 +287,13 @@ a {
   border-left-color: var(--warning);
 }
 
+.markdown-preview .markdown-local-time {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline dotted;
+  text-underline-offset: 0.2em;
+}
+
 .markdown-preview .plantuml-preview {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -302,6 +327,8 @@ a {
 }
 
 .markdown-preview .markdown-geogebra-embed {
+  position: relative;
+  display: block;
   margin: 1rem 0;
 }
 
@@ -310,15 +337,30 @@ a {
   height: auto;
 }
 
+.markdown-preview .geogebra-expand-button {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 2;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 14%);
+}
+
 .markdown-preview .drawio-preview {
+  position: relative;
+  display: flex;
+  justify-content: center;
   margin: 1rem 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .markdown-preview .drawio-preview img {
   display: block;
+  width: auto;
   max-width: 100%;
+  max-height: min(70vh, 56rem);
   height: auto;
+  object-fit: contain;
 }
 
 .markdown-preview .drawio-preview iframe {

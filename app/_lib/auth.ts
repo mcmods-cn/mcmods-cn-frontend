@@ -9,6 +9,8 @@ export type AuthUser = {
   email: string;
   roles: string[];
   permissions: string[];
+  avatarUrl?: string;
+  signature?: string;
 };
 
 export type AuthResult = {
