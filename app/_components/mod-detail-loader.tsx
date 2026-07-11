@@ -1,0 +1,49 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { apiRequest, ApiError } from "../_lib/api";
+import { useAuthSnapshot } from "../_lib/auth";
+import { BackendModRecord, backendModToCatalogEntry } from "../_lib/mod-api";
+import { modCatalogEntries, ModCatalogEntry } from "../_lib/mod-catalog-data";
+import { useI18n } from "../_lib/i18n-provider";
+import { ModDetail } from "./mod-detail";
+
+export function ModDetailLoader({ siteId }: { siteId: string }) {
+  const { t } = useI18n();
+  const { ready, token } = useAuthSnapshot();
+  const fallback = useMemo(() => modCatalogEntries.find((entry) => entry.siteId === siteId) ?? null, [siteId]);
+  const [mod, setMod] = useState<ModCatalogEntry | null>(fallback);
+  const [loading, setLoading] = useState(!fallback);
+  const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}`, {}, token)
+      .then((record) => {
+        if (!cancelled) {
+          setMod(backendModToCatalogEntry(record));
+          setNotFound(false);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled && !fallback && error instanceof ApiError && error.status === 404) setNotFound(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fallback, ready, siteId, token]);
+
+  if (mod) return <ModDetail mod={mod} />;
+  return (
+    <main className="grid min-h-[60vh] place-items-center bg-[var(--background)] px-4 text-center text-[var(--foreground)]">
+      <div>
+        <h1 className="text-2xl font-black">{notFound ? t("mods.detail.notFound") : t("common.loading")}</h1>
+        {loading ? <div className="mx-auto mt-4 h-1 w-32 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full w-1/2 animate-pulse bg-[var(--accent)]" /></div> : null}
+      </div>
+    </main>
+  );
+}

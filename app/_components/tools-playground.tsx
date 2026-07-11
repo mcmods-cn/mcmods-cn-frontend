@@ -48,6 +48,12 @@ type MarkdownCommand =
   | "table"
   | "divider";
 
+type ToolsPlaygroundProps = {
+  embedded?: boolean;
+  onChange?: (markdown: string) => void;
+  value?: string;
+};
+
 const defaultDrawioXml =
   '<mxfile host="embed.diagrams.net"><diagram id="mcmods-markdown-diagram" name="Page 1"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>';
 const iconPresets = {
@@ -81,26 +87,35 @@ const mediaPresets: MediaPreset[] = [
   { fields: ["geogebra"], id: "geogebra", labelKey: "tools.playground.mediaGeogebra", template: "[GeoGebra:{{geogebra}}]" },
 ];
 
-export function ToolsPlayground() {
+export function ToolsPlayground({ embedded = false, onChange, value }: ToolsPlaygroundProps = {}) {
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
   const previewPositionFrameRef = useRef<number | null>(null);
   const drawioFrameRef = useRef<HTMLIFrameElement | null>(null);
-  const [markdown, setMarkdown] = useState(() => t("tools.playground.defaultMarkdown"));
+  const onChangeRef = useRef(onChange);
+  const [markdown, setMarkdown] = useState(() => value ?? t("tools.playground.defaultMarkdown"));
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
   const [rendererConfig, setRendererConfig] = useState<MarkdownRendererConfig>(defaultMarkdownConfig);
   const [editorMessage, setEditorMessage] = useState("");
   const [drawioSession, setDrawioSession] = useState<DrawioEditSession | null>(null);
   const [mediaInsertSession, setMediaInsertSession] = useState<MediaInsertSession | null>(null);
-  const [draftLoaded, setDraftLoaded] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(embedded);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [savedAt, setSavedAt] = useState("");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const activeDrawioFence = findDrawioFence(markdown, cursorPosition, cursorPosition);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    if (embedded) onChangeRef.current?.(markdown);
+  }, [embedded, markdown]);
 
   useEffect(() => () => {
     if (previewPositionFrameRef.current !== null) window.cancelAnimationFrame(previewPositionFrameRef.current);
@@ -135,6 +150,7 @@ export function ToolsPlayground() {
   }, []);
 
   useEffect(() => {
+    if (embedded) return;
     let cancelled = false;
     queueMicrotask(() => {
       if (!cancelled) setDraftLoaded(false);
@@ -166,9 +182,10 @@ export function ToolsPlayground() {
     return () => {
       cancelled = true;
     };
-  }, [t, token]);
+  }, [embedded, t, token]);
 
   const saveDraft = useCallback(async () => {
+    if (embedded) return;
     if (!draftLoaded) return;
     if (!token) {
       window.localStorage.setItem("mcmods-markdown-playground-draft", markdown);
@@ -189,9 +206,10 @@ export function ToolsPlayground() {
     } finally {
       setSaving(false);
     }
-  }, [draftLoaded, markdown, t, token]);
+  }, [draftLoaded, embedded, markdown, t, token]);
 
   useEffect(() => {
+    if (embedded) return;
     if (!draftLoaded) return;
     const timer = window.setTimeout(() => {
       if (!token) {
@@ -201,7 +219,7 @@ export function ToolsPlayground() {
       void saveDraft();
     }, 1800);
     return () => window.clearTimeout(timer);
-  }, [draftLoaded, markdown, saveDraft, token]);
+  }, [draftLoaded, embedded, markdown, saveDraft, token]);
 
   const replaceSelection = useCallback((nextValue: string, selectionStart: number, selectionEnd: number) => {
     setMarkdown(nextValue);
@@ -498,14 +516,16 @@ export function ToolsPlayground() {
     <main
       className={isFullscreen
         ? "fixed inset-0 z-[70] h-dvh min-h-0 overflow-hidden bg-[var(--background)] text-[var(--foreground)]"
-        : "min-h-screen bg-[var(--background)] text-[var(--foreground)] md:h-[calc(100dvh-4.5rem)] md:min-h-0 md:overflow-hidden"}
+        : embedded
+          ? "h-[min(70dvh,52rem)] min-h-[36rem] overflow-hidden bg-[var(--background)] text-[var(--foreground)]"
+          : "min-h-screen bg-[var(--background)] text-[var(--foreground)] md:h-[calc(100dvh-4.5rem)] md:min-h-0 md:overflow-hidden"}
     >
-      <section className={`mx-auto flex h-full flex-col ${isFullscreen ? "max-w-none p-3 md:p-4" : "max-w-7xl px-4 py-6"}`}>
+      <section className={`mx-auto flex h-full flex-col ${isFullscreen ? "max-w-none p-3 md:p-4" : embedded ? "max-w-none" : "max-w-7xl px-4 py-6"}`}>
         <div className={`flex shrink-0 flex-wrap justify-between gap-3 ${isFullscreen ? "mb-3 items-center" : "mb-4 items-end"}`}>
           <div className={isFullscreen ? "min-w-0" : undefined}>
-            {!isFullscreen ? <p className="text-sm font-semibold text-[var(--accent)]">{t("tools.playground.kicker")}</p> : null}
-            <h1 className={`${isFullscreen ? "truncate text-lg" : "text-2xl"} font-bold`}>{t("tools.playground.title")}</h1>
-            {!isFullscreen ? (
+            {!isFullscreen && !embedded ? <p className="text-sm font-semibold text-[var(--accent)]">{t("tools.playground.kicker")}</p> : null}
+            {!embedded || isFullscreen ? <h1 className={`${isFullscreen ? "truncate text-lg" : "text-2xl"} font-bold`}>{t("tools.playground.title")}</h1> : null}
+            {!isFullscreen && !embedded ? (
               <>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("tools.playground.description")}</p>
                 <p className="mt-1 text-xs font-semibold text-[var(--muted)]">{t("tools.playground.uploadHint")}</p>
@@ -514,9 +534,9 @@ export function ToolsPlayground() {
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <button className="button-primary focus-ring" disabled={saving || uploading} type="button" onClick={() => void saveDraft()}>
+            {!embedded ? <button className="button-primary focus-ring" disabled={saving || uploading} type="button" onClick={() => void saveDraft()}>
               {saving ? t("tools.playground.saving") : uploading ? t("tools.playground.uploading") : t("common.save")}
-            </button>
+            </button> : null}
             <button
               aria-pressed={isFullscreen}
               className="button-secondary focus-ring"

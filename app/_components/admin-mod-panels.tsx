@@ -1,0 +1,122 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { apiRequest } from "../_lib/api";
+import { BackendModApplication, MinecraftVersionConfig } from "../_lib/mod-api";
+import { useI18n } from "../_lib/i18n-provider";
+import { MinecraftVersionPicker } from "./minecraft-version-picker";
+import { formatBytes } from "../_lib/oss-upload";
+
+type ModContentReviewItem = {
+  id: number;
+  source: "revision" | "data";
+  modSiteId: string;
+  modName: string;
+  userId?: number;
+  username: string;
+  displayName: string;
+  title: string;
+  summary: string;
+  createdAt: string;
+  reviewUrl: string;
+};
+
+export function MinecraftVersionConfigPanel({ token }: { token: string }) {
+  const { t } = useI18n();
+  const [config, setConfig] = useState<MinecraftVersionConfig | null>(null);
+  const [versionCode, setVersionCode] = useState("");
+  const [versionType, setVersionType] = useState<MinecraftVersionConfig["versions"][number]["type"]>("release");
+  const [loaderCode, setLoaderCode] = useState("");
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<MinecraftVersionConfig>("/api/v1/minecraft/versions")
+      .then((result) => { if (!cancelled) setConfig(result); })
+      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("admin.minecraftVersions.loadFailed")); });
+    return () => { cancelled = true; };
+  }, [t]);
+
+  if (!config) return <section className="surface p-5"><p className="font-bold text-[var(--muted)]">{message || t("common.loading")}</p></section>;
+
+  function addVersion() {
+    const code = versionCode.trim();
+    if (!code || config!.versions.some((item) => item.code === code)) return;
+    setConfig((current) => current ? { ...current, versions: [...current.versions, { code, type: versionType }] } : current);
+    setVersionCode("");
+  }
+
+  function removeVersion(code: string) {
+    setConfig((current) => current ? {
+      versions: current.versions.filter((item) => item.code !== code),
+      loaders: current.loaders.map((loader) => ({ ...loader, versions: loader.versions.filter((version) => version !== code) })),
+    } : current);
+  }
+
+  function addLoader() {
+    const code = loaderCode.trim();
+    if (!code || config!.loaders.some((item) => item.code === code)) return;
+    setConfig((current) => current ? { ...current, loaders: [...current.loaders, { code, name: code, versions: [] }] } : current);
+    setLoaderCode("");
+  }
+
+  function updateLoader(code: string, update: (loader: MinecraftVersionConfig["loaders"][number]) => MinecraftVersionConfig["loaders"][number]) {
+    setConfig((current) => current ? { ...current, loaders: current.loaders.map((loader) => loader.code === code ? update(loader) : loader) } : current);
+  }
+
+  async function save() {
+    setSaving(true);
+    setMessage("");
+    try {
+      const saved = await apiRequest<MinecraftVersionConfig>("/api/v1/admin/config/minecraft-versions", { method: "PUT", body: JSON.stringify(config) }, token);
+      setConfig(saved);
+      setMessage(t("admin.minecraftVersions.saved"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("admin.minecraftVersions.saveFailed"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <section className="space-y-5"><header className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-2xl font-black">{t("admin.minecraftVersions.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.minecraftVersions.description")}</p></div><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.minecraftVersions.saving") : t("common.save")}</button></header>{message ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-sm font-bold">{message}</p> : null}<section className="surface p-5"><h3 className="text-lg font-black">{t("admin.minecraftVersions.versionList")}</h3><div className="mt-3 flex flex-wrap gap-2"><input className="field max-w-xs" value={versionCode} placeholder="1.21.1" onChange={(event) => setVersionCode(event.target.value)} /><select className="field w-auto" value={versionType} onChange={(event) => setVersionType(event.target.value as typeof versionType)}>{(["release", "snapshot", "april_fools", "legacy"] as const).map((type) => <option key={type} value={type}>{t(`admin.minecraftVersions.types.${type}`)}</option>)}</select><button className="button-secondary focus-ring" type="button" onClick={addVersion}>+ {t("common.create")}</button></div><div className="mt-4 flex flex-wrap gap-2">{config.versions.map((version) => <span key={version.code} className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold">{version.code}<small className="text-[var(--muted)]">{t(`admin.minecraftVersions.types.${version.type}`)}</small><button className="text-[var(--red)]" type="button" onClick={() => removeVersion(version.code)}>×</button></span>)}</div></section><section className="surface p-5"><h3 className="text-lg font-black">{t("admin.minecraftVersions.loaderList")}</h3><div className="mt-3 flex gap-2"><input className="field max-w-sm" value={loaderCode} placeholder="Forge" onChange={(event) => setLoaderCode(event.target.value)} /><button className="button-secondary focus-ring" type="button" onClick={addLoader}>+ {t("common.create")}</button></div><div className="mt-5 grid gap-4">{config.loaders.map((loader) => <article key={loader.code} className="rounded-lg border border-[var(--line)] p-4"><div className="flex flex-wrap items-center gap-2"><input className="field max-w-xs font-bold" value={loader.name} onChange={(event) => updateLoader(loader.code, (item) => ({ ...item, name: event.target.value }))} /><code className="text-xs text-[var(--muted)]">{loader.code}</code><button className="button-secondary focus-ring ml-auto" type="button" onClick={() => updateLoader(loader.code, (item) => ({ ...item, versions: config.versions.map((version) => version.code) }))}>{t("admin.minecraftVersions.selectAll")}</button><button className="button-secondary focus-ring" type="button" onClick={() => updateLoader(loader.code, (item) => ({ ...item, versions: [] }))}>{t("admin.minecraftVersions.clear")}</button><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => setConfig((current) => current ? { ...current, loaders: current.loaders.filter((item) => item.code !== loader.code) } : current)}>{t("common.delete")}</button></div><MinecraftVersionPicker className="mt-3 w-full" config={config} values={loader.versions} onChange={(versions) => updateLoader(loader.code, (item) => ({ ...item, versions }))} /></article>)}</div></section></section>;
+}
+
+export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "developer" | "editor"; token: string }) {
+  const { locale, t } = useI18n();
+  const [items, setItems] = useState<Array<ModContentReviewItem | BackendModApplication>>([]);
+  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [message, setMessage] = useState("");
+  const endpoint = kind === "content" ? "/api/v1/admin/mod-content-reviews" : `/api/v1/admin/mod-applications?kind=${kind}`;
+  const load = useCallback(async () => {
+    try {
+      const result = await apiRequest<{ items: Array<ModContentReviewItem | BackendModApplication> }>(endpoint, {}, token);
+      setItems(result.items);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("admin.reviews.loadFailed"));
+    }
+  }, [endpoint, t, token]);
+  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+
+  async function review(item: ModContentReviewItem | BackendModApplication, status: "approved" | "rejected") {
+    const url = "reviewUrl" in item ? item.reviewUrl : `/api/v1/admin/mod-applications/${item.id}`;
+    try {
+      await apiRequest(url, { method: "PATCH", body: JSON.stringify({ status, note: notes[item.id] ?? "" }) }, token);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("admin.reviews.reviewFailed"));
+    }
+  }
+
+  async function openAttachment(applicationID: number, attachmentID: number) {
+    try {
+      const result = await apiRequest<{ url: string }>(`/api/v1/admin/mod-applications/${applicationID}/attachments/${attachmentID}/presign`, { method: "POST" }, token);
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("admin.reviews.attachmentFailed"));
+    }
+  }
+
+  return <section><p className="text-sm text-[var(--muted)]">{t(`admin.reviews.${kind}Description`)}</p>{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}<div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t(`admin.reviews.applicationKinds.${item.kind}`); const summary = content ? item.summary : item.proof; const name = item.displayName || item.username; return <article key={`${content ? item.source : item.kind}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-black">{item.modName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p></div>{content ? <Link className="button-secondary focus-ring" href={`/mods/${item.modSiteId}/history`}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div></section>;
+}

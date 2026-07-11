@@ -8,6 +8,7 @@ import { ApiError, apiRequest } from "../_lib/api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
 import { computeFileSHA256, formatBytes } from "../_lib/oss-upload";
+import { MinecraftVersionConfigPanel, ModReviewQueuePanel } from "./admin-mod-panels";
 import { useTheme } from "./theme-provider";
 
 type PanelId =
@@ -16,13 +17,18 @@ type PanelId =
   | "user-roles"
   | "permission-list"
   | "role-tracks"
+  | "permission-settings"
   | "users"
+  | "reviews-content"
+  | "reviews-developer"
+  | "reviews-editor"
   | "notifications"
   | "mail"
   | "auth"
   | "i18n"
   | "markdown"
   | "profile-settings"
+  | "minecraft-versions"
   | "nats"
   | "oss-config"
   | "oss-files"
@@ -360,6 +366,15 @@ const adminNavGroups: Array<{
     items: [{ id: "overview", label: "", description: "" }],
   },
   {
+    id: "reviews",
+    label: "",
+    items: [
+      { id: "reviews-content", label: "", description: "" },
+      { id: "reviews-developer", label: "", description: "" },
+      { id: "reviews-editor", label: "", description: "" },
+    ],
+  },
+  {
     id: "permission",
     label: "",
     items: [
@@ -367,6 +382,7 @@ const adminNavGroups: Array<{
       { id: "user-roles", label: "", description: "" },
       { id: "permission-list", label: "", description: "" },
       { id: "role-tracks", label: "", description: "" },
+      { id: "permission-settings", label: "", description: "" },
     ],
   },
   {
@@ -426,6 +442,7 @@ const adminNavGroups: Array<{
       { id: "auth", label: "", description: "" },
       { id: "markdown", label: "", description: "" },
       { id: "profile-settings", label: "", description: "" },
+      { id: "minecraft-versions", label: "", description: "" },
       { id: "i18n", label: "", description: "" },
     ],
   },
@@ -546,6 +563,8 @@ type RoleTrack = {
 type PermissionDefaults = {
   registeredRole: string;
   bannedRole: string;
+  developerRole: string;
+  editorRole: string;
 };
 
 const emptyCatalog: PermissionCatalog = { roles: [], permissions: [] };
@@ -850,14 +869,19 @@ export function AdminConsolePolished() {
           {activePanel === "role-tracks" ? (
             <RoleTracksPanel catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
           ) : null}
+          {activePanel === "permission-settings" ? <PermissionSettingsPanel catalog={catalog} token={auth.token} /> : null}
           {activePanel === "users" ? (
             <UsersPanelV2 catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
           ) : null}
           {activePanel === "notifications" ? <SystemNotificationPanel token={auth.token} /> : null}
+          {activePanel === "reviews-content" ? <ModReviewQueuePanel kind="content" token={auth.token} /> : null}
+          {activePanel === "reviews-developer" ? <ModReviewQueuePanel kind="developer" token={auth.token} /> : null}
+          {activePanel === "reviews-editor" ? <ModReviewQueuePanel kind="editor" token={auth.token} /> : null}
           {activePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "auth" ? <AuthPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "markdown" ? <MarkdownConfigPanel initialConfig={config.markdown} token={auth.token} /> : null}
           {activePanel === "profile-settings" ? <ProfileSettingsPanel initialConfig={config.profile ?? emptyConfig.profile} token={auth.token} /> : null}
+          {activePanel === "minecraft-versions" ? <MinecraftVersionConfigPanel token={auth.token} /> : null}
           {activePanel === "nats" ? <NATSConfigPanel token={auth.token} /> : null}
           {activePanel === "i18n" ? <TranslationManagerPanel token={auth.token} /> : null}
           {activePanel === "oss-config" ? <OSSConfigPanelV2 initialConfig={config.oss ?? emptyConfig.oss!} token={auth.token} /> : null}
@@ -2749,6 +2773,42 @@ function AuthPanelV2({ config, token }: { config: AdminConfig; token: string }) 
   );
 }
 
+function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalog; token: string }) {
+  const { t } = useI18n();
+  const [defaults, setDefaults] = useState<PermissionDefaults>({ registeredRole: "", bannedRole: "", developerRole: "", editorRole: "" });
+  const [saving, setSaving] = useState(false);
+  const variableRoles = catalog.roles.filter((role) => role.code.split(".").some((segment) => /^\[(projectid)\]$|^<(projectid)>$/i.test(segment)));
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", {}, token)
+      .then((result) => { if (!cancelled) setDefaults(result); })
+      .catch((error) => notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"));
+    return () => { cancelled = true; };
+  }, [t, token]);
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", { method: "PUT", body: JSON.stringify(defaults) }, token);
+      setDefaults(result);
+      notifyAdminNotice(t("admin.permissionSettings.saved"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const roleOptions = (roles: Role[]) => <>{roles.map((role) => <option key={role.code} value={role.code}>{role.name || role.code} ({role.code})</option>)}</>;
+  return <PanelShell title={t("admin.permissionSettings.title")}><div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-5"><p className="max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("admin.permissionSettings.description")}</p><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{t("common.save")}</button></div><section className="grid gap-4 border-b border-[var(--line)] py-5 md:grid-cols-2"><div className="md:col-span-2"><h3 className="font-black">{t("admin.permissionSettings.accountDefaults")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.permissionSettings.accountDefaultsDescription")}</p></div><PermissionRoleSelect label={t("admin.permissionSettings.registeredRole")} value={defaults.registeredRole} onChange={(registeredRole) => setDefaults((current) => ({ ...current, registeredRole }))}>{roleOptions(catalog.roles)}</PermissionRoleSelect><PermissionRoleSelect label={t("admin.permissionSettings.bannedRole")} value={defaults.bannedRole} onChange={(bannedRole) => setDefaults((current) => ({ ...current, bannedRole }))}>{roleOptions(catalog.roles)}</PermissionRoleSelect></section><section className="grid gap-4 pt-5 md:grid-cols-2"><div className="md:col-span-2"><h3 className="font-black">{t("admin.permissionSettings.projectDefaults")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.permissionSettings.projectDefaultsDescription")}</p></div><PermissionRoleSelect label={t("admin.permissionSettings.developerRole")} value={defaults.developerRole} onChange={(developerRole) => setDefaults((current) => ({ ...current, developerRole }))}>{roleOptions(variableRoles)}</PermissionRoleSelect><PermissionRoleSelect label={t("admin.permissionSettings.editorRole")} value={defaults.editorRole} onChange={(editorRole) => setDefaults((current) => ({ ...current, editorRole }))}>{roleOptions(variableRoles)}</PermissionRoleSelect>{variableRoles.length === 0 ? <p className="md:col-span-2 text-sm font-bold text-[var(--warning)]">{t("admin.permissionSettings.noVariableRoles")}</p> : null}</section></PanelShell>;
+}
+
+function PermissionRoleSelect({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode }) {
+  const { t } = useI18n();
+  return <label className="text-sm font-semibold">{label}<select className="field mt-2" value={value} onChange={(event) => onChange(event.target.value)}><option value="">{t("admin.permissionSettings.noAutomaticRole")}</option>{children}</select></label>;
+}
+
 function RoleTracksPanel({
   catalog,
   token,
@@ -2762,7 +2822,6 @@ function RoleTracksPanel({
 }) {
   const { t } = useI18n();
   const [tracks, setTracks] = useState<RoleTrack[]>([]);
-  const [defaults, setDefaults] = useState<PermissionDefaults>({ registeredRole: "", bannedRole: "" });
   const [selectedCode, setSelectedCode] = useState("");
   const [draft, setDraft] = useState<RoleTrack>({ code: "", name: "", description: "", roles: [] });
   const [selectedUser, setSelectedUser] = useState("");
@@ -2770,12 +2829,8 @@ function RoleTracksPanel({
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
-    const [nextTracks, nextDefaults] = await Promise.all([
-      apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", {}, token),
-      apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", {}, token),
-    ]);
+    const nextTracks = await apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", {}, token);
     setTracks(nextTracks);
-    setDefaults(nextDefaults);
     if (selectedCode) {
       const selected = nextTracks.find((track) => track.code === selectedCode);
       if (selected) setDraft(selected);
@@ -2798,23 +2853,6 @@ function RoleTracksPanel({
   function newTrack() {
     setSelectedCode("");
     setDraft({ code: "", name: "", description: "", roles: [] });
-  }
-
-  async function saveDefaults() {
-    setSaving(true);
-    try {
-      const result = await apiRequest<PermissionDefaults>(
-        "/api/v1/admin/permission-defaults",
-        { method: "PUT", body: JSON.stringify(defaults) },
-        token,
-      );
-      setDefaults(result);
-      notifyAdminNotice(t("admin.roleTracks.defaultsSaved"));
-    } catch (error) {
-      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
-    } finally {
-      setSaving(false);
-    }
   }
 
   async function saveTrack() {
@@ -2881,29 +2919,7 @@ function RoleTracksPanel({
 
   return (
     <PanelShell title={t("admin.roleTracks.title")}>
-      <section className="grid gap-4 border-b border-[var(--line)] pb-5 lg:grid-cols-[220px_1fr]">
-        <div>
-          <h3 className="font-bold">{t("admin.roleTracks.defaultRoles")}</h3>
-          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.roleTracks.defaultRolesDescription")}</p>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-sm font-semibold">{t("admin.roleTracks.registeredRole")}
-            <select className="field mt-2" value={defaults.registeredRole} onChange={(event) => setDefaults((current) => ({ ...current, registeredRole: event.target.value }))}>
-              <option value="">{t("admin.roleTracks.noAutomaticRole")}</option>
-              {catalog.roles.map((role) => <option key={role.code} value={role.code}>{role.name || role.code} ({role.code})</option>)}
-            </select>
-          </label>
-          <label className="text-sm font-semibold">{t("admin.roleTracks.bannedRole")}
-            <select className="field mt-2" value={defaults.bannedRole} onChange={(event) => setDefaults((current) => ({ ...current, bannedRole: event.target.value }))}>
-              <option value="">{t("admin.roleTracks.noAutomaticRole")}</option>
-              {catalog.roles.map((role) => <option key={role.code} value={role.code}>{role.name || role.code} ({role.code})</option>)}
-            </select>
-          </label>
-          <div className="md:col-span-2"><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void saveDefaults()}>{t("common.save")}</button></div>
-        </div>
-      </section>
-
-      <section className="grid min-h-[520px] gap-4 pt-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+      <section className="grid min-h-[520px] gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="border-r border-[var(--line)] pr-4">
           <button className="button-primary focus-ring mb-3 w-full" type="button" onClick={newTrack}>{t("admin.roleTracks.newTrack")}</button>
           <div className="grid gap-1">
@@ -4753,12 +4769,17 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "user-roles": t("admin.userRoles"),
     "permission-list": t("admin.permissionList"),
     "role-tracks": t("admin.roleTracks.title"),
+    "permission-settings": t("admin.permissionSettings.title"),
     users: t("admin.userList"),
+    "reviews-content": t("admin.reviews.contentTitle"),
+    "reviews-developer": t("admin.reviews.developerTitle"),
+    "reviews-editor": t("admin.reviews.editorTitle"),
     notifications: t("admin.notifications.title"),
     mail: t("admin.mail"),
     auth: t("admin.auth"),
     markdown: t("admin.markdown.navTitle"),
     "profile-settings": t("admin.profileSettings.navTitle"),
+    "minecraft-versions": t("admin.minecraftVersions.title"),
     nats: t("admin.nats.navTitle"),
     i18n: t("admin.i18n"),
     "oss-config": t("admin.panels.ossConfig"),
@@ -4786,6 +4807,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
 function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, params?: Record<string, string | number>) => string) {
   const labels: Record<string, string> = {
     workbench: t("admin.workbench"),
+    reviews: t("admin.reviews.group"),
     permission: t("admin.permission"),
     oss: t("admin.nav.oss"),
     logs: t("admin.nav.logs"),
@@ -4804,12 +4826,17 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "user-roles": t("admin.userRolesDesc"),
     "permission-list": t("admin.permissionListDesc"),
     "role-tracks": t("admin.roleTracks.navDescription"),
+    "permission-settings": t("admin.permissionSettings.navDescription"),
     users: t("admin.usersDesc"),
+    "reviews-content": t("admin.reviews.contentDescription"),
+    "reviews-developer": t("admin.reviews.developerDescription"),
+    "reviews-editor": t("admin.reviews.editorDescription"),
     notifications: t("admin.notifications.navDescription"),
     mail: t("admin.mailDesc"),
     auth: t("admin.authDesc"),
     markdown: t("admin.markdown.navDesc"),
     "profile-settings": t("admin.profileSettings.navDescription"),
+    "minecraft-versions": t("admin.minecraftVersions.description"),
     nats: t("admin.nats.navDescription"),
     i18n: t("admin.i18nDesc"),
     "oss-config": t("admin.nav.ossConfigDesc"),

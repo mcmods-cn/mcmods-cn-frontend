@@ -87,6 +87,7 @@ function readFirst(keys: readonly string[]) {
 function subscribeAuth(onStoreChange: () => void) {
   window.addEventListener("storage", onStoreChange);
   window.addEventListener("mcmods-auth-change", onStoreChange);
+  queueMicrotask(onStoreChange);
   return () => {
     window.removeEventListener("storage", onStoreChange);
     window.removeEventListener("mcmods-auth-change", onStoreChange);
