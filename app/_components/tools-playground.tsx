@@ -50,6 +50,8 @@ type MarkdownCommand =
 
 type ToolsPlaygroundProps = {
   embedded?: boolean;
+  editorDescription?: string;
+  editorTitle?: string;
   onChange?: (markdown: string) => void;
   value?: string;
 };
@@ -87,7 +89,7 @@ const mediaPresets: MediaPreset[] = [
   { fields: ["geogebra"], id: "geogebra", labelKey: "tools.playground.mediaGeogebra", template: "[GeoGebra:{{geogebra}}]" },
 ];
 
-export function ToolsPlayground({ embedded = false, onChange, value }: ToolsPlaygroundProps = {}) {
+export function ToolsPlayground({ embedded = false, editorDescription, editorTitle, onChange, value }: ToolsPlaygroundProps = {}) {
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -524,7 +526,8 @@ export function ToolsPlayground({ embedded = false, onChange, value }: ToolsPlay
         <div className={`flex shrink-0 flex-wrap justify-between gap-3 ${isFullscreen ? "mb-3 items-center" : "mb-4 items-end"}`}>
           <div className={isFullscreen ? "min-w-0" : undefined}>
             {!isFullscreen && !embedded ? <p className="text-sm font-semibold text-[var(--accent)]">{t("tools.playground.kicker")}</p> : null}
-            {!embedded || isFullscreen ? <h1 className={`${isFullscreen ? "truncate text-lg" : "text-2xl"} font-bold`}>{t("tools.playground.title")}</h1> : null}
+            {!embedded || isFullscreen || editorTitle ? <h1 className={`${isFullscreen ? "truncate text-lg" : "text-2xl"} font-bold`}>{editorTitle || t("tools.playground.title")}</h1> : null}
+            {!isFullscreen && editorDescription ? <p className="mt-1 max-w-4xl text-sm leading-6 text-[var(--muted)]">{editorDescription}</p> : null}
             {!isFullscreen && !embedded ? (
               <>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("tools.playground.description")}</p>

@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiRequest, ApiError } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { BackendModRecord, backendModToCatalogEntry } from "../_lib/mod-api";
-import { modCatalogEntries, ModCatalogEntry } from "../_lib/mod-catalog-data";
+import { ModCatalogEntry } from "../_lib/mod-catalog-data";
 import { useI18n } from "../_lib/i18n-provider";
 import { ModDetail } from "./mod-detail";
 
 export function ModDetailLoader({ siteId }: { siteId: string }) {
   const { t } = useI18n();
   const { ready, token } = useAuthSnapshot();
-  const fallback = useMemo(() => modCatalogEntries.find((entry) => entry.siteId === siteId) ?? null, [siteId]);
-  const [mod, setMod] = useState<ModCatalogEntry | null>(fallback);
-  const [loading, setLoading] = useState(!fallback);
+  const [mod, setMod] = useState<ModCatalogEntry | null>(null);
+  const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
@@ -27,7 +26,7 @@ export function ModDetailLoader({ siteId }: { siteId: string }) {
         }
       })
       .catch((error) => {
-        if (!cancelled && !fallback && error instanceof ApiError && error.status === 404) setNotFound(true);
+        if (!cancelled && error instanceof ApiError && error.status === 404) setNotFound(true);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -35,7 +34,7 @@ export function ModDetailLoader({ siteId }: { siteId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [fallback, ready, siteId, token]);
+  }, [ready, siteId, token]);
 
   if (mod) return <ModDetail mod={mod} />;
   return (

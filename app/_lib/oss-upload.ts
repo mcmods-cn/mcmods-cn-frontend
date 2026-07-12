@@ -23,7 +23,7 @@ export type OSSFileRecord = {
   accessUrl?: string;
 };
 
-type OSSDirectUploadTicket = {
+export type OSSDirectUploadTicket = {
   method?: string;
   url: string;
   accessUrl?: string;
@@ -110,7 +110,7 @@ export function formatBytes(value: number) {
   return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-async function putFileToOSS(ticket: OSSDirectUploadTicket, file: File) {
+export async function putFileToOSS(ticket: OSSDirectUploadTicket, file: File, onProgress?: (loaded: number, total: number) => void) {
   const headers = new Headers();
   for (const [key, value] of Object.entries(ticket.headers ?? {})) {
     if (key.toLowerCase() !== "host") headers.set(key, value);
@@ -118,15 +118,23 @@ async function putFileToOSS(ticket: OSSDirectUploadTicket, file: File) {
   if (!headers.has("Content-Type")) {
     headers.set("Content-Type", ticket.contentType || file.type || "application/octet-stream");
   }
-  const response = await fetch(ticket.url, {
-    method: ticket.method || "PUT",
-    headers,
-    body: file,
+  await new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(ticket.method || "PUT", ticket.url, true);
+    headers.forEach((value, key) => request.setRequestHeader(key, value));
+    request.upload.onprogress = (event) => onProgress?.(event.loaded, event.lengthComputable ? event.total : file.size);
+    request.onerror = () => reject(new Error("OSS upload network error"));
+    request.onabort = () => reject(new DOMException("OSS upload aborted", "AbortError"));
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress?.(file.size, file.size);
+        resolve();
+        return;
+      }
+      reject(new Error(request.responseText || `OSS upload failed: HTTP ${request.status}`));
+    };
+    request.send(file);
   });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `OSS upload failed: HTTP ${response.status}`);
-  }
 }
 
 function normalizeUploadResult(record: OSSFileRecord | undefined, ticket: OSSDirectUploadTicket) {

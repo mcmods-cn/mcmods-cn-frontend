@@ -78,27 +78,6 @@ export type BackendModRevision = {
 export type BackendModRevisionList = { items: BackendModRevision[] };
 export type BackendModRevisionComparison = { before: BackendModRevision; after: BackendModRevision; changedFields: string[] };
 
-export type BackendModDataPage = {
-  id: number;
-  modId: number;
-  minecraftVersion: string;
-  category: string;
-  title: string;
-  summary: string;
-  contentMarkdown: string;
-  status: "pending" | "approved" | "rejected";
-  createdBy?: number;
-  reviewedBy?: number;
-  reviewNote: string;
-  createdAt: string;
-  updatedAt: string;
-  reviewedAt?: string;
-};
-
-export type BackendModDataPageList = { items: BackendModDataPage[] };
-export type BackendModDataVersion = { id: number; minecraftVersion: string; itemCount: number; createdAt: string };
-export type BackendModDataPageListV2 = { versions: BackendModDataVersion[]; items: BackendModDataPage[] };
-
 export type BackendModApplication = {
   id: number;
   modId: number;

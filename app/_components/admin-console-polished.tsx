@@ -88,7 +88,6 @@ type AdminUserDetails = {
 
 type DashboardData = {
   cards: Array<{ label: string; value: number; tone: string }>;
-  todo: string[];
 };
 
 type MailConfig = {
@@ -448,7 +447,7 @@ const adminNavGroups: Array<{
   },
 ];
 
-const emptyDashboard: DashboardData = { cards: [], todo: [] };
+const emptyDashboard: DashboardData = { cards: [] };
 
 const emptyConfig: AdminConfig = {
   auth: {
@@ -2728,25 +2727,16 @@ function OverviewPanel({ dashboard, config }: { dashboard: DashboardData; config
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {dashboard.cards.map((card) => (
           <div key={card.label} className="surface rounded-lg p-4">
-            <p className="text-sm font-semibold text-[var(--muted)]">{card.label}</p>
+            <p className="text-sm font-semibold text-[var(--muted)]">{t(`admin.dashboardCards.${card.label}`)}</p>
             <p className={`mt-3 text-3xl font-bold ${toneClass(card.tone)}`}>{card.value}</p>
           </div>
         ))}
       </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ConfigBlock title={t("admin.featureFlags")}>
-          {Object.entries(config.features).map(([key, enabled]) => (
-            <ConfigLine key={key} label={featureLabel(key)} value={enabled ? t("common.enabled") : t("common.disabled")} />
-          ))}
-        </ConfigBlock>
-        <ConfigBlock title={t("admin.recentTasks")}>
-          {dashboard.todo.map((item) => (
-            <div key={item} className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm">
-              {item}
-            </div>
-          ))}
-        </ConfigBlock>
-      </div>
+      <ConfigBlock title={t("admin.featureFlags")}>
+        {Object.entries(config.features).map(([key, enabled]) => (
+          <ConfigLine key={key} label={featureLabel(key)} value={enabled ? t("common.enabled") : t("common.disabled")} />
+        ))}
+      </ConfigBlock>
     </div>
   );
 }

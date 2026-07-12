@@ -33,10 +33,20 @@ export async function apiRequest<T>(
   });
   const envelope = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!response.ok) {
+    if (response.status === 401 && token && typeof window !== "undefined") {
+      clearExpiredAuth();
+    }
     throw new ApiError(envelope.error ?? "请求失败", response.status);
   }
   if (typeof envelope.data === "undefined") {
     throw new ApiError("接口响应为空", response.status);
   }
   return envelope.data;
+}
+
+function clearExpiredAuth() {
+  for (const key of ["mcmods-token", "mcmods-admin-token", "mcmods-user", "mcmods-admin-user"]) {
+    window.localStorage.removeItem(key);
+  }
+  window.dispatchEvent(new Event("mcmods-auth-change"));
 }

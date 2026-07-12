@@ -200,9 +200,9 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           </div>
         </FormSection>
 
-        <FormSection title={t("mods.submission.sections.body")} description={t("mods.submission.sections.bodyHint")}>
-          <div className="overflow-hidden rounded-lg border border-[var(--line)]"><ToolsPlayground embedded value={draft.bodyMarkdown} onChange={(bodyMarkdown) => setDraft((current) => current.bodyMarkdown === bodyMarkdown ? current : { ...current, bodyMarkdown })} /></div>
-        </FormSection>
+        <section className="mb-6 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
+          <ToolsPlayground embedded editorTitle={t("mods.submission.sections.body")} editorDescription={t("mods.submission.sections.bodyHint")} value={draft.bodyMarkdown} onChange={(bodyMarkdown) => setDraft((current) => current.bodyMarkdown === bodyMarkdown ? current : { ...current, bodyMarkdown })} />
+        </section>
 
         {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24 resize-y" maxLength={500} value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
         {message ? <p className="mb-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{message}</p> : null}
@@ -258,8 +258,7 @@ function EditorState({ text, login = false }: { text: string; login?: boolean })
 }
 
 function draftFromRecord(record: BackendModRecord): ModDraft {
-  const compatibilities = record.compatibilities?.length ? record.compatibilities : record.supportedLoaders.map((loader) => ({ loader, versions: [...record.supportedVersions] }));
-  return { ...record, compatibilities, searchKeywords: record.searchKeywords.join("\n") };
+  return { ...record, compatibilities: record.compatibilities ?? [], searchKeywords: record.searchKeywords.join("\n") };
 }
 
 function payloadFromDraft(draft: ModDraft): CreateModPayload {

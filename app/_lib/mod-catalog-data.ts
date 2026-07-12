@@ -93,6 +93,3 @@ export const licenseOptions = ["MIT", "GPL-3.0", "LGPL-3.0", "Apache-2.0", "ARR"
 export const updatedOptions = ["week", "month", "quarter", "year", "stale"] as const;
 export const advancedOptions: ModFeature[] = ["tutorials", "items", "gallery", "downloads", "reviewed", "claimed", "serverSupport", "modpackAllowed", "severeIssues"];
 export const sortOptions: string[] = ["relevance", "updated", "collected", "downloads", "favorites", "rating", "views", "comments", "nameAsc", "nameDesc"];
-
-// The catalog is backend-owned. Keep this export for callers that need an SSR-safe empty fallback.
-export const modCatalogEntries: ModCatalogEntry[] = [];

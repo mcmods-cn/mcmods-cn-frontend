@@ -14,7 +14,6 @@ import {
   licenseOptions,
   loaderOptions,
   maintenanceOptions,
-  modCatalogEntries,
   ModCatalogEntry,
   ModFeature,
   primaryCategoryOptions,
@@ -60,8 +59,7 @@ export function ModCatalog() {
 
   const paramsKey = searchParams.toString();
   const filters = useMemo(() => parseFilters(new URLSearchParams(paramsKey), preferences), [paramsKey, preferences]);
-  const catalogMods = useMemo(() => mergeCatalogMods(modCatalogEntries, backendMods), [backendMods]);
-  const filteredMods = useMemo(() => sortMods(filterMods(catalogMods, filters), filters.sort, filters.query), [catalogMods, filters]);
+  const filteredMods = useMemo(() => sortMods(filterMods(backendMods, filters), filters.sort, filters.query), [backendMods, filters]);
   const totalPages = Math.max(1, Math.ceil(filteredMods.length / filters.pageSize));
   const currentPage = Math.min(filters.page, totalPages);
   const pageStart = (currentPage - 1) * filters.pageSize;
@@ -203,7 +201,7 @@ export function ModCatalog() {
             <div>
               <p className="text-sm font-bold text-[var(--accent)]">{t("mods.kicker")}</p>
               <h1 className="mt-1 text-3xl font-black md:text-4xl">{t("mods.title")}</h1>
-              <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{t("mods.total", { count: catalogMods.length })}</p>
+              <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{t("mods.total", { count: backendMods.length })}</p>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.description")}</p>
             </div>
             <button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>
@@ -236,7 +234,7 @@ export function ModCatalog() {
               <FilterPanel
                 expandedGroups={expandedGroups}
                 filters={filters}
-                mods={catalogMods}
+                mods={backendMods}
                 resultCount={filteredMods.length}
                 t={t}
                 onClear={clearFilters}
@@ -334,7 +332,7 @@ export function ModCatalog() {
             <FilterPanel
               expandedGroups={expandedGroups}
               filters={filters}
-              mods={catalogMods}
+              mods={backendMods}
               resultCount={filteredMods.length}
               t={t}
               onClear={clearFilters}
@@ -796,12 +794,6 @@ function paginationPages(current: number, total: number): Array<number | "ellips
     result.push(page);
   });
   return result;
-}
-
-function mergeCatalogMods(base: ModCatalogEntry[], incoming: ModCatalogEntry[]) {
-  const entries = new Map(base.map((mod) => [mod.siteId, mod]));
-  for (const mod of incoming) entries.set(mod.siteId, mod);
-  return [...entries.values()];
 }
 
 function modDescription(mod: ModCatalogEntry, t: Translation) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 export type AuthUser = {
   id: number;
@@ -39,13 +39,18 @@ export function saveAuth(result: AuthResult) {
 }
 
 export function clearAuth() {
+  let changed = false;
   for (const key of tokenKeys) {
+    changed ||= window.localStorage.getItem(key) !== null;
     window.localStorage.removeItem(key);
   }
   for (const key of userKeys) {
+    changed ||= window.localStorage.getItem(key) !== null;
     window.localStorage.removeItem(key);
   }
-  window.dispatchEvent(new Event("mcmods-auth-change"));
+  if (changed) {
+    window.dispatchEvent(new Event("mcmods-auth-change"));
+  }
 }
 
 function readAuthSnapshot() {
@@ -53,13 +58,31 @@ function readAuthSnapshot() {
   const savedUser = readFirst(userKeys);
   return {
     token,
-    user: parseStoredUser(savedUser),
+    user: token && !isTokenExpired(token) ? parseStoredUser(savedUser) : null,
   };
 }
 
 export function useAuthSnapshot(): AuthSnapshot {
   const serialized = useSyncExternalStore(subscribeAuth, readSerializedAuth, () => "");
-  return useMemo(() => parseSerializedAuth(serialized), [serialized]);
+  const snapshot = useMemo(() => parseSerializedAuth(serialized), [serialized]);
+
+  useEffect(() => {
+    const expiresAt = tokenExpiresAt(snapshot.token);
+    if (!expiresAt) return;
+    let timer = 0;
+    const checkExpiration = () => {
+      const remaining = expiresAt - Date.now();
+      if (remaining <= 0) {
+        clearAuth();
+        return;
+      }
+      timer = window.setTimeout(checkExpiration, Math.min(remaining, 2_147_000_000));
+    };
+    checkExpiration();
+    return () => window.clearTimeout(timer);
+  }, [snapshot.token]);
+
+  return snapshot;
 }
 
 export function canAccessAdmin(user: AuthUser | null) {
@@ -117,6 +140,25 @@ function parseStoredUser(savedUser: string) {
   }
   try {
     return JSON.parse(savedUser) as AuthUser;
+  } catch {
+    return null;
+  }
+}
+
+function isTokenExpired(token: string) {
+  const expiresAt = tokenExpiresAt(token);
+  return expiresAt !== null && expiresAt <= Date.now();
+}
+
+function tokenExpiresAt(token: string): number | null {
+  const payload = token.split(".")[1];
+  if (!payload || typeof window === "undefined") return null;
+  try {
+    const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const bytes = Uint8Array.from(window.atob(padded), (character) => character.charCodeAt(0));
+    const claims = JSON.parse(new TextDecoder().decode(bytes)) as { exp?: unknown };
+    return typeof claims.exp === "number" && Number.isFinite(claims.exp) ? claims.exp * 1000 : null;
   } catch {
     return null;
   }

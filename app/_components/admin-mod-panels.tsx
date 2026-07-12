@@ -9,8 +9,8 @@ import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { formatBytes } from "../_lib/oss-upload";
 
 type ModContentReviewItem = {
-  id: number;
-  source: "revision" | "data";
+  id: string | number;
+  source: "revision" | "data" | "export";
   modSiteId: string;
   modName: string;
   userId?: number;
@@ -86,7 +86,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
 export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "developer" | "editor"; token: string }) {
   const { locale, t } = useI18n();
   const [items, setItems] = useState<Array<ModContentReviewItem | BackendModApplication>>([]);
-  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const endpoint = kind === "content" ? "/api/v1/admin/mod-content-reviews" : `/api/v1/admin/mod-applications?kind=${kind}`;
   const load = useCallback(async () => {

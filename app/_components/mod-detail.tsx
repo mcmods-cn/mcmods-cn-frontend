@@ -5,20 +5,15 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
-import { BackendModApplication, BackendModComment, BackendModDataPage, BackendModDataPageListV2, BackendModDataVersion } from "../_lib/mod-api";
+import { BackendModApplication, BackendModComment } from "../_lib/mod-api";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { ModCatalogEntry } from "../_lib/mod-catalog-data";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
-import { MinecraftVersionPicker } from "./minecraft-version-picker";
+import { ModExportData } from "./mod-export-data";
 
 type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "gallery" | "discussion" | "tutorial" | "issues";
-
-const dataCategories = [
-  "itemsBlocks", "biomes", "entities", "enchantments", "buffs", "multiblocks", "worldgen",
-  "keybinds", "gameSettings", "commands", "skills", "elements", "achievements", "lootTables", "customPages",
-] as const;
 
 export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
   const { locale, t } = useI18n();
@@ -93,81 +88,13 @@ function ModSidebar({ mod, locale }: { mod: ModCatalogEntry; locale: string }) {
 }
 
 function ModDataTab({ mod, canEdit, token }: { mod: ModCatalogEntry; canEdit: boolean; token: string }) {
-  const { t } = useI18n();
-  const [items, setItems] = useState<BackendModDataPage[]>([]);
-  const [versions, setVersions] = useState<BackendModDataVersion[]>([]);
-  const [selectedVersion, setSelectedVersion] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [addingVersion, setAddingVersion] = useState(false);
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    apiRequest<BackendModDataPageListV2>(`/api/v1/mods/${encodeURIComponent(mod.siteId)}/data`, {}, token)
-      .then((result) => {
-        if (cancelled) return;
-        setItems(result.items);
-        setVersions(result.versions);
-        setSelectedVersion((current) => current || result.versions[0]?.minecraftVersion || "");
-      })
-      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("mods.detail.dataLoadFailed")); });
-    return () => { cancelled = true; };
-  }, [mod.siteId, t, token]);
-
-  const visibleItems = selectedVersion ? items.filter((item) => item.minecraftVersion === selectedVersion) : items;
-  const groups = dataCategories.map((category) => ({ category, items: visibleItems.filter((item) => item.category === category) })).filter((group) => group.items.length > 0);
-
-  return <div className="space-y-4">{versions.length ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3"><strong className="text-sm">{t("mods.detail.minecraftVersion")}</strong><MinecraftVersionPicker className="w-full sm:w-64" multiple={false} optionCodes={versions.map((version) => version.minecraftVersion)} values={selectedVersion ? [selectedVersion] : []} onChange={(selected) => setSelectedVersion(selected[0] ?? "")} />{canEdit ? <button className="button-secondary focus-ring ml-auto" type="button" onClick={() => setAddingVersion(true)}>+ {t("mods.detail.addDataVersion")}</button> : null}</div> : null}{message ? <p className="rounded-lg border border-[var(--red)] p-3 text-sm text-[var(--red)]">{message}</p> : null}{versions.length ? <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{groups.map((group) => <article key={group.category} className="min-h-36 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><h3 className="font-black text-[var(--accent)]">{t(`mods.detail.dataCategories.${group.category}`)}</h3><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t(`mods.detail.dataDescriptions.${group.category}`)}</p><span className="mt-3 block text-xs font-bold text-[var(--muted)]">{t("mods.detail.entries", { count: group.items.length })}</span>{group.items.some((item) => item.status === "pending") ? <span className="mt-2 inline-block rounded border border-[var(--warning)] px-2 py-1 text-xs font-bold text-[var(--warning)]">{t("mods.history.statuses.pending")}</span> : null}</article>)}{canEdit ? <button className="focus-ring min-h-36 rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-4 text-left hover:border-[var(--accent)]" type="button" onClick={() => setAdding(true)}><strong className="text-lg">+ {t("mods.detail.addData")}</strong><span className="mt-2 block text-sm leading-6 text-[var(--muted)]">{t("mods.detail.addDataDescription")}</span></button> : null}</section> : canEdit ? <button className="focus-ring grid min-h-56 w-full place-items-center rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-6 text-center hover:border-[var(--accent)]" type="button" onClick={() => setAddingVersion(true)}><span><strong className="text-xl">+ {t("mods.detail.createFirstDataVersion")}</strong><small className="mt-2 block text-[var(--muted)]">{t("mods.detail.createFirstDataVersionDescription")}</small></span></button> : <EmptyState text={t("mods.detail.noDataVersions")} />}{groups.length === 0 && versions.length > 0 && !canEdit ? <EmptyState text={t("mods.detail.noDataForVersion")} /> : null}{adding ? <NewModDataModal mod={mod} token={token} minecraftVersion={selectedVersion} onClose={() => setAdding(false)} onCreated={(item) => { setItems((current) => [...current, item]); setAdding(false); }} /> : null}{addingVersion ? <NewModDataVersionModal mod={mod} token={token} onClose={() => setAddingVersion(false)} onCreated={(version) => { setVersions((current) => [...current, version]); setSelectedVersion(version.minecraftVersion); setAddingVersion(false); }} /> : null}</div>;
+  return <ModExportData siteId={mod.siteId} token={token} canEdit={canEdit} />;
 }
 
 function ModIntroductionTab({ mod }: { mod: ModCatalogEntry }) {
   const { t } = useI18n();
   const summary = mod.summary || (mod.descriptionKey ? t(mod.descriptionKey) : "");
   return <DetailSection title={t("mods.detail.introduction")}>{mod.bodyMarkdown ? <div className="markdown-preview min-w-0"><MarkdownRenderer config={defaultMarkdownConfig} emptyText={t("mods.detail.noIntroduction")} markdown={mod.bodyMarkdown} /></div> : <p className="leading-7 text-[var(--muted)]">{summary || t("mods.detail.noIntroduction")}</p>}</DetailSection>;
-}
-
-function NewModDataModal({ mod, token, minecraftVersion, onClose, onCreated }: { mod: ModCatalogEntry; token: string; minecraftVersion: string; onClose: () => void; onCreated: (item: BackendModDataPage) => void }) {
-  const { t } = useI18n();
-  const [category, setCategory] = useState<(typeof dataCategories)[number]>("itemsBlocks");
-  const [title, setTitle] = useState("");
-  const [summary, setSummary] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSubmitting(true);
-    setMessage("");
-    try {
-      const item = await apiRequest<BackendModDataPage>(`/api/v1/mods/${encodeURIComponent(mod.siteId)}/data`, { method: "POST", body: JSON.stringify({ minecraftVersion, category, title, summary, contentMarkdown: "" }) }, token);
-      onCreated(item);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.detail.dataCreateFailed"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4" role="presentation" onMouseDown={onClose}><form className="surface w-full max-w-2xl rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()} onSubmit={submit}><div className="flex items-center justify-between gap-3"><div><h2 className="text-xl font-black">{t("mods.detail.addData")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{minecraftVersion}</p></div><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button></div><div className="mt-5 grid gap-4"><label><span className="mb-1.5 block text-sm font-bold">{t("mods.detail.dataType")}</span><select className="field" value={category} onChange={(event) => setCategory(event.target.value as (typeof dataCategories)[number])}>{dataCategories.map((item) => <option key={item} value={item}>{t(`mods.detail.dataCategories.${item}`)}</option>)}</select></label><label><span className="mb-1.5 block text-sm font-bold">{t("mods.detail.dataTitle")}</span><input className="field" required maxLength={160} value={title} onChange={(event) => setTitle(event.target.value)} /></label><label><span className="mb-1.5 block text-sm font-bold">{t("mods.detail.dataSummary")}</span><textarea className="field min-h-24 resize-y" maxLength={500} value={summary} onChange={(event) => setSummary(event.target.value)} /></label></div><p className="mt-3 text-sm text-[var(--muted)]">{t("mods.detail.dataReviewNotice")}</p>{message ? <p className="mt-3 text-sm font-bold text-[var(--red)]">{message}</p> : null}<div className="mt-5 flex justify-end gap-2"><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.cancel")}</button><button className="button-primary focus-ring" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t("mods.detail.createData")}</button></div></form></div>;
-}
-
-function NewModDataVersionModal({ mod, token, onClose, onCreated }: { mod: ModCatalogEntry; token: string; onClose: () => void; onCreated: (item: BackendModDataVersion) => void }) {
-  const { t } = useI18n();
-  const [minecraftVersion, setMinecraftVersion] = useState(mod.versions[0] ?? "");
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSubmitting(true);
-    setMessage("");
-    try {
-      const item = await apiRequest<BackendModDataVersion>(`/api/v1/mods/${encodeURIComponent(mod.siteId)}/data/versions`, { method: "POST", body: JSON.stringify({ minecraftVersion }) }, token);
-      onCreated(item);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.detail.dataVersionCreateFailed"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4" role="presentation" onMouseDown={onClose}><form className="surface w-full max-w-lg rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()} onSubmit={submit}><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-black">{t("mods.detail.addDataVersion")}</h2><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button></div><label className="mt-5 block"><span className="mb-1.5 block text-sm font-bold">{t("mods.detail.minecraftVersion")}</span><MinecraftVersionPicker multiple={false} values={minecraftVersion ? [minecraftVersion] : []} onChange={(selected) => setMinecraftVersion(selected[0] ?? "")} /></label>{message ? <p className="mt-3 text-sm font-bold text-[var(--red)]">{message}</p> : null}<div className="mt-5 flex justify-end gap-2"><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.cancel")}</button><button className="button-primary focus-ring" disabled={submitting || !minecraftVersion} type="submit">{submitting ? t("mods.submission.actions.submitting") : t("mods.detail.createDataVersion")}</button></div></form></div>;
 }
 
 function ModRelationshipsTab({ mod }: { mod: ModCatalogEntry }) {
