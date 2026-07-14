@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
@@ -204,9 +205,11 @@ export function ModCatalog() {
               <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{t("mods.total", { count: backendMods.length })}</p>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.description")}</p>
             </div>
-            <button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>
-              {t("mods.submit")}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <Link className="button-secondary focus-ring" href="/mods-tag">{t("globalCatalog.tags.short")}</Link>
+              <Link className="button-secondary focus-ring" href="/recipe-types">{t("globalCatalog.recipeTypes.short")}</Link>
+              <button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>{t("mods.submit")}</button>
+            </div>
           </div>
           <form className="mt-6 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
             <input
@@ -437,14 +440,14 @@ function FilterPanel({
       </FilterGroup>
 
       <FilterGroup group="source" label={t("mods.groups.source")} expanded={expandedGroups.has("source")} onToggle={onGroupToggle}>
-        <RadioList options={sourceOptions} selected={filters.sources[0] ?? ""} label={(item) => t(`mods.sources.${item}`)} onChange={(item) => onParamChange({ source: item })} />
+        <OptionList options={sourceOptions} selected={filters.sources} label={(item) => t(`mods.sources.${item}`)} onToggle={(item) => onToggleList("source", item)} />
         <div className="my-3 border-t border-[var(--line)]" />
         <p className="mb-2 text-xs font-bold text-[var(--muted)]">{t("mods.licenseLabel")}</p>
-        <RadioList options={licenseOptions} selected={filters.licenses[0] ?? ""} label={(item) => item} onChange={(item) => onParamChange({ license: item })} />
+        <OptionList options={licenseOptions} selected={filters.licenses} label={(item) => item} onToggle={(item) => onToggleList("license", item)} />
       </FilterGroup>
 
       <FilterGroup group="updated" label={t("mods.groups.updated")} expanded={expandedGroups.has("updated")} onToggle={onGroupToggle}>
-        <RadioList options={updatedOptions} selected={filters.updated} label={(item) => t(`mods.updated.${item}`)} onChange={(item) => onParamChange({ updated: filters.updated === item ? null : item })} />
+        <RadioList options={updatedOptions} selected={filters.updated || "all"} label={(item) => t(`mods.updated.${item}`)} onChange={(item) => onParamChange({ updated: item === "all" ? null : item })} />
       </FilterGroup>
 
       <FilterGroup group="advanced" label={t("mods.groups.advanced")} expanded={expandedGroups.has("advanced")} onToggle={onGroupToggle}>
@@ -527,7 +530,7 @@ function ModCard({ mod, view, locale, t, favorite, expanded, onToggleFavorite, o
   return (
     <article className={`surface focus-ring group cursor-pointer rounded-lg transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md ${cardClass}`} role="link" tabIndex={0} onClick={openDetails} onKeyDown={handleKeyDown}>
       <div className={view === "grid" ? "flex items-start gap-3" : "flex items-start gap-3 lg:block"}>
-        <Image className="aspect-square h-20 w-20 shrink-0 rounded-lg object-cover [image-rendering:auto] lg:h-24 lg:w-24" src={mod.icon} alt={t("mods.card.iconAlt", { name: displayName })} width={96} height={96} />
+        {mod.icon ? <Image className="aspect-square h-20 w-20 shrink-0 rounded-lg object-cover [image-rendering:auto] lg:h-24 lg:w-24" src={mod.icon} alt={t("mods.card.iconAlt", { name: displayName })} width={96} height={96} /> : <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] text-2xl font-black text-[var(--accent)] lg:h-24 lg:w-24" aria-label={t("mods.card.iconAlt", { name: displayName })}>{displayName.trim().slice(0, 1).toUpperCase() || "M"}</div>}
         {view === "grid" ? <CardTitle mod={mod} displayName={displayName} secondaryName={secondaryName} t={t} /> : null}
         {view === "list" ? <div className="min-w-0 lg:hidden"><CardTitle mod={mod} displayName={displayName} secondaryName={secondaryName} t={t} /></div> : null}
       </div>
@@ -641,8 +644,8 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences) 
     tags: readList(params, "tag"),
     environments: readList(params, "environment"),
     statuses: readList(params, "status"),
-    sources: readList(params, "source").slice(0, 1),
-    licenses: readList(params, "license").slice(0, 1),
+    sources: readList(params, "source"),
+    licenses: readList(params, "license"),
     updated: params.get("updated") ?? "",
     features: readList(params, "feature") as ModFeature[],
     sort,

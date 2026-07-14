@@ -11,7 +11,7 @@ import es from "../_locales/es";
 import ru from "../_locales/ru";
 
 export type Locale = "zh-CN" | "zh-TW" | "en" | "ja" | "fr" | "de" | "es" | "ru";
-export type LocaleMessages = typeof en;
+export type LocaleMessages = TranslationValue;
 export type TranslationValue = string | { [key: string]: TranslationValue };
 
 export const defaultLocale: Locale = "zh-CN";

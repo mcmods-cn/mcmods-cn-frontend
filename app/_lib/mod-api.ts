@@ -51,6 +51,7 @@ export type BackendModRecord = {
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
+  publishedRevisionId?: number;
   tags: string[];
   authors: BackendModAuthor[];
   links: BackendModLink[];
@@ -59,7 +60,19 @@ export type BackendModRecord = {
 
 export type BackendModList = { items: BackendModRecord[]; total: number };
 
-export type CreateModPayload = Omit<BackendModRecord, "id" | "uniqueId" | "reviewStatus" | "createdBy" | "createdAt" | "updatedAt" | "publishedAt">;
+export type CreateModPayload = Omit<BackendModRecord, "id" | "uniqueId" | "reviewStatus" | "createdBy" | "createdAt" | "updatedAt" | "publishedAt" | "publishedRevisionId">;
+
+export type BackendModImportJob = {
+  id: string;
+  provider: "modrinth" | "curseforge" | "github";
+  sourceUrl: string;
+  status: "queued" | "running" | "completed" | "failed";
+  progress: number;
+  result?: CreateModPayload;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type BackendModRevision = {
   id: number;
@@ -73,6 +86,10 @@ export type BackendModRevision = {
   reviewNote: string;
   createdAt: string;
   reviewedAt?: string;
+  baseRevisionId?: number;
+  changeRequestId: number;
+  schemaVersion: number;
+  snapshotHash: string;
 };
 
 export type BackendModRevisionList = { items: BackendModRevision[] };

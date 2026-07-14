@@ -38,6 +38,19 @@ interface ModelJson {
   visibility?: Record<string, boolean>
   base?: ModelJson
   perspectives?: Record<string, ModelJson>
+  frame?: ModelElement[]
+  bottomLEDs?: ModelElement[]
+  bottomPort?: ModelElement[]
+  topLEDs?: ModelElement[]
+  topPort?: ModelElement[]
+  frontLEDs?: ModelElement[]
+  frontPort?: ModelElement[]
+  backLEDs?: ModelElement[]
+  backPort?: ModelElement[]
+  rightLEDs?: ModelElement[]
+  rightPort?: ModelElement[]
+  leftLEDs?: ModelElement[]
+  leftPort?: ModelElement[]
 }
 
 interface ModelApply {
@@ -64,9 +77,19 @@ interface ResolvedModel {
   children: Array<{ name: string; model: ResolvedModel }>
   visibility: Record<string, boolean>
   baseModel?: ResolvedModel
+  customElementGroups: Record<string, ModelElement[]>
 }
 
 const directions: FaceDirection[] = ['down', 'up', 'north', 'south', 'west', 'east']
+const mekanismEnergyCubeGroupNames = [
+  'frame',
+  'bottomLEDs', 'bottomPort',
+  'topLEDs', 'topPort',
+  'frontLEDs', 'frontPort',
+  'backLEDs', 'backPort',
+  'rightLEDs', 'rightPort',
+  'leftLEDs', 'leftPort',
+] as const
 
 export async function buildMinecraftBlockModel(
   bundle: AssetSource,
@@ -210,6 +233,10 @@ async function resolveModelJson(
     children,
     visibility: { ...(parent?.visibility ?? {}), ...(current.visibility ?? {}) },
     baseModel,
+    customElementGroups: {
+      ...(parent?.customElementGroups ?? {}),
+      ...readCustomElementGroups(current),
+    },
   }
 }
 
@@ -227,9 +254,12 @@ async function createModelGroup(bundle: AssetSource, model: ResolvedModel): Prom
   if (model.loader === 'forge:empty' || model.loader === 'neoforge:empty' || model.loader === 'porting_lib:empty') {
     return new THREE.Group()
   }
+  const elements = model.loader === 'mekanism:energy_cube'
+    ? mekanismEnergyCubeElements(model)
+    : model.elements
   const group = new THREE.Group()
   const materialCache = new Map<string, THREE.MeshStandardMaterial>()
-  for (const element of model.elements) {
+  for (const element of elements) {
     for (const direction of directions) {
       const face = element.faces[direction]
       if (!face) continue
@@ -266,6 +296,27 @@ async function createModelGroup(bundle: AssetSource, model: ResolvedModel): Prom
     throw new Error('模型没有可渲染的 faces，或导出包缺少引用贴图')
   }
   return group
+}
+
+function readCustomElementGroups(model: ModelJson): Record<string, ModelElement[]> {
+  const groups: Record<string, ModelElement[]> = {}
+  for (const name of mekanismEnergyCubeGroupNames) {
+    const elements = model[name]
+    if (Array.isArray(elements)) groups[name] = elements
+  }
+  return groups
+}
+
+function mekanismEnergyCubeElements(model: ResolvedModel): ModelElement[] {
+  const groups = model.customElementGroups
+  if (!groups.frame?.length) {
+    throw new Error('mekanism:energy_cube 模型缺少 frame 元素')
+  }
+  // Mekanism's item renderer uses active ports on every side when no side NBT
+  // exists: front is lit and the other five sides are unlit. Both states render
+  // the LED and port geometry, so the website can reproduce the default item
+  // model by composing all exported groups in the loader's official order.
+  return mekanismEnergyCubeGroupNames.flatMap((name) => groups[name] ?? [])
 }
 
 async function createForgeCompositeGroup(bundle: AssetSource, model: ResolvedModel): Promise<THREE.Group> {

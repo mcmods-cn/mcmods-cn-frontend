@@ -26,11 +26,13 @@ export type ModExportRevision = {
   namespace: string;
   isActive: boolean;
   registryCounts: Record<string, number>;
+  documentCounts: Record<string, number>;
   assetCount: number;
   structureCount: number;
   advancementCount: number;
   keyMappingCount: number;
   recipeCount: number;
+  tagCount: number;
   createdAt: string;
 };
 
@@ -44,6 +46,8 @@ export type ModExportAsset = {
 };
 
 export type ModExportRegistryEntry = {
+  entityId: string;
+  publicId: string;
   id: string;
   registry: string;
   namespace: string;
@@ -56,11 +60,30 @@ export type ModExportRegistryEntry = {
 };
 
 export type ModExportEntryDetail = {
+  entityId: string;
+  publicId: string;
   contentMarkdown: string;
   contentLocale: string;
   modelAvailable: boolean;
+  modelAssetPaths: string[];
   recipes: Record<string, unknown>[];
   uses: Record<string, unknown>[];
+};
+
+export type ModExportTagDetail = {
+  entityId: string;
+  publicId: string;
+  id: string;
+  registry: string;
+  memberCount: number;
+  members: Array<{
+    entityId: string;
+    publicId: string;
+    id: string;
+    registry: string;
+    names: Record<string, string>;
+    iconPath: string;
+  }>;
 };
 
 export type ModExportStructure = {
@@ -168,14 +191,15 @@ export function minecraftLocale(locale: string) {
   return aliases[normalized] ?? normalized;
 }
 
-export function getModExportEntryDetail(revisionId: string, registry: string, objectId: string, locale: string, token: string) {
+export function getModExportEntryDetail(revisionId: string, registry: string, entityId: string, objectId: string, locale: string, token: string) {
   const search = new URLSearchParams({ registry, objectId, locale });
+  if (entityId) search.set("entityId", entityId);
   return apiRequest<ModExportEntryDetail>(`/api/v1/export-revisions/${encodeURIComponent(revisionId)}/entry-detail?${search}`, {}, token);
 }
 
-export function saveModExportEntryContent(siteId: string, registry: string, objectId: string, locale: string, contentMarkdown: string, token: string) {
+export function saveModExportEntryContent(siteId: string, registry: string, entityId: string, objectId: string, locale: string, contentMarkdown: string, token: string) {
   return apiRequest<{ locale: string; contentMarkdown: string }>(`/api/v1/mods/${encodeURIComponent(siteId)}/export-entry-content`, {
     method: "PUT",
-    body: JSON.stringify({ registry, objectId, locale, contentMarkdown }),
+    body: JSON.stringify({ entityId, registry, objectId, locale, contentMarkdown }),
   }, token);
 }

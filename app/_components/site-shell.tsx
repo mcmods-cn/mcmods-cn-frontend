@@ -19,7 +19,14 @@ type HeaderNavItem = {
 };
 
 const navItems: HeaderNavItem[] = [
-  { labelKey: "nav.mods", href: "/mods" },
+  {
+    labelKey: "nav.mods",
+    href: "/mods",
+    children: [
+      { labelKey: "nav.modsTags", href: "/mods-tag" },
+      { labelKey: "nav.recipeTypes", href: "/recipe-types" },
+    ],
+  },
   { labelKey: "nav.modpacks", href: "/modpacks" },
   { labelKey: "nav.plugins", href: "/plugins" },
   {

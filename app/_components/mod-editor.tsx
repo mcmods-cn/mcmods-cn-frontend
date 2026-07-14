@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { apiRequest, ApiError } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
   BackendModCompatibility,
+  BackendModImportJob,
   BackendModRecord,
   BackendModRelationship,
   BackendModRelationshipGroup,
@@ -73,8 +74,11 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   const [draft, setDraft] = useState<ModDraft>(emptyDraft);
   const [loading, setLoading] = useState(Boolean(siteId));
   const [uniqueId, setUniqueId] = useState("");
+  const [baseRevisionId, setBaseRevisionId] = useState<number | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [importProgress, setImportProgress] = useState(0);
+  const importAttemptRef = useRef("");
   const [changeReason, setChangeReason] = useState("");
   const [minecraftConfig, setMinecraftConfig] = useState<MinecraftVersionConfig>(() => fallbackMinecraftConfig());
 
@@ -94,6 +98,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         if (!cancelled) {
           setDraft(draftFromRecord(record));
           setUniqueId(record.uniqueId);
+          setBaseRevisionId(record.publishedRevisionId);
         }
       })
       .catch((error) => {
@@ -104,6 +109,51 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
       });
     return () => { cancelled = true; };
   }, [ready, siteId, t, token]);
+
+  useEffect(() => {
+    const provider = importMethod === "modrinth" || importMethod === "curseforge" || importMethod === "github" ? importMethod : "";
+    const attemptKey = `${provider}:${importURL}`;
+    if (!ready || !token || siteId || !provider || !importURL || importAttemptRef.current === attemptKey) return;
+    let cancelled = false;
+    let timer = 0;
+    const startTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      importAttemptRef.current = attemptKey;
+      setLoading(true);
+      setImportProgress(0);
+      setMessage("");
+      void (async () => {
+        try {
+          let job = await apiRequest<BackendModImportJob>(
+            "/api/v1/mod-imports",
+            { method: "POST", body: JSON.stringify({ provider, url: importURL }) },
+            token,
+          );
+          while (!cancelled && (job.status === "queued" || job.status === "running")) {
+            setImportProgress(job.progress);
+            await new Promise<void>((resolve) => { timer = window.setTimeout(resolve, 900); });
+            if (cancelled) return;
+            job = await apiRequest<BackendModImportJob>(`/api/v1/mod-imports/${encodeURIComponent(job.id)}`, {}, token);
+          }
+          if (cancelled) return;
+          if (job.status !== "completed" || !job.result) {
+            throw new Error(job.error || t("mods.submission.importFailed"));
+          }
+          setDraft(draftFromPayload(job.result));
+          setImportProgress(100);
+        } catch (error) {
+          if (!cancelled) setMessage(error instanceof Error ? error.message : t("mods.submission.importFailed"));
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(startTimer);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [importMethod, importURL, ready, siteId, t, token]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -118,7 +168,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
       if (siteId) {
         const revision = await apiRequest<BackendModRevision>(
           `/api/v1/mods/${encodeURIComponent(siteId)}/revisions`,
-          { method: "POST", body: JSON.stringify({ snapshot, changeReason }) },
+          { method: "POST", body: JSON.stringify({ snapshot, changeReason, baseRevisionId }) },
           token,
         );
         router.push(`/mods/${revision.status === "approved" ? snapshot.siteId : siteId}/history`);
@@ -133,7 +183,10 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     }
   }
 
-  if (!ready || loading) return <EditorState text={t("common.loading")} />;
+  if (!ready || loading) {
+    const importing = loading && importMethod !== "manual";
+    return <EditorState text={importing ? t("mods.submission.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
+  }
   if (!token) return <EditorState text={t("mods.submission.loginRequired")} login />;
 
   return (
@@ -252,13 +305,17 @@ function SelectField<T extends string>({ label, value, options, optionLabel, onC
   return <Field label={label}><select className="field" value={value} onChange={(event) => onChange(event.target.value as T)}>{options.map((option) => <option key={option} value={option}>{optionLabel(option)}</option>)}</select></Field>;
 }
 
-function EditorState({ text, login = false }: { text: string; login?: boolean }) {
+function EditorState({ text, login = false, progress }: { text: string; login?: boolean; progress?: number }) {
   const { t } = useI18n();
-  return <main className="grid min-h-[65vh] place-items-center px-4 text-center"><div><p className="text-lg font-black">{text}</p>{login ? <Link className="button-primary focus-ring mt-4 inline-flex" href="/login">{t("common.login")}</Link> : null}</div></main>;
+  return <main className="grid min-h-[65vh] place-items-center px-4 text-center"><div className="w-full max-w-md"><p className="text-lg font-black">{text}</p>{progress !== undefined ? <div className="mt-4 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} /></div> : null}{login ? <Link className="button-primary focus-ring mt-4 inline-flex" href="/login">{t("common.login")}</Link> : null}</div></main>;
 }
 
 function draftFromRecord(record: BackendModRecord): ModDraft {
   return { ...record, compatibilities: record.compatibilities ?? [], searchKeywords: record.searchKeywords.join("\n") };
+}
+
+function draftFromPayload(payload: CreateModPayload): ModDraft {
+  return { ...payload, compatibilities: payload.compatibilities ?? [], searchKeywords: payload.searchKeywords.join("\n") };
 }
 
 function payloadFromDraft(draft: ModDraft): CreateModPayload {

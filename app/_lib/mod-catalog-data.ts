@@ -90,6 +90,6 @@ export const environmentOptions: ModEnvironment[] = ["clientOnly", "serverOnly",
 export const maintenanceOptions: ModMaintenanceStatus[] = ["active", "lowFrequency", "discontinued", "archived", "development"];
 export const sourceOptions: ModSourceStatus[] = ["open", "partial", "closed", "unknown"];
 export const licenseOptions = ["MIT", "GPL-3.0", "LGPL-3.0", "Apache-2.0", "ARR", "Custom"] as const;
-export const updatedOptions = ["week", "month", "quarter", "year", "stale"] as const;
+export const updatedOptions = ["all", "week", "month", "quarter", "year", "stale"] as const;
 export const advancedOptions: ModFeature[] = ["tutorials", "items", "gallery", "downloads", "reviewed", "claimed", "serverSupport", "modpackAllowed", "severeIssues"];
 export const sortOptions: string[] = ["relevance", "updated", "collected", "downloads", "favorites", "rating", "views", "comments", "nameAsc", "nameDesc"];

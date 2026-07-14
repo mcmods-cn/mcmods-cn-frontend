@@ -27,6 +27,6 @@ renderer.dispose()
 
 支持的结构输入：原版/Create NBT、Sponge Schem、Litematica 和规范化 JSON。
 
-支持的模型：标准 elements/faces、Forge/NeoForge/Porting Lib OBJ 与 composite、NeoForge blockstate composite、separate transforms base、empty、OBJ MTL/flipV/visibility。
+支持的模型：标准 elements/faces、Forge/NeoForge/Porting Lib OBJ 与 composite、NeoForge blockstate composite、separate transforms base、empty、OBJ MTL/flipV/visibility，以及 Mekanism Energy Cube 的 frame/LED/port 自定义 loader。
 
 `AssetSource` 必须只暴露当前 revision 的资源。JSON/OBJ/MTL 应由 Go API 从 PostgreSQL 返回；PNG/纹理 URL 可以指向 CDN。

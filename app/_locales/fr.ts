@@ -1,5 +1,5 @@
 ﻿import en from "./en";
-const fr: typeof en = {
+const fr = {
   ...en,
   common: { ...en.common, home: "Accueil", login: "Connexion", register: "Inscription", logout: "Déconnexion", admin: "Admin", save: "Enregistrer", delete: "Supprimer", language: "Langue" },
   home: { ...en.home, title: "Navigation des ressources" },

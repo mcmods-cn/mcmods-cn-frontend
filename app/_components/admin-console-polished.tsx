@@ -29,6 +29,7 @@ type PanelId =
   | "markdown"
   | "profile-settings"
   | "minecraft-versions"
+  | "mod-import-settings"
   | "nats"
   | "oss-config"
   | "oss-files"
@@ -150,6 +151,25 @@ type NATSConfig = {
   subjectPrefix: string;
   tasks: NATSTaskConfig[];
   status: NATSStatus;
+};
+
+type ModImportProviderConfig = {
+  enabled: boolean;
+  baseUrl: string;
+  token?: string;
+  apiKey?: string;
+  hasToken?: boolean;
+  hasApiKey?: boolean;
+  clearToken?: boolean;
+  clearApiKey?: boolean;
+};
+
+type ModImportConfig = {
+  userAgent: string;
+  requestTimeoutSeconds: number;
+  modrinth: ModImportProviderConfig;
+  curseforge: ModImportProviderConfig;
+  github: ModImportProviderConfig;
 };
 
 type AIProviderConfig = {
@@ -374,6 +394,11 @@ const adminNavGroups: Array<{
     ],
   },
   {
+    id: "content",
+    label: "",
+    items: [{ id: "mod-import-settings", label: "", description: "" }],
+  },
+  {
     id: "permission",
     label: "",
     items: [
@@ -580,7 +605,7 @@ export function AdminConsolePolished() {
   const { t } = useI18n();
   const auth = useAuthSnapshot();
   const [activePanel, setActivePanel] = useState<PanelId>("roles");
-  const [expanded, setExpanded] = useState(["workbench", "permission", "oss", "logs", "ai", "infrastructure", "users", "system"]);
+  const [expanded, setExpanded] = useState(["workbench", "content", "permission", "oss", "logs", "ai", "infrastructure", "users", "system"]);
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [config, setConfig] = useState(emptyConfig);
   const [catalog, setCatalog] = useState(emptyCatalog);
@@ -881,6 +906,7 @@ export function AdminConsolePolished() {
           {activePanel === "markdown" ? <MarkdownConfigPanel initialConfig={config.markdown} token={auth.token} /> : null}
           {activePanel === "profile-settings" ? <ProfileSettingsPanel initialConfig={config.profile ?? emptyConfig.profile} token={auth.token} /> : null}
           {activePanel === "minecraft-versions" ? <MinecraftVersionConfigPanel token={auth.token} /> : null}
+          {activePanel === "mod-import-settings" ? <ModImportConfigPanel token={auth.token} /> : null}
           {activePanel === "nats" ? <NATSConfigPanel token={auth.token} /> : null}
           {activePanel === "i18n" ? <TranslationManagerPanel token={auth.token} /> : null}
           {activePanel === "oss-config" ? <OSSConfigPanelV2 initialConfig={config.oss ?? emptyConfig.oss!} token={auth.token} /> : null}
@@ -1100,7 +1126,22 @@ function PermissionGroupEditor({
   }
 
   if (!currentDraft) {
-    return <EmptyState text={t("admin.noRoles")} />;
+    return (
+      <section className="surface overflow-hidden rounded-lg">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3">
+          <div>
+            <h2 className="text-lg font-bold">{t("admin.roleGroup")}</h2>
+            <p className="text-sm text-[var(--muted)]">{t("admin.roleCount", { count: 0 })}</p>
+          </div>
+          <button className="button-primary focus-ring" type="button" onClick={startCreateRole}>
+            {t("admin.newRole")}
+          </button>
+        </div>
+        <div className="p-4">
+          <EmptyState text={t("admin.noRoles")} />
+        </div>
+      </section>
+    );
   }
 
   const modules = Array.from(new Set(catalog.permissions.map((permission) => permission.module)));
@@ -2347,6 +2388,111 @@ function NATSConfigPanel({ token }: { token: string }) {
             {draft.tasks.length === 0 ? <EmptyState text={t("admin.nats.noTasks")} /> : null}
           </div>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function ModImportConfigPanel({ token }: { token: string }) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState<ModImportConfig | null>(null);
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<ModImportConfig>("/api/v1/admin/config/mod-imports", {}, token)
+      .then((config) => { if (!cancelled) setDraft(config); })
+      .catch((error) => { if (!cancelled) setMessage(cleanError(error)); });
+    return () => { cancelled = true; };
+  }, [token]);
+
+  function updateProvider(provider: "modrinth" | "curseforge" | "github", patch: Partial<ModImportProviderConfig>) {
+    if (!draft) return;
+    setDraft({ ...draft, [provider]: { ...draft[provider], ...patch } });
+  }
+
+  async function save() {
+    if (!draft) return;
+    setSaving(true);
+    try {
+      const saved = await apiRequest<ModImportConfig>("/api/v1/admin/config/mod-imports", {
+        method: "PUT",
+        body: JSON.stringify(draft),
+      }, token);
+      setDraft(saved);
+      notifyAdminNotice(t("admin.modImport.saved"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!draft) return <EmptyState text={message || t("common.loading")} />;
+
+  return (
+    <div className="grid gap-4">
+      <section className="surface p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold">{t("admin.modImport.title")}</h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("admin.modImport.description")}</p>
+          </div>
+          <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>
+            {saving ? t("admin.saving") : t("admin.modImport.save")}
+          </button>
+        </div>
+        <div className="mt-5 grid gap-4 md:grid-cols-[1fr_220px]">
+          <label className="text-sm font-semibold">
+            {t("admin.modImport.userAgent")}
+            <input className="field mt-2" value={draft.userAgent} onChange={(event) => setDraft({ ...draft, userAgent: event.target.value })} />
+          </label>
+          <label className="text-sm font-semibold">
+            {t("admin.modImport.timeout")}
+            <input className="field mt-2" min={5} max={120} type="number" value={draft.requestTimeoutSeconds} onChange={(event) => setDraft({ ...draft, requestTimeoutSeconds: Number(event.target.value) })} />
+          </label>
+        </div>
+      </section>
+      <section className="surface overflow-hidden">
+        {(["modrinth", "curseforge", "github"] as const).map((provider) => {
+          const config = draft[provider];
+          const secretKind = provider === "curseforge" ? "apiKey" : "token";
+          const hasSecret = provider === "curseforge" ? config.hasApiKey : config.hasToken;
+          return (
+            <div key={provider} className="grid gap-4 border-b border-[var(--line)] p-5 last:border-b-0 lg:grid-cols-[180px_1fr]">
+              <div>
+                <label className="flex items-center gap-2 font-bold">
+                  <input checked={config.enabled} type="checkbox" onChange={(event) => updateProvider(provider, { enabled: event.target.checked })} />
+                  {t(`admin.modImport.providers.${provider}`)}
+                </label>
+                <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{t(`admin.modImport.providerDescriptions.${provider}`)}</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="text-sm font-semibold md:col-span-2">
+                  {t("admin.modImport.baseUrl")}
+                  <input className="field mt-2" value={config.baseUrl} onChange={(event) => updateProvider(provider, { baseUrl: event.target.value })} />
+                </label>
+                <label className="text-sm font-semibold">
+                  {t(`admin.modImport.${secretKind}`)}
+                  <input
+                    className="field mt-2"
+                    autoComplete="new-password"
+                    type="password"
+                    value={secretKind === "apiKey" ? config.apiKey ?? "" : config.token ?? ""}
+                    placeholder={hasSecret ? t("admin.modImport.secretSaved") : t(`admin.modImport.secretHints.${provider}`)}
+                    onChange={(event) => updateProvider(provider, secretKind === "apiKey" ? { apiKey: event.target.value, clearApiKey: false } : { token: event.target.value, clearToken: false })}
+                  />
+                </label>
+                <label className="flex items-center gap-2 self-end rounded-lg border border-[var(--line)] px-3 py-3 text-sm font-semibold">
+                  <input checked={secretKind === "apiKey" ? config.clearApiKey ?? false : config.clearToken ?? false} type="checkbox" onChange={(event) => updateProvider(provider, secretKind === "apiKey" ? { clearApiKey: event.target.checked, apiKey: "" } : { clearToken: event.target.checked, token: "" })} />
+                  {t("admin.modImport.clearSecret")}
+                </label>
+                {provider === "github" ? <p className="text-sm leading-6 text-[var(--muted)] md:col-span-2">{t("admin.modImport.githubPermissions")}</p> : null}
+              </div>
+            </div>
+          );
+        })}
       </section>
     </div>
   );
@@ -4156,7 +4302,7 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
         </div>
         <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm text-[var(--muted)]">
           {t("admin.oss.objectKeyExample")}
-          <span className="ml-1 font-mono text-[var(--foreground)]">{objectPrefix}/project/2026/07/07/a1b2c3d4-image.png</span>
+          <span className="ml-1 font-mono text-[var(--foreground)]">{objectPrefix}/projects/m123abc/description/550e8400-e29b-41d4-a716-446655440000.webp</span>
         </div>
       </div>
 
@@ -4770,6 +4916,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     markdown: t("admin.markdown.navTitle"),
     "profile-settings": t("admin.profileSettings.navTitle"),
     "minecraft-versions": t("admin.minecraftVersions.title"),
+    "mod-import-settings": t("admin.modImport.navTitle"),
     nats: t("admin.nats.navTitle"),
     i18n: t("admin.i18n"),
     "oss-config": t("admin.panels.ossConfig"),
@@ -4797,6 +4944,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
 function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, params?: Record<string, string | number>) => string) {
   const labels: Record<string, string> = {
     workbench: t("admin.workbench"),
+    content: t("admin.modImport.group"),
     reviews: t("admin.reviews.group"),
     permission: t("admin.permission"),
     oss: t("admin.nav.oss"),
@@ -4827,6 +4975,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     markdown: t("admin.markdown.navDesc"),
     "profile-settings": t("admin.profileSettings.navDescription"),
     "minecraft-versions": t("admin.minecraftVersions.description"),
+    "mod-import-settings": t("admin.modImport.navDescription"),
     nats: t("admin.nats.navDescription"),
     i18n: t("admin.i18nDesc"),
     "oss-config": t("admin.nav.ossConfigDesc"),
