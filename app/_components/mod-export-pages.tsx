@@ -387,21 +387,24 @@ function RecipeGallery({ title, recipes, revisionId }: { title: string; recipes:
 }
 
 function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unknown>; revisionId: string }) {
+  const { t } = useI18n();
   const layout = record(recipe.jeiLayout);
   const background = typeof layout.background === "string" ? layout.background : "";
-  const pixels = record(layout.image_pixels);
-  const scale = numberValue(layout.image_scale, 2);
-  const width = numberValue(pixels.width, 370);
-  const height = numberValue(pixels.height, 186);
-  const slots = Array.isArray(layout.slots) ? layout.slots : [];
+  const canvas = record(layout.canvas);
+  const displayScale = 2;
+  const width = numberValue(canvas.width, 185) * displayScale;
+  const height = numberValue(canvas.height, 93) * displayScale;
+  const slots = Array.isArray(layout.slots) ? layout.slots.map(record).filter((slot) => slot.ingredient_present !== false && slot.coordinates_available !== false) : [];
   const containsIngredients = layout.background_contains_ingredients === true;
+  const layoutKind = stringValue(layout.layout_kind) || "unknown";
   return <article className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
-    {background ? <div className="overflow-auto bg-[#c6c6c6] p-3"><div className="relative mx-auto" style={{ width, height }}><Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={modExportAssetURL(revisionId, background)} />{!containsIngredients ? slots.map((value, index) => <ModRecipeSlot key={index} scale={scale} slot={record(value)} />) : null}</div></div> : <div className="grid min-h-32 place-items-center p-4 text-sm text-[var(--muted)]">{String(recipe.type || "Recipe")}</div>}
-    <code className="block break-all border-t border-[var(--line)] px-3 py-2 text-xs text-[var(--muted)]">{String(recipe.id || recipe.type || "")}</code>
+    {background ? <div className="overflow-auto bg-[#c6c6c6] p-3"><div className="relative mx-auto" style={{ width, height }}><Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={modExportAssetURL(revisionId, background)} />{!containsIngredients ? slots.map((value, index) => <ModRecipeSlot key={index} scale={displayScale} slot={value} />) : null}</div></div> : <div className="grid min-h-32 place-items-center p-4 text-sm text-[var(--muted)]">{String(recipe.type || "Recipe")}</div>}
+    <div className="flex items-center justify-between gap-3 border-t border-[var(--line)] px-3 py-2 text-xs text-[var(--muted)]"><code className="break-all">{String(recipe.id || recipe.type || "")}</code><span className="shrink-0 rounded bg-[var(--panel-subtle)] px-2 py-1 font-bold">{t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}</span></div>
   </article>;
 }
 
 function ModRecipeSlot({ slot, scale }: { slot: Record<string, unknown>; scale: number }) {
+  if (slot.ingredient_present === false || slot.coordinates_available === false) return null;
   const rect = record(slot.rect);
   const alternatives = Array.isArray(slot.alternatives) ? slot.alternatives : [];
   const item = record(alternatives[0]);

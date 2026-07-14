@@ -116,6 +116,7 @@ const zhCN = {
     memberCount: "{count} 个成员",
     recipeCount: "{count} 个配方",
     materialCount: "所需材料总数",
+    recipeLayoutKinds: { shaped: "有序配方", shapeless: "无序配方", not_applicable: "不适用", unknown: "布局未知" },
     recipeNote: "配方备注",
     canonicalRecipeId: "稳定的权威 ID",
     packageScopedRecipeId: "仅在当前导出包内有效",

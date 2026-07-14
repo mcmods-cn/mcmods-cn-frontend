@@ -116,6 +116,7 @@ const en = {
     memberCount: "{count} members",
     recipeCount: "{count} recipes",
     materialCount: "required items",
+    recipeLayoutKinds: { shaped: "Shaped", shapeless: "Shapeless", not_applicable: "Not applicable", unknown: "Unknown layout" },
     recipeNote: "Recipe note",
     canonicalRecipeId: "stable authoritative ID",
     packageScopedRecipeId: "valid only within this export package",
