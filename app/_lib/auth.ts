@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 export type AuthUser = {
   id: number;
@@ -63,8 +63,21 @@ function readAuthSnapshot() {
 }
 
 export function useAuthSnapshot(): AuthSnapshot {
-  const serialized = useSyncExternalStore(subscribeAuth, readSerializedAuth, () => "");
-  const snapshot = useMemo(() => parseSerializedAuth(serialized), [serialized]);
+  const [snapshot, setSnapshot] = useState<AuthSnapshot>({ ready: false, token: "", user: null });
+
+  useEffect(() => {
+    const refresh = () => {
+      const { token, user } = readAuthSnapshot();
+      setSnapshot({ ready: true, token, user });
+    };
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener("mcmods-auth-change", refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("mcmods-auth-change", refresh);
+    };
+  }, []);
 
   useEffect(() => {
     const expiresAt = tokenExpiresAt(snapshot.token);
@@ -105,33 +118,6 @@ function readFirst(keys: readonly string[]) {
     }
   }
   return "";
-}
-
-function subscribeAuth(onStoreChange: () => void) {
-  window.addEventListener("storage", onStoreChange);
-  window.addEventListener("mcmods-auth-change", onStoreChange);
-  queueMicrotask(onStoreChange);
-  return () => {
-    window.removeEventListener("storage", onStoreChange);
-    window.removeEventListener("mcmods-auth-change", onStoreChange);
-  };
-}
-
-function readSerializedAuth() {
-  const { token, user } = readAuthSnapshot();
-  return JSON.stringify({ token, user });
-}
-
-function parseSerializedAuth(serialized: string): AuthSnapshot {
-  if (!serialized) {
-    return { ready: false, token: "", user: null };
-  }
-  try {
-    const snapshot = JSON.parse(serialized) as Omit<AuthSnapshot, "ready">;
-    return { ready: true, token: snapshot.token ?? "", user: snapshot.user ?? null };
-  } catch {
-    return { ready: true, token: "", user: null };
-  }
 }
 
 function parseStoredUser(savedUser: string) {

@@ -12,6 +12,7 @@ interface ModelFace {
   uv?: Vec4
   rotation?: number
   tintindex?: number
+  cullface?: FaceDirection
 }
 
 interface ModelElement {
@@ -97,6 +98,9 @@ export async function buildMinecraftBlockModel(
   defaultState: Record<string, string> = {},
 ): Promise<THREE.Group> {
   const { namespace, path } = splitId(blockId)
+  if (namespace === 'minecraft' && isVanillaChest(path)) {
+    return createVanillaChestGroup(bundle, path, defaultState)
+  }
   const blockStatePath = `assets/${namespace}/blockstates/${path}.json`
   const blockState = await bundle.json<BlockStateJson>(blockStatePath)
   const applies = selectApplies(blockState, defaultState)
@@ -106,7 +110,7 @@ export async function buildMinecraftBlockModel(
   for (const apply of applies) {
     if (!apply.model) continue
     const model = await resolveModel(bundle, apply.model, new Set())
-    const modelGroup = await createModelGroup(bundle, model)
+    const modelGroup = await createModelGroup(bundle, model, blockId, defaultState)
     modelGroup.rotation.order = 'YXZ'
     modelGroup.rotation.x = THREE.MathUtils.degToRad(-(apply.x ?? 0))
     modelGroup.rotation.y = THREE.MathUtils.degToRad(-(apply.y ?? 0))
@@ -240,16 +244,21 @@ async function resolveModelJson(
   }
 }
 
-async function createModelGroup(bundle: AssetSource, model: ResolvedModel): Promise<THREE.Group> {
+async function createModelGroup(
+  bundle: AssetSource,
+  model: ResolvedModel,
+  blockId: string,
+  blockState: Record<string, string>,
+): Promise<THREE.Group> {
   if (model.loader === 'forge:obj' || model.loader === 'neoforge:obj' || model.loader === 'porting_lib:obj') {
     return createForgeObjGroup(bundle, model)
   }
   if (model.loader === 'forge:composite' || model.loader === 'neoforge:composite' || model.loader === 'porting_lib:composite') {
-    return createForgeCompositeGroup(bundle, model)
+    return createForgeCompositeGroup(bundle, model, blockId, blockState)
   }
   if (model.loader === 'forge:separate_transforms' || model.loader === 'neoforge:separate_transforms') {
     if (!model.baseModel) throw new Error(`${model.loader} 模型缺少 base`)
-    return createModelGroup(bundle, model.baseModel)
+    return createModelGroup(bundle, model.baseModel, blockId, blockState)
   }
   if (model.loader === 'forge:empty' || model.loader === 'neoforge:empty' || model.loader === 'porting_lib:empty') {
     return new THREE.Group()
@@ -269,7 +278,9 @@ async function createModelGroup(bundle: AssetSource, model: ResolvedModel): Prom
       const texturePath = `assets/${textureLocation.namespace}/textures/${textureLocation.path}.png`
       const url = bundle.url(texturePath)
       if (!url) continue
-      let material = materialCache.get(texturePath)
+      const tint = minecraftTintColor(blockId, textureId, face.tintindex, blockState)
+      const materialKey = `${texturePath}|${tint ?? 'none'}`
+      let material = materialCache.get(materialKey)
       if (!material) {
         const texture = new THREE.TextureLoader().load(url)
         texture.colorSpace = THREE.SRGBColorSpace
@@ -282,11 +293,14 @@ async function createModelGroup(bundle: AssetSource, model: ResolvedModel): Prom
           roughness: 0.86,
           metalness: 0,
           side: THREE.DoubleSide,
+          color: tint ?? 0xffffff,
         })
-        materialCache.set(texturePath, material)
+        materialCache.set(materialKey, material)
       }
       const geometry = faceGeometry(element, direction, face)
-      group.add(new THREE.Mesh(geometry, material))
+      const mesh = new THREE.Mesh(geometry, material)
+      if (face.cullface) mesh.userData.cullFace = face.cullface
+      group.add(mesh)
     }
   }
   if (!group.children.length) {
@@ -319,14 +333,19 @@ function mekanismEnergyCubeElements(model: ResolvedModel): ModelElement[] {
   return mekanismEnergyCubeGroupNames.flatMap((name) => groups[name] ?? [])
 }
 
-async function createForgeCompositeGroup(bundle: AssetSource, model: ResolvedModel): Promise<THREE.Group> {
+async function createForgeCompositeGroup(
+  bundle: AssetSource,
+  model: ResolvedModel,
+  blockId: string,
+  blockState: Record<string, string>,
+): Promise<THREE.Group> {
   if (!model.children.length) throw new Error(`${model.loader} 模型缺少 children 子模型`)
   const group = new THREE.Group()
   const failures: string[] = []
   for (const child of model.children) {
     if (model.visibility[child.name] === false) continue
     try {
-      const childGroup = await createModelGroup(bundle, child.model)
+      const childGroup = await createModelGroup(bundle, child.model, blockId, blockState)
       childGroup.name = child.name
       group.add(childGroup)
     } catch (error) {
@@ -552,6 +571,105 @@ function resolveTexture(reference: string, textures: Record<string, string>): st
     value = next
   }
   return value
+}
+
+function minecraftTintColor(
+  blockId: string,
+  textureId: string,
+  tintIndex: number | undefined,
+  state: Record<string, string>,
+): number | undefined {
+  if (tintIndex === undefined) return undefined
+  const path = splitId(blockId).path
+  const texturePath = parseLocation(textureId).path
+
+  if (path === 'lily_pad') return 0x208030
+  if (path === 'spruce_leaves') return 0x619961
+  if (path === 'birch_leaves') return 0x80a755
+  if (path.includes('leaves') || path.includes('vine') || texturePath.includes('leaves')) return 0x48b518
+  if (path.includes('water')) return 0x3f76e4
+  if (path === 'redstone_wire') return redstoneTint(Number(state.power ?? 0))
+  if (path.includes('stem')) return stemTint(Number(state.age ?? 0))
+  if (
+    path === 'grass_block'
+    || path.includes('grass')
+    || path.includes('fern')
+    || path === 'sugar_cane'
+    || texturePath.includes('grass')
+  ) return 0x91bd59
+
+  // Unknown modded tint handlers cannot be reproduced without executing the
+  // mod. White preserves authored texture colors instead of guessing.
+  return 0xffffff
+}
+
+function redstoneTint(rawPower: number): number {
+  const power = Math.min(15, Math.max(0, Number.isFinite(rawPower) ? rawPower : 0)) / 15
+  const red = power === 0 ? 0.3 : power * 0.6 + 0.4
+  const green = Math.max(0, power * power * 0.7 - 0.5)
+  const blue = Math.max(0, power * power * 0.6 - 0.7)
+  return (Math.round(red * 255) << 16) | (Math.round(green * 255) << 8) | Math.round(blue * 255)
+}
+
+function stemTint(rawAge: number): number {
+  const age = Math.min(7, Math.max(0, Number.isFinite(rawAge) ? rawAge : 0))
+  const red = age * 32
+  const green = 255 - age * 8
+  const blue = age * 4
+  return (red << 16) | (green << 8) | blue
+}
+
+function isVanillaChest(path: string): boolean {
+  return path === 'chest' || path === 'trapped_chest' || path === 'ender_chest'
+}
+
+function createVanillaChestGroup(
+  bundle: AssetSource,
+  path: string,
+  state: Record<string, string>,
+): THREE.Group {
+  // Vanilla chests use a BlockEntityWithoutLevelRenderer and therefore have
+  // no elements/faces model. The exported particle texture provides a stable
+  // resource-backed approximation when entity textures are unavailable.
+  const textureId = path === 'ender_chest' ? 'minecraft:block/obsidian' : 'minecraft:block/oak_planks'
+  const bodyMaterial = blockTextureMaterial(bundle, textureId, path === 'ender_chest' ? 0x241f35 : 0x9a6a3a)
+  const latchMaterial = new THREE.MeshStandardMaterial({
+    color: path === 'trapped_chest' ? 0xb64b42 : 0xc8b16b,
+    roughness: 0.58,
+    metalness: 0.18,
+  })
+  const group = new THREE.Group()
+  const body = new THREE.Mesh(new THREE.BoxGeometry(14, 10, 14), bodyMaterial)
+  body.position.y = -3
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(14, 5, 14), bodyMaterial)
+  lid.position.y = 4.5
+  const latch = new THREE.Mesh(new THREE.BoxGeometry(2, 4, 1), latchMaterial)
+  latch.position.set(0, 1.5, -7.5)
+  group.add(body, lid, latch)
+  group.rotation.y = chestFacingRotation(state.facing)
+  group.userData.compatibilityRenderer = 'minecraft:chest'
+  return group
+}
+
+function blockTextureMaterial(bundle: AssetSource, textureId: string, fallbackColor: number): THREE.MeshStandardMaterial {
+  const textureLocation = parseLocation(textureId)
+  const texturePath = `assets/${textureLocation.namespace}/textures/${textureLocation.path}.png`
+  const url = bundle.url(texturePath)
+  if (!url) return new THREE.MeshStandardMaterial({ color: fallbackColor, roughness: 0.86, metalness: 0 })
+  const texture = new THREE.TextureLoader().load(url)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.magFilter = THREE.NearestFilter
+  texture.minFilter = THREE.NearestMipmapNearestFilter
+  return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.86, metalness: 0 })
+}
+
+function chestFacingRotation(facing: string | undefined): number {
+  switch (facing) {
+    case 'east': return -Math.PI / 2
+    case 'south': return Math.PI
+    case 'west': return Math.PI / 2
+    default: return 0
+  }
 }
 
 function parseLocation(id: string) {

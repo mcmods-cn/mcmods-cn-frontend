@@ -1,0 +1,79 @@
+export type BlueprintUploader = {
+  id: number;
+  displayName: string;
+  username: string;
+  avatarUrl?: string;
+};
+
+export type BlueprintRequiredMod = {
+  projectCode: string;
+  siteId: string;
+  primaryName: string;
+  secondaryName: string;
+  modId: string;
+  iconUrl?: string;
+  namespaces: string[];
+};
+
+export type BlueprintSummary = {
+  id: string;
+  title: string;
+  description: string;
+  sourceFormat: string;
+  status: string;
+  size: [number, number, number];
+  blockCount: number;
+  paletteCount: number;
+  createdAt: string;
+  updatedAt: string;
+  coverUrl?: string;
+  coverGenerated?: boolean;
+  uploader: BlueprintUploader;
+  requiredMods: BlueprintRequiredMod[];
+};
+
+export type BlueprintVariant = {
+  id: number;
+  format: string;
+  original: boolean;
+  recommended: boolean;
+  status: string;
+  originalName: string;
+  contentType: string;
+  sizeBytes: number;
+  sha256: string;
+  createdAt: string;
+};
+
+export type BlueprintMaterial = {
+  state: string;
+  blockId: string;
+  properties: Record<string, string>;
+  count: number;
+  name: string;
+  names: Record<string, string>;
+  iconPath?: string;
+  previewPath?: string;
+  sourceRevisionId?: string;
+  sourceModSiteId?: string;
+  entityId?: string;
+};
+
+export type BlueprintAssetRevision = { id: string; siteId: string; paths: string[] };
+
+export type BlueprintDetailRecord = BlueprintSummary & {
+  entityCount: number;
+  dataVersion: number;
+  lastError: string;
+  canEdit: boolean;
+  renderAvailable: boolean;
+  variants: BlueprintVariant[];
+  materials: BlueprintMaterial[];
+  assetRevisions: BlueprintAssetRevision[];
+};
+
+export type BlueprintListResponse = {
+  items: BlueprintSummary[];
+  limit: number;
+  offset: number;
+};

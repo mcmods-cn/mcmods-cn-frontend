@@ -21,6 +21,10 @@ export type BackendModCompatibility = { loader: string; versions: string[] };
 export type MinecraftVersionConfig = {
   versions: Array<{ code: string; type: "release" | "snapshot" | "april_fools" | "legacy" }>;
   loaders: Array<{ code: string; name: string; versions: string[] }>;
+  sourceUrl?: string;
+  lastSyncedAt?: string;
+  latestRelease?: string;
+  latestSnapshot?: string;
 };
 
 export type BackendModRecord = {

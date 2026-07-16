@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
-import { canAccessAdmin, type AuthUser, useAuthSnapshot } from "../_lib/auth";
+import { canAccessAdmin, clearAuth, type AuthUser, useAuthSnapshot } from "../_lib/auth";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { useTheme } from "./theme-provider";
 
@@ -44,6 +44,7 @@ const navItems: HeaderNavItem[] = [
   { labelKey: "nav.resourcePacks", href: "/resource-packs" },
   { labelKey: "nav.shaders", href: "/shaders" },
   { labelKey: "nav.skins", href: "/skins" },
+  { labelKey: "nav.blueprints", href: "/blueprints" },
   { labelKey: "nav.authors", href: "/authors" },
   { labelKey: "nav.tutorials", href: "/tutorials" },
   { labelKey: "nav.news", href: "/news" },
@@ -66,7 +67,36 @@ export function SiteShell({ children }: SiteShellProps) {
     <>
       <SiteHeader />
       {children}
+      <SiteNoticeDialog />
     </>
+  );
+}
+
+type SiteNotice = { message: string; title?: string; tone?: "danger" | "success" | "info" };
+
+function SiteNoticeDialog() {
+  const { t } = useI18n();
+  const [notice, setNotice] = useState<SiteNotice | null>(null);
+
+  useEffect(() => {
+    const receive = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      if (detail && typeof detail.message === "string") setNotice(detail as SiteNotice);
+    };
+    window.addEventListener("mcmods-site-notice", receive);
+    return () => window.removeEventListener("mcmods-site-notice", receive);
+  }, []);
+
+  if (!notice) return null;
+  const danger = notice.tone === "danger";
+  return (
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/45 p-4" role="presentation" onMouseDown={() => setNotice(null)}>
+      <section className="surface w-full max-w-lg rounded-lg border border-[var(--line)] p-6 shadow-2xl" role="alertdialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+        <h2 className={`text-xl font-black ${danger ? "text-[var(--red)]" : ""}`}>{notice.title || t("common.notice")}</h2>
+        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--muted)]">{notice.message}</p>
+        <div className="mt-6 flex justify-end"><button className="button-primary focus-ring" type="button" onClick={() => setNotice(null)}>{t("common.close")}</button></div>
+      </section>
+    </div>
   );
 }
 
@@ -74,6 +104,7 @@ function SiteHeader() {
   const { t, locale, setLocale } = useI18n();
   const { toggleTheme } = useTheme();
   const { token, user } = useAuthSnapshot();
+  const router = useRouter();
   const [unread, setUnread] = useState(0);
   const [backendAvailable, setBackendAvailable] = useState(true);
 
@@ -153,23 +184,40 @@ function SiteHeader() {
           <button className="button-secondary focus-ring hidden px-3 py-2 text-sm lg:inline-flex" type="button" onClick={toggleTheme}>
             {t("common.toggleTheme")}
           </button>
-          {canAccessAdmin(user) ? (
-            <Link className="button-secondary focus-ring hidden px-3 py-2 text-sm xl:inline-flex" href="/admin">
-              {t("common.admin")}
-            </Link>
-          ) : null}
           {user ? (
             <>
-              <Link
-                className="focus-ring grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-[var(--line)] bg-[var(--panel-subtle)] text-sm font-black text-[var(--accent)]"
-                href={`/user/${user.id}`}
-                title={user.displayName || user.username}
-              >
-                {user.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img alt="" className="h-full w-full object-cover" src={user.avatarUrl} />
-                ) : avatarText(user)}
-              </Link>
+              <div className="group relative">
+                <Link
+                  className="focus-ring grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-[var(--line)] bg-[var(--panel-subtle)] text-sm font-black text-[var(--accent)]"
+                  href={`/user/${user.id}`}
+                  title={user.displayName || user.username}
+                >
+                  {user.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img alt="" className="h-full w-full object-cover" src={user.avatarUrl} />
+                  ) : avatarText(user)}
+                </Link>
+                <div className="invisible absolute right-0 top-full z-50 w-64 pt-2 opacity-0 transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+                  <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-2xl">
+                    <div className="border-b border-[var(--line)] px-4 py-3">
+                      <p className="truncate font-black">{user.displayName || user.username}</p>
+                      <p className="truncate text-xs text-[var(--muted)]">@{user.username}</p>
+                    </div>
+                    <nav className="grid p-2" aria-label={t("user.accountSections")}>
+                      <ProfileMenuLink href={`/user/${user.id}`}>{t("user.title")}</ProfileMenuLink>
+                      <ProfileMenuLink href="/user?section=favorites">{t("favorites.title")}</ProfileMenuLink>
+                      <ProfileMenuLink href="/user?section=files">{t("user.fileManager")}</ProfileMenuLink>
+                      <ProfileMenuLink href="/user?section=settings">{t("user.settings")}</ProfileMenuLink>
+                      {canAccessAdmin(user) ? <ProfileMenuLink href="/admin">{t("common.admin")}</ProfileMenuLink> : null}
+                    </nav>
+                    <div className="border-t border-[var(--line)] p-2">
+                      <button className="focus-ring w-full rounded-md px-3 py-2 text-left text-sm font-bold text-[var(--red)] hover:bg-[var(--panel-subtle)]" type="button" onClick={() => { clearAuth(); router.replace("/"); router.refresh(); }}>
+                        {t("common.logout")}
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              </div>
               <Link
                 className="focus-ring relative grid h-10 min-w-10 place-items-center rounded-full border border-[var(--line)] bg-[var(--panel)] px-3 text-sm font-bold hover:border-[var(--accent)]"
                 href="/messages"
@@ -188,6 +236,10 @@ function SiteHeader() {
       </div>
     </header>
   );
+}
+
+function ProfileMenuLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return <Link className="focus-ring rounded-md px-3 py-2 text-sm font-bold hover:bg-[var(--panel-subtle)] hover:text-[var(--accent)]" href={href}>{children}</Link>;
 }
 
 function HeaderNavLink({ item }: { item: HeaderNavItem }) {

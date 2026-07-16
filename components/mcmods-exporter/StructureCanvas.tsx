@@ -7,6 +7,7 @@ import {
   type BlueprintBlock,
   type RendererProgress,
   type StructureRendererLoadResult,
+  type OutsideLayerMode,
 } from '@/lib/mcmods-exporter/renderer'
 import { useI18n } from '@/app/_lib/i18n-provider'
 
@@ -24,7 +25,15 @@ export interface StructureCanvasProps {
   autoRotate?: boolean
   showGrid?: boolean
   onLoaded?: (result: StructureRendererLoadResult) => void
+  onRenderedCover?: (cover: Blob) => void | Promise<void>
   onSelectBlock?: (block: BlueprintBlock | null) => void
+  layerMin?: number
+  layerMax?: number
+  outsideLayerMode?: OutsideLayerMode
+  showContextBelow?: boolean
+  showContextAbove?: boolean
+  firstPerson?: boolean
+  cullInvisibleFaces?: boolean
 }
 
 /**
@@ -38,12 +47,31 @@ export function StructureCanvas({
   autoRotate = false,
   showGrid = true,
   onLoaded,
+  onRenderedCover,
   onSelectBlock,
+  layerMin = 0,
+  layerMax = Number.MAX_SAFE_INTEGER,
+  outsideLayerMode = 'visible',
+  showContextBelow = true,
+  showContextAbove = true,
+  firstPerson = false,
+  cullInvisibleFaces = true,
 }: StructureCanvasProps) {
   const { t } = useI18n()
   const hostRef = useRef<HTMLDivElement>(null)
+  const rendererRef = useRef<StructureRenderer | null>(null)
+  const layerViewRef = useRef({ min: layerMin, max: layerMax, mode: outsideLayerMode, showContextBelow, showContextAbove })
+  const onLoadedRef = useRef(onLoaded)
+  const onRenderedCoverRef = useRef(onRenderedCover)
+  const onSelectBlockRef = useRef(onSelectBlock)
   const [progress, setProgress] = useState<RendererProgress>()
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    onLoadedRef.current = onLoaded
+    onRenderedCoverRef.current = onRenderedCover
+    onSelectBlockRef.current = onSelectBlock
+  }, [onLoaded, onRenderedCover, onSelectBlock])
 
   useEffect(() => {
     const host = hostRef.current
@@ -54,18 +82,29 @@ export function StructureCanvas({
     const renderer = new StructureRenderer(host, assetSource, {
       autoRotate,
       showGrid,
+      cullInvisibleFaces,
       onProgress: (value) => { if (!cancelled) setProgress(value) },
       onLoaded: (value) => {
         if (!cancelled) {
           setProgress(undefined)
-          onLoaded?.(value)
+          onLoadedRef.current?.(value)
+          if (onRenderedCoverRef.current) {
+            renderer.captureImage()
+              .then((cover) => onRenderedCoverRef.current?.(cover))
+              .catch(() => undefined)
+          }
         }
       },
-      onSelectBlock: (block) => { if (!cancelled) onSelectBlock?.(block) },
+      onSelectBlock: (block) => { if (!cancelled) onSelectBlockRef.current?.(block) },
       onError: (reason) => { if (!cancelled) setError(reason.message) },
     })
+    rendererRef.current = renderer
     source.load()
       .then((bytes) => renderer.load(bytes, source.name))
+      .then(() => {
+        const layer = layerViewRef.current
+        renderer.setLayerView(layer.min, layer.max, layer.mode, layer.showContextBelow, layer.showContextAbove)
+      })
       .catch((reason: unknown) => {
         if (!cancelled && !(reason instanceof DOMException && reason.name === 'AbortError')) {
           setError(reason instanceof Error ? reason.message : String(reason))
@@ -73,9 +112,17 @@ export function StructureCanvas({
       })
     return () => {
       cancelled = true
+      rendererRef.current = null
       renderer.dispose()
     }
-  }, [assetSource, source, source.key, source.name, autoRotate, showGrid, onLoaded, onSelectBlock, t])
+  }, [assetSource, source, source.key, source.name, autoRotate, showGrid, cullInvisibleFaces, t])
+
+  useEffect(() => {
+    layerViewRef.current = { min: layerMin, max: layerMax, mode: outsideLayerMode, showContextBelow, showContextAbove }
+    rendererRef.current?.setLayerView(layerMin, layerMax, outsideLayerMode, showContextBelow, showContextAbove)
+  }, [layerMin, layerMax, outsideLayerMode, showContextBelow, showContextAbove])
+
+  useEffect(() => rendererRef.current?.setFirstPerson(firstPerson), [firstPerson])
 
   const percent = progress?.totalStates
     ? Math.round(progress.finishedStates / progress.totalStates * 100)

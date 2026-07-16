@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { saveAuth, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
+import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection, FavoriteCollectionItem, loadFavoriteCollections, loadFavoriteItems } from "../_lib/favorite-api";
 
 type FileQuota = {
   daily: QuotaItem;
@@ -48,7 +50,8 @@ type UserOverview = {
 export function UserHome() {
   const { locale, t } = useI18n();
   const { token, user } = useAuthSnapshot();
-  const [showFiles, setShowFiles] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [files, setFiles] = useState<OSSFileRecord[]>([]);
   const [quota, setQuota] = useState<FileQuota | null>(null);
   const [loading, setLoading] = useState(false);
@@ -59,6 +62,7 @@ export function UserHome() {
   const [signature, setSignature] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
   const [overview, setOverview] = useState<UserOverview | null>(null);
+  const activeSection = accountSection(searchParams.get("section"));
 
   useEffect(() => {
     if (!token) return;
@@ -171,6 +175,13 @@ export function UserHome() {
     }
   }, [t, token]);
 
+  useEffect(() => {
+    if (activeSection !== "files") return;
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) void loadFiles(); });
+    return () => { cancelled = true; };
+  }, [activeSection, loadFiles]);
+
   async function downloadFile(file: OSSFileRecord) {
     if (!token) return;
     try {
@@ -248,16 +259,6 @@ export function UserHome() {
                 </div>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  className="button-primary focus-ring"
-                  type="button"
-                  onClick={() => {
-                    setShowFiles((value) => !value);
-                    if (!showFiles) void loadFiles();
-                  }}
-                >
-                  {t("user.fileManager")}
-                </button>
                 <Link className="button-secondary focus-ring" href="/tools/playground">
                   {t("user.openPlayground")}
                 </Link>
@@ -272,7 +273,13 @@ export function UserHome() {
               </div>
             </div>
 
-            <section className="surface rounded-lg p-4">
+            <nav className="surface flex overflow-x-auto rounded-lg border-b border-[var(--line)]" aria-label={t("user.accountSections")}>
+              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "settings" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=settings", { scroll: false })}>{t("user.settings")}</button>
+              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "favorites" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=favorites", { scroll: false })}>{t("favorites.title")}</button>
+              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "files" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=files", { scroll: false })}>{t("user.fileManager")}</button>
+            </nav>
+
+            {activeSection === "settings" ? <section className="surface rounded-lg p-4">
               <h2 className="text-lg font-bold">{t("user.settings")}</h2>
               {message ? <p className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}</p> : null}
               {profile ? (
@@ -334,9 +341,9 @@ export function UserHome() {
                   onChange={(event) => void updateEmailNotifications(event.target.checked)}
                 />
               </label>
-            </section>
+            </section> : activeSection === "favorites" ? <FavoriteCollectionsPanel token={token} /> : null}
 
-            {showFiles ? (
+            {activeSection === "files" ? (
               <section className="surface rounded-lg p-4">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
@@ -401,6 +408,92 @@ export function UserHome() {
       </section>
     </main>
   );
+}
+
+type AccountSection = "settings" | "favorites" | "files";
+
+function accountSection(value: string | null): AccountSection {
+  return value === "favorites" || value === "files" ? value : "settings";
+}
+
+function FavoriteCollectionsPanel({ token }: { token: string }) {
+  const { t } = useI18n();
+  const [collections, setCollections] = useState<FavoriteCollection[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [items, setItems] = useState<FavoriteCollectionItem[]>([]);
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  const refreshCollections = useCallback(async () => {
+    setLoading(true);
+    try {
+      const next = await loadFavoriteCollections(token);
+      setCollections(next);
+      setSelectedId((current) => current && next.some((item) => item.id === current) ? current : next[0]?.id ?? null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("favorites.loadFailed"));
+    } finally {
+      setLoading(false);
+    }
+  }, [t, token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadFavoriteCollections(token)
+      .then((next) => {
+        if (cancelled) return;
+        setCollections(next);
+        setSelectedId(next[0]?.id ?? null);
+      })
+      .catch((error) => {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : t("favorites.loadFailed"));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [t, token]);
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    loadFavoriteItems(token, selectedId)
+      .then((result) => { if (!cancelled) setItems(result); })
+      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("favorites.loadFailed")); });
+    return () => { cancelled = true; };
+  }, [selectedId, t, token]);
+
+  async function createCollection() {
+    const nextName = name.trim();
+    if (!nextName) return;
+    try {
+      const created = await createFavoriteCollection(token, nextName);
+      setCollections((current) => [...current, created]);
+      setSelectedId(created.id);
+      setName("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("favorites.createFailed"));
+    }
+  }
+
+  async function removeCollection(collection: FavoriteCollection) {
+    if (collection.isDefault || !window.confirm(t("favorites.deleteConfirm", { name: collection.name }))) return;
+    try {
+      await deleteFavoriteCollection(token, collection.id);
+      await refreshCollections();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("favorites.deleteFailed"));
+    }
+  }
+
+  const selected = collections.find((item) => item.id === selectedId);
+  return <section className="surface rounded-lg p-4"><div className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-xl font-black">{t("favorites.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("favorites.description")}</p></div><div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"><input className="field min-w-48" placeholder={t("favorites.newFolderName")} value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createCollection(); } }} /><button className="button-primary focus-ring" disabled={!name.trim()} type="button" onClick={() => void createCollection()}>{t("favorites.createFolder")}</button></div></div>{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">{message}</p> : null}<div className="mt-5 grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]"><aside className="grid content-start gap-2">{loading ? <p className="p-3 font-bold text-[var(--muted)]">{t("common.loading")}</p> : collections.map((collection) => <div className={`flex items-center rounded-lg border ${selectedId === collection.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`} key={collection.id}><button className="focus-ring min-w-0 flex-1 px-3 py-3 text-left" type="button" onClick={() => setSelectedId(collection.id)}><span className="block truncate font-bold">{collection.isDefault ? t("favorites.defaultFolder") : collection.name}</span><span className="text-xs text-[var(--muted)]">{t("favorites.itemCount", { count: collection.itemCount })}</span></button>{!collection.isDefault ? <button className="focus-ring mr-2 rounded p-2 text-sm text-red-600" title={t("common.delete")} type="button" onClick={() => void removeCollection(collection)}>×</button> : null}</div>)}</aside><section className="min-w-0 rounded-lg border border-[var(--line)] p-4"><h3 className="font-black">{selected?.isDefault ? t("favorites.defaultFolder") : selected?.name ?? t("favorites.title")}</h3>{items.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item) => <Link className="focus-ring rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)} key={`${item.entityType}:${item.entityKey}`}><span className="block truncate font-bold">{item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityKey}</span><span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.entityType} · {item.entityKey}</span></Link>)}</div> : <p className="py-12 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}</section></div></section>;
+}
+
+function favoriteItemHref(item: FavoriteCollectionItem) {
+  if (item.entityType === "mod") return `/mods/${item.metadata.slug || item.entityKey}`;
+  if (item.entityType === "blueprint") return `/blueprints/${item.metadata.publicId || item.entityKey}`;
+  return `/${item.entityKey}`;
 }
 
 function AccountMetric({ className = "", label, value }: { className?: string; label: string; value: string }) {

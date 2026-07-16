@@ -8,6 +8,9 @@ export type AssetUrlResolver = (normalizedPath: string) => string
  */
 export class IndexedHttpAssetSource implements AssetSource, BinarySource {
   private readonly paths: Set<string>
+  private readonly jsonCache = new Map<string, Promise<unknown>>()
+  private readonly textCache = new Map<string, Promise<string>>()
+  private readonly bytesCache = new Map<string, Promise<Uint8Array>>()
 
   constructor(
     paths: Iterable<string>,
@@ -22,18 +25,36 @@ export class IndexedHttpAssetSource implements AssetSource, BinarySource {
   }
 
   async json<T>(path: string): Promise<T> {
-    const response = await this.get(path)
-    return response.json() as Promise<T>
+    const normalized = normalizePath(path)
+    let pending = this.jsonCache.get(normalized)
+    if (!pending) {
+      pending = this.get(normalized).then((response) => response.json())
+      this.jsonCache.set(normalized, pending)
+      pending.catch(() => this.jsonCache.delete(normalized))
+    }
+    return pending as Promise<T>
   }
 
   async text(path: string): Promise<string> {
-    const response = await this.get(path)
-    return response.text()
+    const normalized = normalizePath(path)
+    let pending = this.textCache.get(normalized)
+    if (!pending) {
+      pending = this.get(normalized).then((response) => response.text())
+      this.textCache.set(normalized, pending)
+      pending.catch(() => this.textCache.delete(normalized))
+    }
+    return pending
   }
 
   async bytes(path: string): Promise<Uint8Array> {
-    const response = await this.get(path)
-    return new Uint8Array(await response.arrayBuffer())
+    const normalized = normalizePath(path)
+    let pending = this.bytesCache.get(normalized)
+    if (!pending) {
+      pending = this.get(normalized).then(async (response) => new Uint8Array(await response.arrayBuffer()))
+      this.bytesCache.set(normalized, pending)
+      pending.catch(() => this.bytesCache.delete(normalized))
+    }
+    return pending
   }
 
   url(path: string): string | undefined {
@@ -44,7 +65,9 @@ export class IndexedHttpAssetSource implements AssetSource, BinarySource {
   private async get(path: string): Promise<Response> {
     const normalized = normalizePath(path)
     if (!this.paths.has(normalized)) throw new Error(`版本资源索引中不存在：${normalized}`)
-    const response = await this.fetcher(this.resolveUrl(normalized), {
+    // Avoid binding the native Window.fetch receiver to this AssetSource.
+    const fetcher = this.fetcher
+    const response = await fetcher(this.resolveUrl(normalized), {
       credentials: 'include',
       headers: { Accept: contentType(normalized) },
     })

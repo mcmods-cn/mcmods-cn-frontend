@@ -14,7 +14,6 @@ import {
   ModExportEntryDetail,
   ModExportRegistryEntry,
   ModExportRevision,
-  ModExportTagDetail,
   saveModExportEntryContent,
 } from "../_lib/mod-export-api";
 import { useI18n } from "../_lib/i18n-provider";
@@ -51,13 +50,13 @@ export function ModExportCategoryPage({ siteId, revisionId, categoryKey }: Categ
   }, [revisionId, siteId, t, token]);
 
   useEffect(() => {
-    if (!category || category.structures) return;
+    if (!category) return;
     let cancelled = false;
     const params = new URLSearchParams({ all: "1", summary: "1", locale: minecraftLocale(locale) });
     if (category.documentKind) params.set("kind", category.documentKind);
-    else if (!category.tags) params.set("registries", category.registries.join(","));
+    else params.set("registries", category.registries.join(","));
     loadAllModExportEntries(
-      `/api/v1/export-revisions/${encodeURIComponent(revisionId)}/${category.tags ? "tags" : category.documentKind ? "document-entries" : "registry-entries"}`,
+      `/api/v1/export-revisions/${encodeURIComponent(revisionId)}/${category.documentKind ? "document-entries" : "registry-entries"}`,
       params,
       token,
       (items) => { if (!cancelled) setEntries(items); },
@@ -73,7 +72,7 @@ export function ModExportCategoryPage({ siteId, revisionId, categoryKey }: Categ
       || Object.values(entry.names).some((name) => name.toLocaleLowerCase().includes(keyword)));
   }, [entries, query]);
 
-  const title = category ? modExportCategoryTitle(category, t) : t("common.loading");
+  const title = category ? modExportCategoryTitle(category, t) : revision ? t("mods.exportImport.categoryUnavailable") : t("common.loading");
   return <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-[var(--foreground)]">
     <div className="mx-auto max-w-[1680px]">
       <header className="flex flex-wrap items-end gap-4 border-b border-[var(--line)] pb-4">
@@ -81,7 +80,7 @@ export function ModExportCategoryPage({ siteId, revisionId, categoryKey }: Categ
         <input className="field w-full sm:w-80" type="search" value={query} placeholder={t("mods.exportImport.searchEntries")} onChange={(event) => setQuery(event.target.value)} />
       </header>
       {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{error}</p> : null}
-	  {!revision || !category ? <Loading /> : category.key === "tags" ? <TagIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "achievements" ? <AdvancementIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "itemsBlocks" ? <DenseIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "lootTables" ? <LootTableIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : <CardIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} />}
+	  {!revision ? <Loading /> : !category ? <UnavailableCategory siteId={siteId} /> : category.key === "achievements" ? <AdvancementIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "itemsBlocks" ? <DenseIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "lootTables" ? <LootTableIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : <CardIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} />}
     </div>
   </main>;
 }
@@ -96,22 +95,6 @@ function DenseIndex({ entries, ...props }: IndexProps) {
 }
 
 type IndexProps = CategoryPageProps & { entries: ModExportRegistryEntry[]; locale: string };
-
-function TagIndex({ entries, revisionId, siteId, categoryKey }: IndexProps) {
-  const { t } = useI18n();
-  const groups = useMemo(() => {
-    const grouped = new Map<string, ModExportRegistryEntry[]>();
-    for (const entry of entries) grouped.set(entry.registry, [...(grouped.get(entry.registry) ?? []), entry]);
-    return [...grouped.entries()];
-  }, [entries]);
-  return <div className="mt-5 space-y-4">{groups.map(([registry, registryEntries]) => <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]" key={registry}>
-    <header className="flex items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3"><h2 className="break-all font-black">{registry}</h2><span className="text-sm text-[var(--muted)]">{t("mods.exportImport.tagCount", { count: registryEntries.length })}</span></header>
-    <div className="grid gap-px bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3">{registryEntries.map((entry) => {
-      const href = exportEntryHref(siteId, revisionId, categoryKey, entry);
-      return <Link className="focus-ring flex min-w-0 items-center justify-between gap-3 bg-[var(--panel)] p-4 hover:bg-[var(--panel-subtle)]" href={href} key={`${entry.registry}:${entry.id}`} target="_blank" rel="noopener noreferrer"><code className="truncate font-bold text-[var(--accent)]">#{entry.id}</code><span className="shrink-0 text-sm text-[var(--muted)]">{t("mods.exportImport.memberCount", { count: numberValue(entry.data.memberCount, 0) })}</span></Link>;
-    })}</div>
-  </section>)}</div>;
-}
 
 function CardIndex({ entries, ...props }: IndexProps) {
   return <div className="mt-5 grid gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3">{entries.map((entry) => <EntryLink entry={entry} key={`${entry.registry}:${entry.id}`} {...props} />)}</div>;
@@ -181,46 +164,7 @@ function AdvancementBoard({ entries, ...props }: IndexProps) {
 }
 
 export function ModExportEntryPage(props: EntryPageProps) {
-  return props.categoryKey === "tags" ? <ModExportTagEntryPage {...props} /> : <ModExportRegistryEntryPage {...props} />;
-}
-
-function ModExportTagEntryPage({ siteId, revisionId, categoryKey, entityId, registry, objectId }: EntryPageProps) {
-  const { locale, t } = useI18n();
-  const { token } = useAuthSnapshot();
-  const [detail, setDetail] = useState<ModExportTagDetail>();
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let cancelled = false;
-    const params = new URLSearchParams({ registry, tagId: objectId, locale: minecraftLocale(locale) });
-    if (entityId) params.set("entityId", entityId);
-    apiRequest<ModExportTagDetail>(`/api/v1/export-revisions/${encodeURIComponent(revisionId)}/tag-detail?${params}`, {}, token)
-      .then((result) => { if (!cancelled) setDetail(result); })
-      .catch((reason) => { if (!cancelled) setError(errorText(reason)); });
-    return () => { cancelled = true; };
-  }, [entityId, locale, objectId, registry, revisionId, token]);
-  return <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-[var(--foreground)]"><article className="mx-auto max-w-[1500px]">
-    <header className="border-b border-[var(--line)] pb-5"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}/data/${encodeURIComponent(revisionId)}/${encodeURIComponent(categoryKey)}`}>{t("mods.exportImport.backToCategories")}</Link><p className="mt-3 text-sm font-bold text-[var(--muted)]">{registry}</p><h1 className="mt-1 break-all text-3xl font-black">#{objectId}</h1>{detail ? <p className="mt-2 text-[var(--muted)]">{t("mods.exportImport.memberCount", { count: detail.memberCount })}</p> : null}</header>
-    {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{error}</p> : null}
-    {!detail ? <Loading /> : detail.members.length ? <div className="mt-5 grid gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3">{detail.members.map((member) => <TagMember key={member.id} member={member} locale={locale} revisionId={revisionId} siteId={siteId} />)}</div> : <p className="py-12 text-center text-[var(--muted)]">{t("mods.exportImport.noTagMembers")}</p>}
-  </article></main>;
-}
-
-function TagMember({ member, locale, revisionId, siteId }: { member: ModExportTagDetail["members"][number]; locale: string; revisionId: string; siteId: string }) {
-  const category = tagMemberCategory(member.registry);
-  const content = <>{member.iconPath ? <Image unoptimized alt="" className="h-8 w-8 shrink-0 object-contain [image-rendering:pixelated]" height={32} width={32} src={modExportAssetURL(revisionId, member.iconPath)} /> : <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-[10px] font-bold text-[var(--muted)]">TAG</span>}<span className="min-w-0"><strong className="block truncate">{member.names[minecraftLocale(locale)] || member.names.en_us || member.names.zh_cn || member.id}</strong><code className="mt-1 block truncate text-xs text-[var(--muted)]">{member.id}</code></span></>;
-  if (!category || !member.registry) return <div className="flex min-h-20 items-center gap-3 bg-[var(--panel)] p-4">{content}</div>;
-  const href = exportEntryHref(siteId, revisionId, category, member);
-  return <Link className="focus-ring flex min-h-20 items-center gap-3 bg-[var(--panel)] p-4 hover:bg-[var(--panel-subtle)]" href={href} target="_blank" rel="noopener noreferrer">{content}</Link>;
-}
-
-function tagMemberCategory(registry: string) {
-  if (registry === "items" || registry === "blocks") return "itemsBlocks";
-  if (registry === "entity_types") return "entities";
-  if (registry === "enchantments") return "enchantments";
-  if (registry === "mob_effects" || registry === "potions") return "buffs";
-  if (registry === "biomes") return "biomes";
-  if (registry === "fluids") return "fluids";
-  return "";
+  return <ModExportRegistryEntryPage {...props} />;
 }
 
 function ModExportRegistryEntryPage({ siteId, revisionId, categoryKey, entityId, registry, objectId }: EntryPageProps) {
@@ -289,32 +233,98 @@ function ModExportRegistryEntryPage({ siteId, revisionId, categoryKey, entityId,
     <header className="flex items-start gap-4 border-b border-[var(--line)] pb-5">{entry.iconPath ? <Image unoptimized alt="" className="h-16 w-16 object-contain [image-rendering:pixelated]" height={64} width={64} src={modExportAssetURL(revisionId, entry.iconPath)} /> : null}<div className="min-w-0 flex-1"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}/data/${encodeURIComponent(revisionId)}/${encodeURIComponent(categoryKey)}`}>← {t("mods.exportImport.backToCategories")}</Link><h1 className="mt-2 text-3xl font-black">{name}</h1><code className="block break-all text-sm text-[var(--muted)]">{entry.id}</code></div></header>
     {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{error}</p> : null}
     <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0"><section><div className="flex items-center justify-between gap-3 border-b border-[var(--line)] pb-2"><h2 className="text-xl font-black">{t("mods.exportImport.entry.introduction")}</h2>{token ? <button className="button-secondary focus-ring" type="button" onClick={() => setEditing((current) => !current)}>{editing ? t("common.cancel") : t("mods.exportImport.entry.editIntroduction")}</button> : null}</div>{editing ? <div className="mt-4"><ToolsPlayground embedded editorTitle={name} value={markdown} onChange={setMarkdown} /><div className="mt-3 flex justify-end"><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("common.loading") : t("common.save")}</button></div></div> : detail.contentMarkdown ? <div className="markdown-preview mt-4"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={detail.contentMarkdown} /></div> : <p className="py-8 text-[var(--muted)]">{documentDescription || t("mods.exportImport.entry.noIntroduction")}</p>}</section>
-	  {registry === "blocks" ? <BlockProperties data={entry.data} /> : null}
 	  {registry === "loot_tables" ? <LootTableVisualizer data={entry.data} revisionId={revisionId} /> : null}
       {isTechnicalDocumentRegistry(registry) ? <details className="mt-7 border-t border-[var(--line)] pt-5"><summary className="cursor-pointer text-xl font-black">{t("mods.exportImport.entry.technicalData")}</summary><pre className="mt-4 max-h-[70vh] overflow-auto rounded-lg bg-[#111820] p-4 text-xs leading-6 text-slate-100">{JSON.stringify(entry.data, null, 2)}</pre></details> : null}
       {detail.recipes.length ? <RecipeGallery title={t("mods.exportImport.entry.recipes")} recipes={detail.recipes} revisionId={revisionId} /> : null}{detail.uses.length ? <RecipeGallery title={t("mods.exportImport.entry.uses")} recipes={detail.uses} revisionId={revisionId} /> : null}
-    </div><aside className="lg:sticky lg:top-5 lg:self-start"><div className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]"><div className="grid aspect-square place-items-center p-5">{display3D && modelSource ? <BlockModelCanvas assetSource={modelSource} blockId={entry.id} className="h-full w-full" /> : entry.previewPath || entry.iconPath ? <Image unoptimized alt={name} className="h-full w-full object-contain [image-rendering:pixelated]" height={256} width={256} src={modExportAssetURL(revisionId, entry.previewPath || entry.iconPath)} /> : <strong className="text-[var(--muted)]">{entry.registry}</strong>}</div>{detail.modelAvailable ? <div className="grid grid-cols-2 border-t border-[var(--line)]"><button className={`focus-ring p-3 font-bold ${!display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => setDisplay3D(false)}>2D</button><button className={`focus-ring p-3 font-bold ${display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => void show3D()}>3D</button></div> : null}</div><dl className="mt-4 grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-sm"><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.registry")}</dt><dd>{entry.registry}</dd><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.namespace")}</dt><dd>{entry.namespace}</dd></dl></aside></div>
+    </div><aside className="lg:sticky lg:top-5 lg:self-start"><div className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]"><div className="grid aspect-square place-items-center p-5">{display3D && modelSource ? <BlockModelCanvas assetSource={modelSource} blockId={entry.id} className="h-full w-full" /> : entry.previewPath || entry.iconPath ? <Image unoptimized alt={name} className="h-full w-full object-contain [image-rendering:pixelated]" height={256} width={256} src={modExportAssetURL(revisionId, entry.previewPath || entry.iconPath)} /> : <strong className="text-[var(--muted)]">{entry.registry}</strong>}</div>{detail.modelAvailable ? <div className="grid grid-cols-2 border-t border-[var(--line)]"><button className={`focus-ring p-3 font-bold ${!display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => setDisplay3D(false)}>2D</button><button className={`focus-ring p-3 font-bold ${display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => void show3D()}>3D</button></div> : null}</div><dl className="mt-4 grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-sm"><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.registry")}</dt><dd>{entry.registry}</dd><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.namespace")}</dt><dd>{entry.namespace}</dd></dl><EntryProperties data={entry.data} registry={registry} revisionId={revisionId} siteId={siteId} /></aside></div>
   </article></main>;
 }
 
-function BlockProperties({ data }: { data: Record<string, unknown> }) {
-	const { t } = useI18n();
-	const rows = [
-		["hardness", data.hardness],
-		["explosionResistance", data.explosion_resistance],
-		["requiresCorrectTool", data.requires_correct_tool],
-		["preferredTools", data.preferred_tools],
-		["miningTags", data.mining_tags],
-		["tierTags", data.tier_tags],
-		["lightEmission", data.light_emission],
-		["friction", data.friction],
-		["speedFactor", data.speed_factor],
-		["jumpFactor", data.jump_factor],
-		["pistonReaction", data.piston_reaction],
-		["lootTable", data.loot_table],
-	].filter(([, value]) => value !== undefined && value !== null && value !== "" && (!Array.isArray(value) || value.length > 0));
-	if (!rows.length) return null;
-	return <section className="mt-8 border-t border-[var(--line)] pt-5"><h2 className="text-xl font-black">{t("mods.exportImport.entry.blockProperties.title")}</h2><dl className="mt-4 grid gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3">{rows.map(([key, value]) => <div className="bg-[var(--panel)] p-4" key={String(key)}><dt className="text-sm font-bold text-[var(--muted)]">{t(`mods.exportImport.entry.blockProperties.${key}`)}</dt><dd className="mt-1 break-words font-semibold">{formatExportProperty(value, t)}</dd></div>)}</dl></section>;
+function EntryProperties({ data, registry, revisionId, siteId }: { data: Record<string, unknown>; registry: string; revisionId: string; siteId: string }) {
+  const { t } = useI18n();
+  const durability = record(data.durability);
+  const tool = record(data.tool);
+  const tier = record(tool.tier);
+  const combat = record(data.combat);
+  const enchanting = record(data.enchanting);
+  const attributeModifiers = arrayRecords(data.attribute_modifiers);
+  const entityAttributes = arrayRecords(data.default_attributes);
+  const isBlock = registry === "blocks";
+  const isEntity = registry === "entity_types";
+  const hasItemProperties = registry === "items" || Object.keys(tool).length > 0 || Object.keys(combat).length > 0 || Object.keys(enchanting).length > 0 || attributeModifiers.length > 0 || Array.isArray(data.item_types);
+  const blockRows: PropertyRow[] = isBlock ? [
+    property("hardness", data.hardness), property("explosionResistance", data.explosion_resistance),
+    property("requiresCorrectTool", data.requires_correct_tool), property("preferredTools", data.preferred_tools),
+    property("requiredTier", data.required_tier), property("requiredMiningLevel", data.required_mining_level),
+    tagProperty("miningTags", data.mining_tags, "minecraft:block"), tagProperty("tierTags", data.tier_tags, "minecraft:block"),
+    tagProperty("blockTags", data.block_tags, "minecraft:block"), property("friction", data.friction),
+    property("speedFactor", data.speed_factor), property("jumpFactor", data.jump_factor),
+    property("lightEmission", data.light_emission), property("solid", data.solid), property("liquid", data.liquid),
+    property("occlusion", data.can_occlude ?? data.occlusion), property("blocksMotion", data.blocks_motion),
+    property("renderShape", data.render_shape), property("hasBlockEntity", data.has_block_entity),
+    property("randomlyTicking", data.randomly_ticking), property("pistonReaction", data.piston_reaction),
+    lootProperty("lootTable", data.loot_table, siteId, revisionId),
+  ].filter(hasPropertyValue) : [];
+  const toolRows: PropertyRow[] = hasItemProperties ? [
+    property("damageable", durability.damageable ?? data.damageable), property("maxDamage", data.max_damage ?? durability.max_damage),
+    property("maxStackSize", data.max_stack_size), property("primaryType", data.primary_type), property("itemTypes", data.item_types),
+    property("tierId", tier.id), property("miningLevel", tier.mining_level ?? tool.mining_level), property("tierDurability", tier.durability),
+    property("miningSpeed", tier.mining_speed ?? tool.mining_speed), property("attackDamageBonus", tier.attack_damage_bonus ?? tool.attack_damage),
+    property("enchantmentValue", tier.enchantment_value ?? data.enchantment_value), itemProperty("repairItems", tier.repair_items ?? data.repair_items),
+    tagProperty("incorrectBlocksForDrops", tier.incorrect_blocks_for_drops ?? data.incorrect_blocks_for_drops, "minecraft:block"),
+    property("attackDamage", combat.attack_damage), property("attackSpeed", combat.attack_speed),
+    property("attackDamageModifier", combat.attack_damage_modifier), property("attackSpeedModifier", combat.attack_speed_modifier),
+    property("enchantable", enchanting.enchantable), property("enchantingPower", enchanting.enchantment_value),
+    property("compatibleEnchantments", enchanting.compatible_enchantments), tagProperty("itemTags", data.item_tags, "minecraft:item"),
+  ].filter(hasPropertyValue) : [];
+  const entityRows: PropertyRow[] = isEntity ? [
+    property("maxHealth", data.max_health), property("armorValue", data.armor_value),
+    property("width", data.width), property("height", data.height), property("eyeHeight", data.eye_height),
+    property("maxAirSupply", data.max_air_supply), property("category", data.category), property("mobType", data.mob_type),
+    property("living", data.living), property("mob", data.mob), property("animal", data.animal), property("hostile", data.hostile),
+    property("tamable", data.tamable), property("ageable", data.ageable), property("waterAnimal", data.water_animal),
+    property("fireImmune", data.fire_immune), property("canSummon", data.can_summon), property("canSerialize", data.can_serialize),
+    property("trackingRange", data.client_tracking_range), property("updateInterval", data.update_interval),
+    property("runtimePropertiesAvailable", data.runtime_properties_available), property("spawnEggCount", data.spawn_egg_count),
+    lootProperty("defaultLootTable", data.default_loot_table, siteId, revisionId),
+    itemProperty("spawnEggs", data.spawn_eggs), itemProperty("breedingMaterials", data.breeding_materials ?? data.breed_items),
+    property("defaultEquipment", data.default_equipment),
+  ].filter(hasPropertyValue) : [];
+  if (!blockRows.length && !toolRows.length && !entityRows.length && !attributeModifiers.length && !entityAttributes.length) return null;
+  return <div className="mt-4 space-y-4">{blockRows.length ? <PropertyGroup namespace="blockProperties" title={t("mods.exportImport.entry.blockProperties.title")} rows={blockRows} /> : null}{toolRows.length ? <PropertyGroup namespace="toolProperties" title={t("mods.exportImport.entry.toolProperties.title")} rows={toolRows} /> : null}{entityRows.length ? <PropertyGroup namespace="entityProperties" title={t("mods.exportImport.entry.entityProperties.title")} rows={entityRows} /> : null}{entityAttributes.length ? <EntityAttributes attributes={entityAttributes} /> : null}{attributeModifiers.length ? <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{t("mods.exportImport.entry.toolProperties.attributeModifiers")}</h2><div className="divide-y divide-[var(--line)]">{attributeModifiers.map((slot, index) => <AttributeSlot key={index} slot={slot} />)}</div></section> : null}</div>;
+}
+
+type PropertyRow = { key: string; value: unknown; kind?: "tag" | "loot" | "item"; registry?: string; href?: string };
+function property(key: string, value: unknown): PropertyRow { return { key, value }; }
+function tagProperty(key: string, value: unknown, registry: string): PropertyRow { return { key, value, kind: "tag", registry }; }
+function itemProperty(key: string, value: unknown): PropertyRow { return { key, value, kind: "item" }; }
+function lootProperty(key: string, value: unknown, siteId: string, revisionId: string): PropertyRow { const id = stringValue(value); return { key, value, kind: "loot", href: id ? exportEntryHref(siteId, revisionId, "lootTables", { entityId: "", registry: "loot_tables", id }) : "" }; }
+function hasPropertyValue(row: PropertyRow) { const value = row.value; return value !== undefined && value !== null && value !== "" && (!Array.isArray(value) || value.length > 0); }
+
+function PropertyGroup({ title, rows, namespace }: { title: string; rows: PropertyRow[]; namespace: "blockProperties" | "toolProperties" | "entityProperties" }) {
+  const { t } = useI18n();
+  return <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{title}</h2><dl className="divide-y divide-[var(--line)]">{rows.map((row) => <div className="px-4 py-3" key={row.key}><dt className="text-xs font-bold text-[var(--muted)]">{t(`mods.exportImport.entry.${namespace}.${row.key}`)}</dt><dd className="mt-1 break-words text-sm font-semibold"><PropertyValue row={row} /></dd></div>)}</dl></section>;
+}
+
+function EntityAttributes({ attributes }: { attributes: Record<string, unknown>[] }) {
+  const { t } = useI18n();
+  return <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{t("mods.exportImport.entry.entityProperties.defaultAttributes")}</h2><dl className="divide-y divide-[var(--line)]">{attributes.map((attribute, index) => <div className="px-4 py-3" key={`${stringValue(attribute.attribute)}-${index}`}><dt><code className="break-all text-xs font-bold text-[var(--accent)]">{stringValue(attribute.attribute) || "-"}</code></dt><dd className="mt-1 text-sm text-[var(--muted)]">{t("mods.exportImport.entry.entityProperties.baseValue")}: {String(attribute.base_value ?? "-")} / {t("mods.exportImport.entry.entityProperties.defaultValue")}: {String(attribute.default_value ?? "-")}</dd></div>)}</dl></section>;
+}
+
+function PropertyValue({ row }: { row: PropertyRow }) {
+  const { t } = useI18n();
+  if (row.kind === "loot" && row.href) return <Link className="text-[var(--accent)] hover:underline" href={row.href} target="_blank" rel="noopener noreferrer">{String(row.value)}</Link>;
+  if (row.kind === "tag") {
+    const values = Array.isArray(row.value) ? row.value.map(String) : [String(row.value)];
+    return <span className="flex flex-wrap gap-1">{values.map((raw) => { const value = raw.replace(/^#/, ""); return <Link className="rounded bg-[var(--accent-soft)] px-2 py-1 text-xs text-[var(--accent)] hover:underline" href={`/mods-tag?registry=${encodeURIComponent(row.registry || "minecraft:item")}&tagId=${encodeURIComponent(value)}`} target="_blank" rel="noopener noreferrer" key={raw}>#{value}</Link>; })}</span>;
+  }
+  if (row.kind === "item" && Array.isArray(row.value)) return <span className="flex flex-wrap gap-1">{row.value.map(String).map((value) => <code className="rounded bg-[var(--panel-subtle)] px-2 py-1 text-xs" key={value}>{value}</code>)}</span>;
+  return <>{formatExportProperty(row.value, t)}</>;
+}
+
+function AttributeSlot({ slot }: { slot: Record<string, unknown> }) {
+  const modifiers = arrayRecords(slot.modifiers);
+  return <div className="px-4 py-3"><strong className="text-sm">{stringValue(slot.slot) || "any"}</strong><div className="mt-2 grid gap-2">{modifiers.map((modifier, index) => <div className="rounded bg-[var(--panel-subtle)] p-2 text-xs" key={index}><code className="break-all">{stringValue(modifier.attribute) || stringValue(modifier.name)}</code><span className="mt-1 block text-[var(--muted)]">{String(modifier.amount ?? 0)} · {String(modifier.operation ?? modifier.operation_id ?? "add")}</span></div>)}</div></div>;
 }
 
 function LootTableVisualizer({ data, revisionId }: { data: Record<string, unknown>; revisionId: string }) {
@@ -517,3 +527,7 @@ function numberValue(value: unknown, fallback: number) { const number = Number(v
 function errorText(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
 function emptyEntryDetail(locale: string): ModExportEntryDetail { return { entityId: "", publicId: "", contentMarkdown: "", contentLocale: locale, modelAvailable: false, modelAssetPaths: [], recipes: [], uses: [] }; }
 function Loading() { const { t } = useI18n(); return <div className="grid min-h-64 place-items-center font-bold text-[var(--muted)]">{t("common.loading")}</div>; }
+function UnavailableCategory({ siteId }: { siteId: string }) {
+  const { t } = useI18n();
+  return <div className="mt-5 grid min-h-64 place-items-center rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-6 text-center"><div><p className="font-bold text-[var(--muted)]">{t("mods.exportImport.categoryUnavailable")}</p><Link className="button-primary focus-ring mt-4 inline-flex" href={`/mods/${encodeURIComponent(siteId)}`}>{t("mods.exportImport.backToCategories")}</Link></div></div>;
+}

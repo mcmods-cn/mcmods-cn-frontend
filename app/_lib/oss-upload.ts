@@ -21,6 +21,8 @@ export type OSSFileRecord = {
   updatedAt: string;
   url?: string;
   accessUrl?: string;
+  blueprintId?: string;
+  blueprint?: { id: string; status: string; jobId?: number };
 };
 
 export type OSSDirectUploadTicket = {
@@ -38,6 +40,8 @@ export type OSSDirectUploadTicket = {
   sha256: string;
   uploadRequired?: boolean;
   file?: OSSFileRecord;
+  blueprintId?: string;
+  blueprint?: { id: string; status: string; jobId?: number };
 };
 
 export async function uploadUserFileToOSS(file: File, token: string, source = "playground") {
@@ -161,5 +165,7 @@ function normalizeUploadResult(record: OSSFileRecord | undefined, ticket: OSSDir
   return {
     ...file,
     accessUrl: ticket.accessUrl || record?.accessUrl || record?.url,
+    blueprintId: record?.blueprintId || ticket.blueprintId || record?.blueprint?.id || ticket.blueprint?.id,
+    blueprint: record?.blueprint || ticket.blueprint,
   };
 }

@@ -22,7 +22,9 @@ type PanelId =
   | "reviews-content"
   | "reviews-developer"
   | "reviews-editor"
+  | "review-settings"
   | "notifications"
+  | "notification-templates"
   | "mail"
   | "auth"
   | "i18n"
@@ -391,6 +393,7 @@ const adminNavGroups: Array<{
       { id: "reviews-content", label: "", description: "" },
       { id: "reviews-developer", label: "", description: "" },
       { id: "reviews-editor", label: "", description: "" },
+      { id: "review-settings", label: "", description: "" },
     ],
   },
   {
@@ -453,9 +456,14 @@ const adminNavGroups: Array<{
   {
     id: "users",
     label: "",
+    items: [{ id: "users", label: "", description: "" }],
+  },
+  {
+    id: "notifications",
+    label: "",
     items: [
-      { id: "users", label: "", description: "" },
       { id: "notifications", label: "", description: "" },
+      { id: "notification-templates", label: "", description: "" },
     ],
   },
   {
@@ -898,9 +906,11 @@ export function AdminConsolePolished() {
             <UsersPanelV2 catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
           ) : null}
           {activePanel === "notifications" ? <SystemNotificationPanel token={auth.token} /> : null}
+          {activePanel === "notification-templates" ? <NotificationTemplatePanel token={auth.token} /> : null}
           {activePanel === "reviews-content" ? <ModReviewQueuePanel kind="content" token={auth.token} /> : null}
           {activePanel === "reviews-developer" ? <ModReviewQueuePanel kind="developer" token={auth.token} /> : null}
           {activePanel === "reviews-editor" ? <ModReviewQueuePanel kind="editor" token={auth.token} /> : null}
+          {activePanel === "review-settings" ? <ReviewSettingsPanel token={auth.token} /> : null}
           {activePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "auth" ? <AuthPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "markdown" ? <MarkdownConfigPanel initialConfig={config.markdown} token={auth.token} /> : null}
@@ -3836,6 +3846,119 @@ function SystemNotificationPanel({ token }: { token: string }) {
   );
 }
 
+type NotificationTemplateTranslation = { title: string; body: string };
+type NotificationTemplateDefinition = {
+  code: string;
+  translations: Record<string, NotificationTemplateTranslation>;
+};
+
+function NotificationTemplatePanel({ token }: { token: string }) {
+  const { locale, t } = useI18n();
+  const [templates, setTemplates] = useState<NotificationTemplateDefinition[]>([]);
+  const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
+  const [targetLocale, setTargetLocale] = useState<Locale>(locale === "zh-CN" ? "en" : locale);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<{ templates: NotificationTemplateDefinition[] }>("/api/v1/admin/config/notifications", {}, token)
+      .then((result) => { if (!cancelled) setTemplates(result.templates ?? []); })
+      .catch((error) => { if (!cancelled) notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [t, token]);
+
+  function updateTemplate(index: number, language: string, field: keyof NotificationTemplateTranslation, value: string) {
+    setTemplates((current) => current.map((template, templateIndex) => {
+      if (templateIndex !== index) return template;
+      const translation = template.translations?.[language] ?? { title: "", body: "" };
+      return { ...template, translations: { ...template.translations, [language]: { ...translation, [field]: value } } };
+    }));
+  }
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await apiRequest<{ templates: NotificationTemplateDefinition[] }>(
+        "/api/v1/admin/config/notifications",
+        { method: "PUT", body: JSON.stringify({ templates }) },
+        token,
+      );
+      setTemplates(result.templates ?? []);
+      notifyAdminNotice(t("admin.notificationTemplates.saved"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) return <section className="surface rounded-lg p-5 font-bold text-[var(--muted)]">{t("common.loading")}</section>;
+
+  return <section className="space-y-4">
+    <header className="flex flex-wrap items-end justify-between gap-4">
+      <div><h2 className="text-2xl font-black">{t("admin.notificationTemplates.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.notificationTemplates.description")}</p></div>
+      <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button>
+    </header>
+    <div className="surface grid gap-4 rounded-lg p-4 sm:grid-cols-2">
+      <label className="text-sm font-bold">{t("admin.notificationTemplates.sourceLanguage")}<select className="field mt-2" value={sourceLocale} onChange={(event) => setSourceLocale(event.target.value as Locale)}>{supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
+      <label className="text-sm font-bold">{t("admin.notificationTemplates.targetLanguage")}<select className="field mt-2" value={targetLocale} onChange={(event) => setTargetLocale(event.target.value as Locale)}>{supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
+    </div>
+    {templates.map((template, index) => {
+      const source = template.translations?.[sourceLocale] ?? { title: "", body: "" };
+      const target = template.translations?.[targetLocale] ?? { title: "", body: "" };
+      return <section className="surface overflow-hidden rounded-lg" key={template.code}>
+        <header className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3"><code className="font-bold">{template.code}</code></header>
+        <div className="grid gap-4 p-4 lg:grid-cols-2">
+          <TemplateTranslationEditor label={t("admin.notificationTemplates.sourceColumn")} value={source} onChange={(field, value) => updateTemplate(index, sourceLocale, field, value)} />
+          <TemplateTranslationEditor label={t("admin.notificationTemplates.targetColumn")} value={target} onChange={(field, value) => updateTemplate(index, targetLocale, field, value)} />
+        </div>
+      </section>;
+    })}
+  </section>;
+}
+
+function TemplateTranslationEditor({ label, value, onChange }: { label: string; value: NotificationTemplateTranslation; onChange: (field: keyof NotificationTemplateTranslation, value: string) => void }) {
+  const { t } = useI18n();
+  return <div className="grid gap-3"><h3 className="font-black">{label}</h3><label className="text-sm font-bold">{t("admin.notificationTemplates.templateTitle")}<input className="field mt-2" value={value.title} onChange={(event) => onChange("title", event.target.value)} /></label><label className="text-sm font-bold">{t("admin.notificationTemplates.templateBody")}<textarea className="field mt-2 min-h-28 resize-y" value={value.body} onChange={(event) => onChange("body", event.target.value)} /></label></div>;
+}
+
+type ReviewSettings = { blueprintCreate: boolean; blueprintEdit: boolean; modCreate: boolean; modEdit: boolean };
+
+function ReviewSettingsPanel({ token }: { token: string }) {
+  const { t } = useI18n();
+  const [settings, setSettings] = useState<ReviewSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<ReviewSettings>("/api/v1/admin/config/reviews", {}, token)
+      .then((result) => { if (!cancelled) setSettings(result); })
+      .catch((error) => { if (!cancelled) notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"); });
+    return () => { cancelled = true; };
+  }, [t, token]);
+  async function save() {
+    if (!settings) return;
+    setSaving(true);
+    try {
+      setSettings(await apiRequest<ReviewSettings>("/api/v1/admin/config/reviews", { method: "PUT", body: JSON.stringify(settings) }, token));
+      notifyAdminNotice(t("admin.reviewSettings.saved"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+  if (!settings) return <section className="surface rounded-lg p-5 font-bold text-[var(--muted)]">{t("common.loading")}</section>;
+  const options: Array<{ key: keyof ReviewSettings; title: string; description: string }> = [
+    { key: "blueprintCreate", title: t("admin.reviewSettings.blueprintCreate"), description: t("admin.reviewSettings.blueprintCreateDescription") },
+    { key: "blueprintEdit", title: t("admin.reviewSettings.blueprintEdit"), description: t("admin.reviewSettings.blueprintEditDescription") },
+    { key: "modCreate", title: t("admin.reviewSettings.modCreate"), description: t("admin.reviewSettings.modCreateDescription") },
+    { key: "modEdit", title: t("admin.reviewSettings.modEdit"), description: t("admin.reviewSettings.modEditDescription") },
+  ];
+  return <section className="space-y-4"><header className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-black">{t("admin.reviewSettings.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.reviewSettings.description")}</p></div><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></header><div className="surface divide-y divide-[var(--line)] rounded-lg px-5">{options.map((option) => <label className="flex items-center justify-between gap-5 py-5" key={option.key}><span><span className="block font-black">{option.title}</span><span className="mt-1 block text-sm text-[var(--muted)]">{option.description}</span></span><input checked={settings[option.key]} type="checkbox" onChange={(event) => setSettings((current) => current ? { ...current, [option.key]: event.target.checked } : current)} /></label>)}</div></section>;
+}
+
 function TranslationManagerPanel({ token }: { token: string }) {
   const {
     locale,
@@ -4910,7 +5033,9 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "reviews-content": t("admin.reviews.contentTitle"),
     "reviews-developer": t("admin.reviews.developerTitle"),
     "reviews-editor": t("admin.reviews.editorTitle"),
+    "review-settings": t("admin.reviewSettings.title"),
     notifications: t("admin.notifications.title"),
+    "notification-templates": t("admin.notificationTemplates.title"),
     mail: t("admin.mail"),
     auth: t("admin.auth"),
     markdown: t("admin.markdown.navTitle"),
@@ -4951,6 +5076,7 @@ function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, 
     logs: t("admin.nav.logs"),
     ai: t("admin.nav.ai"),
     infrastructure: t("admin.nats.infrastructure"),
+    notifications: t("admin.notifications.group"),
     users: t("admin.users"),
     system: t("admin.system"),
   };
@@ -4969,7 +5095,9 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "reviews-content": t("admin.reviews.contentDescription"),
     "reviews-developer": t("admin.reviews.developerDescription"),
     "reviews-editor": t("admin.reviews.editorDescription"),
+    "review-settings": t("admin.reviewSettings.navDescription"),
     notifications: t("admin.notifications.navDescription"),
+    "notification-templates": t("admin.notificationTemplates.navDescription"),
     mail: t("admin.mailDesc"),
     auth: t("admin.authDesc"),
     markdown: t("admin.markdown.navDesc"),

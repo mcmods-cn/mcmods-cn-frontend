@@ -6,9 +6,7 @@ export type ModExportCategory = {
   count: number;
   icon: string;
   tone: string;
-  structures?: boolean;
   documentKind?: "advancements" | "key_mappings" | "biomes" | "dimensions" | "natural_generation" | "world_structures" | "loot_tables" | "ingredients" | "worldgen_data";
-  tags?: boolean;
 };
 
 const definitions: ReadonlyArray<Omit<ModExportCategory, "count">> = [
@@ -22,35 +20,40 @@ const definitions: ReadonlyArray<Omit<ModExportCategory, "count">> = [
   { key: "worldStructures", registries: [], icon: "structure", tone: "text-amber-700 bg-amber-500/10", documentKind: "world_structures" },
   { key: "lootTables", registries: [], icon: "database", tone: "text-yellow-700 bg-yellow-500/10", documentKind: "loot_tables" },
   { key: "industrialMedia", registries: [], icon: "fluid", tone: "text-cyan-700 bg-cyan-500/10", documentKind: "ingredients" },
-  { key: "serverData", registries: [], icon: "database", tone: "text-slate-700 bg-slate-500/10", documentKind: "worldgen_data" },
   { key: "fluids", registries: ["fluids"], icon: "fluid", tone: "text-cyan-700 bg-cyan-500/10" },
   { key: "keybinds", registries: [], icon: "keyboard", tone: "text-sky-700 bg-sky-500/10", documentKind: "key_mappings" },
   { key: "achievements", registries: [], icon: "achievement", tone: "text-yellow-700 bg-yellow-500/10", documentKind: "advancements" },
-  { key: "tags", registries: [], icon: "tag", tone: "text-fuchsia-700 bg-fuchsia-500/10", tags: true },
-  { key: "multiblocks", registries: [], icon: "structure", tone: "text-amber-700 bg-amber-500/10", structures: true },
 ];
 
 // These registries are imported to derive classifications and relationships.
 // They are implementation data, not standalone documentation categories.
-const internalRegistries = new Set(["block_entity_types", "creative_tabs", "menu_types"]);
+const internalRegistries = new Set(["block_entity_types", "creative_tabs", "menu_types", "worldgen_data"]);
+
+const legacyCategoryAliases: Readonly<Record<string, string>> = {
+  "registry:advancements": "achievements",
+  "registry:biomes": "biomes",
+  "registry:dimensions": "dimensions",
+  "registry:ingredients": "industrialMedia",
+  "registry:key_mappings": "keybinds",
+  "registry:loot_tables": "lootTables",
+  "registry:natural_generation": "naturalGeneration",
+  "registry:world_structures": "worldStructures",
+};
 
 export function modExportCategories(revision?: ModExportRevision): ModExportCategory[] {
   if (!revision) return [];
   const claimed = new Set<string>();
   const result: ModExportCategory[] = [];
   for (const definition of definitions) {
-    const count = definition.tags
-      ? revision.tagCount
-      : definition.structures
-      ? revision.structureCount
-      : definition.documentKind === "advancements"
+    const count = definition.documentKind === "advancements"
         ? revision.advancementCount
         : definition.documentKind === "key_mappings"
           ? revision.keyMappingCount
           : definition.documentKind
             ? (revision.documentCounts?.[definition.documentKind] ?? 0)
-          : definition.registries.reduce((sum, registry) => sum + (revision.registryCounts[registry] ?? 0), 0);
+        : definition.registries.reduce((sum, registry) => sum + (revision.registryCounts[registry] ?? 0), 0);
     definition.registries.forEach((registry) => claimed.add(registry));
+    if (definition.documentKind) claimed.add(definition.documentKind);
     if (count > 0) result.push({ ...definition, registries: [...definition.registries], count });
   }
   for (const [registry, count] of Object.entries(revision.registryCounts)) {
@@ -62,7 +65,8 @@ export function modExportCategories(revision?: ModExportRevision): ModExportCate
 }
 
 export function findModExportCategory(revision: ModExportRevision | undefined, key: string) {
-  return modExportCategories(revision).find((category) => category.key === key);
+  const canonicalKey = legacyCategoryAliases[key] ?? key;
+  return modExportCategories(revision).find((category) => category.key === canonicalKey);
 }
 
 export function modExportCategoryTitle(category: ModExportCategory, t: (key: string, values?: Record<string, string | number>) => string) {

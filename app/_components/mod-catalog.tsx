@@ -26,6 +26,8 @@ import {
   updatedOptions,
 } from "../_lib/mod-catalog-data";
 import { useI18n } from "../_lib/i18n-provider";
+import { loadFavoriteCollections, loadFavoriteItems } from "../_lib/favorite-api";
+import { FavoritePickerModal } from "./favorite-picker-modal";
 import { ModSubmissionModal } from "./mod-submission-modal";
 
 type CatalogView = "list" | "grid";
@@ -57,6 +59,7 @@ export function ModCatalog() {
   const [notice, setNotice] = useState("");
   const [backendMods, setBackendMods] = useState<ModCatalogEntry[]>([]);
   const [submissionOpen, setSubmissionOpen] = useState(false);
+  const [favoriteTarget, setFavoriteTarget] = useState<ModCatalogEntry | null>(null);
 
   const paramsKey = searchParams.toString();
   const filters = useMemo(() => parseFilters(new URLSearchParams(paramsKey), preferences), [paramsKey, preferences]);
@@ -79,6 +82,19 @@ export function ModCatalog() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    loadFavoriteCollections(token)
+      .then(async (collections) => Promise.all(collections.map((collection) => loadFavoriteItems(token, collection.id))))
+      .then((groups) => {
+        if (cancelled) return;
+        setFavoriteSlugs(new Set(groups.flat().filter((item) => item.entityType === "mod").map((item) => item.entityKey)));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,6 +187,11 @@ export function ModCatalog() {
   }
 
   function toggleFavorite(siteId: string) {
+    if (token) {
+      const target = backendMods.find((item) => item.siteId === siteId);
+      if (target) setFavoriteTarget(target);
+      return;
+    }
     setFavoriteSlugs((current) => {
       const next = new Set(current);
       if (next.has(siteId)) next.delete(siteId);
@@ -347,6 +368,11 @@ export function ModCatalog() {
           </aside>
         </div>
       ) : null}
+      {favoriteTarget && token ? <FavoritePickerModal entityType="mod" entityKey={favoriteTarget.siteId} title={favoriteTarget.name} token={token} onClose={() => setFavoriteTarget(null)} onSaved={(selected) => {
+        setFavoriteSlugs((current) => { const next = new Set(current); if (selected) next.add(favoriteTarget.siteId); else next.delete(favoriteTarget.siteId); return next; });
+        setNotice(t(selected ? "mods.notices.favorited" : "mods.notices.unfavorited"));
+        setFavoriteTarget(null);
+      }} /> : null}
 
       {notice ? <div className="fixed bottom-5 left-1/2 z-[80] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg bg-[var(--foreground)] px-4 py-3 text-center text-sm font-bold text-[var(--background)] shadow-xl" role="status">{notice}</div> : null}
       <ModSubmissionModal open={submissionOpen} onClose={() => setSubmissionOpen(false)} />
