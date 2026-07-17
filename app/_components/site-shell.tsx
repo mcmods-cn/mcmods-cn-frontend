@@ -207,6 +207,8 @@ function SiteHeader() {
                       <ProfileMenuLink href={`/user/${user.id}`}>{t("user.title")}</ProfileMenuLink>
                       <ProfileMenuLink href="/user?section=favorites">{t("favorites.title")}</ProfileMenuLink>
                       <ProfileMenuLink href="/user?section=files">{t("user.fileManager")}</ProfileMenuLink>
+                      <ProfileMenuLink href="/user?section=economy">{t("user.economyAndProgression")}</ProfileMenuLink>
+                      <ProfileMenuLink href="/user?section=players">{t("skins.playerProfiles")}</ProfileMenuLink>
                       <ProfileMenuLink href="/user?section=settings">{t("user.settings")}</ProfileMenuLink>
                       {canAccessAdmin(user) ? <ProfileMenuLink href="/admin">{t("common.admin")}</ProfileMenuLink> : null}
                     </nav>

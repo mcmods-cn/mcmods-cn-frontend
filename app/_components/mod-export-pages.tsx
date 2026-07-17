@@ -19,6 +19,7 @@ import {
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { RecipeResourceVisual, recipeSlotPresentation } from "./recipe-resource-slot";
 import { ToolsPlayground } from "./tools-playground";
 import { IndexedHttpAssetSource } from "@/lib/mcmods-exporter/renderer";
 
@@ -356,24 +357,29 @@ function LootPool({ pool, index, revisionId, resourceSources }: { pool: Record<s
 }
 
 function LootEntry({ entry, revisionId, resourceSources, depth = 0 }: { entry: Record<string, unknown>; revisionId: string; resourceSources: Record<string, unknown>; depth?: number }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const type = String(entry.type || "minecraft:unknown");
   const name = String(entry.name || entry.value || type);
-  const item = type === "minecraft:item" && name.includes(":") ? name : "";
+  const item = (type === "minecraft:item" || type === "item") && name.includes(":") ? name : "";
   const childrenValue = Array.isArray(entry.children) ? entry.children : Array.isArray(entry.entries) ? entry.entries : [];
   const children = childrenValue.map(record);
   const conditions = Array.isArray(entry.conditions) ? entry.conditions.map(record) : [];
   const functions = Array.isArray(entry.functions) ? entry.functions.map(record) : [];
 	const source = item ? record(resourceSources[item]) : {};
+  const displayName = item ? localizedRecordValue(source.names, minecraftLocale(locale)) || item : name;
 	const sourceRevisionId = stringValue(source.sourceRevisionId) || revisionId;
 	const sourceSiteId = stringValue(source.sourceModSiteId);
 	const sourceRegistry = stringValue(source.sourceRegistry) || "items";
 	const sourceEntityId = stringValue(source.entityId);
 	const sourceObjectId = stringValue(source.sourceObjectId) || item;
-	const iconPath = stringValue(source.iconPath);
+	const iconPath = stringValue(source.iconPath) || stringValue(source.previewPath);
 	const icon = iconPath ? <Image unoptimized alt="" className="h-8 w-8 shrink-0 object-contain [image-rendering:pixelated]" height={32} width={32} src={modExportAssetURL(sourceRevisionId, iconPath)} /> : <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-xs font-black">{type.split(":").pop()?.slice(0, 2).toUpperCase()}</span>;
 	const sourceCategory = exportCategoryForRegistry(sourceRegistry);
-	const itemContent = item && sourceSiteId ? <Link className="focus-ring flex min-w-0 items-center gap-3 hover:text-[var(--accent)]" href={exportEntryHref(sourceSiteId, sourceRevisionId, sourceCategory, { entityId: sourceEntityId, registry: sourceRegistry, id: sourceObjectId })} target="_blank" rel="noopener noreferrer">{icon}<div className="min-w-0 flex-1"><strong className="block break-all">{name}</strong><code className="block break-all text-xs text-[var(--muted)]">{type}</code></div></Link> : <div className="flex min-w-0 flex-1 items-center gap-3">{icon}<div className="min-w-0 flex-1"><strong className="block break-all">{name}</strong><code className="block break-all text-xs text-[var(--muted)]">{type}</code></div></div>;
+  const metadata = [...new Set([item || name, type])].filter((value) => value && value !== displayName);
+  const itemLabel = <div className="min-w-0 flex-1"><strong className="block break-all">{displayName}</strong>{metadata.map((value) => value === item
+    ? <code className="mt-0.5 block break-all text-xs text-[var(--muted)]" key={value}>{value}</code>
+    : <span className="mt-0.5 block break-all text-[10px] text-[var(--muted)] opacity-75" key={value}>{value}</span>)}</div>;
+	const itemContent = item && sourceSiteId ? <Link className="focus-ring flex min-w-0 items-center gap-3 hover:text-[var(--accent)]" href={exportEntryHref(sourceSiteId, sourceRevisionId, sourceCategory, { entityId: sourceEntityId, registry: sourceRegistry, id: sourceObjectId })} target="_blank" rel="noopener noreferrer">{icon}{itemLabel}</Link> : <div className="flex min-w-0 flex-1 items-center gap-3">{icon}{itemLabel}</div>;
   return <div className="px-4 py-3" style={{ paddingLeft: `${16 + depth * 24}px` }}>
 	<div className="flex min-w-0 items-center gap-3">{itemContent}<div className="shrink-0 text-right text-xs text-[var(--muted)]">{entry.weight !== undefined ? <span className="block">{t("mods.exportImport.entry.loot.weight")}: {lootValue(entry.weight)}</span> : null}{entry.quality !== undefined ? <span className="block">{t("mods.exportImport.entry.loot.quality")}: {lootValue(entry.quality)}</span> : null}</div></div>
     <LootRules conditions={conditions} functions={functions} compact />
@@ -412,7 +418,7 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
   const sourceMod = stringValue(layout.source_mod_id);
   const sourceVersion = stringValue(layout.source_mod_version);
   return <article className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
-    {background ? <div className="overflow-auto bg-[#c6c6c6] p-3"><div className="relative mx-auto" style={{ width, height }}><Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={modExportAssetURL(revisionId, background)} />{!containsIngredients ? slots.map((value, index) => <ModRecipeSlot key={index} scale={displayScale} slot={value} />) : null}{slots.map((value, index) => <RecipeChanceLabel key={`chance:${index}`} locale={locale} scale={displayScale} slot={value} />)}</div></div> : <div className="grid min-h-32 place-items-center p-4 text-sm text-[var(--muted)]">{String(recipe.type || "Recipe")}</div>}
+    {background ? <div className="overflow-auto bg-[#c6c6c6] p-3"><div className="relative mx-auto" style={{ width, height }}><Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={modExportAssetURL(revisionId, background)} />{slots.map((value, index) => <ModRecipeSlot canvasWidth={width} key={index} locale={locale} scale={displayScale} showVisual={!containsIngredients} slot={value} />)}{slots.map((value, index) => <RecipeChanceLabel key={`chance:${index}`} locale={locale} scale={displayScale} slot={value} />)}</div></div> : <div className="grid min-h-32 place-items-center p-4 text-sm text-[var(--muted)]">{String(recipe.type || "Recipe")}</div>}
     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] px-3 py-2 text-xs text-[var(--muted)]"><code className="break-all">{String(recipe.id || recipe.type || "")}</code><span className="flex items-center gap-2">{sourceMod ? <code>{sourceMod}{sourceVersion ? `@${sourceVersion}` : ""}</code> : null}<span className="shrink-0 rounded bg-[var(--panel-subtle)] px-2 py-1 font-bold">{t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}</span></span></div>
   </article>;
 }
@@ -421,10 +427,12 @@ function RecipeChanceLabel({ slot, scale, locale }: { slot: Record<string, unkno
   if (slot.chance_available !== true) return null;
   const text = localizedRecipeChance(slot, locale);
   if (!text) return null;
+  const percent = numberValue(slot.chance_percent, numberValue(slot.chance, Number.NaN) * 100);
+  const badgeText = Number.isFinite(percent) ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%` : text;
   const rect = record(slot.rect);
-  const x = numberValue(slot.chance_render_x, numberValue(rect.x, 0) + numberValue(rect.width, 16));
-  const y = numberValue(slot.chance_render_y, numberValue(rect.y, 0));
-  return <span className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded bg-[#242424] px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow" style={{ left: x * scale, top: y * scale }}>{text}</span>;
+  const x = numberValue(rect.x, 0) + numberValue(rect.width, 16) / 2;
+  const y = numberValue(rect.y, 0) + numberValue(rect.height, 16);
+  return <span className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded bg-[#242424] px-1 py-0.5 text-[9px] font-black leading-none text-white shadow" style={{ left: x * scale, top: y * scale }} title={text}>{badgeText}</span>;
 }
 
 function localizedRecipeChance(slot: Record<string, unknown>, locale: string) {
@@ -432,13 +440,12 @@ function localizedRecipeChance(slot: Record<string, unknown>, locale: string) {
   const texts = record(slot.chance_texts);
   if (typeof texts[normalized] === "string") return texts[normalized] as string;
   if (typeof slot.chance_text === "string" && slot.chance_text) return slot.chance_text;
-  const percent = Number(slot.chance_percent);
+  const percent = numberValue(slot.chance_percent, numberValue(slot.chance, Number.NaN) * 100);
   return Number.isFinite(percent) ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%` : "";
 }
 
-function ModRecipeSlot({ slot, scale }: { slot: Record<string, unknown>; scale: number }) {
+function ModRecipeSlot({ slot, scale, locale, canvasWidth, showVisual }: { slot: Record<string, unknown>; scale: number; locale: string; canvasWidth: number; showVisual: boolean }) {
   if (slot.ingredient_present === false || slot.coordinates_available === false) return null;
-  const rect = record(slot.rect);
   const alternatives = Array.isArray(slot.alternatives) ? slot.alternatives : [];
   const item = record(alternatives[0]);
   const itemId = stringValue(item.item) || stringValue(item.resource_location);
@@ -450,19 +457,19 @@ function ModRecipeSlot({ slot, scale }: { slot: Record<string, unknown>; scale: 
   const sourceEntityId = stringValue(item.entityId);
   const sourceObjectId = stringValue(item.sourceObjectId) || itemId;
   const iconPath = stringValue(item.iconPath);
-  const style = {
-    left: numberValue(rect.x, 0) * scale,
-    top: numberValue(rect.y, 0) * scale,
-    width: numberValue(rect.width, 16) * scale,
-    height: numberValue(rect.height, 16) * scale,
-  };
-  const content = iconPath && sourceRevisionId ? <Image unoptimized alt={itemId} className="h-full w-full object-contain [image-rendering:pixelated]" height={style.height} width={style.width} src={modExportAssetURL(sourceRevisionId, iconPath)} /> : <span className="grid h-full w-full place-items-center text-[10px] font-black">{tagId ? "#" : "?"}</span>;
-  if (tagId) return <Link className="focus-ring absolute" href={`/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`} style={style} title={`#${tagId}`}>{content}</Link>;
+  const resourceId = tagId ? `#${tagId}` : itemId;
+  const displayName = tagId ? resourceId : localizedRecordValue(item.names, minecraftLocale(locale)) || itemId;
+  const presentation = recipeSlotPresentation(slot, item, scale);
+  const src = iconPath && sourceRevisionId ? modExportAssetURL(sourceRevisionId, iconPath) : "";
+  const content = <RecipeResourceVisual canvasWidth={canvasWidth} fallback={tagId ? "#" : "?"} name={displayName} presentation={presentation} resourceId={resourceId} showVisual={showVisual} src={src} />;
+  const label = `${displayName || resourceId} (${resourceId})`;
+  const slotClass = "group focus-ring absolute z-10 hover:z-40 focus-visible:z-40";
+  if (tagId) return <Link aria-label={label} className={slotClass} href={`/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`} style={presentation.style}>{content}</Link>;
   if (itemId && sourceSiteId && sourceRevisionId) {
     const href = exportEntryHref(sourceSiteId, sourceRevisionId, exportCategoryForRegistry(sourceRegistry), { entityId: sourceEntityId, registry: sourceRegistry, id: sourceObjectId });
-    return <Link className="focus-ring absolute" href={href} style={style} target="_blank" rel="noopener noreferrer" title={itemId}>{content}</Link>;
+    return <Link aria-label={label} className={slotClass} href={href} style={presentation.style} target="_blank" rel="noopener noreferrer">{content}</Link>;
   }
-  return <span className="absolute" style={style}>{content}</span>;
+  return <span aria-label={label} className="group absolute z-10 hover:z-40 focus-visible:z-40" style={presentation.style} tabIndex={resourceId ? 0 : undefined}>{content}</span>;
 }
 
 function exportCategoryForRegistry(registry: string) {
@@ -546,7 +553,11 @@ function isTechnicalDocumentRegistry(registry: string) {
   return documentRegistryKind(registry) !== "" && registry !== "advancements" && registry !== "key_mappings";
 }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
-function numberValue(value: unknown, fallback: number) { const number = Number(value); return Number.isFinite(number) ? number : fallback; }
+function numberValue(value: unknown, fallback: number) {
+  if (value === null || value === undefined || value === "") return fallback;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
 function errorText(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
 function emptyEntryDetail(locale: string): ModExportEntryDetail { return { entityId: "", publicId: "", contentMarkdown: "", contentLocale: locale, modelAvailable: false, modelAssetPaths: [], recipes: [], uses: [] }; }
 function Loading() { const { t } = useI18n(); return <div className="grid min-h-64 place-items-center font-bold text-[var(--muted)]">{t("common.loading")}</div>; }

@@ -26,6 +26,7 @@ import {
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { RecipeResourceVisual, recipeSlotPresentation } from "./recipe-resource-slot";
 import { ToolsPlayground } from "./tools-playground";
 
 const pageSize = 24;
@@ -235,7 +236,7 @@ function GlobalRecipeCard({ recipe }: { recipe: GlobalRecipe }) {
   const [error, setError] = useState("");
   async function save() { try { const layoutOverride = JSON.parse(layoutText); await apiRequest(`/api/v1/recipes/${encodeURIComponent(recipe.recipeKey)}`, { method: "PUT", body: JSON.stringify({ recipeKey: recipe.recipeKey, note, layoutOverride }) }, token); setEditing(false); } catch (reason) { setError(errorText(reason)); } }
   return <article className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><header className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><code className="truncate font-bold">{recipe.recipeId}</code><span className="rounded bg-[var(--panel-subtle)] px-2 py-0.5 text-xs font-bold">{t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}</span></div><span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]"><code>{recipe.recipeIdSource}</code><span>{recipe.recipeIdCanonical ? t("globalCatalog.canonicalRecipeId") : t("globalCatalog.packageScopedRecipeId")}</span>{sourceMod ? <code>{sourceMod}{sourceVersion ? `@${sourceVersion}` : ""}</code> : null}</span></div>{user ? <button className="button-secondary focus-ring px-3 py-1.5 text-sm" type="button" onClick={() => setEditing((value) => !value)}>{t("common.edit")}</button> : null}</header>
-    {editing ? <div className="grid gap-3 p-4"><textarea className="field min-h-56 font-mono text-xs" value={layoutText} onChange={(event) => setLayoutText(event.target.value)} /><textarea className="field min-h-20" placeholder={t("globalCatalog.recipeNote")} value={note} onChange={(event) => setNote(event.target.value)} />{error ? <ErrorBox text={error} /> : null}<button className="button-primary focus-ring justify-self-end" type="button" onClick={() => void save()}>{t("common.save")}</button></div> : <div className="grid md:grid-cols-[120px_minmax(0,1fr)_150px]"><aside className="grid place-items-center border-b border-[var(--line)] p-4 text-center md:border-b-0 md:border-r"><div><strong className="text-3xl">{totalMaterials}</strong><span className="mt-1 block text-xs text-[var(--muted)]">{t("globalCatalog.materialCount")}</span></div></aside><div className="overflow-auto bg-[#c6c6c6] p-4"><div className="relative mx-auto" style={{ width, height }}>{background ? <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={catalogAssetURL(recipe.revisionId, background)} /> : null}{!contains ? slots.map((slot, index) => <RecipeSlot key={index} locale={locale} scale={displayScale} slot={slot} />) : null}{slots.map((slot, index) => <GlobalRecipeChanceLabel key={`chance:${index}`} locale={locale} scale={displayScale} slot={slot} />)}</div></div><aside className="border-t border-[var(--line)] p-4 md:border-l md:border-t-0"><strong className="text-sm">{t("globalCatalog.recipeNote")}</strong><p className="mt-2 whitespace-pre-wrap text-sm text-[var(--muted)]">{recipe.note || t("globalCatalog.noNote")}</p></aside></div>}
+    {editing ? <div className="grid gap-3 p-4"><textarea className="field min-h-56 font-mono text-xs" value={layoutText} onChange={(event) => setLayoutText(event.target.value)} /><textarea className="field min-h-20" placeholder={t("globalCatalog.recipeNote")} value={note} onChange={(event) => setNote(event.target.value)} />{error ? <ErrorBox text={error} /> : null}<button className="button-primary focus-ring justify-self-end" type="button" onClick={() => void save()}>{t("common.save")}</button></div> : <div className="grid md:grid-cols-[120px_minmax(0,1fr)_150px]"><aside className="grid place-items-center border-b border-[var(--line)] p-4 text-center md:border-b-0 md:border-r"><div><strong className="text-3xl">{totalMaterials}</strong><span className="mt-1 block text-xs text-[var(--muted)]">{t("globalCatalog.materialCount")}</span></div></aside><div className="overflow-auto bg-[#c6c6c6] p-4"><div className="relative mx-auto" style={{ width, height }}>{background ? <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={catalogAssetURL(recipe.revisionId, background)} /> : null}{slots.map((slot, index) => <RecipeSlot canvasWidth={width} key={index} locale={locale} scale={displayScale} showVisual={!contains} slot={slot} />)}{slots.map((slot, index) => <GlobalRecipeChanceLabel key={`chance:${index}`} locale={locale} scale={displayScale} slot={slot} />)}</div></div><aside className="border-t border-[var(--line)] p-4 md:border-l md:border-t-0"><strong className="text-sm">{t("globalCatalog.recipeNote")}</strong><p className="mt-2 whitespace-pre-wrap text-sm text-[var(--muted)]">{recipe.note || t("globalCatalog.noNote")}</p></aside></div>}
   </article>;
 }
 
@@ -243,22 +244,23 @@ function GlobalRecipeChanceLabel({ slot, scale, locale }: { slot: Record<string,
   if (slot.chance_available !== true) return null;
   const texts = record(slot.chance_texts);
   const preferredLocale = contentLocales(locale).primary;
+  const percent = numberValue(slot.chance_percent, numberValue(slot.chance, Number.NaN) * 100);
   const chanceText = typeof texts[preferredLocale] === "string"
     ? texts[preferredLocale] as string
     : typeof slot.chance_text === "string" && slot.chance_text
       ? slot.chance_text
-      : Number.isFinite(Number(slot.chance_percent))
-        ? `${Number(slot.chance_percent).toLocaleString(undefined, { maximumFractionDigits: 3 })}%`
+      : Number.isFinite(percent)
+        ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%`
         : "";
   if (!chanceText) return null;
+  const badgeText = Number.isFinite(percent) ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%` : chanceText;
   const rect = record(slot.rect);
-  const x = numberValue(slot.chance_render_x, numberValue(rect.x, 0) + numberValue(rect.width, 16));
-  const y = numberValue(slot.chance_render_y, numberValue(rect.y, 0));
-  return <span className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded bg-[#242424] px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow" style={{ left: x * scale, top: y * scale }}>{chanceText}</span>;
+  const x = numberValue(rect.x, 0) + numberValue(rect.width, 16) / 2;
+  const y = numberValue(rect.y, 0) + numberValue(rect.height, 16);
+  return <span className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded bg-[#242424] px-1 py-0.5 text-[9px] font-black leading-none text-white shadow" style={{ left: x * scale, top: y * scale }} title={chanceText}>{badgeText}</span>;
 }
 
-function RecipeSlot({ slot, scale, locale }: { slot: Record<string, unknown>; scale: number; locale: string }) {
-  const rect = record(slot.rect);
+function RecipeSlot({ slot, scale, locale, canvasWidth, showVisual }: { slot: Record<string, unknown>; scale: number; locale: string; canvasWidth: number; showVisual: boolean }) {
   const alternatives = Array.isArray(slot.alternatives) ? slot.alternatives.map(record) : [];
   const item = useRotatingValue(alternatives);
   if (!item) return null;
@@ -271,12 +273,17 @@ function RecipeSlot({ slot, scale, locale }: { slot: Record<string, unknown>; sc
   const sourcePublicId = typeof item.publicId === "string" ? item.publicId : "";
   const sourceObjectId = typeof item.sourceObjectId === "string" ? item.sourceObjectId : itemId;
   const iconPath = typeof item.iconPath === "string" ? item.iconPath : "";
-  const content = iconPath && sourceRevisionId ? <Image unoptimized alt={localizedCatalogName(recordStrings(item.names), locale, itemId)} height={numberValue(rect.height, 16) * scale} width={numberValue(rect.width, 16) * scale} src={catalogAssetURL(sourceRevisionId, iconPath)} className="h-full w-full object-contain [image-rendering:pixelated]" /> : <span className="grid h-full w-full place-items-center text-[10px] font-bold">#{tagId || "?"}</span>;
-  const style = { left: numberValue(rect.x, 0) * scale, top: numberValue(rect.y, 0) * scale, width: numberValue(rect.width, 16) * scale, height: numberValue(rect.height, 16) * scale };
   const tagEntityId = typeof slot.tagEntityId === "string" ? slot.tagEntityId : "";
-  if (tagId) return <Link className="focus-ring absolute" href={`/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`} style={style} title={`#${tagId}`}>{content}</Link>;
-  if (itemId && sourceRevisionId && sourceModSiteId) return <Link className="focus-ring absolute" href={resourceHref({ entityId: sourceEntityId, publicId: sourcePublicId, id: sourceObjectId, registry: sourceRegistry, names: {}, revisionId: sourceRevisionId, modSiteId: sourceModSiteId, iconPath })} target="_blank" style={style}>{content}</Link>;
-  return <span className="absolute" style={style}>{content}</span>;
+  const resourceId = tagId ? `#${tagId}` : itemId;
+  const displayName = tagId ? resourceId : localizedCatalogName(recordStrings(item.names), locale, itemId);
+  const presentation = recipeSlotPresentation(slot, item, scale);
+  const src = iconPath && sourceRevisionId ? catalogAssetURL(sourceRevisionId, iconPath) : "";
+  const content = <RecipeResourceVisual canvasWidth={canvasWidth} fallback={tagId ? "#" : "?"} name={displayName} presentation={presentation} resourceId={resourceId} showVisual={showVisual} src={src} />;
+  const label = `${displayName || resourceId} (${resourceId})`;
+  const slotClass = "group focus-ring absolute z-10 hover:z-40 focus-visible:z-40";
+  if (tagId) return <Link aria-label={label} className={slotClass} href={`/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`} style={presentation.style}>{content}</Link>;
+  if (itemId && sourceRevisionId && sourceModSiteId) return <Link aria-label={label} className={slotClass} href={resourceHref({ entityId: sourceEntityId, publicId: sourcePublicId, id: sourceObjectId, registry: sourceRegistry, names: {}, revisionId: sourceRevisionId, modSiteId: sourceModSiteId, iconPath })} target="_blank" style={presentation.style}>{content}</Link>;
+  return <span aria-label={label} className="group absolute z-10 hover:z-40 focus-visible:z-40" style={presentation.style} tabIndex={resourceId ? 0 : undefined}>{content}</span>;
 }
 
 function CatalogFrame({ active, title, description, children }: { active: "tags" | "recipes"; title: string; description: string; children: React.ReactNode }) {
@@ -301,7 +308,11 @@ function uniqueLines(value: string) { return [...new Set(value.split(/[\r\n,]+/)
 function positivePage(value: string | null) { const parsed = Number.parseInt(value || "1", 10); return Number.isFinite(parsed) && parsed > 0 ? parsed : 1; }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 function recordStrings(value: unknown): Record<string, string> { const source = record(value); return Object.fromEntries(Object.entries(source).filter((entry): entry is [string, string] => typeof entry[1] === "string")); }
-function numberValue(value: unknown, fallback: number) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : fallback; }
+function numberValue(value: unknown, fallback: number) {
+  if (value === null || value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 function errorText(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
 function ErrorBox({ text }: { text: string }) { return <p className="mt-4 rounded-lg border border-[var(--red)] bg-[color-mix(in_srgb,var(--red)_7%,transparent)] p-3 font-bold text-[var(--red)]">{text}</p>; }
 function Empty({ text }: { text: string }) { return <div className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-12 text-center text-[var(--muted)]">{text}</div>; }

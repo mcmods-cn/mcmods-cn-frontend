@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
+import { loadPublicPlayerProfiles, PlayerProfile, skinTextureURL } from "../_lib/skin-api";
 import { UserHome } from "./user-home";
+import { SkinPreview2D } from "./skin-preview";
 
 type PublicUserProfile = {
   id: number;
@@ -31,6 +33,7 @@ export function UserProfile({ userId }: { userId: number }) {
   const searchParams = useSearchParams();
   const preview = searchParams.get("preview") === "1";
   const [profile, setProfile] = useState<PublicUserProfile | null>(null);
+  const [playerProfiles, setPlayerProfiles] = useState<PlayerProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
@@ -38,13 +41,18 @@ export function UserProfile({ userId }: { userId: number }) {
     if (!ready) return;
     const timer = window.setTimeout(() => {
       setLoading(true);
-      apiRequest<PublicUserProfile>(`/api/v1/users/${userId}/profile`, {}, token || undefined)
-        .then((result) => {
-          setProfile(result);
+      Promise.allSettled([
+        apiRequest<PublicUserProfile>(`/api/v1/users/${userId}/profile`, {}, token || undefined),
+        loadPublicPlayerProfiles(userId, token || undefined),
+      ]).then(([profileResult, playersResult]) => {
+        if (profileResult.status === "fulfilled") {
+          setProfile(profileResult.value);
           setMessage("");
-        })
-        .catch((error) => setMessage(error instanceof Error ? error.message : t("user.profileLoadFailed")))
-        .finally(() => setLoading(false));
+        } else {
+          setMessage(profileResult.reason instanceof Error ? profileResult.reason.message : t("user.profileLoadFailed"));
+        }
+        if (playersResult.status === "fulfilled") setPlayerProfiles(playersResult.value);
+      }).finally(() => setLoading(false));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [ready, t, token, userId]);
@@ -141,9 +149,20 @@ export function UserProfile({ userId }: { userId: number }) {
             <div className="mt-1 text-3xl font-black">{profile.following}</div>
           </div>
         </div>
+
+        <section className="surface p-5">
+          <h2 className="text-xl font-black">{t("skins.publicPlayerProfiles")}</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("skins.publicPlayerProfilesDescription")}</p>
+          {playerProfiles.length ? <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{playerProfiles.map((item) => <PublicPlayerCard key={item.publicId} profile={item} />)}</div> : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("skins.noPublicProfiles")}</p>}
+        </section>
       </section>
     </main>
   );
+}
+
+function PublicPlayerCard({ profile }: { profile: PlayerProfile }) {
+  const { t } = useI18n();
+  return <Link className="focus-ring grid grid-cols-[86px_minmax(0,1fr)] items-center gap-4 overflow-hidden rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={`/players/${profile.publicId}`}><SkinPreview2D className="h-28 w-[86px] rounded-md" kind="skin" label={profile.name} model={profile.skin?.model || "default"} src={skinTextureURL(profile.skin)} /><span className="min-w-0"><strong className="block truncate text-lg">{profile.name}</strong><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{profile.uuid}</code>{profile.isDefault ? <span className="mt-2 inline-block rounded-md bg-[var(--accent)] px-2 py-1 text-[10px] font-bold text-white">{t("skins.defaultProfile")}</span> : null}</span></Link>;
 }
 
 function ProfileState({ text }: { text: string }) {

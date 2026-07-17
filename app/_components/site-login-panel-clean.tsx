@@ -39,6 +39,7 @@ export function SiteLoginPanelClean() {
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [message, setMessage] = useState("");
+  const nextPath = safeNextPath(searchParams.get("next"));
 
   useEffect(() => {
     const oauthToken = searchParams.get("oauthToken");
@@ -47,11 +48,11 @@ export function SiteLoginPanelClean() {
     try {
       const user = JSON.parse(oauthUser) as AuthResult["user"];
       saveAuth({ token: oauthToken, user });
-      router.replace(canAccessAdmin(user) ? "/admin" : "/");
+      router.replace(destinationAfterLogin(nextPath, user));
     } catch {
       router.replace("/login?oauthError=1");
     }
-  }, [router, searchParams]);
+  }, [nextPath, router, searchParams]);
 
   const visibleMessage = message || (searchParams.get("oauthError") ? t("login.oauthParseFailed") : "");
 
@@ -92,8 +93,7 @@ export function SiteLoginPanelClean() {
               }),
             });
       saveAuth(result);
-      const next = searchParams.get("next");
-      router.push(next === "/admin" && canAccessAdmin(result.user) ? "/admin" : "/");
+      router.push(destinationAfterLogin(nextPath, result.user));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("login.processing"));
     } finally {
@@ -216,7 +216,7 @@ export function SiteLoginPanelClean() {
             <span className="h-px flex-1 bg-[var(--line)]" />{t("login.thirdParty")}<span className="h-px flex-1 bg-[var(--line)]" />
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {thirdPartyProviders.map((provider) => <a key={provider.key} className="button-secondary focus-ring text-center" href={`${API_BASE_URL}/api/v1/auth/oauth/${provider.key}/start`}>{provider.label}</a>)}
+            {thirdPartyProviders.map((provider) => <a key={provider.key} className="button-secondary focus-ring text-center" href={`${API_BASE_URL}/api/v1/auth/oauth/${provider.key}/start${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`}>{provider.label}</a>)}
           </div>
         </section>
       </div>
@@ -260,4 +260,20 @@ function PasswordStrength({ password }: { password: string }) {
   const label = score >= 4 ? t("login.strengthStrong") : score >= 3 ? t("login.strengthMedium") : t("login.strengthWeak");
   const color = score >= 4 ? "text-[var(--accent)]" : score >= 3 ? "text-[var(--warning)]" : "text-[var(--red)]";
   return <span className={`mt-2 block text-xs font-semibold ${color}`}>{t("login.passwordStrength", { level: label })}</span>;
+}
+
+function safeNextPath(value: string | null) {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "";
+  try {
+    const parsed = new URL(value, "https://mcmods.local");
+    if (parsed.origin !== "https://mcmods.local") return "";
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return "";
+  }
+}
+
+function destinationAfterLogin(nextPath: string, user: AuthResult["user"]) {
+  if (nextPath === "/admin" && !canAccessAdmin(user)) return "/";
+  return nextPath || (canAccessAdmin(user) ? "/admin" : "/");
 }
