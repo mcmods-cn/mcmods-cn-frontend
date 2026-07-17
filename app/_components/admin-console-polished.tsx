@@ -5,9 +5,19 @@ import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { canAccessAdmin, clearAuth, useAuthSnapshot } from "../_lib/auth";
 import { ApiError, apiRequest } from "../_lib/api";
+import type { LevelConfig } from "../_lib/community-api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
 import { computeFileSHA256, formatBytes } from "../_lib/oss-upload";
+import {
+  ActivityMonitorPanel,
+  CreatorClaimsPanel,
+  CurrencyManagementPanel,
+  EconomyConfigPanel,
+  LevelConfigPanel,
+  ShopManagementPanel,
+  TaskManagementPanel,
+} from "./admin-community-panels";
 import { MinecraftVersionConfigPanel, ModReviewQueuePanel } from "./admin-mod-panels";
 import { useTheme } from "./theme-provider";
 
@@ -18,9 +28,15 @@ type PanelId =
   | "permission-list"
   | "role-tracks"
   | "permission-settings"
+  | "creator-claims"
+  | "activity-monitor"
+  | "economy-config"
+  | "currencies"
+  | "shop-items"
+  | "level-config"
+  | "tasks"
   | "users"
   | "reviews-content"
-  | "reviews-developer"
   | "reviews-editor"
   | "review-settings"
   | "notifications"
@@ -391,8 +407,8 @@ const adminNavGroups: Array<{
     label: "",
     items: [
       { id: "reviews-content", label: "", description: "" },
-      { id: "reviews-developer", label: "", description: "" },
       { id: "reviews-editor", label: "", description: "" },
+      { id: "creator-claims", label: "", description: "" },
       { id: "review-settings", label: "", description: "" },
     ],
   },
@@ -411,6 +427,28 @@ const adminNavGroups: Array<{
       { id: "role-tracks", label: "", description: "" },
       { id: "permission-settings", label: "", description: "" },
     ],
+  },
+  {
+    id: "economy",
+    label: "",
+    items: [
+      { id: "economy-config", label: "", description: "" },
+      { id: "currencies", label: "", description: "" },
+      { id: "shop-items", label: "", description: "" },
+    ],
+  },
+  {
+    id: "progression",
+    label: "",
+    items: [
+      { id: "level-config", label: "", description: "" },
+      { id: "tasks", label: "", description: "" },
+    ],
+  },
+  {
+    id: "monitoring",
+    label: "",
+    items: [{ id: "activity-monitor", label: "", description: "" }],
   },
   {
     id: "oss",
@@ -613,7 +651,21 @@ export function AdminConsolePolished() {
   const { t } = useI18n();
   const auth = useAuthSnapshot();
   const [activePanel, setActivePanel] = useState<PanelId>("roles");
-  const [expanded, setExpanded] = useState(["workbench", "content", "permission", "oss", "logs", "ai", "infrastructure", "users", "system"]);
+  const [expanded, setExpanded] = useState([
+    "workbench",
+    "content",
+    "permission",
+    "creators",
+    "economy",
+    "progression",
+    "monitoring",
+    "oss",
+    "logs",
+    "ai",
+    "infrastructure",
+    "users",
+    "system",
+  ]);
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [config, setConfig] = useState(emptyConfig);
   const [catalog, setCatalog] = useState(emptyCatalog);
@@ -892,7 +944,7 @@ export function AdminConsolePolished() {
           ) : null}
           {activePanel === "permission-list" ? (
             <PermissionCatalogEditor
-              key={catalog.permissions.map((permission) => permission.code).join("|")}
+              key={JSON.stringify(catalog.permissions)}
               catalog={catalog}
               token={auth.token}
               refreshCatalog={refreshCatalog}
@@ -902,13 +954,19 @@ export function AdminConsolePolished() {
             <RoleTracksPanel catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
           ) : null}
           {activePanel === "permission-settings" ? <PermissionSettingsPanel catalog={catalog} token={auth.token} /> : null}
+          {activePanel === "creator-claims" ? <CreatorClaimsPanel token={auth.token} /> : null}
+          {activePanel === "activity-monitor" ? <ActivityMonitorPanel token={auth.token} /> : null}
+          {activePanel === "economy-config" ? <EconomyConfigPanel token={auth.token} /> : null}
+          {activePanel === "currencies" ? <CurrencyManagementPanel token={auth.token} /> : null}
+          {activePanel === "shop-items" ? <ShopManagementPanel token={auth.token} /> : null}
+          {activePanel === "level-config" ? <LevelConfigPanel token={auth.token} /> : null}
+          {activePanel === "tasks" ? <TaskManagementPanel token={auth.token} /> : null}
           {activePanel === "users" ? (
             <UsersPanelV2 catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
           ) : null}
           {activePanel === "notifications" ? <SystemNotificationPanel token={auth.token} /> : null}
           {activePanel === "notification-templates" ? <NotificationTemplatePanel token={auth.token} /> : null}
           {activePanel === "reviews-content" ? <ModReviewQueuePanel kind="content" token={auth.token} /> : null}
-          {activePanel === "reviews-developer" ? <ModReviewQueuePanel kind="developer" token={auth.token} /> : null}
           {activePanel === "reviews-editor" ? <ModReviewQueuePanel kind="editor" token={auth.token} /> : null}
           {activePanel === "review-settings" ? <ReviewSettingsPanel token={auth.token} /> : null}
           {activePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
@@ -1818,7 +1876,12 @@ function PermissionCatalogEditor({
 }) {
   const { locale, t } = useI18n();
   const [query, setQuery] = useState("");
-  const [draft, setDraft] = useState<Permission[]>(() => catalog.permissions.map((permission) => ({ ...permission })));
+  const [draft, setDraft] = useState<Permission[]>(() =>
+    catalog.permissions.map((permission) => ({
+      ...permission,
+      translations: normalizeLocalizedTexts(permission.translations),
+    })),
+  );
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
   const [targetLocale, setTargetLocale] = useState<Locale>(locale);
   const [saving, setSaving] = useState(false);
@@ -1828,8 +1891,9 @@ function PermissionCatalogEditor({
   const visible = draft.filter((permission) => {
     const keyword = query.trim().toLowerCase();
     if (!keyword) return true;
-    const text = localizedText(permission, locale);
-    return `${permission.code} ${permission.module} ${permission.name} ${permission.description} ${text.name} ${text.description}`
+    const source = editableLocalizedText(permission, sourceLocale);
+    const target = editableLocalizedText(permission, targetLocale);
+    return `${permission.code} ${permission.module} ${permission.name} ${permission.description} ${source.name} ${source.description} ${target.name} ${target.description}`
       .toLowerCase()
       .includes(keyword);
   });
@@ -1877,7 +1941,7 @@ function PermissionCatalogEditor({
       return;
     }
     const candidates = visible.filter((permission) => {
-      const target = ownLocalizedText(permission, targetLocale);
+      const target = editableLocalizedText(permission, targetLocale);
       return target.name.trim() === "" || target.description.trim() === "";
     }).slice(0, 100);
     if (candidates.length === 0) {
@@ -1889,14 +1953,14 @@ function PermissionCatalogEditor({
       const result = await runAITranslationTask(token, aiTranslationTaskTypes.permission, {
         sourceLocale,
         targetLocale,
-        items: candidates.map((permission) => ({ key: permission.code, ...localizedText(permission, sourceLocale) })),
+        items: candidates.map((permission) => ({ key: permission.code, ...editableLocalizedText(permission, sourceLocale) })),
       });
       const translated = new Map((result.items ?? []).map((item) => [item.key, item]));
       let completed = 0;
       const nextDraft = draft.map((permission) => {
         const item = translated.get(permission.code);
         if (!item) return permission;
-        const target = ownLocalizedText(permission, targetLocale);
+        const target = editableLocalizedText(permission, targetLocale);
         const name = target.name || item.name?.trim() || "";
         const description = target.description || item.description?.trim() || "";
         if (name === target.name && description === target.description) return permission;
@@ -1967,13 +2031,17 @@ function PermissionCatalogEditor({
               onChange={(event) => updatePermissionDraft(permission.code, { module: event.target.value })}
             />
             <div className="rounded-md bg-[var(--panel-subtle)] px-3 py-2 text-sm text-[var(--muted)]">
-              <span className="block font-semibold text-[var(--foreground)]">{localizedText(permission, sourceLocale).name}</span>
-              <span className="mt-1 block">{localizedText(permission, sourceLocale).description}</span>
+              <span className="block font-semibold text-[var(--foreground)]">
+                {editableLocalizedText(permission, sourceLocale).name || t("admin.emptyTranslation")}
+              </span>
+              <span className="mt-1 block">
+                {editableLocalizedText(permission, sourceLocale).description || t("admin.emptyTranslation")}
+              </span>
             </div>
             <input
               key={`${targetLocale}:${permission.code}:name`}
               className="field px-3 py-2"
-              value={ownLocalizedText(permission, targetLocale).name}
+              value={editableLocalizedText(permission, targetLocale).name}
               onChange={(event) =>
                 updatePermissionDraft(permission.code, {
                   translations: setLocalizedText(permission.translations, targetLocale, { name: event.target.value }),
@@ -1983,7 +2051,7 @@ function PermissionCatalogEditor({
             <input
               key={`${targetLocale}:${permission.code}:description`}
               className="field px-3 py-2"
-              value={ownLocalizedText(permission, targetLocale).description}
+              value={editableLocalizedText(permission, targetLocale).description}
               onChange={(event) =>
                 updatePermissionDraft(permission.code, {
                   translations: setLocalizedText(permission.translations, targetLocale, { description: event.target.value }),
@@ -2922,21 +2990,56 @@ function AuthPanelV2({ config, token }: { config: AdminConfig; token: string }) 
 function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalog; token: string }) {
   const { t } = useI18n();
   const [defaults, setDefaults] = useState<PermissionDefaults>({ registeredRole: "", bannedRole: "", developerRole: "", editorRole: "" });
+  const [levelConfig, setLevelConfig] = useState<LevelConfig | null>(null);
+  const [roleTracks, setRoleTracks] = useState<RoleTrack[]>([]);
   const [saving, setSaving] = useState(false);
   const variableRoles = catalog.roles.filter((role) => role.code.split(".").some((segment) => /^\[(projectid)\]$|^<(projectid)>$/i.test(segment)));
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", {}, token)
-      .then((result) => { if (!cancelled) setDefaults(result); })
+    Promise.all([
+      apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", {}, token),
+      apiRequest<LevelConfig>("/api/v1/admin/levels/config", {}, token),
+      apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", {}, token),
+    ])
+      .then(([nextDefaults, nextLevelConfig, nextRoleTracks]) => {
+        if (cancelled) return;
+        setDefaults(nextDefaults);
+        setLevelConfig(nextLevelConfig);
+        setRoleTracks(nextRoleTracks);
+      })
       .catch((error) => notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"));
     return () => { cancelled = true; };
   }, [t, token]);
 
+  function selectLevelRoleTrack(code: string) {
+    const track = roleTracks.find((item) => item.code === code);
+    if (!track) {
+      setLevelConfig({ roleTrackCode: "", levelThresholds: [] });
+      return;
+    }
+    const previous = levelConfig?.levelThresholds ?? [];
+    let lastThreshold = -1;
+    const levelThresholds = track.roles.map((_, index) => {
+      let threshold = previous[index] ?? index * 100;
+      if (threshold <= lastThreshold) threshold = lastThreshold + 100;
+      lastThreshold = threshold;
+      return threshold;
+    });
+    setLevelConfig({ roleTrackCode: code, levelThresholds });
+  }
+
   async function save() {
+    if (!levelConfig) return;
     setSaving(true);
     try {
+      const savedLevelConfig = await apiRequest<LevelConfig>(
+        "/api/v1/admin/levels/config",
+        { method: "PUT", body: JSON.stringify(levelConfig) },
+        token,
+      );
       const result = await apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", { method: "PUT", body: JSON.stringify(defaults) }, token);
+      setLevelConfig(savedLevelConfig);
       setDefaults(result);
       notifyAdminNotice(t("admin.permissionSettings.saved"));
     } catch (error) {
@@ -2947,7 +3050,87 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
   }
 
   const roleOptions = (roles: Role[]) => <>{roles.map((role) => <option key={role.code} value={role.code}>{role.name || role.code} ({role.code})</option>)}</>;
-  return <PanelShell title={t("admin.permissionSettings.title")}><div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-5"><p className="max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("admin.permissionSettings.description")}</p><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{t("common.save")}</button></div><section className="grid gap-4 border-b border-[var(--line)] py-5 md:grid-cols-2"><div className="md:col-span-2"><h3 className="font-black">{t("admin.permissionSettings.accountDefaults")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.permissionSettings.accountDefaultsDescription")}</p></div><PermissionRoleSelect label={t("admin.permissionSettings.registeredRole")} value={defaults.registeredRole} onChange={(registeredRole) => setDefaults((current) => ({ ...current, registeredRole }))}>{roleOptions(catalog.roles)}</PermissionRoleSelect><PermissionRoleSelect label={t("admin.permissionSettings.bannedRole")} value={defaults.bannedRole} onChange={(bannedRole) => setDefaults((current) => ({ ...current, bannedRole }))}>{roleOptions(catalog.roles)}</PermissionRoleSelect></section><section className="grid gap-4 pt-5 md:grid-cols-2"><div className="md:col-span-2"><h3 className="font-black">{t("admin.permissionSettings.projectDefaults")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.permissionSettings.projectDefaultsDescription")}</p></div><PermissionRoleSelect label={t("admin.permissionSettings.developerRole")} value={defaults.developerRole} onChange={(developerRole) => setDefaults((current) => ({ ...current, developerRole }))}>{roleOptions(variableRoles)}</PermissionRoleSelect><PermissionRoleSelect label={t("admin.permissionSettings.editorRole")} value={defaults.editorRole} onChange={(editorRole) => setDefaults((current) => ({ ...current, editorRole }))}>{roleOptions(variableRoles)}</PermissionRoleSelect>{variableRoles.length === 0 ? <p className="md:col-span-2 text-sm font-bold text-[var(--warning)]">{t("admin.permissionSettings.noVariableRoles")}</p> : null}</section></PanelShell>;
+  return (
+    <PanelShell title={t("admin.permissionSettings.title")}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-5">
+        <p className="max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("admin.permissionSettings.description")}</p>
+        <button className="button-primary focus-ring" disabled={saving || !levelConfig} type="button" onClick={() => void save()}>
+          {t("common.save")}
+        </button>
+      </div>
+
+      <section className="grid gap-4 border-b border-[var(--line)] py-5 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <h3 className="font-black">{t("admin.permissionSettings.accountDefaults")}</h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.permissionSettings.accountDefaultsDescription")}</p>
+        </div>
+        <PermissionRoleSelect
+          label={t("admin.permissionSettings.registeredRole")}
+          value={defaults.registeredRole}
+          onChange={(registeredRole) => setDefaults((current) => ({ ...current, registeredRole }))}
+        >
+          {roleOptions(catalog.roles)}
+        </PermissionRoleSelect>
+        <PermissionRoleSelect
+          label={t("admin.permissionSettings.bannedRole")}
+          value={defaults.bannedRole}
+          onChange={(bannedRole) => setDefaults((current) => ({ ...current, bannedRole }))}
+        >
+          {roleOptions(catalog.roles)}
+        </PermissionRoleSelect>
+      </section>
+
+      <section className="grid gap-4 border-b border-[var(--line)] py-5 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <h3 className="font-black">{t("admin.permissionSettings.projectDefaults")}</h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.permissionSettings.projectDefaultsDescription")}</p>
+        </div>
+        <PermissionRoleSelect
+          label={t("admin.permissionSettings.developerRole")}
+          value={defaults.developerRole}
+          onChange={(developerRole) => setDefaults((current) => ({ ...current, developerRole }))}
+        >
+          {roleOptions(variableRoles)}
+        </PermissionRoleSelect>
+        <PermissionRoleSelect
+          label={t("admin.permissionSettings.editorRole")}
+          value={defaults.editorRole}
+          onChange={(editorRole) => setDefaults((current) => ({ ...current, editorRole }))}
+        >
+          {roleOptions(variableRoles)}
+        </PermissionRoleSelect>
+        {variableRoles.length === 0 ? (
+          <p className="md:col-span-2 text-sm font-bold text-[var(--warning)]">{t("admin.permissionSettings.noVariableRoles")}</p>
+        ) : null}
+      </section>
+
+      <section className="grid gap-4 pt-5">
+        <div>
+          <h3 className="font-black">{t("admin.permissionSettings.levelRoleTrack")}</h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.permissionSettings.levelRoleTrackDescription")}</p>
+        </div>
+        <label className="max-w-xl text-sm font-semibold">
+          {t("admin.community.roleTrack")}
+          <select
+            className="field mt-2"
+            disabled={!levelConfig}
+            value={levelConfig?.roleTrackCode ?? ""}
+            onChange={(event) => selectLevelRoleTrack(event.target.value)}
+          >
+            <option value="">{t("admin.community.noRoleTrack")}</option>
+            {roleTracks.map((track) => (
+              <option key={track.code} value={track.code}>
+                {track.name} ({track.code})
+              </option>
+            ))}
+          </select>
+        </label>
+        {roleTracks.length === 0 ? (
+          <p className="text-sm font-bold text-[var(--warning)]">{t("admin.permissionSettings.noRoleTracks")}</p>
+        ) : null}
+      </section>
+    </PanelShell>
+  );
 }
 
 function PermissionRoleSelect({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode }) {
@@ -3924,7 +4107,18 @@ function TemplateTranslationEditor({ label, value, onChange }: { label: string; 
   return <div className="grid gap-3"><h3 className="font-black">{label}</h3><label className="text-sm font-bold">{t("admin.notificationTemplates.templateTitle")}<input className="field mt-2" value={value.title} onChange={(event) => onChange("title", event.target.value)} /></label><label className="text-sm font-bold">{t("admin.notificationTemplates.templateBody")}<textarea className="field mt-2 min-h-28 resize-y" value={value.body} onChange={(event) => onChange("body", event.target.value)} /></label></div>;
 }
 
-type ReviewSettings = { blueprintCreate: boolean; blueprintEdit: boolean; modCreate: boolean; modEdit: boolean };
+type ReviewSettings = {
+  blueprintCreate: boolean;
+  blueprintEdit: boolean;
+  modCreate: boolean;
+  modEdit: boolean;
+  authorCreate: boolean;
+  authorEdit: boolean;
+  authorClaim: boolean;
+  teamCreate: boolean;
+  teamEdit: boolean;
+  teamClaim: boolean;
+};
 
 function ReviewSettingsPanel({ token }: { token: string }) {
   const { t } = useI18n();
@@ -3955,6 +4149,12 @@ function ReviewSettingsPanel({ token }: { token: string }) {
     { key: "blueprintEdit", title: t("admin.reviewSettings.blueprintEdit"), description: t("admin.reviewSettings.blueprintEditDescription") },
     { key: "modCreate", title: t("admin.reviewSettings.modCreate"), description: t("admin.reviewSettings.modCreateDescription") },
     { key: "modEdit", title: t("admin.reviewSettings.modEdit"), description: t("admin.reviewSettings.modEditDescription") },
+    { key: "authorCreate", title: t("admin.reviewSettings.authorCreate"), description: t("admin.reviewSettings.authorCreateDescription") },
+    { key: "authorEdit", title: t("admin.reviewSettings.authorEdit"), description: t("admin.reviewSettings.authorEditDescription") },
+    { key: "authorClaim", title: t("admin.reviewSettings.authorClaim"), description: t("admin.reviewSettings.authorClaimDescription") },
+    { key: "teamCreate", title: t("admin.reviewSettings.teamCreate"), description: t("admin.reviewSettings.teamCreateDescription") },
+    { key: "teamEdit", title: t("admin.reviewSettings.teamEdit"), description: t("admin.reviewSettings.teamEditDescription") },
+    { key: "teamClaim", title: t("admin.reviewSettings.teamClaim"), description: t("admin.reviewSettings.teamClaimDescription") },
   ];
   return <section className="space-y-4"><header className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-black">{t("admin.reviewSettings.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.reviewSettings.description")}</p></div><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></header><div className="surface divide-y divide-[var(--line)] rounded-lg px-5">{options.map((option) => <label className="flex items-center justify-between gap-5 py-5" key={option.key}><span><span className="block font-black">{option.title}</span><span className="mt-1 block text-sm text-[var(--muted)]">{option.description}</span></span><input checked={settings[option.key]} type="checkbox" onChange={(event) => setSettings((current) => current ? { ...current, [option.key]: event.target.checked } : current)} /></label>)}</div></section>;
 }
@@ -4890,8 +5090,8 @@ function LocalizedTextPairEditor({
   onTargetLocaleChange: (locale: Locale) => void;
 }) {
   const { t } = useI18n();
-  const source = localizedText(value, sourceLocale);
-  const target = ownLocalizedText(value, targetLocale);
+  const source = editableLocalizedText(value, sourceLocale);
+  const target = editableLocalizedText(value, targetLocale);
 
   return (
     <div className="mt-2 grid gap-3 rounded-lg border border-[var(--line)] p-3">
@@ -5029,9 +5229,15 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "permission-list": t("admin.permissionList"),
     "role-tracks": t("admin.roleTracks.title"),
     "permission-settings": t("admin.permissionSettings.title"),
+    "creator-claims": t("admin.community.creatorClaims"),
+    "activity-monitor": t("admin.community.activity"),
+    "economy-config": t("admin.community.economyConfig"),
+    currencies: t("admin.community.currencies"),
+    "shop-items": t("admin.community.shopItems"),
+    "level-config": t("admin.community.levelConfig"),
+    tasks: t("admin.community.tasks"),
     users: t("admin.userList"),
     "reviews-content": t("admin.reviews.contentTitle"),
-    "reviews-developer": t("admin.reviews.developerTitle"),
     "reviews-editor": t("admin.reviews.editorTitle"),
     "review-settings": t("admin.reviewSettings.title"),
     notifications: t("admin.notifications.title"),
@@ -5072,6 +5278,9 @@ function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, 
     content: t("admin.modImport.group"),
     reviews: t("admin.reviews.group"),
     permission: t("admin.permission"),
+    economy: t("admin.community.nav.economy"),
+    progression: t("admin.community.nav.progression"),
+    monitoring: t("admin.community.nav.monitoring"),
     oss: t("admin.nav.oss"),
     logs: t("admin.nav.logs"),
     ai: t("admin.nav.ai"),
@@ -5091,9 +5300,15 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "permission-list": t("admin.permissionListDesc"),
     "role-tracks": t("admin.roleTracks.navDescription"),
     "permission-settings": t("admin.permissionSettings.navDescription"),
+    "creator-claims": t("admin.community.creatorClaimsDescription"),
+    "activity-monitor": t("admin.community.activityDescription"),
+    "economy-config": t("admin.community.economyConfigDescription"),
+    currencies: t("admin.community.currenciesDescription"),
+    "shop-items": t("admin.community.shopItemsDescription"),
+    "level-config": t("admin.community.levelConfigDescription"),
+    tasks: t("admin.community.tasksDescription"),
     users: t("admin.usersDesc"),
     "reviews-content": t("admin.reviews.contentDescription"),
-    "reviews-developer": t("admin.reviews.developerDescription"),
     "reviews-editor": t("admin.reviews.editorDescription"),
     "review-settings": t("admin.reviewSettings.navDescription"),
     notifications: t("admin.notifications.navDescription"),
@@ -5342,16 +5557,22 @@ function localizedText(value: { name: string; description: string; translations?
   };
 }
 
-function ownLocalizedText(value: { name?: string; description?: string; translations?: LocalizedTexts }, locale: Locale) {
-  const localized = normalizeEntityTranslations({
-    name: value.name ?? "",
-    description: value.description ?? "",
-    translations: value.translations,
-  })[locale];
-  return {
-    name: localized?.name ?? "",
-    description: localized?.description ?? "",
-  };
+function editableLocalizedText(
+  value: { name?: string; description?: string; translations?: LocalizedTexts },
+  locale: Locale,
+) {
+  const localized = normalizeLocalizedTexts(value.translations)[locale];
+  if (localized) {
+    return {
+      name: localized.name ?? "",
+      description: localized.description ?? "",
+    };
+  }
+  const name = value.name?.trim() ?? "";
+  const description = value.description?.trim() ?? "";
+  if (!name && !description) return { name: "", description: "" };
+  const baseLocale = detectTextLocale(`${name} ${description}`.trim(), "en");
+  return baseLocale === locale ? { name, description } : { name: "", description: "" };
 }
 
 function setLocalizedText(translations: LocalizedTexts | undefined, locale: Locale, patch: LocalizedText): LocalizedTexts {

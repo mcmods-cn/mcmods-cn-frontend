@@ -66,6 +66,33 @@ export type ModExportEntryDetail = {
   contentLocale: string;
   modelAvailable: boolean;
   modelAssetPaths: string[];
+  blockEntityModel?: {
+    blockId: string;
+    blockEntityTypeId: string;
+    modelSource: string;
+    modelAvailable: boolean;
+    variants: Array<{
+      variantId: string;
+      objPath: string;
+      meshPath: string;
+      vertexCount: number;
+      quadCount: number;
+      coordinateSpace: string;
+      uvSpace: string;
+      uvOrigin: string;
+      uvComplete: boolean;
+      textures: Array<{ appearance?: string; path: string; uv_transform_required?: boolean }>;
+      mesh: {
+        schema_version?: string;
+        coordinate_space?: string;
+        uv_space?: string;
+        uv_origin?: string;
+        vertex_count?: number;
+        quad_count?: number;
+        faces?: Array<{ vertices: Array<{ position: number[]; uv: number[]; normal: number[] }> }>;
+      };
+    }>;
+  };
   recipes: Record<string, unknown>[];
   uses: Record<string, unknown>[];
 };

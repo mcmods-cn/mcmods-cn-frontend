@@ -22,6 +22,7 @@ type PublicUserProfile = {
   canMessage: boolean;
   avatarUrl: string;
   signature: string;
+  profileBackgroundUrl: string;
 };
 
 export function UserProfile({ userId }: { userId: number }) {
@@ -79,8 +80,18 @@ export function UserProfile({ userId }: { userId: number }) {
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <section className="mx-auto grid max-w-5xl gap-4 px-4 py-8">
-        <div className="surface p-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+        <div
+          className="surface relative overflow-hidden p-6"
+          style={profile.profileBackgroundUrl ? {
+            backgroundImage: `url("${profile.profileBackgroundUrl.replaceAll('"', "%22")}")`,
+            backgroundPosition: "center",
+            backgroundSize: "cover",
+          } : undefined}
+        >
+          {profile.profileBackgroundUrl ? (
+            <div className="absolute inset-0 bg-[var(--background)] opacity-80" aria-hidden="true" />
+          ) : null}
+          <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
             <div className="flex w-full min-w-0 items-center gap-4 sm:w-auto sm:flex-1">
               <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent)] text-3xl font-black text-white">
                 {profile.avatarUrl ? (
@@ -117,7 +128,7 @@ export function UserProfile({ userId }: { userId: number }) {
               )}
             </div>
           </div>
-          {message ? <p className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}</p> : null}
+          {message ? <p className="relative z-10 mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}</p> : null}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

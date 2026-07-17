@@ -220,6 +220,7 @@ function ModExportRegistryEntryPage({ siteId, revisionId, categoryKey, entityId,
       return fetch(input, { ...init, headers });
     },
   ) : null, [modelPaths, revisionId, token]);
+  const defaultBlockState = useMemo(() => record(entry?.data.default_state), [entry]);
 
   function show3D() {
     setDisplay3D(true);
@@ -232,11 +233,12 @@ function ModExportRegistryEntryPage({ siteId, revisionId, categoryKey, entityId,
   return <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-[var(--foreground)]"><article className="mx-auto max-w-[1500px]">
     <header className="flex items-start gap-4 border-b border-[var(--line)] pb-5">{entry.iconPath ? <Image unoptimized alt="" className="h-16 w-16 object-contain [image-rendering:pixelated]" height={64} width={64} src={modExportAssetURL(revisionId, entry.iconPath)} /> : null}<div className="min-w-0 flex-1"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}/data/${encodeURIComponent(revisionId)}/${encodeURIComponent(categoryKey)}`}>← {t("mods.exportImport.backToCategories")}</Link><h1 className="mt-2 text-3xl font-black">{name}</h1><code className="block break-all text-sm text-[var(--muted)]">{entry.id}</code></div></header>
     {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{error}</p> : null}
+
     <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0"><section><div className="flex items-center justify-between gap-3 border-b border-[var(--line)] pb-2"><h2 className="text-xl font-black">{t("mods.exportImport.entry.introduction")}</h2>{token ? <button className="button-secondary focus-ring" type="button" onClick={() => setEditing((current) => !current)}>{editing ? t("common.cancel") : t("mods.exportImport.entry.editIntroduction")}</button> : null}</div>{editing ? <div className="mt-4"><ToolsPlayground embedded editorTitle={name} value={markdown} onChange={setMarkdown} /><div className="mt-3 flex justify-end"><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("common.loading") : t("common.save")}</button></div></div> : detail.contentMarkdown ? <div className="markdown-preview mt-4"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={detail.contentMarkdown} /></div> : <p className="py-8 text-[var(--muted)]">{documentDescription || t("mods.exportImport.entry.noIntroduction")}</p>}</section>
 	  {registry === "loot_tables" ? <LootTableVisualizer data={entry.data} revisionId={revisionId} /> : null}
       {isTechnicalDocumentRegistry(registry) ? <details className="mt-7 border-t border-[var(--line)] pt-5"><summary className="cursor-pointer text-xl font-black">{t("mods.exportImport.entry.technicalData")}</summary><pre className="mt-4 max-h-[70vh] overflow-auto rounded-lg bg-[#111820] p-4 text-xs leading-6 text-slate-100">{JSON.stringify(entry.data, null, 2)}</pre></details> : null}
       {detail.recipes.length ? <RecipeGallery title={t("mods.exportImport.entry.recipes")} recipes={detail.recipes} revisionId={revisionId} /> : null}{detail.uses.length ? <RecipeGallery title={t("mods.exportImport.entry.uses")} recipes={detail.uses} revisionId={revisionId} /> : null}
-    </div><aside className="lg:sticky lg:top-5 lg:self-start"><div className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]"><div className="grid aspect-square place-items-center p-5">{display3D && modelSource ? <BlockModelCanvas assetSource={modelSource} blockId={entry.id} className="h-full w-full" /> : entry.previewPath || entry.iconPath ? <Image unoptimized alt={name} className="h-full w-full object-contain [image-rendering:pixelated]" height={256} width={256} src={modExportAssetURL(revisionId, entry.previewPath || entry.iconPath)} /> : <strong className="text-[var(--muted)]">{entry.registry}</strong>}</div>{detail.modelAvailable ? <div className="grid grid-cols-2 border-t border-[var(--line)]"><button className={`focus-ring p-3 font-bold ${!display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => setDisplay3D(false)}>2D</button><button className={`focus-ring p-3 font-bold ${display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => void show3D()}>3D</button></div> : null}</div><dl className="mt-4 grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-sm"><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.registry")}</dt><dd>{entry.registry}</dd><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.namespace")}</dt><dd>{entry.namespace}</dd></dl><EntryProperties data={entry.data} registry={registry} revisionId={revisionId} siteId={siteId} /></aside></div>
+    </div><aside className="lg:sticky lg:top-5 lg:self-start"><div className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]"><div className="grid aspect-square place-items-center p-5">{display3D && modelSource ? <BlockModelCanvas assetSource={modelSource} blockEntityModel={detail.blockEntityModel} blockId={entry.id} blockState={defaultBlockState} className="h-full w-full" /> : entry.previewPath || entry.iconPath ? <Image unoptimized alt={name} className="h-full w-full object-contain [image-rendering:pixelated]" height={256} width={256} src={modExportAssetURL(revisionId, entry.previewPath || entry.iconPath)} /> : <strong className="text-[var(--muted)]">{entry.registry}</strong>}</div>{detail.modelAvailable ? <div className="grid grid-cols-2 border-t border-[var(--line)]"><button className={`focus-ring p-3 font-bold ${!display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => setDisplay3D(false)}>2D</button><button className={`focus-ring p-3 font-bold ${display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => void show3D()}>3D</button></div> : null}</div><dl className="mt-4 grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-sm"><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.registry")}</dt><dd>{entry.registry}</dd><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.namespace")}</dt><dd>{entry.namespace}</dd></dl><EntryProperties data={entry.data} registry={registry} revisionId={revisionId} siteId={siteId} /></aside></div>
   </article></main>;
 }
 
@@ -397,7 +399,7 @@ function RecipeGallery({ title, recipes, revisionId }: { title: string; recipes:
 }
 
 function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unknown>; revisionId: string }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const layout = record(recipe.jeiLayout);
   const background = typeof layout.background === "string" ? layout.background : "";
   const canvas = record(layout.canvas);
@@ -407,10 +409,31 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
   const slots = Array.isArray(layout.slots) ? layout.slots.map(record).filter((slot) => slot.ingredient_present !== false && slot.coordinates_available !== false) : [];
   const containsIngredients = layout.background_contains_ingredients === true;
   const layoutKind = stringValue(layout.layout_kind) || "unknown";
+  const sourceMod = stringValue(layout.source_mod_id);
+  const sourceVersion = stringValue(layout.source_mod_version);
   return <article className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
-    {background ? <div className="overflow-auto bg-[#c6c6c6] p-3"><div className="relative mx-auto" style={{ width, height }}><Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={modExportAssetURL(revisionId, background)} />{!containsIngredients ? slots.map((value, index) => <ModRecipeSlot key={index} scale={displayScale} slot={value} />) : null}</div></div> : <div className="grid min-h-32 place-items-center p-4 text-sm text-[var(--muted)]">{String(recipe.type || "Recipe")}</div>}
-    <div className="flex items-center justify-between gap-3 border-t border-[var(--line)] px-3 py-2 text-xs text-[var(--muted)]"><code className="break-all">{String(recipe.id || recipe.type || "")}</code><span className="shrink-0 rounded bg-[var(--panel-subtle)] px-2 py-1 font-bold">{t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}</span></div>
+    {background ? <div className="overflow-auto bg-[#c6c6c6] p-3"><div className="relative mx-auto" style={{ width, height }}><Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={modExportAssetURL(revisionId, background)} />{!containsIngredients ? slots.map((value, index) => <ModRecipeSlot key={index} scale={displayScale} slot={value} />) : null}{slots.map((value, index) => <RecipeChanceLabel key={`chance:${index}`} locale={locale} scale={displayScale} slot={value} />)}</div></div> : <div className="grid min-h-32 place-items-center p-4 text-sm text-[var(--muted)]">{String(recipe.type || "Recipe")}</div>}
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] px-3 py-2 text-xs text-[var(--muted)]"><code className="break-all">{String(recipe.id || recipe.type || "")}</code><span className="flex items-center gap-2">{sourceMod ? <code>{sourceMod}{sourceVersion ? `@${sourceVersion}` : ""}</code> : null}<span className="shrink-0 rounded bg-[var(--panel-subtle)] px-2 py-1 font-bold">{t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}</span></span></div>
   </article>;
+}
+
+function RecipeChanceLabel({ slot, scale, locale }: { slot: Record<string, unknown>; scale: number; locale: string }) {
+  if (slot.chance_available !== true) return null;
+  const text = localizedRecipeChance(slot, locale);
+  if (!text) return null;
+  const rect = record(slot.rect);
+  const x = numberValue(slot.chance_render_x, numberValue(rect.x, 0) + numberValue(rect.width, 16));
+  const y = numberValue(slot.chance_render_y, numberValue(rect.y, 0));
+  return <span className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded bg-[#242424] px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow" style={{ left: x * scale, top: y * scale }}>{text}</span>;
+}
+
+function localizedRecipeChance(slot: Record<string, unknown>, locale: string) {
+  const normalized = minecraftLocale(locale);
+  const texts = record(slot.chance_texts);
+  if (typeof texts[normalized] === "string") return texts[normalized] as string;
+  if (typeof slot.chance_text === "string" && slot.chance_text) return slot.chance_text;
+  const percent = Number(slot.chance_percent);
+  return Number.isFinite(percent) ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%` : "";
 }
 
 function ModRecipeSlot({ slot, scale }: { slot: Record<string, unknown>; scale: number }) {

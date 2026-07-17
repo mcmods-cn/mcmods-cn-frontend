@@ -81,6 +81,52 @@ interface ResolvedModel {
   customElementGroups: Record<string, ModelElement[]>
 }
 
+export interface ExportedBlockEntityTexture {
+  appearance?: string
+  path: string
+  uv_transform_required?: boolean
+}
+
+export interface ExportedBlockEntityMeshVertex {
+  position: number[]
+  uv: number[]
+  normal: number[]
+}
+
+export interface ExportedBlockEntityMeshFace {
+  vertices: ExportedBlockEntityMeshVertex[]
+}
+
+export interface ExportedBlockEntityVariant {
+  variantId: string
+  objPath: string
+  meshPath: string
+  vertexCount: number
+  quadCount: number
+  coordinateSpace: string
+  uvSpace: string
+  uvOrigin: string
+  uvComplete: boolean
+  textures: ExportedBlockEntityTexture[]
+  mesh: {
+    schema_version?: string
+    coordinate_space?: string
+    uv_space?: string
+    uv_origin?: string
+    vertex_count?: number
+    quad_count?: number
+    faces?: ExportedBlockEntityMeshFace[]
+  }
+}
+
+export interface ExportedBlockEntityModel {
+  blockId: string
+  blockEntityTypeId: string
+  modelSource: string
+  modelAvailable: boolean
+  variants: ExportedBlockEntityVariant[]
+}
+
 const directions: FaceDirection[] = ['down', 'up', 'north', 'south', 'west', 'east']
 const mekanismEnergyCubeGroupNames = [
   'frame',
@@ -96,8 +142,18 @@ export async function buildMinecraftBlockModel(
   bundle: AssetSource,
   blockId: string,
   defaultState: Record<string, string> = {},
+  blockEntityModel?: ExportedBlockEntityModel,
 ): Promise<THREE.Group> {
   const { namespace, path } = splitId(blockId)
+  if (blockEntityModel?.modelAvailable && blockEntityModel.variants.length) {
+    try {
+      return await createExportedBlockEntityGroup(bundle, blockId, defaultState, blockEntityModel)
+    } catch (error) {
+      if (blockEntityModel.modelSource === 'minecraft_chest_layer') throw error
+      // Some runtime renderers export atlas-space UVs that cannot be used
+      // without the original atlas transform. Fall back to the block model.
+    }
+  }
   if (namespace === 'minecraft' && isVanillaChest(path)) {
     return createVanillaChestGroup(bundle, path, defaultState)
   }
@@ -117,6 +173,83 @@ export async function buildMinecraftBlockModel(
     result.add(modelGroup)
   }
   return result
+}
+
+async function createExportedBlockEntityGroup(
+  bundle: AssetSource,
+  blockId: string,
+  defaultState: Record<string, string>,
+  model: ExportedBlockEntityModel,
+): Promise<THREE.Group> {
+  const requestedVariant = defaultState.type ?? defaultState.chest_type
+  const variant = model.variants.find((entry) => entry.variantId === requestedVariant && entry.uvComplete)
+    ?? model.variants.find((entry) => entry.variantId === 'single' && entry.uvComplete)
+    ?? model.variants.find((entry) => entry.variantId === 'default' && entry.uvComplete)
+    ?? model.variants.find((entry) => entry.uvComplete)
+  if (!variant) throw new Error('exported block entity model has no complete UV variant')
+  const mesh = variant.mesh
+  const faces = mesh.faces ?? []
+  if (
+    mesh.schema_version !== 'mcmods-uv-quad-mesh/v1'
+    || mesh.coordinate_space !== 'block_units'
+    || mesh.uv_space !== variant.uvSpace
+    || mesh.uv_origin !== variant.uvOrigin
+    || faces.length !== variant.quadCount
+  ) throw new Error('exported block entity mesh metadata is invalid')
+  const texture = variant.textures.find((entry) => entry.appearance === 'default' && !entry.uv_transform_required)
+    ?? variant.textures.find((entry) => !entry.uv_transform_required)
+  if (!texture?.path) throw new Error('exported block entity model requires an unavailable atlas UV transform')
+  const textureURL = bundle.url(texture.path)
+  if (!textureURL) throw new Error(`exported block entity texture is missing: ${texture.path}`)
+
+  const positions: number[] = []
+  const uvs: number[] = []
+  const normals: number[] = []
+  const indices: number[] = []
+  for (const face of faces) {
+    if (face.vertices.length !== 4) throw new Error('exported block entity mesh contains a non-quad face')
+    const offset = positions.length / 3
+    for (const vertex of face.vertices) {
+      if (vertex.position.length !== 3 || vertex.uv.length !== 2 || vertex.normal.length !== 3) {
+        throw new Error('exported block entity mesh contains an invalid vertex')
+      }
+      positions.push(
+        (vertex.position[0]! - 0.5) * 16,
+        (vertex.position[1]! - 0.5) * 16,
+        (vertex.position[2]! - 0.5) * 16,
+      )
+      const textureV = variant.uvOrigin === 'top_left' ? 1 - vertex.uv[1]! : vertex.uv[1]!
+      uvs.push(vertex.uv[0]!, textureV)
+      normals.push(vertex.normal[0]!, vertex.normal[1]!, vertex.normal[2]!)
+    }
+    indices.push(offset, offset + 1, offset + 2, offset, offset + 2, offset + 3)
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
+  geometry.setIndex(indices)
+  geometry.computeBoundingBox()
+  geometry.computeBoundingSphere()
+
+  const map = await new THREE.TextureLoader().loadAsync(textureURL)
+  map.colorSpace = THREE.SRGBColorSpace
+  map.magFilter = THREE.NearestFilter
+  map.minFilter = THREE.NearestMipmapNearestFilter
+  const material = new THREE.MeshStandardMaterial({
+    map,
+    transparent: true,
+    alphaTest: 0.05,
+    roughness: 0.86,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  })
+  const group = new THREE.Group()
+  group.add(new THREE.Mesh(geometry, material))
+  if (isVanillaChest(splitId(blockId).path)) group.rotation.y = chestFacingRotation(defaultState.facing)
+  group.userData.blockEntityRenderer = model.modelSource
+  group.userData.blockEntityVariant = variant.variantId
+  return group
 }
 
 function splitId(id: string): { namespace: string; path: string } {

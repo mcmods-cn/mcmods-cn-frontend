@@ -8,6 +8,7 @@ import { saveAuth, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection, FavoriteCollectionItem, loadFavoriteCollections, loadFavoriteItems } from "../_lib/favorite-api";
+import { UserEconomyPanel } from "./user-economy-panel";
 
 type FileQuota = {
   daily: QuotaItem;
@@ -28,6 +29,7 @@ type ProfileSettings = {
   signature: string;
   signatureMaxBytes: number;
   avatarUrl: string;
+  profileBackgroundUrl: string;
   messageReceive: boolean;
   canUpdateAvatar: boolean;
   canUseAnimatedAvatar: boolean;
@@ -244,8 +246,18 @@ export function UserHome() {
           </div>
         ) : (
           <>
-            <div className="surface rounded-lg p-6">
-              <div className="flex items-center gap-4">
+            <div
+              className="surface relative overflow-hidden rounded-lg p-6"
+              style={profile?.profileBackgroundUrl ? {
+                backgroundImage: `url("${profile.profileBackgroundUrl.replaceAll('"', "%22")}")`,
+                backgroundPosition: "center",
+                backgroundSize: "cover",
+              } : undefined}
+            >
+              {profile?.profileBackgroundUrl ? (
+                <div className="absolute inset-0 bg-[var(--background)] opacity-80" aria-hidden="true" />
+              ) : null}
+              <div className="relative z-10 flex items-center gap-4">
                 <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent)] text-3xl font-black text-white">
                   {profile?.avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -258,7 +270,7 @@ export function UserHome() {
               <p className="mt-2 text-sm text-[var(--muted)]">@{user.username} · ID {user.id}</p>
                 </div>
               </div>
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="relative z-10 mt-4 flex flex-wrap gap-2">
                 <Link className="button-secondary focus-ring" href="/tools/playground">
                   {t("user.openPlayground")}
                 </Link>
@@ -266,7 +278,7 @@ export function UserHome() {
                   {t("user.previewAsVisitor")}
                 </Link>
               </div>
-              <div className="mt-5 grid border-y border-[var(--line)] sm:grid-cols-3">
+              <div className="relative z-10 mt-5 grid border-y border-[var(--line)] sm:grid-cols-3">
                 <AccountMetric label={t("user.myFollowing")} value={overview ? formatTokenCount(overview.following, locale) : "-"} />
                 <AccountMetric className="sm:border-x sm:border-[var(--line)]" label={t("user.myFollowers")} value={overview ? formatTokenCount(overview.followers, locale) : "-"} />
                 <AIBalanceMetric balance={overview?.aiBalance ?? null} locale={locale} />
@@ -277,6 +289,7 @@ export function UserHome() {
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "settings" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=settings", { scroll: false })}>{t("user.settings")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "favorites" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=favorites", { scroll: false })}>{t("favorites.title")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "files" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=files", { scroll: false })}>{t("user.fileManager")}</button>
+              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "economy" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=economy", { scroll: false })}>{t("user.economyAndProgression")}</button>
             </nav>
 
             {activeSection === "settings" ? <section className="surface rounded-lg p-4">
@@ -403,6 +416,14 @@ export function UserHome() {
                 </div>
               </section>
             ) : null}
+            {activeSection === "economy" ? (
+              <UserEconomyPanel
+                token={token}
+                onBackgroundChange={(profileBackgroundUrl) =>
+                  setProfile((current) => current ? { ...current, profileBackgroundUrl } : current)
+                }
+              />
+            ) : null}
           </>
         )}
       </section>
@@ -410,10 +431,10 @@ export function UserHome() {
   );
 }
 
-type AccountSection = "settings" | "favorites" | "files";
+type AccountSection = "settings" | "favorites" | "files" | "economy";
 
 function accountSection(value: string | null): AccountSection {
-  return value === "favorites" || value === "files" ? value : "settings";
+  return value === "favorites" || value === "files" || value === "economy" ? value : "settings";
 }
 
 function FavoriteCollectionsPanel({ token }: { token: string }) {

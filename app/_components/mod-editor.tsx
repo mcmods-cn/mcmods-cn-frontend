@@ -7,6 +7,7 @@ import { apiRequest, ApiError } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
   BackendModCompatibility,
+  BackendModAuthor,
   BackendModImportJob,
   BackendModRecord,
   BackendModRelationship,
@@ -27,6 +28,7 @@ import {
 } from "../_lib/mod-catalog-data";
 import { useI18n } from "../_lib/i18n-provider";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
+import { CreatorPicker } from "./creator-picker";
 import { ToolsPlayground } from "./tools-playground";
 
 type ModDraft = Omit<CreateModPayload, "searchKeywords"> & { searchKeywords: string };
@@ -53,7 +55,7 @@ const emptyDraft = (): ModDraft => ({
   supportedLoaders: [],
   tags: [],
   searchKeywords: "",
-  authors: [{ name: "", role: "" }],
+  authors: [],
   officialStatus: "development",
   sourceStatus: "unknown",
   license: "Custom",
@@ -235,7 +237,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.authors")}>
-          <SimpleRows rows={draft.authors} addLabel={t("mods.submission.actions.addAuthor")} emptyRow={() => ({ name: "", role: "" })} onChange={(authors) => setDraft({ ...draft, authors })} render={(author, update) => <div className="grid flex-1 gap-2 sm:grid-cols-2"><input className="field" value={author.name} placeholder={t("mods.submission.placeholders.authorName")} onChange={(event) => update({ ...author, name: event.target.value })} /><input className="field" value={author.role} placeholder={t("mods.submission.placeholders.authorRole")} onChange={(event) => update({ ...author, role: event.target.value })} /></div>} />
+          <CreatorPicker value={draft.authors} onChange={(authors: BackendModAuthor[]) => setDraft({ ...draft, authors })} />
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.links")} description={t("mods.submission.sections.linksHint")}>

@@ -9,6 +9,7 @@ import { useAuthSnapshot } from "../_lib/auth";
 import {
   catalogAssetURL,
   catalogQueryLocales,
+  contentLocales,
   GlobalRecipe,
   GlobalRecipeType,
   GlobalRecipeTypeDetail,
@@ -223,6 +224,8 @@ function GlobalRecipeCard({ recipe }: { recipe: GlobalRecipe }) {
   const width = numberValue(canvas.width, 185) * displayScale;
   const height = numberValue(canvas.height, 93) * displayScale;
   const contains = layout.background_contains_ingredients === true;
+  const sourceMod = typeof layout.source_mod_id === "string" ? layout.source_mod_id : "";
+  const sourceVersion = typeof layout.source_mod_version === "string" ? layout.source_mod_version : "";
   const inputs = slots.filter((slot) => slot.role === "input");
   const totalMaterials = inputs.reduce((total, slot) => { const item = record((Array.isArray(slot.alternatives) ? slot.alternatives : [])[0]); return total + numberValue(item.amount ?? item.count, 1); }, 0);
   const layoutKind = typeof layout.layout_kind === "string" ? layout.layout_kind : "unknown";
@@ -231,9 +234,27 @@ function GlobalRecipeCard({ recipe }: { recipe: GlobalRecipe }) {
   const [layoutText, setLayoutText] = useState(JSON.stringify(layout, null, 2));
   const [error, setError] = useState("");
   async function save() { try { const layoutOverride = JSON.parse(layoutText); await apiRequest(`/api/v1/recipes/${encodeURIComponent(recipe.recipeKey)}`, { method: "PUT", body: JSON.stringify({ recipeKey: recipe.recipeKey, note, layoutOverride }) }, token); setEditing(false); } catch (reason) { setError(errorText(reason)); } }
-  return <article className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><header className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><code className="truncate font-bold">{recipe.recipeId}</code><span className="rounded bg-[var(--panel-subtle)] px-2 py-0.5 text-xs font-bold">{t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}</span></div><span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]"><code>{recipe.recipeIdSource}</code><span>{recipe.recipeIdCanonical ? t("globalCatalog.canonicalRecipeId") : t("globalCatalog.packageScopedRecipeId")}</span></span></div>{user ? <button className="button-secondary focus-ring px-3 py-1.5 text-sm" type="button" onClick={() => setEditing((value) => !value)}>{t("common.edit")}</button> : null}</header>
-    {editing ? <div className="grid gap-3 p-4"><textarea className="field min-h-56 font-mono text-xs" value={layoutText} onChange={(event) => setLayoutText(event.target.value)} /><textarea className="field min-h-20" placeholder={t("globalCatalog.recipeNote")} value={note} onChange={(event) => setNote(event.target.value)} />{error ? <ErrorBox text={error} /> : null}<button className="button-primary focus-ring justify-self-end" type="button" onClick={() => void save()}>{t("common.save")}</button></div> : <div className="grid md:grid-cols-[120px_minmax(0,1fr)_150px]"><aside className="grid place-items-center border-b border-[var(--line)] p-4 text-center md:border-b-0 md:border-r"><div><strong className="text-3xl">{totalMaterials}</strong><span className="mt-1 block text-xs text-[var(--muted)]">{t("globalCatalog.materialCount")}</span></div></aside><div className="overflow-auto bg-[#c6c6c6] p-4"><div className="relative mx-auto" style={{ width, height }}>{background ? <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={catalogAssetURL(recipe.revisionId, background)} /> : null}{!contains ? slots.map((slot, index) => <RecipeSlot key={index} locale={locale} scale={displayScale} slot={slot} />) : null}</div></div><aside className="border-t border-[var(--line)] p-4 md:border-l md:border-t-0"><strong className="text-sm">{t("globalCatalog.recipeNote")}</strong><p className="mt-2 whitespace-pre-wrap text-sm text-[var(--muted)]">{recipe.note || t("globalCatalog.noNote")}</p></aside></div>}
+  return <article className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><header className="flex items-center justify-between gap-3 border-b border-[var(--line)] px-4 py-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><code className="truncate font-bold">{recipe.recipeId}</code><span className="rounded bg-[var(--panel-subtle)] px-2 py-0.5 text-xs font-bold">{t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}</span></div><span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--muted)]"><code>{recipe.recipeIdSource}</code><span>{recipe.recipeIdCanonical ? t("globalCatalog.canonicalRecipeId") : t("globalCatalog.packageScopedRecipeId")}</span>{sourceMod ? <code>{sourceMod}{sourceVersion ? `@${sourceVersion}` : ""}</code> : null}</span></div>{user ? <button className="button-secondary focus-ring px-3 py-1.5 text-sm" type="button" onClick={() => setEditing((value) => !value)}>{t("common.edit")}</button> : null}</header>
+    {editing ? <div className="grid gap-3 p-4"><textarea className="field min-h-56 font-mono text-xs" value={layoutText} onChange={(event) => setLayoutText(event.target.value)} /><textarea className="field min-h-20" placeholder={t("globalCatalog.recipeNote")} value={note} onChange={(event) => setNote(event.target.value)} />{error ? <ErrorBox text={error} /> : null}<button className="button-primary focus-ring justify-self-end" type="button" onClick={() => void save()}>{t("common.save")}</button></div> : <div className="grid md:grid-cols-[120px_minmax(0,1fr)_150px]"><aside className="grid place-items-center border-b border-[var(--line)] p-4 text-center md:border-b-0 md:border-r"><div><strong className="text-3xl">{totalMaterials}</strong><span className="mt-1 block text-xs text-[var(--muted)]">{t("globalCatalog.materialCount")}</span></div></aside><div className="overflow-auto bg-[#c6c6c6] p-4"><div className="relative mx-auto" style={{ width, height }}>{background ? <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={catalogAssetURL(recipe.revisionId, background)} /> : null}{!contains ? slots.map((slot, index) => <RecipeSlot key={index} locale={locale} scale={displayScale} slot={slot} />) : null}{slots.map((slot, index) => <GlobalRecipeChanceLabel key={`chance:${index}`} locale={locale} scale={displayScale} slot={slot} />)}</div></div><aside className="border-t border-[var(--line)] p-4 md:border-l md:border-t-0"><strong className="text-sm">{t("globalCatalog.recipeNote")}</strong><p className="mt-2 whitespace-pre-wrap text-sm text-[var(--muted)]">{recipe.note || t("globalCatalog.noNote")}</p></aside></div>}
   </article>;
+}
+
+function GlobalRecipeChanceLabel({ slot, scale, locale }: { slot: Record<string, unknown>; scale: number; locale: string }) {
+  if (slot.chance_available !== true) return null;
+  const texts = record(slot.chance_texts);
+  const preferredLocale = contentLocales(locale).primary;
+  const chanceText = typeof texts[preferredLocale] === "string"
+    ? texts[preferredLocale] as string
+    : typeof slot.chance_text === "string" && slot.chance_text
+      ? slot.chance_text
+      : Number.isFinite(Number(slot.chance_percent))
+        ? `${Number(slot.chance_percent).toLocaleString(undefined, { maximumFractionDigits: 3 })}%`
+        : "";
+  if (!chanceText) return null;
+  const rect = record(slot.rect);
+  const x = numberValue(slot.chance_render_x, numberValue(rect.x, 0) + numberValue(rect.width, 16));
+  const y = numberValue(slot.chance_render_y, numberValue(rect.y, 0));
+  return <span className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-1/2 rounded bg-[#242424] px-1.5 py-0.5 text-[10px] font-black leading-none text-white shadow" style={{ left: x * scale, top: y * scale }}>{chanceText}</span>;
 }
 
 function RecipeSlot({ slot, scale, locale }: { slot: Record<string, unknown>; scale: number; locale: string }) {

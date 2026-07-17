@@ -1,7 +1,15 @@
 import { ModCatalogEntry, ModFeature } from "./mod-catalog-data";
+import type { CreatorKind } from "./community-api";
 
 export type BackendModLink = { type: string; url: string };
-export type BackendModAuthor = { name: string; role: string };
+export type BackendModAuthor = {
+  creatorId?: string;
+  kind?: CreatorKind;
+  name: string;
+  avatarUrl?: string;
+  roleId?: number;
+  role: string;
+};
 export type BackendModRelationship = {
   type: "dependency" | "extension" | "integration";
   relatedModId?: number;
@@ -162,7 +170,7 @@ export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEn
     license: record.license,
     curseforgeProjectId: record.curseforgeProjectId,
     modrinthProjectId: record.modrinthProjectId,
-    authors: record.authors.map((author) => author.name),
+    authors: record.authors.map((author) => author.name).filter(Boolean),
     updatedAt: record.updatedAt,
     collectedAt: record.createdAt,
     certified: false,

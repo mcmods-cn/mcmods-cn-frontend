@@ -3,16 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { buildMinecraftBlockModel, disposeStructureGroup, type AssetSource } from "@/lib/mcmods-exporter/renderer";
+import {
+  buildMinecraftBlockModel,
+  disposeStructureGroup,
+  type AssetSource,
+  type ExportedBlockEntityModel,
+} from "@/lib/mcmods-exporter/renderer";
 import { useI18n } from "@/app/_lib/i18n-provider";
 
 type Props = {
   assetSource: AssetSource;
   blockId: string;
+  blockEntityModel?: ExportedBlockEntityModel;
+  blockState?: Record<string, unknown>;
   className?: string;
 };
 
-export function BlockModelCanvas({ assetSource, blockId, className }: Props) {
+export function BlockModelCanvas({ assetSource, blockId, blockEntityModel, blockState, className }: Props) {
   const { t } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
@@ -55,7 +62,10 @@ export function BlockModelCanvas({ assetSource, blockId, className }: Props) {
     observer.observe(host);
     resize();
 
-    void buildMinecraftBlockModel(assetSource, blockId).then((built) => {
+    const normalizedState = Object.fromEntries(
+      Object.entries(blockState ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+    );
+    void buildMinecraftBlockModel(assetSource, blockId, normalizedState, blockEntityModel).then((built) => {
       if (cancelled) {
         disposeStructureGroup(built);
         return;
@@ -98,7 +108,7 @@ export function BlockModelCanvas({ assetSource, blockId, className }: Props) {
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [assetSource, blockId]);
+  }, [assetSource, blockId, blockEntityModel, blockState]);
 
   return <div className={className} style={{ minHeight: 320, position: "relative", overflow: "hidden" }}>
     <div ref={hostRef} className="absolute inset-0" />
