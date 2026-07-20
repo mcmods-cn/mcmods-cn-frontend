@@ -1,5 +1,6 @@
 import { API_BASE_URL, apiRequest } from "./api";
 import { computeFileSHA256, OSSDirectUploadTicket, OSSFileRecord, putFileToOSS } from "./oss-upload";
+import type { CatalogResourceVersion } from "./editor-types";
 
 export type ModExportJob = {
   id: string;
@@ -24,6 +25,7 @@ export type ModExportRevision = {
   loader: string;
   exporterVersion: string;
   namespace: string;
+  targetVersionPublicId: string;
   isActive: boolean;
   registryCounts: Record<string, number>;
   documentCounts: Record<string, number>;
@@ -62,8 +64,11 @@ export type ModExportRegistryEntry = {
 export type ModExportEntryDetail = {
   entityId: string;
   publicId: string;
+  name: string;
+  summary: string;
   contentMarkdown: string;
   contentLocale: string;
+  contentProvenance: string;
   modelAvailable: boolean;
   modelAssetPaths: string[];
   blockEntityModel?: {
@@ -95,6 +100,7 @@ export type ModExportEntryDetail = {
   };
   recipes: Record<string, unknown>[];
   uses: Record<string, unknown>[];
+  versions: CatalogResourceVersion[];
 };
 
 export type ModExportTagDetail = {
@@ -126,7 +132,12 @@ export type ModExportUploadProgress = {
   percent: number;
 };
 
-export async function uploadModExportPackage(file: File, siteId: string, token: string, onProgress?: (progress: ModExportUploadProgress) => void) {
+export type ModExportImportOptions = {
+  targetVersionPublicId: string;
+  overwriteExistingImportData: boolean;
+};
+
+export async function uploadModExportPackage(file: File, siteId: string, token: string, options: ModExportImportOptions, onProgress?: (progress: ModExportUploadProgress) => void) {
   onProgress?.({ phase: "hashing", percent: 0 });
   const sha256 = await computeFileSHA256(file);
   onProgress?.({ phase: "preparing", percent: 0 });
@@ -161,7 +172,7 @@ export async function uploadModExportPackage(file: File, siteId: string, token: 
     }, token);
   }
   if (!record?.id) throw new Error("mod export upload did not return a file record");
-  const job = await apiRequest<ModExportJob>(root, { method: "POST", body: JSON.stringify({ ossFileId: record.id }) }, token);
+  const job = await apiRequest<ModExportJob>(root, { method: "POST", body: JSON.stringify({ ossFileId: record.id, ...options }) }, token);
   onProgress?.({ phase: "importing", percent: 100 });
   return job;
 }
@@ -222,11 +233,4 @@ export function getModExportEntryDetail(revisionId: string, registry: string, en
   const search = new URLSearchParams({ registry, objectId, locale });
   if (entityId) search.set("entityId", entityId);
   return apiRequest<ModExportEntryDetail>(`/api/v1/export-revisions/${encodeURIComponent(revisionId)}/entry-detail?${search}`, {}, token);
-}
-
-export function saveModExportEntryContent(siteId: string, registry: string, entityId: string, objectId: string, locale: string, contentMarkdown: string, token: string) {
-  return apiRequest<{ locale: string; contentMarkdown: string }>(`/api/v1/mods/${encodeURIComponent(siteId)}/export-entry-content`, {
-    method: "PUT",
-    body: JSON.stringify({ entityId, registry, objectId, locale, contentMarkdown }),
-  }, token);
 }

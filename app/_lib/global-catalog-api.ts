@@ -1,5 +1,7 @@
-import { apiRequest } from "./api";
+import { API_BASE_URL, apiRequest } from "./api";
+import { localizedCatalogResourceName } from "./content-language";
 import { minecraftLocale, modExportAssetURL } from "./mod-export-api";
+import type { CatalogResourceVersion } from "./editor-types";
 
 export type GlobalResource = {
   entityId: string;
@@ -10,6 +12,9 @@ export type GlobalResource = {
   revisionId: string;
   modSiteId: string;
   iconPath: string;
+  iconUrl?: string;
+  versions: CatalogResourceVersion[];
+  detailUrl?: string;
 };
 
 export type GlobalTag = {
@@ -17,6 +22,7 @@ export type GlobalTag = {
   publicId: string;
   registry: string;
   tagId: string;
+  name?: string;
   memberCount: number;
   previews: GlobalResource[];
 };
@@ -50,8 +56,11 @@ export type GlobalRecipeType = {
   entityId: string;
   publicId: string;
   recipeTypeId: string;
+  name?: string;
+  contentLocale?: string;
   names: Record<string, string>;
   recipeCount: number;
+  templateCount?: number;
   catalysts: RecipeCatalyst[];
   revisionId: string;
 };
@@ -88,13 +97,12 @@ export type PageResult<T> = { items: T[]; total: number; limit: number; offset: 
 
 export function contentLocales(locale: string) {
   const primary = minecraftLocale(locale);
-  const secondary = primary.startsWith("zh_") ? "en_us" : "zh_cn";
+  const secondary = primary === "zh_cn" ? "zh_tw" : primary === "zh_tw" ? "zh_cn" : "en_us";
   return { primary, secondary };
 }
 
 export function localizedCatalogName(names: Record<string, string> | undefined, locale: string, fallback: string) {
-  const { primary, secondary } = contentLocales(locale);
-  return names?.[primary] || names?.[secondary] || names?.en_us || names?.zh_cn || fallback;
+  return localizedCatalogResourceName({ id: fallback, names: names ?? {} }, locale, "", "en") || fallback;
 }
 
 export function catalogAssetURL(revisionId: string, assetPath: string) {
@@ -107,8 +115,78 @@ export function catalogQueryLocales(locale: string) {
 }
 
 export function loadGlobalTags(query: URLSearchParams, token = "") {
-  return apiRequest<PageResult<GlobalTag>>(`/api/v1/mod-tags?${query}`, {}, token);
+  return apiRequest<{
+    items: Array<{ entityId?: string; publicId: string; registry: string; canonicalId: string; memberCount: number; name?: string; previews?: Array<Record<string, unknown>> }>;
+    total?: number;
+    limit: number;
+    offset: number;
+  }>(`/api/v1/tags?${query}`, {}, token).then((page): PageResult<GlobalTag> => ({
+    ...page,
+    total: page.total ?? page.offset + page.items.length,
+    items: page.items.map((tag) => ({
+      entityId: tag.entityId || "",
+      publicId: tag.publicId,
+      registry: tag.registry,
+      tagId: tag.canonicalId,
+      name: tag.name,
+      memberCount: tag.memberCount,
+      previews: (tag.previews ?? []).map(normalizeGlobalResource).filter((item) => item.publicId && item.id),
+    })),
+  }));
 }
+
+export function catalogDirectAssetURL(value = "") {
+  if (!value) return "";
+  return value.startsWith("/") ? `${API_BASE_URL}${value}` : value;
+}
+
+function normalizeGlobalResource(value: Record<string, unknown>): GlobalResource {
+  return {
+    entityId: text(value.entityId),
+    publicId: text(value.publicId),
+    id: text(value.id ?? value.canonicalId),
+    registry: text(value.registry ?? value.kindCode),
+    names: stringRecord(value.names),
+    revisionId: text(value.revisionId),
+    modSiteId: text(value.modSiteId),
+    iconPath: text(value.iconPath),
+    iconUrl: text(value.iconUrl) || undefined,
+    versions: normalizeResourceVersions(value.versions),
+    detailUrl: text(value.detailUrl) || undefined,
+  };
+}
+
+function normalizeResourceVersions(value: unknown): CatalogResourceVersion[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((entry) => {
+    const source = record(entry);
+    return {
+      publicId: text(source.publicId),
+      label: text(source.label),
+      minecraftVersions: stringArray(source.minecraftVersions),
+      loaders: stringArray(source.loaders),
+      modVersion: text(source.modVersion),
+      sourceKind: source.sourceKind === "manual" ? "manual" as const : "import" as const,
+      hasDetail: source.hasDetail === true,
+      revisionId: text(source.revisionId),
+      registry: text(source.registry),
+      iconPath: text(source.iconPath),
+      modSiteId: text(source.modSiteId),
+      names: stringRecord(source.names),
+      name: text(source.name) || undefined,
+      iconUrl: text(source.iconUrl) || undefined,
+      detailUrl: text(source.detailUrl) || undefined,
+    };
+  }).filter((entry) => entry.publicId);
+}
+
+function text(value: unknown) { return typeof value === "string" ? value : ""; }
+function stringRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+}
+function stringArray(value: unknown): string[] { return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : []; }
+function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 
 export function loadGlobalTagDetail(query: URLSearchParams, token = "") {
   return apiRequest<GlobalTagDetail>(`/api/v1/mod-tags/detail?${query}`, {}, token);

@@ -1,6 +1,7 @@
 "use client";
 
-import { ChangeEvent, DragEvent, useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { modExportCategories, ModExportCategory, modExportCategoryTitle } from "../_lib/mod-export-catalog";
 import {
@@ -11,6 +12,7 @@ import {
   uploadModExportPackage,
   waitForModExportJob,
 } from "../_lib/mod-export-api";
+import { loadModContentSections, loadModContentTemplates, loadModContentVersions, type ModContentSection, type ModContentTemplate, type ModContentVersion } from "../_lib/mod-content-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { IconFont } from "./iconfont";
 
@@ -18,72 +20,205 @@ type Props = {
   siteId: string;
   token: string;
   canEdit: boolean;
+  managementMode?: boolean;
 };
 
 export function ModExportData({ siteId, token, canEdit }: Props) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [revisions, setRevisions] = useState<ModExportRevision[]>([]);
   const [selectedID, setSelectedID] = useState("");
-  const [importOpen, setImportOpen] = useState(false);
+  const [contentVersions, setContentVersions] = useState<ModContentVersion[]>([]);
+  const [contentSections, setContentSections] = useState<ModContentSection[]>([]);
+  const [contentTemplates, setContentTemplates] = useState<ModContentTemplate[]>([]);
+  const [contentVersionId, setContentVersionId] = useState("");
   const [message, setMessage] = useState("");
 
-  const loadRevisions = useCallback(async () => {
-    const result = await apiRequest<{ items: ModExportRevision[] }>(`/api/v1/mods/${encodeURIComponent(siteId)}/export-data`, {}, token);
-    setRevisions(result.items);
-    setSelectedID((current) => result.items.some((item) => item.id === current) ? current : result.items[0]?.id ?? "");
+  const loadCatalog = useCallback(async () => {
+    const [revisionResult, versions, sections, templates] = await Promise.all([
+      apiRequest<{ items: ModExportRevision[] }>(`/api/v1/mods/${encodeURIComponent(siteId)}/export-data`, {}, token),
+      loadModContentVersions(siteId, token),
+      loadModContentSections(siteId, token),
+      loadModContentTemplates(siteId, token),
+    ]);
+    const catalogVersions = versions.filter((item) => item.status === "active");
+    setRevisions(revisionResult.items);
+    setContentVersions(catalogVersions);
+    setContentSections(sections);
+    setContentTemplates(templates);
+    setContentVersionId((current) => catalogVersions.some((item) => item.publicId === current) ? current : catalogVersions[0]?.publicId ?? "");
+    setSelectedID((current) => revisionResult.items.some((item) => item.id === current) ? current : revisionResult.items[0]?.id ?? "");
   }, [siteId, token]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void loadRevisions().catch((reason) => setMessage(errorText(reason, t("mods.exportImport.errors.load"))));
+      void loadCatalog().catch((reason) => setMessage(errorText(reason, t("mods.exportImport.errors.load"))));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadRevisions, t]);
+  }, [loadCatalog, t]);
 
-  const selected = revisions.find((item) => item.id === selectedID);
-  const categories = modExportCategories(selected);
+  const selectedVersion = contentVersions.find((item) => item.publicId === contentVersionId);
+  const matchingRevisions = useMemo(
+    () => revisions.filter((revision) => !selectedVersion || revision.targetVersionPublicId === selectedVersion.publicId),
+    [revisions, selectedVersion],
+  );
+  const selected = matchingRevisions.find((item) => item.id === selectedID) ?? matchingRevisions[0];
+  const selectedSections = contentSections.filter((item) => item.versionPublicId === contentVersionId);
+  const categories = useMemo(
+    () => mergeCatalogCategories(modExportCategories(selected), selectedSections, contentTemplates, locale, t),
+    [contentTemplates, locale, selected, selectedSections, t],
+  );
 
-  function openCategory(category: ModExportCategory) {
-    if (!selectedID) return;
+  function openCategory(category: UnifiedCatalogCategory) {
+    if (category.section) {
+      window.open(
+        `/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(category.section.publicId)}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
+      return;
+    }
+    if (!selected?.id || !category.exportCategory) return;
     window.open(
-      `/mods/${encodeURIComponent(siteId)}/data/${encodeURIComponent(selectedID)}/${encodeURIComponent(category.key)}`,
+      `/mods/${encodeURIComponent(siteId)}/data/${encodeURIComponent(selected.id)}/${encodeURIComponent(category.exportCategory.key)}`,
       "_blank",
       "noopener,noreferrer",
     );
   }
 
-  if (!revisions.length && !canEdit) return null;
+  if (!revisions.length && !contentVersions.length && !canEdit) return null;
 
   return <section className="space-y-4">
     <header className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] pb-3">
-      <div className="min-w-0 flex-1"><h2 className="text-lg font-black">{t("mods.exportImport.catalogTitle")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{selected ? `${selected.minecraftVersion} · ${selected.loader} · ${selected.namespace}` : t("mods.exportImport.description")}</p></div>
-      {canEdit ? <button className="button-primary focus-ring" type="button" onClick={() => setImportOpen(true)}>{t("common.edit")} {t("mods.exportImport.importAction")}</button> : null}
+      <div className="min-w-0 flex-1"><h2 className="text-lg font-black">{t("mods.exportImport.catalogTitle")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("mods.exportImport.description")}</p></div>
+      {canEdit ? <Link className="button-primary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/data/edit`}>{t("mods.exportImport.importAction")}</Link> : null}
     </header>
     {message ? <p className="rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{message}</p> : null}
-    {revisions.length ? <>
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3"><strong className="text-sm">{t("mods.detail.minecraftVersion")}</strong><select className="field min-w-56 flex-1 sm:max-w-md" value={selectedID} onChange={(event) => setSelectedID(event.target.value)}>{revisions.map((item) => <option key={item.id} value={item.id}>{item.minecraftVersion} · {item.loader} · {item.namespace}</option>)}</select></div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{categories.map((category) => <ExportCategoryCard category={category} key={category.key} onClick={() => openCategory(category)} />)}</div>
-    </> : <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-8 text-center text-[var(--muted)]">{t("mods.exportImport.empty")}</div>}
-    {importOpen ? <ModExportImportModal siteId={siteId} token={token} onClose={() => setImportOpen(false)} onImported={loadRevisions} /> : null}
+    {contentVersions.length ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3"><strong className="text-sm">{t("mods.exportImport.dataVersion")}</strong><select className="field min-w-56 flex-1 sm:max-w-md" value={contentVersionId} onChange={(event) => setContentVersionId(event.target.value)}>{contentVersions.map((item) => <option key={item.publicId} value={item.publicId}>{item.label}</option>)}</select>{matchingRevisions.length > 1 ? <select aria-label={t("mods.exportImport.importNamespace")} className="field min-w-44" value={selected?.id ?? ""} onChange={(event) => setSelectedID(event.target.value)}>{matchingRevisions.map((item) => <option key={item.id} value={item.id}>{item.namespace}</option>)}</select> : null}</div> : null}
+    {categories.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{categories.map((category) => <UnifiedCategoryCard category={category} key={category.key} onClick={() => openCategory(category)} />)}</div> : <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-8 text-center text-[var(--muted)]">{t("mods.exportImport.empty")}</div>}
   </section>;
 }
 
-function ExportCategoryCard({ category, onClick }: { category: ModExportCategory; onClick: () => void }) {
-  const { t } = useI18n();
-  const descriptionKey = `mods.detail.dataDescriptions.${category.key}`;
-  const description = category.key.startsWith("registry:")
-    ? t("mods.exportImport.registryDescription", { registry: category.registries[0] })
-    : t(descriptionKey);
-  return <button className="focus-ring relative min-h-36 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-left transition-transform hover:-translate-y-0.5 hover:border-[var(--accent)]" type="button" onClick={onClick}><span className="flex items-start gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-md text-xl ${category.tone}`}><IconFont name={category.icon} fallback={category.key.slice(0, 1).toUpperCase()} /></span><span className="min-w-0 pr-12"><strong className="block text-lg">{modExportCategoryTitle(category, t)}</strong><small className="mt-2 block line-clamp-2 leading-6 text-[var(--muted)]">{description}</small></span></span><span className="absolute bottom-2 right-3 text-4xl font-black text-[var(--muted)] opacity-15">{category.count.toLocaleString()}</span><span className="mt-3 block text-xs font-bold text-[var(--muted)]">{t("mods.detail.entries", { count: category.count })}</span></button>;
+type UnifiedCatalogCategory = {
+  key: string;
+  title: string;
+  description: string;
+  icon: string;
+  tone: string;
+  count: number;
+  exportCategory?: ModExportCategory;
+  section?: ModContentSection;
+};
+
+const manualCategoryMap: Record<string, string> = {
+  item_block: "itemsBlocks",
+  fluid: "fluids",
+  dimension: "dimensions",
+  biome: "biomes",
+  entity: "entities",
+  enchantment: "enchantments",
+  mob_effect: "buffs",
+  natural_generation: "naturalGeneration",
+  world_structure: "worldStructures",
+  key_mapping: "keybinds",
+  advancement: "achievements",
+  chemical: "industrialMedia",
+  multiblock: "multiblocks",
+  command: "commands",
+  skill: "skills",
+  element: "elements",
+};
+
+const manualCategoryAppearance: Record<string, { icon: string; tone: string }> = {
+  itemsBlocks: { icon: "cube", tone: "text-emerald-600 bg-emerald-500/10" },
+  fluids: { icon: "fluid", tone: "text-cyan-700 bg-cyan-500/10" },
+  dimensions: { icon: "database", tone: "text-indigo-700 bg-indigo-500/10" },
+  biomes: { icon: "biome", tone: "text-lime-700 bg-lime-500/10" },
+  entities: { icon: "entity", tone: "text-blue-600 bg-blue-500/10" },
+  enchantments: { icon: "enchantment", tone: "text-violet-600 bg-violet-500/10" },
+  buffs: { icon: "effect", tone: "text-rose-600 bg-rose-500/10" },
+  naturalGeneration: { icon: "biome", tone: "text-green-700 bg-green-500/10" },
+  worldStructures: { icon: "structure", tone: "text-amber-700 bg-amber-500/10" },
+  keybinds: { icon: "keyboard", tone: "text-sky-700 bg-sky-500/10" },
+  achievements: { icon: "achievement", tone: "text-yellow-700 bg-yellow-500/10" },
+  industrialMedia: { icon: "fluid", tone: "text-cyan-700 bg-cyan-500/10" },
+  multiblocks: { icon: "structure", tone: "text-orange-700 bg-orange-500/10" },
+  commands: { icon: "code", tone: "text-slate-700 bg-slate-500/10" },
+  skills: { icon: "achievement", tone: "text-violet-700 bg-violet-500/10" },
+  elements: { icon: "effect", tone: "text-rose-700 bg-rose-500/10" },
+};
+
+function mergeCatalogCategories(exportCategories: ModExportCategory[], sections: ModContentSection[], templates: ModContentTemplate[], locale: string, t: (key: string, values?: Record<string, string | number>) => string) {
+  const merged = new Map<string, UnifiedCatalogCategory>();
+  for (const category of exportCategories) {
+    merged.set(category.key, {
+      key: category.key,
+      title: modExportCategoryTitle(category, t),
+      description: exportCategoryDescription(category, t),
+      icon: category.icon,
+      tone: category.tone,
+      count: category.count,
+      exportCategory: category,
+    });
+  }
+  for (const section of sections) {
+    const key = manualCategoryMap[section.templateCode] ?? `manual:${section.publicId}`;
+    const template = templates.find((item) => item.publicId === section.templatePublicId);
+    const localization = localizedSection(section, template, locale);
+    const existing = merged.get(key);
+    if (existing) {
+      // A content section is the canonical index shared by manual edits and
+      // imports. Exporter counts are only a legacy fallback when no section
+      // has been materialized for the selected data version.
+      existing.count = section.resourceCount;
+      existing.section = section;
+      continue;
+    }
+    const appearance = manualCategoryAppearance[key] ?? { icon: "database", tone: "text-emerald-700 bg-emerald-500/10" };
+    const standardCategory = !key.startsWith("manual:");
+    merged.set(key, {
+      key,
+      title: standardCategory ? t(`mods.detail.dataCategories.${key}`) : localization?.name || localizedSectionName(section, template, locale, t),
+      description: standardCategory ? t(`mods.detail.dataDescriptions.${key}`) : localization?.summary || t("mods.detail.dataDescriptions.customPages"),
+      icon: appearance.icon,
+      tone: appearance.tone,
+      count: section.resourceCount,
+      section,
+    });
+  }
+  return [...merged.values()];
 }
 
-function ModExportImportModal({ siteId, token, onClose, onImported }: { siteId: string; token: string; onClose: () => void; onImported: () => Promise<void> }) {
+function localizedSectionName(section: ModContentSection, template: ModContentTemplate | undefined, locale: string, t: (key: string, values?: Record<string, string | number>) => string) {
+  const values = section.localizations.length ? section.localizations : template?.localizations || [];
+  return values.find((item) => item.locale === locale)?.name || values.find((item) => item.locale === "en")?.name || values[0]?.name || t(`modContent.templates.${section.templateCode}`);
+}
+
+function localizedSection(section: ModContentSection, template: ModContentTemplate | undefined, locale: string) {
+  const values = section.localizations.length ? section.localizations : template?.localizations || [];
+  return values.find((item) => item.locale === locale) || values.find((item) => item.locale === "en") || values[0];
+}
+
+function exportCategoryDescription(category: ModExportCategory, t: (key: string, values?: Record<string, string | number>) => string) {
+  return category.key.startsWith("registry:")
+    ? t("mods.exportImport.registryDescription", { registry: category.registries[0] })
+    : t(`mods.detail.dataDescriptions.${category.key}`);
+}
+
+function UnifiedCategoryCard({ category, onClick }: { category: UnifiedCatalogCategory; onClick: () => void }) {
+  const { t } = useI18n();
+  const content = <><span className="flex items-start gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-md text-xl ${category.tone}`}><IconFont name={category.icon} fallback={category.key.slice(0, 1).toUpperCase()} /></span><span className="min-w-0"><strong className="block text-lg">{category.title}</strong><small className="mt-2 block line-clamp-2 leading-6 text-[var(--muted)]">{category.description}</small></span></span><span className="mt-4 block text-xs font-bold text-[var(--muted)]">{t("mods.detail.entries", { count: category.count })}</span></>;
+  const className = "focus-ring relative min-h-36 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-left transition-transform";
+  return category.section || category.exportCategory ? <button className={`${className} hover:-translate-y-0.5 hover:border-[var(--accent)]`} type="button" onClick={onClick}>{content}</button> : <article className={className}>{content}</article>;
+}
+
+export function ModExportImportModal({ siteId, token, targetVersionId, targetVersionLabel, onClose, onImported, inline = false, disabled = false }: { siteId: string; token: string; targetVersionId: string; targetVersionLabel: string; onClose?: () => void; onImported: () => Promise<void>; inline?: boolean; disabled?: boolean }) {
   const { t } = useI18n();
   const [job, setJob] = useState<ModExportJob | null>(null);
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
   const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
+  const [overwrite, setOverwrite] = useState(false);
   const polling = useRef<AbortController | null>(null);
 
   useEffect(() => () => polling.current?.abort(), []);
@@ -91,7 +226,7 @@ function ModExportImportModal({ siteId, token, onClose, onImported }: { siteId: 
   function closeModal() {
     if (busy && !job) return;
     polling.current?.abort();
-    onClose();
+    onClose?.();
   }
 
   async function monitorJob(initialJob: ModExportJob) {
@@ -116,7 +251,7 @@ function ModExportImportModal({ siteId, token, onClose, onImported }: { siteId: 
     }
     setBusy(true); setError(""); setJob(null); setUpload(null);
     try {
-      await monitorJob(await uploadModExportPackage(file, siteId, token, setUpload));
+      await monitorJob(await uploadModExportPackage(file, siteId, token, { targetVersionPublicId: targetVersionId, overwriteExistingImportData: overwrite }, setUpload));
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.upload")));
     } finally { setBusy(false); }
@@ -136,21 +271,18 @@ function ModExportImportModal({ siteId, token, onClose, onImported }: { siteId: 
     event.preventDefault(); setDragging(false); void importFile(event.dataTransfer.files[0]);
   }
 
-  return <div className="fixed inset-0 z-[80] grid place-items-center bg-black/55 p-4" role="presentation" onMouseDown={closeModal}><div className="surface max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("mods.exportImport.modalTitle")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("mods.exportImport.modalDescription")}</p></div><button className="button-secondary focus-ring" disabled={busy && !job} type="button" onClick={closeModal}>{t("common.close")}</button></header>
-    <div className="mt-5 grid gap-3 sm:grid-cols-2"><SourceCard active title="mcmods_exporter" description={t("mods.exportImport.sources.exporter")} /><SourceCard title="Icon Exporter" description={t("mods.exportImport.sources.iconExporter")} /></div>
-    <label className={`mt-5 grid min-h-48 cursor-pointer place-items-center rounded-lg border border-dashed p-6 text-center ${dragging ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel-subtle)]"}`} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={drop}><input className="sr-only" type="file" accept=".zip,application/zip" disabled={busy} onChange={(event: ChangeEvent<HTMLInputElement>) => void importFile(event.target.files?.[0])} /><span><strong className="block text-lg">{upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : t("mods.exportImport.drop")}</strong><small className="mt-2 block text-[var(--muted)]">{t("mods.exportImport.dropHint")}</small></span></label>
+  const form = <><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><input className="mt-1 h-4 w-4 accent-[var(--accent)]" type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} /><span><strong className="block">{t("mods.exportImport.overwriteExisting")}</strong><small className="mt-1 block leading-5 text-[var(--muted)]">{t("mods.exportImport.overwriteExistingHint")}</small></span></label>
+    <label className={`mt-5 grid min-h-48 place-items-center rounded-lg border border-dashed p-6 text-center ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${dragging ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel-subtle)]"}`} onDragEnter={(event) => { event.preventDefault(); if (!disabled) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { if (disabled) { event.preventDefault(); return; } drop(event); }}><input className="sr-only" type="file" accept=".zip,application/zip" disabled={busy || disabled} onChange={(event: ChangeEvent<HTMLInputElement>) => void importFile(event.target.files?.[0])} /><span><strong className="block text-lg">{upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : t("mods.exportImport.drop")}</strong><small className="mt-2 block text-[var(--muted)]">{t("mods.exportImport.dropHint")}</small></span></label>
     {upload && !job ? <Progress label={t(`mods.exportImport.uploadPhases.${upload.phase}`)} percent={upload.percent} /> : null}
     {job ? <><p className="mt-4 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("mods.exportImport.importInBackground")}</p><Progress label={t(`mods.exportImport.stages.${job.currentStage || job.status}`)} percent={job.progress} />{job.reviewRequired ? <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p> : null}</> : null}
     {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
-  </div></div>;
+  </>;
+  if (inline) return <section className="mt-6"><h3 className="text-lg font-black">{t("mods.exportImport.modalTitle")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.exportImport.targetDescription", { version: targetVersionLabel })}</p>{form}</section>;
+  return <div className="fixed inset-0 z-[80] grid place-items-center bg-black/55 p-4" role="presentation" onMouseDown={closeModal}><div className="surface max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("mods.exportImport.modalTitle")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("mods.exportImport.modalDescription")}</p></div><button className="button-secondary focus-ring" disabled={busy && !job} type="button" onClick={closeModal}>{t("common.close")}</button></header><p className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm"><strong>{t("mods.exportImport.dataVersion")}：</strong>{targetVersionLabel}</p>{form}</div></div>;
 }
 
 function Progress({ label, percent }: { label: string; percent: number }) {
   return <div className="mt-4"><div className="flex justify-between text-sm font-bold"><span>{label}</span><span>{percent}%</span></div><div className="mt-2 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${percent}%` }} /></div></div>;
-}
-
-function SourceCard({ title, description, active = false }: { title: string; description: string; active?: boolean }) {
-  return <div className={`rounded-md border p-4 ${active ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`}><strong>{title}</strong><span className="mt-2 block text-sm text-[var(--muted)]">{description}</span></div>;
 }
 
 function errorText(reason: unknown, fallback: string) {

@@ -1,7 +1,7 @@
 import { ModCatalogEntry, ModFeature } from "./mod-catalog-data";
 import type { CreatorKind } from "./community-api";
 
-export type BackendModLink = { type: string; url: string };
+export type BackendModLink = { type: string; url: string; note: string };
 export type BackendModAuthor = {
   creatorId?: string;
   kind?: CreatorKind;
@@ -22,10 +22,28 @@ export type BackendModRelationshipGroup = {
   loader: string;
   minecraftVersions: string[];
   modVersion: string;
+  direction?: "outgoing" | "incoming";
   relationships: BackendModRelationship[];
 };
 
 export type BackendModCompatibility = { loader: string; versions: string[] };
+export type BackendModIdentifier = {
+  id?: number;
+  identifier: string;
+  primary: boolean;
+  minecraftVersionMin: string;
+  minecraftVersionMax: string;
+  minecraftVersions: string[];
+};
+export type BackendModLocalization = { locale: string; name: string; summary: string; contentMarkdown: string };
+export type BackendModGalleryImage = {
+  publicId?: string;
+  fileId: number;
+  name?: string;
+  contentType?: string;
+  sizeBytes?: number;
+  url?: string;
+};
 export type MinecraftVersionConfig = {
   versions: Array<{ code: string; type: "release" | "snapshot" | "april_fools" | "legacy" }>;
   loaders: Array<{ code: string; name: string; versions: string[] }>;
@@ -44,6 +62,9 @@ export type BackendModRecord = {
   abbreviation: string;
   summary: string;
   modId: string;
+  modIds: BackendModIdentifier[];
+  defaultLocale: string;
+  localizations: BackendModLocalization[];
   environment: ModCatalogEntry["environment"];
   primaryCategory: string;
   supportedVersions: string[];
@@ -54,6 +75,7 @@ export type BackendModRecord = {
   license: string;
   curseforgeProjectId: string;
   modrinthProjectId: string;
+  githubProjectPath: string;
   iconUrl: string;
   bodyMarkdown: string;
   searchKeywords: string[];
@@ -68,6 +90,7 @@ export type BackendModRecord = {
   authors: BackendModAuthor[];
   links: BackendModLink[];
   relationshipGroups: BackendModRelationshipGroup[];
+  galleryImages: BackendModGalleryImage[];
 };
 
 export type BackendModList = { items: BackendModRecord[]; total: number };
@@ -181,6 +204,7 @@ export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEn
     createdBy: record.createdBy,
     links: record.links,
     relationshipGroups: record.relationshipGroups,
+    galleryImages: record.galleryImages,
     stats: { downloads: 0, views: 0, favorites: 0, rating: 0, comments: 0, downloadSource: "Modrinth" },
   };
 }

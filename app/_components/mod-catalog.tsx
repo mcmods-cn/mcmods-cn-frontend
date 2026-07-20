@@ -569,6 +569,7 @@ function ModCard({ mod, view, locale, t, favorite, expanded, onToggleFavorite, o
           {visibleTags.map((tag) => <Tag key={tag}>{t(`mods.tags.${tag}`)}</Tag>)}
           {mod.tags.length > visibleTags.length ? <Tag>+{mod.tags.length - visibleTags.length}</Tag> : null}
         </div>
+        {mod.links?.length ? <div className="mt-2 flex flex-wrap gap-1.5">{mod.links.slice(0, 5).map((link, index) => <a className="focus-ring rounded-md border border-[var(--line)] px-2 py-1 text-[11px] font-bold text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]" href={link.url} key={`${link.type}-${index}`} rel="noreferrer" target="_blank" title={link.note || t(`mods.submission.linkTypes.${link.type}`)} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>{t(`mods.submission.linkTypes.${link.type}`)}</a>)}</div> : null}
 
         <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2">
           <div>

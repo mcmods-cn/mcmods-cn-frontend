@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { apiRequest } from "../_lib/api";
+import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { BackendModApplication, BackendModComment } from "../_lib/mod-api";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
@@ -12,6 +12,7 @@ import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ModExportData } from "./mod-export-data";
+import { ProjectDownloads } from "./project-downloads";
 
 type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "gallery" | "discussion" | "tutorial" | "issues";
 
@@ -67,9 +68,9 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
           <div className="min-w-0">
             {tab === "data" ? <ModDataTab mod={mod} canEdit={canEdit} token={token} /> : null}
             {tab === "relationships" ? <ModRelationshipsTab mod={mod} /> : null}
-            {tab === "downloads" ? <ModDownloadsTab mod={mod} /> : null}
+            {tab === "downloads" ? <ProjectDownloads projectType="mod" projectId={mod.uniqueId} projectName={displayName} token={token} suggestedVersions={mod.versions} suggestedLoaders={mod.loaders} /> : null}
             {tab === "introduction" ? <ModIntroductionTab mod={mod} /> : null}
-            {tab === "gallery" ? <EmptyState text={t("mods.detail.emptyGallery")} /> : null}
+            {tab === "gallery" ? <ModGallery images={mod.galleryImages ?? []} emptyText={t("mods.detail.emptyGallery")} /> : null}
             {tab === "discussion" ? <ModCommentsSection mod={mod} token={token} userID={user?.id} /> : null}
             {tab === "tutorial" ? <EmptyState text={t("mods.detail.emptyTutorial")} /> : null}
             {tab === "issues" ? <EmptyState text={t("mods.detail.emptyIssues")} /> : null}
@@ -82,9 +83,40 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
   );
 }
 
+function ModGallery({ images, emptyText }: { images: NonNullable<ModCatalogEntry["galleryImages"]>; emptyText: string }) {
+  const { t } = useI18n();
+  const [selected, setSelected] = useState<(typeof images)[number] | null>(null);
+  useEffect(() => {
+    if (!selected) return;
+    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setSelected(null); };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", close);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", close);
+    };
+  }, [selected]);
+  if (!images.length) return <EmptyState text={emptyText} />;
+  return <><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{images.map((image, index) => <button className="group overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] text-left" key={image.publicId ?? index} type="button" onClick={() => setSelected(image)}>
+    <Image unoptimized alt={image.name || `Gallery ${index + 1}`} className="aspect-video w-full object-cover transition group-hover:scale-[1.02]" height={720} src={modGalleryURL(image.url)} width={1280} />
+    {image.name ? <span className="block truncate p-3 text-sm font-bold">{image.name}</span> : null}
+  </button>)}</div>{selected ? <div className="fixed inset-0 z-[90] grid place-items-center bg-black/85 p-4 sm:p-8" role="presentation" onMouseDown={() => setSelected(null)}>
+    <div className="relative flex max-h-full max-w-[96vw] flex-col items-center" role="dialog" aria-modal="true" aria-label={selected.name || t("mods.detail.tabs.gallery")} onMouseDown={(event) => event.stopPropagation()}>
+      <button className="focus-ring absolute right-2 top-2 z-10 rounded-md bg-black/70 px-3 py-2 text-sm font-black text-white" type="button" onClick={() => setSelected(null)}>{t("common.close")}</button>
+      <Image unoptimized alt={selected.name || t("mods.detail.tabs.gallery")} className="h-auto max-h-[86vh] w-auto max-w-full rounded-lg object-contain shadow-2xl" height={1080} src={modGalleryURL(selected.url)} width={1920} />
+      {selected.name ? <p className="mt-3 max-w-3xl text-center text-sm font-bold text-white">{selected.name}</p> : null}
+    </div>
+  </div> : null}</>;
+}
+
+function modGalleryURL(value?: string) {
+  if (!value) return "";
+  return value.startsWith("/") ? `${API_BASE_URL}${value}` : value;
+}
+
 function ModSidebar({ mod, locale }: { mod: ModCatalogEntry; locale: string }) {
   const { t } = useI18n();
-  return <div className="space-y-4"><SidebarSection title={t("mods.detail.projectInfo")}><DetailLine label={t("mods.detail.siteId")} value={mod.siteId} /><DetailLine label={t("mods.detail.uniqueId")} value={mod.uniqueId} /><DetailLine label={t("mods.submission.fields.modId")} value={mod.modId || t("mods.detail.notProvided")} /><DetailLine label={t("mods.submission.fields.sourceStatus")} value={t(`mods.sources.${mod.sourceStatus}`)} /><DetailLine label={t("mods.detail.license")} value={mod.license} /><DetailLine label={t("mods.card.updated")} value={formatDate(mod.updatedAt, locale)} /></SidebarSection><SidebarSection title={t("mods.detail.team")}><p className="text-sm font-bold text-[var(--muted)]">{mod.team ? t("mods.card.team") : t("mods.card.author")}</p><p className="mt-2 font-black">{mod.team ?? (mod.authors.join("、") || t("mods.detail.notProvided"))}</p></SidebarSection>{mod.links?.length ? <SidebarSection title={t("mods.detail.relatedLinks")}><div className="grid grid-cols-2 gap-2">{mod.links.map((link, index) => <a className="focus-ring min-w-0 rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-center text-sm font-bold hover:border-[var(--accent)] hover:text-[var(--accent)]" href={link.url} key={`${link.type}-${index}`} rel="noreferrer" target="_blank"><span className="block truncate">{t(`mods.submission.linkTypes.${link.type}`)}</span></a>)}</div></SidebarSection> : null}</div>;
+  return <div className="space-y-4"><SidebarSection title={t("mods.detail.projectInfo")}><DetailLine label={t("mods.detail.siteId")} value={mod.siteId} /><DetailLine label={t("mods.detail.uniqueId")} value={mod.uniqueId} /><DetailLine label={t("mods.submission.fields.modId")} value={mod.modId || t("mods.detail.notProvided")} /><DetailLine label={t("mods.submission.fields.sourceStatus")} value={t(`mods.sources.${mod.sourceStatus}`)} /><DetailLine label={t("mods.detail.license")} value={mod.license} /><DetailLine label={t("mods.card.updated")} value={formatDate(mod.updatedAt, locale)} /></SidebarSection><SidebarSection title={t("mods.detail.team")}><p className="text-sm font-bold text-[var(--muted)]">{mod.team ? t("mods.card.team") : t("mods.card.author")}</p><p className="mt-2 font-black">{mod.team ?? (mod.authors.join("、") || t("mods.detail.notProvided"))}</p></SidebarSection>{mod.links?.length ? <SidebarSection title={t("mods.detail.relatedLinks")}><div className="grid grid-cols-2 gap-2">{mod.links.map((link, index) => <a className="focus-ring min-w-0 rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-center text-sm font-bold hover:border-[var(--accent)] hover:text-[var(--accent)]" href={link.url} key={`${link.type}-${index}`} rel="noreferrer" target="_blank" title={link.note || t(`mods.submission.linkTypes.${link.type}`)}><span className="block truncate">{t(`mods.submission.linkTypes.${link.type}`)}</span></a>)}</div></SidebarSection> : null}</div>;
 }
 
 function ModDataTab({ mod, canEdit, token }: { mod: ModCatalogEntry; canEdit: boolean; token: string }) {
@@ -100,17 +132,7 @@ function ModIntroductionTab({ mod }: { mod: ModCatalogEntry }) {
 function ModRelationshipsTab({ mod }: { mod: ModCatalogEntry }) {
   const { t } = useI18n();
   if (!mod.relationshipGroups?.length) return <EmptyState text={t("mods.detail.noRelationships")} />;
-  return <div className="grid gap-4">{mod.relationshipGroups.map((group, index) => <section key={index} className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><h3 className="font-black">{group.label || [group.loader, group.minecraftVersions.join(", "), group.modVersion].filter(Boolean).join(" / ") || t("mods.submission.commonCondition")}</h3><div className="mt-4 grid gap-3">{(["dependency", "extension", "integration"] as const).map((type) => { const items = group.relationships.filter((item) => item.type === type); return items.length ? <div key={type}><strong className="text-sm text-[var(--muted)]">{t(`mods.submission.relationshipTypes.${type}`)}</strong><div className="mt-2 flex flex-wrap gap-2">{items.map((item, itemIndex) => <span key={`${item.relatedModName}-${itemIndex}`} className="rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold" title={item.notes}>{item.relatedModName}</span>)}</div></div> : null; })}</div></section>)}</div>;
-}
-
-function ModDownloadsTab({ mod }: { mod: ModCatalogEntry }) {
-  const { t } = useI18n();
-  const sources = [
-    { key: "internal", url: "" },
-    { key: "modrinth", url: mod.modrinthProjectId ? `https://modrinth.com/mod/${mod.modrinthProjectId}` : "" },
-    { key: "curseforge", url: mod.curseforgeProjectId ? `https://www.curseforge.com/minecraft/mc-mods/${mod.curseforgeProjectId}` : "" },
-  ];
-  return <section className="grid gap-4 md:grid-cols-3">{sources.map((source) => <div key={source.key} className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><h3 className="text-lg font-black">{t(`mods.detail.downloadSources.${source.key}`)}</h3><p className="mt-2 min-h-12 text-sm leading-6 text-[var(--muted)]">{t(`mods.detail.downloadDescriptions.${source.key}`)}</p>{source.url ? <a className="button-primary focus-ring mt-4 inline-flex" href={source.url} rel="noreferrer" target="_blank">{t("mods.detail.openDownload")}</a> : <button className="button-secondary mt-4" disabled type="button">{t("mods.detail.unavailable")}</button>}</div>)}</section>;
+  return <div className="grid gap-4">{mod.relationshipGroups.map((group, index) => <section key={index} className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><h3 className="font-black">{group.label || [group.loader, group.minecraftVersions.join(", "), group.modVersion].filter(Boolean).join(" / ") || t("mods.submission.commonCondition")}</h3><div className="mt-4 grid gap-3">{(["dependency", "extension", "integration"] as const).map((type) => { const items = group.relationships.filter((item) => item.type === type); const labelKey = group.direction === "incoming" ? `mods.submission.incomingRelationshipTypes.${type}` : `mods.submission.relationshipTypes.${type}`; return items.length ? <div key={type}><strong className="text-sm text-[var(--muted)]">{t(labelKey)}</strong><div className="mt-2 flex flex-wrap gap-2">{items.map((item, itemIndex) => <span key={`${item.relatedModName}-${itemIndex}`} className="rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold" title={item.notes}>{item.relatedModName}</span>)}</div></div> : null; })}</div></section>)}</div>;
 }
 
 function ModApplicationModal({ kind, mod, token, onClose }: { kind: "editor" | "developer"; mod: ModCatalogEntry; token: string; onClose: () => void }) {

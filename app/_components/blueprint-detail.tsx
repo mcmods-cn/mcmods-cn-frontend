@@ -11,6 +11,7 @@ import type { BlueprintDetailRecord, BlueprintMaterial } from "../_lib/blueprint
 import { useAuthSnapshot } from "../_lib/auth";
 import { loadFavoriteMembership } from "../_lib/favorite-api";
 import { useI18n } from "../_lib/i18n-provider";
+import { loadOwnedResolvedContent, loadResolvedContent } from "../_lib/editor-api";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { minecraftLocale, modExportAssetURL } from "../_lib/mod-export-api";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -18,7 +19,6 @@ import { notifySite } from "../_lib/site-notice";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { BlueprintRequiredMods, statusText } from "./blueprint-library";
 import { FavoritePickerModal } from "./favorite-picker-modal";
-import { ToolsPlayground } from "./tools-playground";
 
 const StructureCanvas = dynamic(() => import("@/components/mcmods-exporter/StructureCanvas").then((module) => module.StructureCanvas), { ssr: false });
 
@@ -28,10 +28,6 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
   const viewerRef = useRef<HTMLDivElement>(null);
   const [record, setRecord] = useState<BlueprintDetailRecord | null>(null);
   const [notFound, setNotFound] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [saving, setSaving] = useState(false);
   const [topLayer, setTopLayer] = useState(0);
   const [activeLayer, setActiveLayer] = useState<number | null>(null);
   const [showBelow, setShowBelow] = useState(true);
@@ -50,9 +46,11 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
     try {
       const params = new URLSearchParams({ locale: minecraftLocale(locale) });
       const result = await apiRequest<BlueprintDetailRecord>(`/api/v1/blueprints/${encodeURIComponent(publicId)}?${params}`, {}, token);
-      setRecord(result);
-      setTitle(result.title);
-      setDescription(result.description);
+      const content = result.canEdit && token
+        ? await loadOwnedResolvedContent("blueprints", publicId, locale, token, "en").catch(() => undefined)
+        : await loadResolvedContent(publicId, locale, "en", token).catch(() => undefined);
+      const fields = content?.localization?.fields;
+      setRecord(fields ? { ...result, title: fields.name || result.title, description: fields.contentMarkdown || result.description } : result);
       setNotFound(false);
       setTopLayer(Math.max(0, result.size[1] - 1));
     } catch (error) {
@@ -104,19 +102,7 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
   const selectedMaterial = useMemo(() => selectedBlock && record ? record.materials.find((item) => item.blockId === selectedBlock.state.id) : undefined, [record, selectedBlock]);
   const availableFormats = useMemo(() => new Set(record?.variants.filter((item) => item.status === "ready").map((item) => normalizeBlueprintFormat(item.format)) ?? []), [record?.variants]);
 
-  async function save() {
-    if (!token) return;
-    setSaving(true);
-    try {
-      const result = await apiRequest<{ reviewRequired?: boolean }>(`/api/v1/blueprints/${encodeURIComponent(publicId)}`, { method: "PUT", body: JSON.stringify({ title, description }) }, token);
-      setEditing(false);
-      await load();
-      notifySite(t(result.reviewRequired ? "blueprints.reviewSubmitted" : "blueprints.saveSuccess"), t("blueprints.title"), "success");
-    } catch (error) { notifySite(cleanError(error), t("blueprints.title"), "danger"); }
-    finally { setSaving(false); }
-  }
-
-  async function convert(format: "nbt" | "schem") {
+  async function convert(format: "nbt" | "schem" | "litematic") {
     if (!token || availableFormats.has(format)) return;
     try {
       await apiRequest(`/api/v1/blueprints/${encodeURIComponent(publicId)}/convert`, { method: "POST", body: JSON.stringify({ format }) }, token);
@@ -180,7 +166,7 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
     : 0;
 
   return <main className="min-h-screen overflow-x-hidden bg-[var(--background)] text-[var(--foreground)]">
-    <header className="border-b border-[var(--line)] bg-[var(--panel)]"><div className="mx-auto max-w-7xl px-4 py-7"><div className="flex flex-wrap items-start justify-between gap-4"><div><Link className="text-sm font-bold text-[var(--accent)]" href="/blueprints">{t("blueprints.title")}</Link><h1 className="mt-2 text-3xl font-black">{record.title}</h1><div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]"><code>{record.id}</code><span>{record.sourceFormat.toUpperCase()}</span><span className="font-bold text-[var(--accent)]">{statusText(t, record.status)}</span></div></div><div className="flex flex-wrap gap-2">{token ? <button className="button-secondary focus-ring" aria-pressed={favorited} type="button" onClick={() => setFavoriteOpen(true)}>{t(favorited ? "mods.card.favorited" : "mods.card.favorite")}</button> : null}{record.canEdit ? <button className="button-secondary focus-ring" type="button" onClick={() => setEditing(true)}>{t("blueprints.edit")}</button> : null}</div></div><dl className="mt-6 grid gap-4 sm:grid-cols-3"><Metric label={t("blueprints.dimensions")} value={record.size.join(" × ")} /><Metric label={t("blueprints.blocks")} value={record.blockCount.toLocaleString()} /><Metric label={t("blueprints.uploader")} value={record.uploader.displayName || record.uploader.username} /></dl><BlueprintRequiredMods mods={record.requiredMods} /></div></header>
+    <header className="border-b border-[var(--line)] bg-[var(--panel)]"><div className="mx-auto max-w-7xl px-4 py-7"><div className="flex flex-wrap items-start justify-between gap-4"><div><Link className="text-sm font-bold text-[var(--accent)]" href="/blueprints">{t("blueprints.title")}</Link><h1 className="mt-2 text-3xl font-black">{record.title}</h1><div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]"><code>{record.id}</code><span>{record.sourceFormat.toUpperCase()}</span><span className="font-bold text-[var(--accent)]">{statusText(t, record.status)}</span></div></div><div className="flex flex-wrap gap-2">{token ? <button className="button-secondary focus-ring" aria-pressed={favorited} type="button" onClick={() => setFavoriteOpen(true)}>{t(favorited ? "mods.card.favorited" : "mods.card.favorite")}</button> : null}{record.canEdit ? <Link className="button-secondary focus-ring" href={`/blueprints/${publicId}/edit`} target="_blank" rel="noopener noreferrer">{t("blueprints.edit")} ↗</Link> : null}</div></div><dl className="mt-6 grid gap-4 sm:grid-cols-3"><Metric label={t("blueprints.dimensions")} value={record.size.join(" × ")} /><Metric label={t("blueprints.blocks")} value={record.blockCount.toLocaleString()} /><Metric label={t("blueprints.uploader")} value={record.uploader.displayName || record.uploader.username} /></dl><BlueprintRequiredMods mods={record.requiredMods} /></div></header>
     {processing ? <section className="mx-auto max-w-7xl px-4 py-8"><div className="surface rounded-lg border border-[var(--line)] p-6"><p className="font-bold">{t("blueprints.processing")}</p><div className="mt-4 h-1 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full w-2/5 animate-pulse bg-[var(--accent)]" /></div></div></section> : null}
     {record.status === "failed" ? <section className="mx-auto max-w-7xl px-4 py-8"><div className="rounded-lg border border-[var(--red)] p-6"><h2 className="text-xl font-black text-[var(--red)]">{t("blueprints.failed")}</h2><p className="mt-2 text-sm text-[var(--muted)]">{record.lastError}</p>{record.canEdit ? <button className="button-primary focus-ring mt-4" type="button" onClick={() => void retry()}>{t("blueprints.retry")}</button> : null}</div></section> : null}
 
@@ -193,11 +179,21 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
     </section> : null}
 
     <div className="mx-auto grid max-w-7xl gap-10 px-4 py-10 lg:grid-cols-[minmax(0,1fr)_360px]"><div className="min-w-0"><section><h2 className="text-2xl font-black">{t("blueprints.introduction")}</h2><div className="mt-4 border-t border-[var(--line)] pt-5"><MarkdownRenderer markdown={record.description} config={defaultMarkdownConfig} emptyText={t("blueprints.noIntroduction")} /></div></section><section className="mt-10"><div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-2xl font-black">{t("blueprints.materials")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("blueprints.materialKinds", { count: record.materials.length })}</p></div><button className="button-secondary focus-ring" type="button" onClick={exportMaterialsCSV}>{t("blueprints.exportCSV")}</button></div><MaterialList items={visibleMaterials} />{record.materials.length > visibleMaterials.length ? <button className="button-secondary focus-ring mt-4 w-full" type="button" onClick={() => setMaterialsOpen(true)}>{t("blueprints.showAllMaterials", { count: record.materials.length })}</button> : null}</section></div>
-      <aside className="space-y-8"><section><h2 className="text-xl font-black">{t("blueprints.downloadFormats")}</h2><div className="mt-3 grid gap-2">{record.variants.map((variant) => <div key={variant.id} className="surface rounded-lg border border-[var(--line)] p-4"><div className="flex items-start justify-between gap-2"><strong className="uppercase">{variant.format}</strong><div className="flex gap-1">{variant.original ? <Badge>{t("blueprints.original")}</Badge> : null}{variant.recommended ? <Badge>{t("blueprints.recommended")}</Badge> : null}</div></div><p className="mt-2 truncate text-xs text-[var(--muted)]">{variant.originalName} · {formatBytes(variant.sizeBytes)}</p>{variant.status === "ready" ? <button className="button-secondary focus-ring mt-3 w-full" type="button" onClick={() => void download(variant.id)}>{t("blueprints.download")}</button> : null}</div>)}</div>{token ? <div className="mt-3 grid gap-2">{!availableFormats.has("nbt") ? <button className="button-secondary focus-ring" type="button" onClick={() => void convert("nbt")}>{t("blueprints.convertTo", { format: "NBT" })}</button> : null}{!availableFormats.has("schem") ? <button className="button-secondary focus-ring" type="button" onClick={() => void convert("schem")}>{t("blueprints.convertTo", { format: "SCHEM" })}</button> : null}</div> : null}</section><section><h2 className="text-xl font-black">{t("blueprints.uploader")}</h2><Link className="mt-3 block border-y border-[var(--line)] py-4 font-bold text-[var(--accent)]" href={`/user/${record.uploader.id}`}>{record.uploader.displayName || record.uploader.username}<span className="mt-1 block text-xs font-normal text-[var(--muted)]">{t("blueprints.viewUploader")}</span></Link></section></aside></div>
+      <aside className="space-y-8">
+        <section>
+          <h2 className="text-xl font-black">{t("blueprints.downloadFormats")}</h2>
+          <div className="mt-3 grid gap-2">{record.variants.map((variant) => <div key={variant.id} className="surface rounded-lg border border-[var(--line)] p-4"><div className="flex items-start justify-between gap-2"><strong className="uppercase">{variant.format}</strong><div className="flex gap-1">{variant.original ? <Badge>{t("blueprints.original")}</Badge> : null}{variant.recommended ? <Badge>{t("blueprints.recommended")}</Badge> : null}</div></div><p className="mt-2 truncate text-xs text-[var(--muted)]">{variant.originalName} · {formatBytes(variant.sizeBytes)}</p>{variant.status === "ready" ? <button className="button-secondary focus-ring mt-3 w-full" type="button" onClick={() => void download(variant.id)}>{t("blueprints.download")}</button> : null}</div>)}</div>
+          {token ? <div className="mt-3 grid gap-2">
+            {!availableFormats.has("nbt") ? <button className="button-secondary focus-ring" type="button" onClick={() => void convert("nbt")}>{t("blueprints.convertTo", { format: "NBT" })}</button> : null}
+            {!availableFormats.has("schem") ? <button className="button-secondary focus-ring" type="button" onClick={() => void convert("schem")}>{t("blueprints.convertTo", { format: "SCHEM" })}</button> : null}
+            {!availableFormats.has("litematic") ? <button className="button-secondary focus-ring" type="button" onClick={() => void convert("litematic")}>{t("blueprints.convertTo", { format: "LITEMATIC" })}</button> : null}
+          </div> : null}
+        </section>
+        <section><h2 className="text-xl font-black">{t("blueprints.uploader")}</h2><Link className="mt-3 block border-y border-[var(--line)] py-4 font-bold text-[var(--accent)]" href={`/user/${record.uploader.id}`}>{record.uploader.displayName || record.uploader.username}<span className="mt-1 block text-xs font-normal text-[var(--muted)]">{t("blueprints.viewUploader")}</span></Link></section>
+      </aside></div>
 
     {materialsOpen ? <div className="fixed inset-0 z-[95] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true"><section className="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-[var(--panel)] shadow-2xl"><header className="flex items-center justify-between gap-3 border-b border-[var(--line)] p-4"><div><h2 className="text-xl font-black">{t("blueprints.materials")}</h2><p className="text-sm text-[var(--muted)]">{t("blueprints.materialKinds", { count: record.materials.length })}</p></div><button className="button-secondary focus-ring" type="button" onClick={() => setMaterialsOpen(false)}>{t("common.close")}</button></header><div className="min-h-0 overflow-y-auto p-4"><MaterialList items={record.materials} /></div></section></div> : null}
     {favoriteOpen && token ? <FavoritePickerModal entityType="blueprint" entityKey={publicId} title={record.title} token={token} onClose={() => setFavoriteOpen(false)} onSaved={(selected) => { setFavorited(selected); setFavoriteOpen(false); notifySite(t(selected ? "mods.notices.favorited" : "mods.notices.unfavorited"), t("blueprints.title"), "success"); }} /> : null}
-    {editing ? <div className="fixed inset-0 z-[90] flex flex-col bg-[var(--background)]"><header className="flex items-center justify-between gap-4 border-b border-[var(--line)] px-4 py-3"><input className="field max-w-xl font-bold" value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} /><div className="flex gap-2"><button className="button-secondary focus-ring" type="button" onClick={() => setEditing(false)}>{t("common.cancel")}</button><button className="button-primary focus-ring" disabled={saving || !title.trim()} type="button" onClick={() => void save()}>{t("common.save")}</button></div></header><div className="min-h-0 flex-1 overflow-y-auto p-4"><ToolsPlayground embedded editorTitle={t("blueprints.introduction")} value={description} onChange={setDescription} /></div></div> : null}
   </main>;
 }
 

@@ -6,10 +6,11 @@ import { useAuthSnapshot } from "../_lib/auth";
 import { BackendModRecord, backendModToCatalogEntry } from "../_lib/mod-api";
 import { ModCatalogEntry } from "../_lib/mod-catalog-data";
 import { useI18n } from "../_lib/i18n-provider";
+import { loadResolvedContent } from "../_lib/editor-api";
 import { ModDetail } from "./mod-detail";
 
 export function ModDetailLoader({ siteId }: { siteId: string }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [mod, setMod] = useState<ModCatalogEntry | null>(null);
   const [loading, setLoading] = useState(true);
@@ -19,9 +20,12 @@ export function ModDetailLoader({ siteId }: { siteId: string }) {
     if (!ready) return;
     let cancelled = false;
     apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}`, {}, token)
-      .then((record) => {
+      .then(async (record) => {
+        const content = await loadResolvedContent(record.uniqueId, locale, "en", token).catch(() => undefined);
+        const fields = content?.localization?.fields;
+        const localizedRecord = fields ? { ...record, secondaryName: fields.name || record.secondaryName, summary: fields.summary, bodyMarkdown: fields.contentMarkdown } : record;
         if (!cancelled) {
-          setMod(backendModToCatalogEntry(record));
+          setMod(backendModToCatalogEntry(localizedRecord));
           setNotFound(false);
         }
       })
@@ -34,7 +38,7 @@ export function ModDetailLoader({ siteId }: { siteId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [ready, siteId, token]);
+  }, [locale, ready, siteId, token]);
 
   if (mod) return <ModDetail mod={mod} />;
   return (

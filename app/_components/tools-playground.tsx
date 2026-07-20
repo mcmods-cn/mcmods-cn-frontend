@@ -2,6 +2,7 @@
 
 import { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, RefObject, useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import { createPortal } from "react-dom";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { DRAWIO_ORIGIN, parseDrawioMessage } from "../_lib/drawio";
@@ -850,7 +851,8 @@ function MediaInsertModal({
     if (canInsert) onInsert(values);
   }
 
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 p-4" role="presentation" onMouseDown={onCancel}>
       <form
         className="surface w-full max-w-xl rounded-lg border border-[var(--line)] p-5 shadow-2xl"
@@ -887,7 +889,8 @@ function MediaInsertModal({
           </button>
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

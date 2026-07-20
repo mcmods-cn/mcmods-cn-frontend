@@ -99,6 +99,8 @@ export type CreateSkinInput = {
   model: SkinModel;
   visibility: SkinVisibility;
   tags: string[];
+  defaultLocale: string;
+  localizations: Array<{ locale: string; name: string; summary: string; contentMarkdown: string }>;
 };
 
 export type SavePlayerProfileInput = {
@@ -136,8 +138,8 @@ export function createSkin(input: CreateSkinInput, token: string) {
   }, token);
 }
 
-export function updateSkin(publicId: string, input: Partial<Omit<CreateSkinInput, "fileId">>, token: string) {
-  return apiRequest<SkinTexture>(`/api/v1/skins/${encodeURIComponent(publicId)}`, {
+export function updateSkin(publicId: string, input: Partial<Omit<CreateSkinInput, "fileId">> & { reason?: string }, token: string) {
+  return apiRequest<SkinTexture | { updated: boolean; reviewRequired: boolean; revisionId: number; changeRequestId?: number }>(`/api/v1/skins/${encodeURIComponent(publicId)}`, {
     method: "PUT",
     body: JSON.stringify(input),
   }, token);

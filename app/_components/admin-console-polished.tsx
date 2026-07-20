@@ -4118,6 +4118,7 @@ type ReviewSettings = {
   teamCreate: boolean;
   teamEdit: boolean;
   teamClaim: boolean;
+  modContentSectionCreate: boolean;
 };
 
 function ReviewSettingsPanel({ token }: { token: string }) {
@@ -4155,6 +4156,7 @@ function ReviewSettingsPanel({ token }: { token: string }) {
     { key: "teamCreate", title: t("admin.reviewSettings.teamCreate"), description: t("admin.reviewSettings.teamCreateDescription") },
     { key: "teamEdit", title: t("admin.reviewSettings.teamEdit"), description: t("admin.reviewSettings.teamEditDescription") },
     { key: "teamClaim", title: t("admin.reviewSettings.teamClaim"), description: t("admin.reviewSettings.teamClaimDescription") },
+    { key: "modContentSectionCreate", title: t("admin.reviewSettings.modContentSectionCreate"), description: t("admin.reviewSettings.modContentSectionCreateDescription") },
   ];
   return <section className="space-y-4"><header className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-black">{t("admin.reviewSettings.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.reviewSettings.description")}</p></div><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></header><div className="surface divide-y divide-[var(--line)] rounded-lg px-5">{options.map((option) => <label className="flex items-center justify-between gap-5 py-5" key={option.key}><span><span className="block font-black">{option.title}</span><span className="mt-1 block text-sm text-[var(--muted)]">{option.description}</span></span><input checked={settings[option.key]} type="checkbox" onChange={(event) => setSettings((current) => current ? { ...current, [option.key]: event.target.checked } : current)} /></label>)}</div></section>;
 }

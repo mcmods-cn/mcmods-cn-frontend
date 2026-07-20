@@ -20,6 +20,7 @@ export type ModRelationshipGroup = {
   loader: string;
   minecraftVersions: string[];
   modVersion: string;
+  direction?: "outgoing" | "incoming";
   relationships: ModRelationship[];
 };
 
@@ -58,8 +59,9 @@ export type ModCatalogEntry = {
   bodyMarkdown?: string;
   reviewStatus?: "pending" | "approved" | "rejected";
   createdBy?: number;
-  links?: Array<{ type: string; url: string }>;
+  links?: Array<{ type: string; url: string; note: string }>;
   relationshipGroups?: ModRelationshipGroup[];
+  galleryImages?: Array<{ publicId?: string; name?: string; url?: string }>;
   stats: {
     downloads: number;
     views: number;

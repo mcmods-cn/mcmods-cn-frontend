@@ -10,6 +10,7 @@ import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upl
 import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection, FavoriteCollectionItem, loadFavoriteCollections, loadFavoriteItems } from "../_lib/favorite-api";
 import { UserEconomyPanel } from "./user-economy-panel";
 import { UserPlayerProfilesPanel } from "./user-player-profiles-panel";
+import { ContentLanguagePreferences } from "./content-language-preferences";
 
 type FileQuota = {
   daily: QuotaItem;
@@ -299,6 +300,7 @@ export function UserHome() {
               {message ? <p className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}</p> : null}
               {profile ? (
                 <div className="mt-3 grid gap-3">
+                  <ContentLanguagePreferences token={token} />
                   <div className="rounded-lg border border-[var(--line)] p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>

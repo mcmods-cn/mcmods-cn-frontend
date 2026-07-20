@@ -14,19 +14,20 @@ import {
   ModExportEntryDetail,
   ModExportRegistryEntry,
   ModExportRevision,
-  saveModExportEntryContent,
 } from "../_lib/mod-export-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { RecipeResourceVisual, recipeSlotPresentation } from "./recipe-resource-slot";
-import { ToolsPlayground } from "./tools-playground";
 import { IndexedHttpAssetSource } from "@/lib/mcmods-exporter/renderer";
+import { UnifiedRecipeCard, UnifiedRecipeMaterial } from "./unified-recipe-card";
+import { AdvancementResourceIndex, ItemBlockResourceIndex, type ResourceIndexEntry } from "./mod-resource-indexes";
 
 const BlockModelCanvas = dynamic(() => import("@/components/mcmods-exporter/BlockModelCanvas").then((module) => module.BlockModelCanvas), { ssr: false });
 
 type CategoryPageProps = { siteId: string; revisionId: string; categoryKey: string };
 type EntryPageProps = CategoryPageProps & { entityId: string; registry: string; objectId: string };
+const naturalGenerationCategoryOrder = ["ore", "tree", "vegetation", "lake", "spring", "geode", "disk", "underground", "surface", "carver", "other"];
 
 export function ModExportCategoryPage({ siteId, revisionId, categoryKey }: CategoryPageProps) {
   const { locale, t } = useI18n();
@@ -78,27 +79,48 @@ export function ModExportCategoryPage({ siteId, revisionId, categoryKey }: Categ
     <div className="mx-auto max-w-[1680px]">
       <header className="flex flex-wrap items-end gap-4 border-b border-[var(--line)] pb-4">
         <div className="min-w-0 flex-1"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("mods.exportImport.backToCategories")}</Link><h1 className="mt-2 text-3xl font-black">{title}</h1><p className="mt-1 text-sm text-[var(--muted)]">{revision ? `${revision.minecraftVersion} · ${revision.loader} · ${filtered.length.toLocaleString()}` : t("common.loading")}</p></div>
-        <input className="field w-full sm:w-80" type="search" value={query} placeholder={t("mods.exportImport.searchEntries")} onChange={(event) => setQuery(event.target.value)} />
+        <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+          <input className="field min-w-0 flex-1 sm:w-80" type="search" value={query} placeholder={t("mods.exportImport.searchEntries")} onChange={(event) => setQuery(event.target.value)} />
+        </div>
       </header>
       {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{error}</p> : null}
-	  {!revision ? <Loading /> : !category ? <UnavailableCategory siteId={siteId} /> : category.key === "achievements" ? <AdvancementIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "itemsBlocks" ? <DenseIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "lootTables" ? <LootTableIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : <CardIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} />}
+	  {!revision ? <Loading /> : !category ? <UnavailableCategory siteId={siteId} /> : category.key === "achievements" ? <AdvancementIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "itemsBlocks" ? <DenseIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "lootTables" ? <LootTableIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "naturalGeneration" ? <NaturalGenerationIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : category.key === "worldStructures" ? <WorldStructureIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} /> : <CardIndex entries={filtered} locale={locale} revisionId={revisionId} siteId={siteId} categoryKey={categoryKey} />}
     </div>
   </main>;
 }
 
 function DenseIndex({ entries, ...props }: IndexProps) {
-  const { t } = useI18n();
-	const groups = [
-		{ registry: "blocks", entries: entries.filter((entry) => entry.registry === "blocks") },
-		{ registry: "items", entries: entries.filter((entry) => entry.registry === "items") },
-	].filter((group) => group.entries.length);
-  return <div className="mt-5 divide-y divide-[var(--line)] overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">{groups.map((group) => <section className="grid lg:grid-cols-[140px_minmax(0,1fr)]" key={group.registry}><h2 className="bg-[var(--panel-subtle)] p-4 font-black text-[var(--accent)]">{t(`mods.exportImport.registries.${group.registry}`)}</h2><div className="flex flex-wrap gap-x-3 gap-y-2 p-4">{group.entries.map((entry) => <EntryLink entry={entry} key={`${entry.registry}:${entry.id}`} {...props} compact />)}</div></section>)}</div>;
+  return <ItemBlockResourceIndex entries={entries.map((entry) => exportResourceIndexEntry(entry, props))} openInNewTab />;
 }
 
 type IndexProps = CategoryPageProps & { entries: ModExportRegistryEntry[]; locale: string };
 
 function CardIndex({ entries, ...props }: IndexProps) {
   return <div className="mt-5 grid gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3">{entries.map((entry) => <EntryLink entry={entry} key={`${entry.registry}:${entry.id}`} {...props} />)}</div>;
+}
+
+function NaturalGenerationIndex({ entries, ...props }: IndexProps) {
+  const { t } = useI18n();
+  const groups = useMemo(() => {
+    const grouped = new Map<string, ModExportRegistryEntry[]>();
+    for (const entry of entries) {
+      const category = stringValue(entry.data.category) || "other";
+      grouped.set(category, [...(grouped.get(category) ?? []), entry]);
+    }
+    return [...grouped.entries()].sort(([left], [right]) => categoryOrder(left, naturalGenerationCategoryOrder) - categoryOrder(right, naturalGenerationCategoryOrder));
+  }, [entries]);
+  return <div className="mt-5 space-y-5">{groups.map(([category, categoryEntries]) => <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]" key={category}>
+    <header className="flex items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3"><h2 className="font-black">{t(`mods.exportImport.entry.naturalCategories.${category}`)}</h2><span className="text-sm text-[var(--muted)]">{categoryEntries.length.toLocaleString()}</span></header>
+    <div className="grid gap-px bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3">{categoryEntries.map((entry) => <EntryLink entry={entry} key={entry.entityId || entry.id} {...props} />)}</div>
+  </section>)}</div>;
+}
+
+function WorldStructureIndex({ entries, ...props }: IndexProps) {
+  const { t } = useI18n();
+  return <section className="mt-5 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
+    <header className="flex items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3"><div><h2 className="font-black">{t("mods.exportImport.entry.topLevelStructures")}</h2><p className="mt-1 text-xs text-[var(--muted)]">{t("mods.exportImport.entry.internalTemplatesOmitted")}</p></div><span className="text-sm text-[var(--muted)]">{entries.length.toLocaleString()}</span></header>
+    <div className="grid gap-px bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3">{entries.map((entry) => <EntryLink entry={entry} key={entry.entityId || entry.id} {...props} />)}</div>
+  </section>;
 }
 
 function LootTableIndex({ entries, revisionId, siteId, categoryKey }: IndexProps) {
@@ -134,34 +156,19 @@ function LootTableIndex({ entries, revisionId, siteId, categoryKey }: IndexProps
 }
 
 function EntryLink({ entry, revisionId, siteId, categoryKey, locale, compact = false }: Omit<IndexProps, "entries"> & { entry: ModExportRegistryEntry; compact?: boolean }) {
+  const { t } = useI18n();
   const name = localizedName(entry, locale);
   const href = exportEntryHref(siteId, revisionId, categoryKey, entry);
+  const incomplete = entry.data.normalization_status === "partial";
+  const secondary = stringValue(entry.data.feature_type) || stringValue(entry.data.carver_type) || stringValue(entry.data.structure_type);
   return <Link className={`focus-ring flex items-center gap-2 bg-[var(--panel)] text-left hover:bg-[var(--panel-subtle)] ${compact ? "max-w-72 rounded px-1.5 py-1 text-[var(--accent)]" : "min-h-20 p-4"}`} href={href} target="_blank" rel="noopener noreferrer">
     {entry.iconPath ? <Image unoptimized alt="" className="h-8 w-8 shrink-0 object-contain [image-rendering:pixelated]" height={32} width={32} src={modExportAssetURL(revisionId, entry.iconPath)} /> : <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-[10px] font-bold text-[var(--muted)]">{entry.registry.slice(0, 2).toUpperCase()}</span>}
-    <span className="min-w-0"><strong className="block truncate">{name}</strong>{!compact ? <code className="mt-1 block truncate text-xs text-[var(--muted)]">{entry.id}</code> : null}</span>
+    <span className="min-w-0"><span className="flex min-w-0 items-center gap-2"><strong className="block truncate">{name}</strong>{incomplete ? <span className="shrink-0 rounded bg-red-500/10 px-1.5 py-0.5 text-[10px] font-black text-red-600">{t("mods.exportImport.entry.incomplete")}</span> : null}</span>{!compact ? <><code className="mt-1 block truncate text-xs text-[var(--muted)]">{entry.id}</code>{secondary ? <code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{secondary}</code> : null}</> : null}</span>
   </Link>;
 }
 
 function AdvancementIndex(props: IndexProps) {
-  const roots = useMemo(() => advancementRoots(props.entries), [props.entries]);
-  return <div className="mt-5 space-y-5">{roots.map((group) => <AdvancementBoard key={group.root.id} {...props} entries={group.entries} />)}</div>;
-}
-
-function AdvancementBoard({ entries, ...props }: IndexProps) {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]));
-  const positions = entries.map((entry, index) => {
-    const display = record(entry.data.display);
-    return { entry, x: numberValue(display.x, advancementDepth(entry, byId)) * 170 + 70, y: numberValue(display.y, index) * 74 + 60 };
-  });
-  const width = Math.max(760, ...positions.map((item) => item.x + 170));
-  const height = Math.max(260, ...positions.map((item) => item.y + 90));
-  const points = new Map(positions.map((item) => [item.entry.id, item]));
-  return <section className="overflow-auto rounded-lg border border-[#4a4335] bg-[#2b261f] shadow-inner">
-    <div className="relative" style={{ width, height, backgroundImage: "linear-gradient(#ffffff08 1px, transparent 1px), linear-gradient(90deg, #ffffff08 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
-      <svg className="pointer-events-none absolute inset-0" width={width} height={height}>{positions.map(({ entry, x, y }) => { const parent = typeof entry.data.parent === "string" ? points.get(entry.data.parent) : undefined; return parent ? <path key={entry.id} d={`M ${parent.x + 24} ${parent.y + 24} H ${x - 18} V ${y + 24} H ${x}`} fill="none" stroke="#8b8b8b" strokeWidth="3" /> : null; })}</svg>
-      {positions.map(({ entry, x, y }) => { const display = record(entry.data.display); const frame = typeof display.frame === "string" ? display.frame : "task"; return <div className="absolute" key={entry.id} style={{ left: x, top: y }}><EntryLink entry={entry} {...props} compact /><span className={`pointer-events-none absolute -inset-1 rounded border-2 ${frame === "challenge" ? "border-fuchsia-500" : frame === "goal" ? "border-amber-400" : "border-slate-400"}`} /></div>; })}
-    </div>
-  </section>;
+  return <AdvancementResourceIndex entries={props.entries.map((entry) => exportResourceIndexEntry(entry, props))} openInNewTab />;
 }
 
 export function ModExportEntryPage(props: EntryPageProps) {
@@ -174,9 +181,6 @@ function ModExportRegistryEntryPage({ siteId, revisionId, categoryKey, entityId,
   const normalized = minecraftLocale(locale);
   const [entry, setEntry] = useState<ModExportRegistryEntry>();
   const [detail, setDetail] = useState<ModExportEntryDetail>();
-  const [markdown, setMarkdown] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [display3D, setDisplay3D] = useState(false);
   const [modelPaths, setModelPaths] = useState<string[]>([]);
   const [error, setError] = useState("");
@@ -197,20 +201,11 @@ function ModExportRegistryEntryPage({ siteId, revisionId, categoryKey, entityId,
       if (cancelled) return;
       const found = list.items.find((item) => entityId ? item.entityId === entityId : item.registry === registry && item.id === objectId);
       if (!found) throw new Error(t("mods.exportImport.noEntries"));
-      setEntry(found); setDetail(nextDetail); setMarkdown(nextDetail.contentMarkdown || "");
+      setEntry(found); setDetail(nextDetail);
       setModelPaths(nextDetail.modelAssetPaths || []);
     }).catch((reason) => { if (!cancelled) setError(errorText(reason)); });
     return () => { cancelled = true; };
   }, [entityId, normalized, objectId, registry, revisionId, t, token]);
-
-  async function save() {
-    setSaving(true); setError("");
-    try {
-      const result = await saveModExportEntryContent(siteId, registry, detail?.entityId || entityId, objectId, normalized, markdown, token);
-      setDetail((current) => current ? { ...current, contentMarkdown: result.contentMarkdown, contentLocale: result.locale } : current);
-      setEditing(false);
-    } catch (reason) { setError(errorText(reason)); } finally { setSaving(false); }
-  }
 
   const modelSource = useMemo(() => modelPaths.length ? new IndexedHttpAssetSource(
     modelPaths,
@@ -228,19 +223,37 @@ function ModExportRegistryEntryPage({ siteId, revisionId, categoryKey, entityId,
   }
 
   if (!entry || !detail) return <main className="min-h-screen bg-[var(--background)] p-6 text-[var(--foreground)]">{error ? <p className="mx-auto max-w-4xl rounded-lg border border-[var(--red)] p-4 text-[var(--red)]">{error}</p> : <Loading />}</main>;
-  const name = localizedName(entry, locale);
+  const name = detail.name || localizedName(entry, locale);
   const display = record(entry.data.display);
   const documentDescription = localizedRecordValue(display.description_names, normalized);
   return <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-[var(--foreground)]"><article className="mx-auto max-w-[1500px]">
-    <header className="flex items-start gap-4 border-b border-[var(--line)] pb-5">{entry.iconPath ? <Image unoptimized alt="" className="h-16 w-16 object-contain [image-rendering:pixelated]" height={64} width={64} src={modExportAssetURL(revisionId, entry.iconPath)} /> : null}<div className="min-w-0 flex-1"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}/data/${encodeURIComponent(revisionId)}/${encodeURIComponent(categoryKey)}`}>← {t("mods.exportImport.backToCategories")}</Link><h1 className="mt-2 text-3xl font-black">{name}</h1><code className="block break-all text-sm text-[var(--muted)]">{entry.id}</code></div></header>
+    <header className="flex items-start gap-4 border-b border-[var(--line)] pb-5">{entry.iconPath ? <Image unoptimized alt="" className="h-16 w-16 object-contain [image-rendering:pixelated]" height={64} width={64} src={modExportAssetURL(revisionId, entry.iconPath)} /> : null}<div className="min-w-0 flex-1"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}/data/${encodeURIComponent(revisionId)}/${encodeURIComponent(categoryKey)}`}>← {t("mods.exportImport.backToCategories")}</Link><h1 className="mt-2 text-3xl font-black">{name}</h1><code className="block break-all text-sm text-[var(--muted)]">{entry.id}</code><ResourceVersionStrip categoryKey={categoryKey} currentRevisionId={revisionId} entityId={entry.entityId} objectId={entry.id} versions={detail.versions} /></div></header>
     {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{error}</p> : null}
 
-    <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0"><section><div className="flex items-center justify-between gap-3 border-b border-[var(--line)] pb-2"><h2 className="text-xl font-black">{t("mods.exportImport.entry.introduction")}</h2>{token ? <button className="button-secondary focus-ring" type="button" onClick={() => setEditing((current) => !current)}>{editing ? t("common.cancel") : t("mods.exportImport.entry.editIntroduction")}</button> : null}</div>{editing ? <div className="mt-4"><ToolsPlayground embedded editorTitle={name} value={markdown} onChange={setMarkdown} /><div className="mt-3 flex justify-end"><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("common.loading") : t("common.save")}</button></div></div> : detail.contentMarkdown ? <div className="markdown-preview mt-4"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={detail.contentMarkdown} /></div> : <p className="py-8 text-[var(--muted)]">{documentDescription || t("mods.exportImport.entry.noIntroduction")}</p>}</section>
+    <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0"><section><div className="flex items-center justify-between gap-3 border-b border-[var(--line)] pb-2"><h2 className="text-xl font-black">{t("mods.exportImport.entry.introduction")}</h2></div>{detail.contentMarkdown ? <div className="markdown-preview mt-4"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={detail.contentMarkdown} /></div> : <p className="py-8 text-[var(--muted)]">{detail.summary || documentDescription || t("mods.exportImport.entry.noIntroduction")}</p>}</section>
 	  {registry === "loot_tables" ? <LootTableVisualizer data={entry.data} revisionId={revisionId} /> : null}
       {isTechnicalDocumentRegistry(registry) ? <details className="mt-7 border-t border-[var(--line)] pt-5"><summary className="cursor-pointer text-xl font-black">{t("mods.exportImport.entry.technicalData")}</summary><pre className="mt-4 max-h-[70vh] overflow-auto rounded-lg bg-[#111820] p-4 text-xs leading-6 text-slate-100">{JSON.stringify(entry.data, null, 2)}</pre></details> : null}
       {detail.recipes.length ? <RecipeGallery title={t("mods.exportImport.entry.recipes")} recipes={detail.recipes} revisionId={revisionId} /> : null}{detail.uses.length ? <RecipeGallery title={t("mods.exportImport.entry.uses")} recipes={detail.uses} revisionId={revisionId} /> : null}
     </div><aside className="lg:sticky lg:top-5 lg:self-start"><div className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]"><div className="grid aspect-square place-items-center p-5">{display3D && modelSource ? <BlockModelCanvas assetSource={modelSource} blockEntityModel={detail.blockEntityModel} blockId={entry.id} blockState={defaultBlockState} className="h-full w-full" /> : entry.previewPath || entry.iconPath ? <Image unoptimized alt={name} className="h-full w-full object-contain [image-rendering:pixelated]" height={256} width={256} src={modExportAssetURL(revisionId, entry.previewPath || entry.iconPath)} /> : <strong className="text-[var(--muted)]">{entry.registry}</strong>}</div>{detail.modelAvailable ? <div className="grid grid-cols-2 border-t border-[var(--line)]"><button className={`focus-ring p-3 font-bold ${!display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => setDisplay3D(false)}>2D</button><button className={`focus-ring p-3 font-bold ${display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => void show3D()}>3D</button></div> : null}</div><dl className="mt-4 grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-sm"><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.registry")}</dt><dd>{entry.registry}</dd><dt className="font-bold text-[var(--muted)]">{t("mods.exportImport.entry.namespace")}</dt><dd>{entry.namespace}</dd></dl><EntryProperties data={entry.data} registry={registry} revisionId={revisionId} siteId={siteId} /></aside></div>
   </article></main>;
+}
+
+function ResourceVersionStrip({ versions, currentRevisionId, categoryKey, entityId, objectId }: { versions: ModExportEntryDetail["versions"]; currentRevisionId: string; categoryKey: string; entityId: string; objectId: string }) {
+  const { t } = useI18n();
+  if (!versions?.length) return null;
+  const currentIndex = Math.max(0, versions.findIndex((version) => version.revisionId === currentRevisionId));
+  const detailed = versions.filter((version) => version.hasDetail && (version.detailUrl || version.revisionId && version.modSiteId));
+  const currentDetailedIndex = detailed.findIndex((version) => version.revisionId === currentRevisionId);
+  const href = (version: ModExportEntryDetail["versions"][number]) => version.detailUrl || `/mods/${encodeURIComponent(version.modSiteId)}/data/${encodeURIComponent(version.revisionId)}/${encodeURIComponent(categoryKey)}/entry?entityId=${encodeURIComponent(entityId)}&registry=${encodeURIComponent(version.registry || "items")}&objectId=${encodeURIComponent(objectId)}`;
+  const previous = detailed.length > 1 ? detailed[(currentDetailedIndex <= 0 ? detailed.length : currentDetailedIndex) - 1] : undefined;
+  const next = detailed.length > 1 ? detailed[(currentDetailedIndex + 1 + detailed.length) % detailed.length] : undefined;
+  return <div className="mt-4 flex min-w-0 items-center gap-2">
+    {previous ? <Link aria-label={t("globalCatalog.previousVersion")} className="button-secondary focus-ring grid h-8 w-8 shrink-0 place-items-center p-0" href={href(previous)}>‹</Link> : null}
+    <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto pb-1">{versions.map((version, index) => (version.hasDetail && (version.detailUrl || version.revisionId && version.modSiteId)) || version.detailUrl
+      ? <Link className={`focus-ring shrink-0 rounded px-2 py-1 text-xs font-black ${index === currentIndex ? "bg-[var(--accent)] text-white" : version.hasDetail ? "bg-[var(--panel-subtle)]" : "border border-[var(--red)] text-[var(--red)]"}`} href={href(version)} key={version.publicId} title={!version.hasDetail ? t("globalCatalog.versionNoDetail") : undefined}>{version.label}</Link>
+      : <span className="shrink-0 rounded bg-[color-mix(in_srgb,var(--red)_10%,transparent)] px-2 py-1 text-xs font-black text-[var(--red)]" key={version.publicId} title={t("globalCatalog.versionNoDetail")}>{version.label}</span>)}</div>
+    {next ? <Link aria-label={t("globalCatalog.nextVersion")} className="button-secondary focus-ring grid h-8 w-8 shrink-0 place-items-center p-0" href={href(next)}>›</Link> : null}
+  </div>;
 }
 
 function EntryProperties({ data, registry, revisionId, siteId }: { data: Record<string, unknown>; registry: string; revisionId: string; siteId: string }) {
@@ -252,6 +265,9 @@ function EntryProperties({ data, registry, revisionId, siteId }: { data: Record<
   const enchanting = record(data.enchanting);
   const attributeModifiers = arrayRecords(data.attribute_modifiers);
   const entityAttributes = arrayRecords(data.default_attributes);
+  const placement = record(data.placement);
+  const isNaturalGeneration = registry === "natural_generation";
+  const isWorldStructure = registry === "world_structures";
   const isBlock = registry === "blocks";
   const isEntity = registry === "entity_types";
   const hasItemProperties = registry === "items" || Object.keys(tool).length > 0 || Object.keys(combat).length > 0 || Object.keys(enchanting).length > 0 || attributeModifiers.length > 0 || Array.isArray(data.item_types);
@@ -293,8 +309,23 @@ function EntryProperties({ data, registry, revisionId, siteId }: { data: Record<
     itemProperty("spawnEggs", data.spawn_eggs), itemProperty("breedingMaterials", data.breeding_materials ?? data.breed_items),
     property("defaultEquipment", data.default_equipment),
   ].filter(hasPropertyValue) : [];
-  if (!blockRows.length && !toolRows.length && !entityRows.length && !attributeModifiers.length && !entityAttributes.length) return null;
-  return <div className="mt-4 space-y-4">{blockRows.length ? <PropertyGroup namespace="blockProperties" title={t("mods.exportImport.entry.blockProperties.title")} rows={blockRows} /> : null}{toolRows.length ? <PropertyGroup namespace="toolProperties" title={t("mods.exportImport.entry.toolProperties.title")} rows={toolRows} /> : null}{entityRows.length ? <PropertyGroup namespace="entityProperties" title={t("mods.exportImport.entry.entityProperties.title")} rows={entityRows} /> : null}{entityAttributes.length ? <EntityAttributes attributes={entityAttributes} /> : null}{attributeModifiers.length ? <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{t("mods.exportImport.entry.toolProperties.attributeModifiers")}</h2><div className="divide-y divide-[var(--line)]">{attributeModifiers.map((slot, index) => <AttributeSlot key={index} slot={slot} />)}</div></section> : null}</div>;
+  const naturalRows: PropertyRow[] = isNaturalGeneration ? [
+    property("entryKind", data.entry_kind), property("category", data.category),
+    property("featureType", data.feature_type ?? data.carver_type), itemProperty("outputs", arrayRecords(data.outputs).map((output) => output.block_id).filter(Boolean)),
+    itemProperty("targets", data.targets), property("size", data.size), property("discardChance", data.discard_chance_on_air_exposure),
+    property("count", placement.count), property("distribution", placement.distribution), property("minY", placement.min_y), property("maxY", placement.max_y),
+    property("probability", data.probability), itemProperty("generationSteps", data.generation_steps), itemProperty("biomeSelectors", data.biome_selectors),
+    itemProperty("resolvedBiomes", data.resolved_biome_ids), itemProperty("dimensions", data.dimension_ids), property("dimensionResolution", data.dimension_resolution),
+    property("normalizationStatus", data.normalization_status),
+  ].filter(hasPropertyValue) : [];
+  const structureRows: PropertyRow[] = isWorldStructure ? [
+    property("structureType", data.structure_type), itemProperty("biomes", Array.isArray(data.biomes) ? data.biomes : data.biomes ? [data.biomes] : []),
+    property("generationStep", data.generation_step), property("terrainAdaptation", data.terrain_adaptation),
+    property("startPool", data.start_pool), property("jigsawSize", data.jigsaw_size), property("startHeight", data.start_height),
+    property("maxDistance", data.max_distance_from_center), itemProperty("structureSets", data.structure_set_ids), property("definitionSource", data.definition_source),
+  ].filter(hasPropertyValue) : [];
+  if (!blockRows.length && !toolRows.length && !entityRows.length && !naturalRows.length && !structureRows.length && !attributeModifiers.length && !entityAttributes.length) return null;
+  return <div className="mt-4 space-y-4">{naturalRows.length ? <PropertyGroup namespace="naturalGenerationProperties" title={t("mods.exportImport.entry.naturalGenerationProperties.title")} rows={naturalRows} /> : null}{structureRows.length ? <PropertyGroup namespace="worldStructureProperties" title={t("mods.exportImport.entry.worldStructureProperties.title")} rows={structureRows} /> : null}{blockRows.length ? <PropertyGroup namespace="blockProperties" title={t("mods.exportImport.entry.blockProperties.title")} rows={blockRows} /> : null}{toolRows.length ? <PropertyGroup namespace="toolProperties" title={t("mods.exportImport.entry.toolProperties.title")} rows={toolRows} /> : null}{entityRows.length ? <PropertyGroup namespace="entityProperties" title={t("mods.exportImport.entry.entityProperties.title")} rows={entityRows} /> : null}{entityAttributes.length ? <EntityAttributes attributes={entityAttributes} /> : null}{attributeModifiers.length ? <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{t("mods.exportImport.entry.toolProperties.attributeModifiers")}</h2><div className="divide-y divide-[var(--line)]">{attributeModifiers.map((slot, index) => <AttributeSlot key={index} slot={slot} />)}</div></section> : null}</div>;
 }
 
 type PropertyRow = { key: string; value: unknown; kind?: "tag" | "loot" | "item"; registry?: string; href?: string };
@@ -304,7 +335,7 @@ function itemProperty(key: string, value: unknown): PropertyRow { return { key, 
 function lootProperty(key: string, value: unknown, siteId: string, revisionId: string): PropertyRow { const id = stringValue(value); return { key, value, kind: "loot", href: id ? exportEntryHref(siteId, revisionId, "lootTables", { entityId: "", registry: "loot_tables", id }) : "" }; }
 function hasPropertyValue(row: PropertyRow) { const value = row.value; return value !== undefined && value !== null && value !== "" && (!Array.isArray(value) || value.length > 0); }
 
-function PropertyGroup({ title, rows, namespace }: { title: string; rows: PropertyRow[]; namespace: "blockProperties" | "toolProperties" | "entityProperties" }) {
+function PropertyGroup({ title, rows, namespace }: { title: string; rows: PropertyRow[]; namespace: "blockProperties" | "toolProperties" | "entityProperties" | "naturalGenerationProperties" | "worldStructureProperties" }) {
   const { t } = useI18n();
   return <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{title}</h2><dl className="divide-y divide-[var(--line)]">{rows.map((row) => <div className="px-4 py-3" key={row.key}><dt className="text-xs font-bold text-[var(--muted)]">{t(`mods.exportImport.entry.${namespace}.${row.key}`)}</dt><dd className="mt-1 break-words text-sm font-semibold"><PropertyValue row={row} /></dd></div>)}</dl></section>;
 }
@@ -417,22 +448,32 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
   const layoutKind = stringValue(layout.layout_kind) || "unknown";
   const sourceMod = stringValue(layout.source_mod_id);
   const sourceVersion = stringValue(layout.source_mod_version);
-  return <article className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
-    {background ? <div className="overflow-auto bg-[#c6c6c6] p-3"><div className="relative mx-auto" style={{ width, height }}><Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={modExportAssetURL(revisionId, background)} />{slots.map((value, index) => <ModRecipeSlot canvasWidth={width} key={index} locale={locale} scale={displayScale} showVisual={!containsIngredients} slot={value} />)}{slots.map((value, index) => <RecipeChanceLabel key={`chance:${index}`} locale={locale} scale={displayScale} slot={value} />)}</div></div> : <div className="grid min-h-32 place-items-center p-4 text-sm text-[var(--muted)]">{String(recipe.type || "Recipe")}</div>}
-    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] px-3 py-2 text-xs text-[var(--muted)]"><code className="break-all">{String(recipe.id || recipe.type || "")}</code><span className="flex items-center gap-2">{sourceMod ? <code>{sourceMod}{sourceVersion ? `@${sourceVersion}` : ""}</code> : null}<span className="shrink-0 rounded bg-[var(--panel-subtle)] px-2 py-1 font-bold">{t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}</span></span></div>
-  </article>;
+  const materials: UnifiedRecipeMaterial[] = slots.filter((slot) => slot.role === "input").map((slot) => { const item = record((Array.isArray(slot.alternatives) ? slot.alternatives : [])[0]); const id = stringValue(item.item) || stringValue(item.resource_location) || (stringValue(slot.tag) ? `#${stringValue(slot.tag)}` : "?"); return { id, name: localizedRecordValue(item.names, minecraftLocale(locale)) || id, amount: recipeMaterialAmount(item) }; });
+  const recipeID = String(recipe.id || recipe.recipeId || recipe.type || "");
+  const recipeType = stringValue(layout.underlying_recipe_type_id) || stringValue(recipe.type);
+  const sourceSiteID = stringValue(recipe.modSiteId);
+  const visual = background ? <div className="relative mx-auto" style={{ width, height }}><Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={modExportAssetURL(revisionId, background)} />{slots.map((value, index) => <ModRecipeSlot canvasWidth={width} key={index} locale={locale} scale={displayScale} showVisual={!containsIngredients} slot={value} />)}</div> : <div className="grid min-h-32 place-items-center p-4 text-sm text-slate-700">{String(recipe.type || "Recipe")}</div>;
+  return <UnifiedRecipeCard badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)} labels={{ materials: t("globalCatalog.materials"), note: t("globalCatalog.recipeNote"), noNote: t("globalCatalog.noNote"), technical: t("globalCatalog.technicalInfo"), recipeType: t("globalCatalog.recipeTypeLabel"), source: t("globalCatalog.sourceLabel") }} materials={materials} note={stringValue(recipe.note)} recipeType={recipeType} recipeTypeHref={recipeType ? `/recipe-types?id=${encodeURIComponent(recipeType)}` : undefined} source={sourceMod ? `${sourceMod}${sourceVersion ? `@${sourceVersion}` : ""}` : ""} sourceHref={sourceSiteID ? `/mods/${encodeURIComponent(sourceSiteID)}` : undefined} technicalInfo={{ recipeId: recipeID, templateId: stringValue(layout.template_id), layoutKind, revisionId }} title={recipeID} visual={visual} />;
 }
 
-function RecipeChanceLabel({ slot, scale, locale }: { slot: Record<string, unknown>; scale: number; locale: string }) {
-  if (slot.chance_available !== true) return null;
-  const text = localizedRecipeChance(slot, locale);
+function recipeMaterialAmount(item: Record<string, unknown>) {
+  if (typeof item.amount_text === "string" && item.amount_text) return item.amount_text;
+  const amount = numberValue(item.amount ?? item.count, 1);
+  const unit = stringValue(item.unit) || stringValue(item.amount_unit);
+  return `${amount}${unit}`;
+}
+
+function ModRecipeCandidateChanceLabel({ candidate, slot, locale }: { candidate: Record<string, unknown>; slot: Record<string, unknown>; locale: string }) {
+  const role = stringValue(slot.role) || stringValue(slot.semantic_role);
+  if (role !== "output" && role !== "byproduct") return null;
+  const candidateHasChance = candidate.chance_available === true || candidate.chance !== undefined || candidate.chance_percent !== undefined || candidate.probability !== undefined || candidate.byproduct !== undefined;
+  const source = candidateHasChance ? candidate : slot;
+  if (source.chance_available === false) return null;
+  const text = localizedRecipeChance(source, locale);
   if (!text) return null;
-  const percent = numberValue(slot.chance_percent, numberValue(slot.chance, Number.NaN) * 100);
+  const percent = numberValue(source.chance_percent, numberValue(source.chance ?? source.probability, Number.NaN) * 100);
   const badgeText = Number.isFinite(percent) ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%` : text;
-  const rect = record(slot.rect);
-  const x = numberValue(rect.x, 0) + numberValue(rect.width, 16) / 2;
-  const y = numberValue(rect.y, 0) + numberValue(rect.height, 16);
-  return <span className="pointer-events-none absolute z-20 -translate-x-1/2 whitespace-nowrap rounded bg-[#242424] px-1 py-0.5 text-[9px] font-black leading-none text-white shadow" style={{ left: x * scale, top: y * scale }} title={text}>{badgeText}</span>;
+  return <span className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-[#242424] px-1 py-0.5 text-[9px] font-black leading-none text-white shadow" title={text}>{badgeText}</span>;
 }
 
 function localizedRecipeChance(slot: Record<string, unknown>, locale: string) {
@@ -461,7 +502,7 @@ function ModRecipeSlot({ slot, scale, locale, canvasWidth, showVisual }: { slot:
   const displayName = tagId ? resourceId : localizedRecordValue(item.names, minecraftLocale(locale)) || itemId;
   const presentation = recipeSlotPresentation(slot, item, scale);
   const src = iconPath && sourceRevisionId ? modExportAssetURL(sourceRevisionId, iconPath) : "";
-  const content = <RecipeResourceVisual canvasWidth={canvasWidth} fallback={tagId ? "#" : "?"} name={displayName} presentation={presentation} resourceId={resourceId} showVisual={showVisual} src={src} />;
+  const content = <><RecipeResourceVisual canvasWidth={canvasWidth} fallback={tagId ? "#" : "?"} name={displayName} presentation={presentation} resourceId={resourceId} showVisual={showVisual} src={src} /><ModRecipeCandidateChanceLabel candidate={item} locale={locale} slot={slot} /></>;
   const label = `${displayName || resourceId} (${resourceId})`;
   const slotClass = "group focus-ring absolute z-10 hover:z-40 focus-visible:z-40";
   if (tagId) return <Link aria-label={label} className={slotClass} href={`/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`} style={presentation.style}>{content}</Link>;
@@ -484,20 +525,24 @@ function exportEntryHref(siteId: string, revisionId: string, category: string, e
   return `/mods/${encodeURIComponent(siteId)}/data/${encodeURIComponent(revisionId)}/${encodeURIComponent(category)}/entry?${params}`;
 }
 
-function advancementRoots(entries: ModExportRegistryEntry[]) {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]));
-  const groups = new Map<string, ModExportRegistryEntry[]>();
-  for (const entry of entries) {
-    let current = entry;
-    const visited = new Set<string>();
-    while (typeof current.data.parent === "string" && byId.has(current.data.parent) && !visited.has(current.id)) { visited.add(current.id); current = byId.get(current.data.parent)!; }
-    const group = groups.get(current.id) ?? [];
-    group.push(entry); groups.set(current.id, group);
-  }
-  return [...groups.entries()].map(([id, groupEntries]) => ({ root: byId.get(id) ?? groupEntries[0], entries: groupEntries }));
+function exportResourceIndexEntry(entry: ModExportRegistryEntry, props: Omit<IndexProps, "entries">): ResourceIndexEntry {
+  const display = record(entry.data.display);
+  const x = numberValue(display.x, Number.NaN);
+  const y = numberValue(display.y, Number.NaN);
+  return {
+    key: `${entry.registry}:${entry.id}`,
+    id: entry.id,
+    name: localizedName(entry, props.locale),
+    kindCode: entry.registry === "blocks" ? "minecraft.block" : entry.registry === "items" ? "minecraft.item" : "minecraft.advancement",
+    iconURL: entry.iconPath ? modExportAssetURL(props.revisionId, entry.iconPath) : "",
+    href: exportEntryHref(props.siteId, props.revisionId, props.categoryKey, entry),
+    parentId: typeof entry.data.parent === "string" ? entry.data.parent : undefined,
+    x: Number.isFinite(x) ? x : undefined,
+    y: Number.isFinite(y) ? y : undefined,
+    frame: typeof display.frame === "string" ? display.frame : undefined,
+  };
 }
 
-function advancementDepth(entry: ModExportRegistryEntry, entries: Map<string, ModExportRegistryEntry>) { let depth = 0; let current = entry; const seen = new Set<string>(); while (typeof current.data.parent === "string" && entries.has(current.data.parent) && !seen.has(current.id)) { seen.add(current.id); current = entries.get(current.data.parent)!; depth++; } return depth; }
 function localizedName(entry: ModExportRegistryEntry, locale: string) { const key = minecraftLocale(locale); return entry.names[key] || entry.names.en_us || entry.names.zh_cn || entry.id; }
 function localizedRecordValue(value: unknown, locale: string) { const values = record(value); return typeof values[locale] === "string" ? values[locale] as string : typeof values.zh_cn === "string" ? values.zh_cn as string : typeof values.en_us === "string" ? values.en_us as string : ""; }
 function lootTableCategory(data: Record<string, unknown>) {
@@ -511,6 +556,11 @@ function lootTableCategory(data: Record<string, unknown>) {
 	if (category === "equipment" || path.startsWith("equipment/")) return "equipment";
 	if (category === "gameplay" || path.startsWith("gameplay/")) return "gameplay";
 	return "other";
+}
+
+function categoryOrder(value: string, order: string[]) {
+  const index = order.indexOf(value);
+  return index < 0 ? order.length : index;
 }
 function arrayRecords(value: unknown) { return Array.isArray(value) ? value.map(record) : []; }
 function formatExportProperty(value: unknown, t: (key: string, values?: Record<string, string | number>) => string) {
@@ -559,7 +609,7 @@ function numberValue(value: unknown, fallback: number) {
   return Number.isFinite(number) ? number : fallback;
 }
 function errorText(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
-function emptyEntryDetail(locale: string): ModExportEntryDetail { return { entityId: "", publicId: "", contentMarkdown: "", contentLocale: locale, modelAvailable: false, modelAssetPaths: [], recipes: [], uses: [] }; }
+function emptyEntryDetail(locale: string): ModExportEntryDetail { return { entityId: "", publicId: "", name: "", summary: "", contentMarkdown: "", contentLocale: locale, contentProvenance: "", modelAvailable: false, modelAssetPaths: [], recipes: [], uses: [], versions: [] }; }
 function Loading() { const { t } = useI18n(); return <div className="grid min-h-64 place-items-center font-bold text-[var(--muted)]">{t("common.loading")}</div>; }
 function UnavailableCategory({ siteId }: { siteId: string }) {
   const { t } = useI18n();

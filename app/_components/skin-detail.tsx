@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
+import { loadOwnedResolvedContent, loadResolvedContent } from "../_lib/editor-api";
 import {
   addToWardrobe,
   deleteSkin,
@@ -15,9 +16,7 @@ import {
   removeFromWardrobe,
   skinTextureURL,
   SkinTexture,
-  SkinVisibility,
   updatePlayerTextures,
-  updateSkin,
 } from "../_lib/skin-api";
 import { notifySite } from "../_lib/site-notice";
 import { SkinPreview2D } from "./skin-preview";
@@ -40,30 +39,28 @@ export function SkinDetail({ publicId }: { publicId: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState({ name: "", description: "", tags: "", visibility: "public" as SkinVisibility, model: "default" as "default" | "slim" });
 
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
     queueMicrotask(() => { if (!cancelled) { setLoading(true); setError(""); } });
     Promise.allSettled([
-      loadSkin(publicId, token || undefined),
+      loadSkin(publicId, token || undefined).then(async (baseTexture) => {
+        const content = baseTexture.canEdit && token
+          ? await loadOwnedResolvedContent("skins", publicId, locale, token, "en").catch(() => undefined)
+          : await loadResolvedContent(publicId, locale, "en", token).catch(() => undefined);
+        return [baseTexture, content] as const;
+      }),
       token ? loadMyPlayerProfiles(token) : Promise.resolve([]),
     ]).then(([textureResult, profileResult]) => {
       if (cancelled) return;
       if (textureResult.status === "rejected") {
         setError(textureResult.reason instanceof Error ? textureResult.reason.message : t("skins.loadFailed"));
       } else {
-        const nextTexture = textureResult.value;
+        const [baseTexture, content] = textureResult.value;
+        const fields = content?.localization?.fields;
+        const nextTexture = fields ? { ...baseTexture, name: fields.name || baseTexture.name, description: fields.summary || baseTexture.description } : baseTexture;
         setTexture(nextTexture);
-        setDraft({
-          name: nextTexture.name,
-          description: nextTexture.description || "",
-          tags: nextTexture.tags.join(", "),
-          visibility: nextTexture.visibility,
-          model: nextTexture.model,
-        });
       }
       if (profileResult.status === "fulfilled") {
         setProfiles(profileResult.value);
@@ -71,7 +68,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
       }
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [publicId, ready, t, token]);
+  }, [locale, publicId, ready, t, token]);
 
   async function toggleWardrobe() {
     if (!token || !texture) return;
@@ -101,27 +98,6 @@ export function SkinDetail({ publicId }: { publicId: string }) {
       notifySite(t("skins.applied"), texture.name, "success");
     } catch (reason) {
       notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
-    } finally {
-      setBusy("");
-    }
-  }
-
-  async function saveMetadata() {
-    if (!token || !texture || !draft.name.trim()) return;
-    setBusy("save");
-    try {
-      const updated = await updateSkin(texture.publicId, {
-        name: draft.name.trim(),
-        description: draft.description,
-        tags: parseTags(draft.tags),
-        visibility: draft.visibility,
-        model: texture.kind === "skin" ? draft.model : "default",
-      }, token);
-      setTexture(updated);
-      setEditing(false);
-      notifySite(t("skins.textureSaved"), updated.name, "success");
-    } catch (reason) {
-      notifySite(errorMessage(reason, t("skins.saveFailed")), texture.name, "danger");
     } finally {
       setBusy("");
     }
@@ -212,15 +188,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
 
             {texture.canEdit ? (
               <section className="surface rounded-lg p-5">
-                <div className="flex items-center justify-between gap-3"><h2 className="font-black">{t("skins.manageTexture")}</h2><button className="text-sm font-bold text-[var(--accent)]" type="button" onClick={() => setEditing((value) => !value)}>{editing ? t("common.close") : t("common.edit")}</button></div>
-                {editing ? <div className="mt-4 grid gap-3">
-                  <label className="text-sm font-bold">{t("skins.name")}<input className="field mt-1" maxLength={80} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-                  <label className="text-sm font-bold">{t("skins.description")}<textarea className="field mt-1 min-h-28" maxLength={1000} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
-                  <label className="text-sm font-bold">{t("skins.tags")}<input className="field mt-1" value={draft.tags} onChange={(event) => setDraft({ ...draft, tags: event.target.value })} /></label>
-                  <label className="text-sm font-bold">{t("skins.visibility")}<select className="field mt-1" value={draft.visibility} onChange={(event) => setDraft({ ...draft, visibility: event.target.value as SkinVisibility })}><VisibilityOptions /></select></label>
-                  {texture.kind === "skin" ? <label className="text-sm font-bold">{t("skins.model")}<select className="field mt-1" value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value as "default" | "slim" })}><option value="default">{t("skins.modelDefault")}</option><option value="slim">{t("skins.modelSlim")}</option></select></label> : null}
-                  <button className="button-primary focus-ring" disabled={busy === "save" || !draft.name.trim()} type="button" onClick={() => void saveMetadata()}>{busy === "save" ? t("skins.saving") : t("common.save")}</button>
-                </div> : null}
+                <div className="flex items-center justify-between gap-3"><h2 className="font-black">{t("skins.manageTexture")}</h2><Link className="text-sm font-bold text-[var(--accent)]" href={`/skins/${texture.publicId}/edit`} target="_blank" rel="noopener noreferrer">{t("common.edit")} ↗</Link></div>
                 <button className="mt-4 text-sm font-bold text-[var(--red)] hover:underline" disabled={busy === "delete"} type="button" onClick={() => void removeTexture()}>{t("skins.deleteTexture")}</button>
               </section>
             ) : null}
@@ -229,11 +197,6 @@ export function SkinDetail({ publicId }: { publicId: string }) {
       </article>
     </main>
   );
-}
-
-function VisibilityOptions() {
-  const { t } = useI18n();
-  return <><option value="public">{t("skins.visibilityPublic")}</option><option value="unlisted">{t("skins.visibilityUnlisted")}</option><option value="private">{t("skins.visibilityPrivate")}</option></>;
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -248,10 +211,6 @@ function DetailLine({ label, value }: { label: string; value: React.ReactNode })
 
 function StatePanel({ text }: { text: string }) {
   return <main className="grid min-h-[65vh] place-items-center px-4"><div className="surface w-full max-w-lg rounded-lg p-8 text-center font-bold text-[var(--muted)]">{text}</div></main>;
-}
-
-function parseTags(value: string) {
-  return [...new Set(value.split(/[,，\n]/).map((tag) => tag.trim().replace(/^#/, "")).filter(Boolean))].slice(0, 16);
 }
 
 function formatDate(value: string, locale: string) {

@@ -25,8 +25,11 @@ export function SkinViewerCanvas({
 }: Props) {
   const { t } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
+  const autoRotateRef = useRef(autoRotate);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => { autoRotateRef.current = autoRotate; }, [autoRotate]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -102,7 +105,7 @@ export function SkinViewerCanvas({
     const clock = new THREE.Clock();
     const render = () => {
       const delta = Math.min(clock.getDelta(), 0.1);
-      if (avatar && autoRotate) avatar.rotation.y += delta * 0.18;
+      if (avatar && autoRotateRef.current) avatar.rotation.y += delta * 0.18;
       controls.update();
       renderer.render(scene, camera);
       frame = requestAnimationFrame(render);
@@ -121,7 +124,7 @@ export function SkinViewerCanvas({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [autoRotate, capeUrl, model, showOuterLayer, skinUrl, t]);
+  }, [capeUrl, model, showOuterLayer, skinUrl, t]);
 
   return (
     <div className={`relative min-h-80 overflow-hidden ${className}`}>
@@ -139,7 +142,11 @@ async function loadTexture(url: string) {
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;
   texture.generateMipmaps = false;
-  texture.flipY = false;
+  // TextureLoader uploads DOM images bottom-up by default. The UV rectangles
+  // below use Minecraft's top-left atlas coordinates and therefore need the
+  // normal Three.js Y flip. Disabling it made every face sample a vertically
+  // mirrored part of the atlas (often an empty outer-layer area).
+  texture.flipY = true;
   texture.needsUpdate = true;
   return texture;
 }
@@ -178,7 +185,7 @@ function buildAvatar(skin: THREE.Texture | null, cape: THREE.Texture | null, mod
   }
 
   if (cape) {
-    const capeMesh = texturedBox(cape, 10, 16, 1, cubeUV(0, 0, 10, 16, 1), [0, 2, -2.8], false, true);
+    const capeMesh = texturedBox(cape, 10, 16, 1, cubeUV(0, 0, 10, 16, 1), [0, 2, -2.8], false, true, capeAtlasScale(cape));
     capeMesh.rotation.x = -0.12;
     group.add(capeMesh);
   }
@@ -194,14 +201,15 @@ function texturedBox(
   position: [number, number, number],
   mirror = false,
   overlay = false,
+  atlasScale = textureWidth(texture) / 64,
 ) {
   const geometry = new THREE.BoxGeometry(width, height, depth);
-  applyFaceUVs(geometry, faces, textureWidth(texture), textureHeight(texture), mirror);
+  applyFaceUVs(geometry, faces, textureWidth(texture), textureHeight(texture), mirror, atlasScale);
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    alphaTest: overlay ? 0.01 : 0,
-    depthWrite: !overlay,
+    alphaTest: 0.01,
+    depthWrite: true,
     side: THREE.FrontSide,
   });
   const mesh = new THREE.Mesh(geometry, Array.from({ length: 6 }, () => material));
@@ -227,11 +235,11 @@ function cubeUV(u: number, v: number, width: number, height: number, depth: numb
   ];
 }
 
-function applyFaceUVs(geometry: THREE.BoxGeometry, faces: UVRect[], atlasWidth: number, atlasHeight: number, mirror: boolean) {
+function applyFaceUVs(geometry: THREE.BoxGeometry, faces: UVRect[], atlasWidth: number, atlasHeight: number, mirror: boolean, atlasScale: number) {
   const uv = geometry.attributes.uv as THREE.BufferAttribute;
-  const atlasScale = atlasWidth / 64;
   for (let face = 0; face < 6; face += 1) {
-    const rect = faces[face];
+    const sourceFace = mirror && face === 0 ? 1 : mirror && face === 1 ? 0 : face;
+    const rect = faces[sourceFace];
     const left = rect.x * atlasScale / atlasWidth;
     const right = (rect.x + rect.width) * atlasScale / atlasWidth;
     const top = 1 - rect.y * atlasScale / atlasHeight;
@@ -245,6 +253,14 @@ function applyFaceUVs(geometry: THREE.BoxGeometry, faces: UVRect[], atlasWidth: 
     uv.setXY(offset + 3, u1, bottom);
   }
   uv.needsUpdate = true;
+}
+
+function capeAtlasScale(texture: THREE.Texture) {
+  const width = textureWidth(texture);
+  const height = textureHeight(texture);
+  // Both the modern 64x32 cape atlas and the legacy 22x17 atlas use the
+  // same 10x16x1 cuboid layout, but their scaling bases differ.
+  return width / height < 1.6 ? width / 22 : width / 64;
 }
 
 function textureWidth(texture: THREE.Texture) {
