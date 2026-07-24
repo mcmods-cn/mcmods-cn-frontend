@@ -592,7 +592,7 @@ const emptyConfig: AdminConfig = {
     translation: {
       enabled: false,
       sourceLocale: "zh-CN",
-      targetLocales: ["en"],
+      targetLocales: ["en-US"],
       taskType: "translation",
       autoSubmit: false,
       glossary: "",
@@ -2833,7 +2833,7 @@ function AITaskLogsPanel({ token }: { token: string }) {
           method: "POST",
           body: JSON.stringify({
             taskType: aiTranslationTaskTypes.i18n,
-            payload: { sourceLocale: "zh-CN", targetLocale: "en", items: [{ key: "test", text: "测试" }] },
+            payload: { sourceLocale: "zh-CN", targetLocale: "en-US", items: [{ key: "test", text: "测试" }] },
           }),
         },
         token,
@@ -4039,7 +4039,7 @@ function NotificationTemplatePanel({ token }: { token: string }) {
   const { locale, t } = useI18n();
   const [templates, setTemplates] = useState<NotificationTemplateDefinition[]>([]);
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
-  const [targetLocale, setTargetLocale] = useState<Locale>(locale === "zh-CN" ? "en" : locale);
+  const [targetLocale, setTargetLocale] = useState<Locale>(locale === "zh-CN" ? "en-US" : locale);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -5573,7 +5573,7 @@ function editableLocalizedText(
   const name = value.name?.trim() ?? "";
   const description = value.description?.trim() ?? "";
   if (!name && !description) return { name: "", description: "" };
-  const baseLocale = detectTextLocale(`${name} ${description}`.trim(), "en");
+  const baseLocale = detectTextLocale(`${name} ${description}`.trim(), "en-US");
   return baseLocale === locale ? { name, description } : { name: "", description: "" };
 }
 
@@ -5614,16 +5614,16 @@ function normalizeEntityTranslations(value: { name: string; description: string;
 
 function preferredTranslationLocale(translations: LocalizedTexts): Locale {
   if (translations["zh-CN"]) return "zh-CN";
-  if (translations.en) return "en";
+  if (translations["en-US"]) return "en-US";
   const first = Object.keys(translations).find((key): key is Locale =>
     supportedLocales.some((locale) => locale.code === key),
   );
-  return first ?? "en";
+  return first ?? "en-US";
 }
 
 function withFallbackLocalizedText<T extends { name: string; description: string; translations?: LocalizedTexts }>(value: T): T {
   const translations = normalizeEntityTranslations(value);
-  const fallback = translations["zh-CN"] ?? translations.en ?? Object.values(translations)[0];
+  const fallback = translations["zh-CN"] ?? translations["en-US"] ?? Object.values(translations)[0];
   return {
     ...value,
     name: value.name.trim() || fallback?.name || "Unnamed",
@@ -5646,9 +5646,9 @@ function buildNewPermissionPayload(code: string, nameInput: string, descriptionI
 }
 
 function detectTextLocale(text: string, preferredLocale: Locale): Locale {
-  if (/[\u3040-\u30ff]/.test(text)) return "ja";
+  if (/[\u3040-\u30ff]/.test(text)) return "ja-JP";
   if (/[\u3400-\u9fff]/.test(text)) return "zh-CN";
-  return preferredLocale || "en";
+  return preferredLocale || "en-US";
 }
 
 function newPermissionDescription() {

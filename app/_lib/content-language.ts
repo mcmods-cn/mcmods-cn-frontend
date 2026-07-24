@@ -1,24 +1,26 @@
-import type { Locale } from "./i18n-provider";
+import { normalizeUILocale, type Locale } from "./i18n-provider";
 import type { CatalogResourceRef, ContentLanguageTag, LocalizationVersion } from "./editor-types";
 
-export const editableContentLanguages = ["zh-CN", "zh-TW", "en", "ja", "fr", "de", "es", "ru"] as const satisfies readonly Locale[];
+export const editableContentLanguages = ["zh-CN", "zh-TW", "en-US", "ja-JP", "fr-FR", "de-DE", "es-ES", "ru-RU"] as const satisfies readonly Locale[];
 
 const editableLanguageSet = new Set<string>(editableContentLanguages);
 
 const minecraftLocaleAliases: Record<Locale, readonly string[]> = {
   "zh-CN": ["zh-CN", "zh_cn", "zh-Hans", "zh_hans"],
   "zh-TW": ["zh-TW", "zh_tw", "zh-Hant", "zh_hant"],
-  en: ["en", "en-US", "en_us"],
-  ja: ["ja", "ja-JP", "ja_jp"],
-  fr: ["fr", "fr-FR", "fr_fr"],
-  de: ["de", "de-DE", "de_de"],
-  es: ["es", "es-ES", "es_es"],
-  ru: ["ru", "ru-RU", "ru_ru"],
+  "en-US": ["en-US", "en", "en_us"],
+  "ja-JP": ["ja-JP", "ja", "ja_jp"],
+  "fr-FR": ["fr-FR", "fr", "fr_fr"],
+  "de-DE": ["de-DE", "de", "de_de"],
+  "es-ES": ["es-ES", "es", "es_es"],
+  "ru-RU": ["ru-RU", "ru", "ru_ru"],
 };
 
 export function normalizeContentLanguage(value: ContentLanguageTag | null | undefined) {
   const candidate = value?.trim().replaceAll("_", "-") ?? "";
   if (!candidate) return "";
+  const supported = normalizeUILocale(candidate);
+  if (supported) return supported;
   try {
     return Intl.getCanonicalLocales(candidate)[0] ?? candidate;
   } catch {
@@ -36,7 +38,7 @@ export function toEditableContentLanguage(value: ContentLanguageTag | null | und
       ? "zh-TW"
       : "zh-CN";
   }
-  return editableContentLanguages.find((item) => item === language);
+  return editableContentLanguages.find((item) => item.toLowerCase().startsWith(`${language}-`));
 }
 
 export function isEditableContentLanguage(value: ContentLanguageTag | null | undefined): value is Locale {
@@ -47,7 +49,7 @@ export function isEditableContentLanguage(value: ContentLanguageTag | null | und
 export function contentLanguageCandidates(
   primary: ContentLanguageTag,
   secondary = "",
-  defaultLanguage: ContentLanguageTag = "en",
+  defaultLanguage: ContentLanguageTag = "en-US",
 ) {
   const result: string[] = [];
   const seen = new Set<string>();
@@ -69,7 +71,7 @@ export function contentLanguageCandidates(
   addWithChineseSibling(primary);
   addWithChineseSibling(secondary);
   addWithChineseSibling(defaultLanguage);
-  add("en");
+  add("en-US");
   return result;
 }
 
@@ -85,7 +87,7 @@ export function resolveAvailableLocalization<TFields>(
   versions: readonly LocalizationVersion<TFields>[],
   primary: ContentLanguageTag,
   secondary = "",
-  defaultLanguage: ContentLanguageTag = "en",
+  defaultLanguage: ContentLanguageTag = "en-US",
 ) {
   for (const candidate of contentLanguageCandidates(primary, secondary, defaultLanguage)) {
     const version = findLocalizationVersion(versions, candidate);
@@ -105,7 +107,7 @@ export function localizedCatalogResourceName(
   resource: Pick<CatalogResourceRef, "id" | "names" | "resolvedName">,
   primary: ContentLanguageTag,
   secondary = "",
-  defaultLanguage: ContentLanguageTag = "en",
+  defaultLanguage: ContentLanguageTag = "en-US",
 ) {
   if (resource.resolvedName?.trim()) return resource.resolvedName.trim();
   const values = new Map<string, string>();

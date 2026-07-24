@@ -102,7 +102,7 @@ export function contentLocales(locale: string) {
 }
 
 export function localizedCatalogName(names: Record<string, string> | undefined, locale: string, fallback: string) {
-  return localizedCatalogResourceName({ id: fallback, names: names ?? {} }, locale, "", "en") || fallback;
+  return localizedCatalogResourceName({ id: fallback, names: names ?? {} }, locale, "", "en-US") || fallback;
 }
 
 export function catalogAssetURL(revisionId: string, assetPath: string) {

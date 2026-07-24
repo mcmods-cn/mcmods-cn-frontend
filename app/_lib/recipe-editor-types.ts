@@ -55,6 +55,17 @@ export type RecipeTypeOption = {
   templateCount?: number;
 };
 
+export type RecipeSourceVersionOption = {
+  publicId: string;
+  modPublicId: string;
+  modSiteId: string;
+  modName: string;
+  label: string;
+  minecraftVersions: string[];
+  loaders: string[];
+  modVersion: string;
+};
+
 export type RecipeCandidate = {
   resource: CatalogResourceRef;
   amount: number;
@@ -72,6 +83,8 @@ export type RecipeRecord = {
   publicId?: string;
   recipeTypePublicId: string;
   templatePublicId: string;
+  sourceVersionPublicId?: string;
+  sourceVersion?: RecipeSourceVersionOption;
   canonicalSourceId: string;
   definition?: Record<string, unknown>;
   bindings: Record<string, RecipeBinding>;
@@ -90,6 +103,8 @@ export type RecipeSummary = {
   definition: Record<string, unknown>;
   bindingCount: number;
   source: "canonical" | "import";
+  sourceVersionPublicId?: string;
+  sourceVersion?: RecipeSourceVersionOption;
   importRevisionId?: string;
   locale?: string;
   name?: string;
@@ -122,6 +137,7 @@ export type RecipeMutation = {
   localizations: Array<RecipeLocalizedFields & { locale: string }>;
   recipeTypePublicId: string;
   templatePublicId: string;
+  sourceVersionPublicId?: string;
   canonicalSourceId: string;
   definition: Record<string, unknown>;
   bindings: Record<string, {

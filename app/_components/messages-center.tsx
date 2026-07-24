@@ -61,12 +61,14 @@ export function MessagesCenter() {
   const [mode, setMode] = useState<"notifications" | "chats">(targetUserID > 0 ? "chats" : "notifications");
   const [kind, setKind] = useState<NotificationKind>("system");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversationID, setSelectedConversationID] = useState<number | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [messageDraft, setMessageDraft] = useState("");
   const [translations, setTranslations] = useState<Record<number, Translation>>({});
   const [translatingID, setTranslatingID] = useState<number | null>(null);
+  const [markingAllRead, setMarkingAllRead] = useState(false);
   const [aiBalance, setAIBalance] = useState<AIBalance | null>(null);
   const [status, setStatus] = useState("");
 
@@ -77,6 +79,12 @@ export function MessagesCenter() {
     const result = await apiRequest<NotificationItem[]>(`/api/v1/notifications?kind=${kind}`, {}, token);
     setNotifications(result);
   }, [kind, token]);
+
+  const loadUnreadNotifications = useCallback(async () => {
+    if (!token) return;
+    const result = await apiRequest<{ notifications: number }>("/api/v1/notifications/unread", {}, token);
+    setUnreadNotifications(result.notifications);
+  }, [token]);
 
   const loadConversations = useCallback(async () => {
     if (!token) return;
@@ -100,12 +108,12 @@ export function MessagesCenter() {
   useEffect(() => {
     if (!token) return;
     const timer = window.setTimeout(() => {
-      void Promise.all([loadNotifications(), loadConversations(), loadBalance()]).catch((error) => {
+      void Promise.all([loadNotifications(), loadUnreadNotifications(), loadConversations(), loadBalance()]).catch((error) => {
         setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadBalance, loadConversations, loadNotifications, t, token]);
+  }, [loadBalance, loadConversations, loadNotifications, loadUnreadNotifications, t, token]);
 
   useEffect(() => {
     if (!token || targetUserID <= 0 || targetUserID === user?.id) return;
@@ -145,9 +153,26 @@ export function MessagesCenter() {
     try {
       await apiRequest(`/api/v1/notifications/${item.id}/read`, { method: "POST" }, token);
       setNotifications((current) => current.map((entry) => entry.id === item.id ? { ...entry, read: true } : entry));
+      setUnreadNotifications((current) => Math.max(0, current - 1));
       window.dispatchEvent(new Event("mcmods-unread-change"));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("messages.markReadFailed"));
+    }
+  }
+
+  async function markAllRead() {
+    if (!token || markingAllRead || unreadNotifications === 0) return;
+    setMarkingAllRead(true);
+    setStatus("");
+    try {
+      await apiRequest<{ read: true; updated: number }>("/api/v1/notifications/read-all", { method: "POST" }, token);
+      setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+      setUnreadNotifications(0);
+      window.dispatchEvent(new Event("mcmods-unread-change"));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t("messages.markReadFailed"));
+    } finally {
+      setMarkingAllRead(false);
     }
   }
 
@@ -228,6 +253,11 @@ export function MessagesCenter() {
               {aiBalance ? <AIBalanceCard balance={aiBalance} /> : null}
             </aside>
             <section className="grid content-start gap-3">
+              <div className="flex justify-end">
+                <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={markingAllRead || unreadNotifications === 0} type="button" onClick={() => void markAllRead()}>
+                  {markingAllRead ? t("messages.markingAllRead") : t("messages.markAllRead")}
+                </button>
+              </div>
               {notifications.map((item) => {
                 const translated = translations[item.id];
                 return (

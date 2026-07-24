@@ -100,7 +100,7 @@ function sectionResourceIconURL(resource: ModContentSectionResource) {
 
 function localizedResourceName(resource: ModContentSectionResource, locale: string) {
   const names = resource.names || {};
-  for (const candidate of contentLanguageCandidates(locale, "", "en")) {
+  for (const candidate of contentLanguageCandidates(locale, "", "en-US")) {
     const normalized = normalizeContentLanguage(candidate).toLowerCase();
     const match = Object.entries(names).find(([key]) => normalizeContentLanguage(key).toLowerCase() === normalized);
     if (match?.[1]) return match[1];
@@ -111,7 +111,7 @@ function localizedResourceName(resource: ModContentSectionResource, locale: stri
 function localizedSectionName(section: ModContentSection, locale: string, t: (key: string) => string) {
   const values = section.localizations;
   return values.find((item) => normalizeContentLanguage(item.locale) === normalizeContentLanguage(locale))?.name
-    || values.find((item) => normalizeContentLanguage(item.locale) === "en")?.name
+    || values.find((item) => normalizeContentLanguage(item.locale) === "en-US")?.name
     || values[0]?.name
     || t(`modContent.templates.${section.templateCode}`);
 }

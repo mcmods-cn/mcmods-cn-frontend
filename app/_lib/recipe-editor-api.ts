@@ -6,6 +6,7 @@ import type {
   RecipeLocalizedFields,
   RecipeRecord,
   RecipeSummaryPage,
+  RecipeSourceVersionOption,
   RecipeTemplateMutation,
   RecipeTemplateRecord,
   RecipeTypeOption,
@@ -40,6 +41,15 @@ export async function loadRecipeTypeOptions(token = "", signal?: AbortSignal) {
     offset += rows.length;
   }
   return items;
+}
+
+export async function loadRecipeSourceVersions(token = "", signal?: AbortSignal): Promise<RecipeSourceVersionOption[]> {
+  const value = await apiRequest<unknown>(
+    "/api/v1/catalog/recipe-source-versions?limit=1000",
+    { signal },
+    token || undefined,
+  );
+  return arrayFromEnvelope(value, "items").map(normalizeRecipeSourceVersion).filter((item): item is RecipeSourceVersionOption => Boolean(item));
 }
 
 export async function loadRecipeTemplates(recipeTypePublicId: string, token = "", signal?: AbortSignal) {
@@ -81,6 +91,8 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
     publicId: stringValue(row.publicId) || publicId,
     recipeTypePublicId,
     templatePublicId,
+    sourceVersionPublicId: stringValue(row.sourceVersionPublicId) || undefined,
+    sourceVersion: normalizeRecipeSourceVersion(row.sourceVersion),
     canonicalSourceId: stringValue(row.canonicalSourceId),
     definition: objectValue(row.definition),
     bindings: Object.fromEntries(Object.entries(bindingRows).map(([slotKey, value]) => {
@@ -98,7 +110,7 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
               id: canonicalId,
               registry: canonicalId.includes(":") ? canonicalId.slice(0, canonicalId.indexOf(":")) : "",
               kind: stringValue(item.kindCode) || stringValue(item.kind),
-              names: stringValue(item.name) ? { [stringValue(row.defaultLocale) || "en"]: stringValue(item.name) } : {},
+      names: stringValue(item.name) ? { [stringValue(row.defaultLocale) || "en-US"]: stringValue(item.name) } : {},
             },
             amount: numberValue(item.amount, 1),
             probability,
@@ -112,6 +124,22 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
     localizations: normalizeLocalizations(row.localizations),
     publishedRevisionId: optionalNumber(row.publishedRevisionId),
     reviewStatus: optionalReviewStatus(row.reviewStatus),
+  };
+}
+
+function normalizeRecipeSourceVersion(value: unknown): RecipeSourceVersionOption | undefined {
+  const row = objectValue(value);
+  const publicId = stringValue(row.publicId);
+  if (!publicId) return undefined;
+  return {
+    publicId,
+    modPublicId: stringValue(row.modPublicId),
+    modSiteId: stringValue(row.modSiteId),
+    modName: stringValue(row.modName),
+    label: stringValue(row.label),
+    minecraftVersions: arrayValue(row.minecraftVersions).map(stringValue).filter(Boolean),
+    loaders: arrayValue(row.loaders).map(stringValue).filter(Boolean),
+    modVersion: stringValue(row.modVersion),
   };
 }
 
@@ -141,6 +169,8 @@ export async function loadRecipeSummaries(
       definition: objectValue(row.definition),
       bindingCount: numberValue(row.bindingCount),
       source: row.source === "canonical" ? "canonical" as const : "import" as const,
+      sourceVersionPublicId: stringValue(row.sourceVersionPublicId) || undefined,
+      sourceVersion: normalizeRecipeSourceVersion(row.sourceVersion),
       importRevisionId: stringValue(row.importRevisionId) || undefined,
       locale: stringValue(row.locale) || undefined,
       name: stringValue(row.name) || undefined,
@@ -312,7 +342,7 @@ function optionalNumber(value: unknown) {
 
 function localizedName(value: unknown) {
   const names = objectValue(value);
-  for (const candidate of [names["zh-CN"], names["zh-TW"], names.en, ...Object.values(names)]) {
+  for (const candidate of [names["zh-CN"], names["zh-TW"], names["en-US"], names.en, ...Object.values(names)]) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
   return "";

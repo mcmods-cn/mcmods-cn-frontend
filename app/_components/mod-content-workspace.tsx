@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
+import { normalizeContentLanguage } from "../_lib/content-language";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import type { BackendModCompatibility, BackendModRecord, MinecraftVersionConfig } from "../_lib/mod-api";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
@@ -356,7 +357,7 @@ function ImportOverwriteChoice({ checked, onChange }: { checked: boolean; onChan
   return <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><input className="mt-1 h-4 w-4 accent-[var(--accent)]" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong className="block">{t("mods.exportImport.overwriteExisting")}</strong><small className="mt-1 block leading-5 text-[var(--muted)]">{t("mods.exportImport.overwriteExistingHint")}</small></span></label>;
 }
 
-function localizedName(values: ModContentLocalization[], locale: string) { return values.find((item) => item.locale === locale)?.name || values.find((item) => item.locale === "en")?.name || values[0]?.name || ""; }
+function localizedName(values: ModContentLocalization[], locale: string) { return values.find((item) => item.locale === locale)?.name || values.find((item) => normalizeContentLanguage(item.locale) === "en-US")?.name || values[0]?.name || ""; }
 function uniqueValues(values: string[]) { return [...new Set(values.map((item) => item.trim()).filter(Boolean))]; }
 function toggleValue(values: string[], value: string) { return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]; }
 function versionLabel(versions: string[], loaders: string[]) { return versions.length && loaders.length ? `${versions.join(", ")} / ${loaders.join(", ")}` : ""; }

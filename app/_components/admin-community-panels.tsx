@@ -1499,7 +1499,7 @@ function LocalizedFieldsEditor({
 }) {
   const { locale, t } = useI18n();
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
-  const [targetLocale, setTargetLocale] = useState<Locale>(() => (locale === "zh-CN" ? "en" : locale));
+  const [targetLocale, setTargetLocale] = useState<Locale>(() => (locale === "zh-CN" ? "en-US" : locale));
   const source = referenceTranslationFields(translations, sourceLocale, baseName, baseDescription);
   const target = translationFields(translations, targetLocale);
 
@@ -1581,9 +1581,9 @@ function referenceTranslationFields(
 }
 
 function inferTranslationLocale(text: string): Locale {
-  if (/[\u3040-\u30ff]/.test(text)) return "ja";
+  if (/[\u3040-\u30ff]/.test(text)) return "ja-JP";
   if (/[\u3400-\u9fff]/.test(text)) return "zh-CN";
-  return "en";
+  return "en-US";
 }
 
 function translationFields(translations: Record<string, unknown>, locale: Locale): TranslationFields {

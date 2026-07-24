@@ -30,7 +30,7 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId }: { si
   const currentIndex = requestedIndex >= 0 ? requestedIndex : Math.max(0, firstDetailedIndex);
   const current = detail.versions[currentIndex];
   const versionDetail = detail.details.find((item) => item.versionPublicId === current?.publicId);
-  const localization = resolveVersionLocalization(versionDetail?.localizations || [], locale, versionDetail?.defaultLocale || "en");
+  const localization = resolveVersionLocalization(versionDetail?.localizations || [], locale, versionDetail?.defaultLocale || "en-US");
   const missing = !versionDetail;
 
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><article className="mx-auto max-w-6xl">

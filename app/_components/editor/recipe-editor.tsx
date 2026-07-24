@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "../../_lib/api";
 import { catalogResourceIconURL } from "../../_lib/editor-api";
 import type { CatalogResourceRef, LocalizationVersion } from "../../_lib/editor-types";
-import { deleteRecipe, loadRecipeTemplate, loadRecipeTemplates, loadRecipeTypeOptions, saveRecipe } from "../../_lib/recipe-editor-api";
+import { deleteRecipe, loadRecipeSourceVersions, loadRecipeTemplate, loadRecipeTemplates, loadRecipeTypeOptions, saveRecipe } from "../../_lib/recipe-editor-api";
 import type {
   CatalogEditResult,
   RecipeBinding,
@@ -13,6 +13,7 @@ import type {
   RecipeMutation,
   RecipeRecord,
   RecipeSlotRole,
+  RecipeSourceVersionOption,
   RecipeTemplateRecord,
   RecipeTemplateSlot,
   RecipeTypeOption,
@@ -32,6 +33,11 @@ export type RecipeEditorLabels = {
   selectRecipeType: string;
   loadingRecipeTypes: string;
   noRecipeTypes: string;
+  sourceVersion: string;
+  sourceVersionHint: string;
+  noSourceVersion: string;
+  loadingSourceVersions: string;
+  noSourceVersions: string;
   template: string;
   selectTemplate: string;
   loadingTemplates: string;
@@ -104,6 +110,7 @@ export function RecipeEditor({
   const [dirtyLocales, setDirtyLocales] = useState<Set<string>>(() => new Set());
   const [activeLocale, setActiveLocale] = useState<Locale>(contentDefaultLocale);
   const [loadedRecipeTypes, setLoadedRecipeTypes] = useState<RecipeTypeOption[]>([]);
+  const [sourceVersions, setSourceVersions] = useState<RecipeSourceVersionOption[]>(() => initialValue?.sourceVersion ? [initialValue.sourceVersion] : []);
   const [loadedTemplates, setLoadedTemplates] = useState<RecipeTemplateRecord[]>([]);
   const [loadedTemplateDetail, setLoadedTemplateDetail] = useState<RecipeTemplateRecord>();
   const [selectedSlotKey, setSelectedSlotKey] = useState("");
@@ -111,6 +118,7 @@ export function RecipeEditor({
   const [definitionText, setDefinitionText] = useState(() => prettyJSON(initialValue?.definition ?? {}));
   const [reason, setReason] = useState("");
   const [loadingTypes, setLoadingTypes] = useState(!providedRecipeTypes);
+  const [loadingSourceVersions, setLoadingSourceVersions] = useState(true);
   const [loadingTemplates, setLoadingTemplates] = useState(Boolean(initialValue?.recipeTypePublicId && !initialTemplates.some((item) => item.recipeTypePublicId === initialValue.recipeTypePublicId)));
   const [loadingTemplateDetail, setLoadingTemplateDetail] = useState(Boolean(initialValue?.templatePublicId && !initialTemplates.some((item) => item.publicId === initialValue.templatePublicId && (item.detailLoaded || item.slots.length > 0))));
   const [saving, setSaving] = useState(false);
@@ -143,6 +151,20 @@ export function RecipeEditor({
       .finally(() => setLoadingTypes(false));
     return () => controller.abort();
   }, [labels.loadFailed, providedRecipeTypes, token]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadRecipeSourceVersions(token, controller.signal)
+      .then((items) => {
+        setSourceVersions((current) => mergeSourceVersionOptions(items, current));
+      })
+      .catch((reason: unknown) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setFailure(reason instanceof Error ? reason.message : labels.loadFailed);
+      })
+      .finally(() => setLoadingSourceVersions(false));
+    return () => controller.abort();
+  }, [labels.loadFailed, token]);
 
   useEffect(() => {
     const recipeTypePublicId = draft.recipeTypePublicId;
@@ -313,6 +335,7 @@ export function RecipeEditor({
         <label className="grid gap-2 text-sm font-bold">{labels.recipeType}<select className="field" disabled={recipeTypesLoading || Boolean(draft.publicId)} value={draft.recipeTypePublicId} onChange={(event) => changeRecipeType(event.target.value)}><option value="">{recipeTypesLoading ? labels.loadingRecipeTypes : labels.selectRecipeType}</option>{recipeTypes.map((item) => <option key={item.publicId} value={item.publicId}>{item.name} ({item.canonicalId})</option>)}</select>{!recipeTypesLoading && !recipeTypes.length ? <small className="text-[var(--muted)]">{labels.noRecipeTypes}</small> : null}</label>
         <label className="grid gap-2 text-sm font-bold">{labels.template}<select className="field" disabled={!draft.recipeTypePublicId || loadingTemplates} value={draft.templatePublicId} onChange={(event) => changeTemplate(event.target.value)}><option value="">{loadingTemplates ? labels.loadingTemplates : labels.selectTemplate}</option>{templates.map((item) => <option key={item.publicId || item.templateKey} value={item.publicId}>{item.templateKey}</option>)}</select>{draft.recipeTypePublicId && !loadingTemplates && !templates.length ? <small className="text-[var(--muted)]">{labels.noTemplates}</small> : null}</label>
       </div>
+      <label className="grid gap-2 text-sm font-bold">{labels.sourceVersion}<select className="field" disabled={loadingSourceVersions} value={draft.sourceVersionPublicId ?? ""} onChange={(event) => setDraft((current) => ({ ...current, sourceVersionPublicId: event.target.value || undefined }))}><option value="">{loadingSourceVersions ? labels.loadingSourceVersions : labels.noSourceVersion}</option>{sourceVersionGroups(sourceVersions).map((group) => <optgroup key={group.key} label={group.label}>{group.items.map((item) => <option key={item.publicId} value={item.publicId}>{sourceVersionOptionLabel(item)}</option>)}</optgroup>)}</select><small className="text-[var(--muted)]">{!loadingSourceVersions && !sourceVersions.length ? labels.noSourceVersions : labels.sourceVersionHint}</small></label>
       <label className="grid gap-2 text-sm font-bold">{labels.canonicalSourceId}<input className="field font-mono" required value={draft.canonicalSourceId} onChange={(event) => setDraft((current) => ({ ...current, canonicalSourceId: event.target.value }))} /></label>
       <label className="grid gap-2 text-sm font-bold">{labels.definition}<textarea className="field min-h-28 font-mono text-xs" spellCheck={false} value={definitionText} onChange={(event) => setDefinitionText(event.target.value)} /></label>
     </section>
@@ -364,7 +387,7 @@ function CandidateEditor({ candidate, role, index, labels, onChange, onRemove }:
 }
 
 function initialRecipe(value?: RecipeRecord): RecipeRecord {
-  if (value) return { ...value, definition: { ...value.definition }, bindings: Object.fromEntries(Object.entries(value.bindings).map(([key, binding]) => [key, { ...binding, candidates: binding.candidates.map((candidate) => ({ ...candidate, resource: { ...candidate.resource }, definition: { ...candidate.definition } })) }])) };
+  if (value) return { ...value, sourceVersion: value.sourceVersion ? { ...value.sourceVersion } : undefined, definition: { ...value.definition }, bindings: Object.fromEntries(Object.entries(value.bindings).map(([key, binding]) => [key, { ...binding, candidates: binding.candidates.map((candidate) => ({ ...candidate, resource: { ...candidate.resource }, definition: { ...candidate.definition } })) }])) };
   return { recipeTypePublicId: "", templatePublicId: "", canonicalSourceId: "", definition: {}, bindings: {} };
 }
 
@@ -391,6 +414,7 @@ function recipeMutation(draft: RecipeRecord, template: RecipeTemplateRecord, ver
     localizations: recipeMutationLocalizations(versions, dirtyLocales, defaultLocale, Boolean(draft.publicId)),
     recipeTypePublicId: draft.recipeTypePublicId,
     templatePublicId: draft.templatePublicId,
+    sourceVersionPublicId: draft.sourceVersionPublicId || undefined,
     canonicalSourceId: draft.canonicalSourceId.trim(),
     definition,
     bindings: Object.fromEntries(Object.entries(draft.bindings).filter(([, binding]) => binding.candidates.length > 0).map(([slotKey, binding]) => {
@@ -407,6 +431,28 @@ function recipeMutation(draft: RecipeRecord, template: RecipeTemplateRecord, ver
       }];
     })),
   };
+}
+
+function mergeSourceVersionOptions(items: RecipeSourceVersionOption[], current: RecipeSourceVersionOption[]) {
+  const incoming = new Set(items.map((item) => item.publicId));
+  return [...current.filter((item) => !incoming.has(item.publicId)), ...items];
+}
+
+function sourceVersionGroups(items: RecipeSourceVersionOption[]) {
+  const groups = new Map<string, { key: string; label: string; items: RecipeSourceVersionOption[] }>();
+  for (const item of items) {
+    const key = item.modPublicId || item.modSiteId || item.modName;
+    const group = groups.get(key) ?? { key, label: item.modName || item.modSiteId || item.modPublicId, items: [] };
+    group.items.push(item);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
+function sourceVersionOptionLabel(item: RecipeSourceVersionOption) {
+  const context = [item.minecraftVersions.join(", "), item.loaders.join(", ")].filter(Boolean).join(" / ");
+  const modVersion = item.modVersion ? ` · ${item.modVersion}` : "";
+  return `${item.label || context || item.publicId}${modVersion}`;
 }
 
 function recipeMutationLocalizations(versions: LocalizationVersion<RecipeLocalizedFields>[], dirtyLocales: ReadonlySet<string>, defaultLocale: Locale, editing: boolean) {

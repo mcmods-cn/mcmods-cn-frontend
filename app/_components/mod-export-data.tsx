@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
+import { normalizeContentLanguage } from "../_lib/content-language";
 import { modExportCategories, ModExportCategory, modExportCategoryTitle } from "../_lib/mod-export-catalog";
 import {
   ModExportJob,
@@ -190,12 +191,12 @@ function mergeCatalogCategories(exportCategories: ModExportCategory[], sections:
 
 function localizedSectionName(section: ModContentSection, template: ModContentTemplate | undefined, locale: string, t: (key: string, values?: Record<string, string | number>) => string) {
   const values = section.localizations.length ? section.localizations : template?.localizations || [];
-  return values.find((item) => item.locale === locale)?.name || values.find((item) => item.locale === "en")?.name || values[0]?.name || t(`modContent.templates.${section.templateCode}`);
+  return values.find((item) => item.locale === locale)?.name || values.find((item) => normalizeContentLanguage(item.locale) === "en-US")?.name || values[0]?.name || t(`modContent.templates.${section.templateCode}`);
 }
 
 function localizedSection(section: ModContentSection, template: ModContentTemplate | undefined, locale: string) {
   const values = section.localizations.length ? section.localizations : template?.localizations || [];
-  return values.find((item) => item.locale === locale) || values.find((item) => item.locale === "en") || values[0];
+  return values.find((item) => item.locale === locale) || values.find((item) => normalizeContentLanguage(item.locale) === "en-US") || values[0];
 }
 
 function exportCategoryDescription(category: ModExportCategory, t: (key: string, values?: Record<string, string | number>) => string) {

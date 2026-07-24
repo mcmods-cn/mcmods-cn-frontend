@@ -129,7 +129,7 @@ function normalizeTagDocument(value: unknown): CatalogTagEditorDocument {
     publicId: text(source.publicId),
     registry: text(source.registry),
     canonicalId: text(source.canonicalId) || text(source.tagId),
-    defaultLocale: text(source.defaultLocale) || "en",
+    defaultLocale: text(source.defaultLocale) || "en-US",
     publishedRevisionId: optionalNumber(source.publishedRevisionId),
     reviewStatus: normalizeReviewStatus(source.reviewStatus),
     localizations: normalizeLocalizations(source.localizations),
@@ -143,7 +143,7 @@ function normalizeRecipeTypeDocument(value: unknown): CatalogRecipeTypeEditorDoc
     entityId: text(source.entityId),
     publicId: text(source.publicId),
     canonicalId: text(source.canonicalId) || text(source.recipeTypeId),
-    defaultLocale: text(source.defaultLocale) || "en",
+    defaultLocale: text(source.defaultLocale) || "en-US",
     publishedRevisionId: optionalNumber(source.publishedRevisionId),
     reviewStatus: normalizeReviewStatus(source.reviewStatus),
     localizations: normalizeLocalizations(source.localizations),
@@ -191,7 +191,7 @@ function normalizeResources(value: unknown): CatalogResourceRef[] {
       names: Object.keys(stringRecord(source.names)).length
         ? stringRecord(source.names)
         : text(source.name)
-          ? { [text(source.locale) || text(source.defaultLocale) || "en"]: text(source.name) }
+      ? { [text(source.locale) || text(source.defaultLocale) || "en-US"]: text(source.name) }
           : {},
       iconUrl: text(source.iconUrl) || undefined,
       detailUrl: text(source.detailUrl) || undefined,

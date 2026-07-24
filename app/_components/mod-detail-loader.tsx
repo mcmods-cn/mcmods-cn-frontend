@@ -21,7 +21,7 @@ export function ModDetailLoader({ siteId }: { siteId: string }) {
     let cancelled = false;
     apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}`, {}, token)
       .then(async (record) => {
-        const content = await loadResolvedContent(record.uniqueId, locale, "en", token).catch(() => undefined);
+      const content = await loadResolvedContent(record.uniqueId, locale, "en-US", token).catch(() => undefined);
         const fields = content?.localization?.fields;
         const localizedRecord = fields ? { ...record, secondaryName: fields.name || record.secondaryName, summary: fields.summary, bodyMarkdown: fields.contentMarkdown } : record;
         if (!cancelled) {

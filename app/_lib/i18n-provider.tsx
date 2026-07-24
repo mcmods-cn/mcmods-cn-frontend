@@ -10,7 +10,7 @@ import de from "../_locales/de";
 import es from "../_locales/es";
 import ru from "../_locales/ru";
 
-export type Locale = "zh-CN" | "zh-TW" | "en" | "ja" | "fr" | "de" | "es" | "ru";
+export type Locale = "zh-CN" | "zh-TW" | "en-US" | "ja-JP" | "fr-FR" | "de-DE" | "es-ES" | "ru-RU";
 export type LocaleMessages = TranslationValue;
 export type TranslationValue = string | { [key: string]: TranslationValue };
 
@@ -18,23 +18,23 @@ export const defaultLocale: Locale = "zh-CN";
 export const supportedLocales: Array<{ code: Locale; label: string }> = [
   { code: "zh-CN", label: "简体中文" },
   { code: "zh-TW", label: "繁體中文" },
-  { code: "en", label: "English" },
-  { code: "ja", label: "日本語" },
-  { code: "fr", label: "Français" },
-  { code: "de", label: "Deutsch" },
-  { code: "es", label: "Español" },
-  { code: "ru", label: "Русский" },
+  { code: "en-US", label: "English (US)" },
+  { code: "ja-JP", label: "日本語" },
+  { code: "fr-FR", label: "Français" },
+  { code: "de-DE", label: "Deutsch" },
+  { code: "es-ES", label: "Español" },
+  { code: "ru-RU", label: "Русский" },
 ];
 
 export const dictionaries: Record<Locale, LocaleMessages> = {
   "zh-CN": zhCN,
   "zh-TW": zhTW,
-  en,
-  ja,
-  fr,
-  de,
-  es,
-  ru,
+  "en-US": en,
+  "ja-JP": ja,
+  "fr-FR": fr,
+  "de-DE": de,
+  "es-ES": es,
+  "ru-RU": ru,
 };
 
 const localeStorageKey = "mcmods-ui-locale";
@@ -79,7 +79,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       if (typeof overrides[nextLocale]?.[key] === "string") return overrides[nextLocale]?.[key] ?? "";
       const value = readMessage(dictionaries[nextLocale], key);
       if (!value) return "";
-      if (nextLocale !== "en" && value === readMessage(en, key)) return "";
+      if (nextLocale !== "en-US" && value === readMessage(en, key)) return "";
       if (nextLocale !== "zh-CN" && value === readMessage(zhCN, key)) return "";
       return value;
     },
@@ -137,7 +137,7 @@ function subscribeLocale(onStoreChange: () => void) {
 
 function getLocaleSnapshot(): Locale {
   const saved = window.localStorage.getItem(localeStorageKey);
-  return supportedLocales.some((locale) => locale.code === saved) ? (saved as Locale) : defaultLocale;
+  return normalizeUILocale(saved) ?? defaultLocale;
 }
 
 function getOverrideSnapshot() {
@@ -160,10 +160,31 @@ function flattenKeys(messages: TranslationValue, prefix = ""): string[] {
 
 function parseOverrides(value: string): I18nOverrides {
   try {
-    return JSON.parse(value) as I18nOverrides;
+    const parsed = JSON.parse(value) as Record<string, Record<string, string>>;
+    const normalized: I18nOverrides = {};
+    for (const [locale, messages] of Object.entries(parsed)) {
+      const canonical = normalizeUILocale(locale);
+      if (canonical) normalized[canonical] = { ...(normalized[canonical] ?? {}), ...messages };
+    }
+    return normalized;
   } catch {
     return {};
   }
+}
+
+export function normalizeUILocale(value: string | null | undefined): Locale | undefined {
+  const normalized = value?.trim().replaceAll("_", "-").toLowerCase();
+  const aliases: Record<string, Locale> = {
+    "zh": "zh-CN", "zh-cn": "zh-CN", "zh-hans": "zh-CN",
+    "zh-tw": "zh-TW", "zh-hk": "zh-TW", "zh-hant": "zh-TW",
+    "en": "en-US", "en-us": "en-US",
+    "ja": "ja-JP", "ja-jp": "ja-JP",
+    "fr": "fr-FR", "fr-fr": "fr-FR",
+    "de": "de-DE", "de-de": "de-DE",
+    "es": "es-ES", "es-es": "es-ES",
+    "ru": "ru-RU", "ru-ru": "ru-RU",
+  };
+  return normalized ? aliases[normalized] : undefined;
 }
 
 function formatMessage(message: string, params?: Record<string, string | number>) {

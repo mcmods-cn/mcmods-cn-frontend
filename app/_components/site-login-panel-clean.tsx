@@ -16,7 +16,7 @@ const thirdPartyProviders = [
   { key: "google", label: "Google" },
   { key: "github", label: "GitHub" },
 ];
-const uiLanguages = ["zh-CN", "zh-TW", "en", "ja", "fr", "de", "es", "ru"];
+const uiLanguages = supportedLocales.map((language) => language.code);
 
 export function SiteLoginPanelClean() {
   const router = useRouter();
@@ -35,7 +35,7 @@ export function SiteLoginPanelClean() {
   const [country, setCountry] = useState("CN");
   const [timezone, setTimezone] = useState("Asia/Shanghai");
   const [preferredContentLanguage, setPreferredContentLanguage] = useState("zh-CN");
-  const [preferredUILanguage, setPreferredUILanguage] = useState("en");
+  const [preferredUILanguage, setPreferredUILanguage] = useState("en-US");
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [message, setMessage] = useState("");
@@ -93,7 +93,7 @@ export function SiteLoginPanelClean() {
               }),
             });
       saveAuth(result);
-      router.push(destinationAfterLogin(nextPath, result.user));
+      router.replace(destinationAfterLogin(nextPath, result.user));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("login.processing"));
     } finally {
@@ -274,6 +274,6 @@ function safeNextPath(value: string | null) {
 }
 
 function destinationAfterLogin(nextPath: string, user: AuthResult["user"]) {
-  if (nextPath === "/admin" && !canAccessAdmin(user)) return "/";
-  return nextPath || (canAccessAdmin(user) ? "/admin" : "/");
+  if (nextPath === "/admin" && !canAccessAdmin(user)) return "/user";
+  return nextPath || (canAccessAdmin(user) ? "/admin" : "/user");
 }

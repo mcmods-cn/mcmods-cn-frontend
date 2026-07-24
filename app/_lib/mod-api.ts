@@ -47,6 +47,15 @@ export type BackendModGalleryImage = {
 export type MinecraftVersionConfig = {
   versions: Array<{ code: string; type: "release" | "snapshot" | "april_fools" | "legacy" }>;
   loaders: Array<{ code: string; name: string; versions: string[] }>;
+  loaderSyncs?: Array<{
+    code: string;
+    sourceUrl: string;
+    status: "synced" | "failed";
+    lastSyncedAt?: string;
+    versionCount: number;
+    usedFallback?: boolean;
+    error?: string;
+  }>;
   sourceUrl?: string;
   lastSyncedAt?: string;
   latestRelease?: string;

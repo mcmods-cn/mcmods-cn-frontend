@@ -22,6 +22,15 @@ type ModContentReviewItem = {
   reviewUrl: string;
 };
 
+function versionSourceName(sourceUrl: string) {
+  try {
+    const hostname = new URL(sourceUrl).hostname;
+    return hostname.includes("bangbang93.com") ? "BMCLAPI" : hostname;
+  } catch {
+    return sourceUrl;
+  }
+}
+
 export function MinecraftVersionConfigPanel({ token }: { token: string }) {
   const { t } = useI18n();
   const [config, setConfig] = useState<MinecraftVersionConfig | null>(null);
@@ -88,7 +97,8 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
     try {
       const synced = await apiRequest<MinecraftVersionConfig>("/api/v1/admin/config/minecraft-versions/sync", { method: "POST" }, token);
       setConfig(synced);
-      setMessage(t("admin.minecraftVersions.synced"));
+      const failedCount = synced.loaderSyncs?.filter((item) => item.status === "failed").length ?? 0;
+      setMessage(failedCount > 0 ? t("admin.minecraftVersions.syncedPartial", { count: failedCount }) : t("admin.minecraftVersions.synced"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.minecraftVersions.syncFailed"));
     } finally {
@@ -102,14 +112,43 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
       <div className="flex flex-wrap gap-2"><button className="button-secondary focus-ring" disabled={saving || syncing} type="button" onClick={() => void syncVersions()}>{syncing ? t("admin.minecraftVersions.syncing") : t("admin.minecraftVersions.sync")}</button><button className="button-primary focus-ring" disabled={saving || syncing} type="button" onClick={() => void save()}>{saving ? t("admin.minecraftVersions.saving") : t("common.save")}</button></div>
     </header>
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-[var(--muted)]">
-      <span>{t("admin.minecraftVersions.source")}: {config.sourceUrl ? <a className="text-[var(--accent)] hover:underline" href={config.sourceUrl} rel="noopener noreferrer" target="_blank">Mojang</a> : "-"}</span>
+      <span>{t("admin.minecraftVersions.source")}: {config.sourceUrl ? <a className="text-[var(--accent)] hover:underline" href={config.sourceUrl} rel="noopener noreferrer" target="_blank">{versionSourceName(config.sourceUrl)}</a> : "-"}</span>
       <span>{config.lastSyncedAt ? t("admin.minecraftVersions.lastSynced", { time: config.lastSyncedAt.replace("T", " ").replace("Z", " UTC") }) : t("admin.minecraftVersions.neverSynced")}</span>
       {config.latestRelease ? <span>{t("admin.minecraftVersions.latestRelease", { version: config.latestRelease })}</span> : null}
       {config.latestSnapshot ? <span>{t("admin.minecraftVersions.latestSnapshot", { version: config.latestSnapshot })}</span> : null}
     </div>
     {message ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-sm font-bold">{message}</p> : null}
     <section className="surface p-5"><h3 className="text-lg font-black">{t("admin.minecraftVersions.versionList")}</h3><div className="mt-3 flex flex-wrap gap-2"><input className="field max-w-xs" value={versionCode} placeholder="1.21.1" onChange={(event) => setVersionCode(event.target.value)} /><select className="field w-auto" value={versionType} onChange={(event) => setVersionType(event.target.value as typeof versionType)}>{(["release", "snapshot", "april_fools", "legacy"] as const).map((type) => <option key={type} value={type}>{t(`admin.minecraftVersions.types.${type}`)}</option>)}</select><button className="button-secondary focus-ring" type="button" onClick={addVersion}>+ {t("common.create")}</button></div><div className="mt-4 flex max-h-80 flex-wrap gap-2 overflow-auto">{config.versions.map((version) => <span key={version.code} className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold">{version.code}<small className="text-[var(--muted)]">{t(`admin.minecraftVersions.types.${version.type}`)}</small><button className="text-[var(--red)]" type="button" onClick={() => removeVersion(version.code)}>×</button></span>)}</div></section>
-    <section className="surface p-5"><h3 className="text-lg font-black">{t("admin.minecraftVersions.loaderList")}</h3><div className="mt-3 flex gap-2"><input className="field max-w-sm" value={loaderCode} placeholder="Forge" onChange={(event) => setLoaderCode(event.target.value)} /><button className="button-secondary focus-ring" type="button" onClick={addLoader}>+ {t("common.create")}</button></div><div className="mt-5 grid gap-4">{config.loaders.map((loader) => <article key={loader.code} className="rounded-lg border border-[var(--line)] p-4"><div className="flex flex-wrap items-center gap-2"><input className="field max-w-xs font-bold" value={loader.name} onChange={(event) => updateLoader(loader.code, (item) => ({ ...item, name: event.target.value }))} /><code className="text-xs text-[var(--muted)]">{loader.code}</code><button className="button-secondary focus-ring ml-auto" type="button" onClick={() => updateLoader(loader.code, (item) => ({ ...item, versions: config.versions.map((version) => version.code) }))}>{t("admin.minecraftVersions.selectAll")}</button><button className="button-secondary focus-ring" type="button" onClick={() => updateLoader(loader.code, (item) => ({ ...item, versions: [] }))}>{t("admin.minecraftVersions.clear")}</button><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => setConfig((current) => current ? { ...current, loaders: current.loaders.filter((item) => item.code !== loader.code) } : current)}>{t("common.delete")}</button></div><MinecraftVersionPicker className="mt-3 w-full" config={config} values={loader.versions} onChange={(versions) => updateLoader(loader.code, (item) => ({ ...item, versions }))} /></article>)}</div></section>
+    <section className="surface p-5">
+      <h3 className="text-lg font-black">{t("admin.minecraftVersions.loaderList")}</h3>
+      <div className="mt-3 flex gap-2">
+        <input className="field max-w-sm" value={loaderCode} placeholder="Forge" onChange={(event) => setLoaderCode(event.target.value)} />
+        <button className="button-secondary focus-ring" type="button" onClick={addLoader}>+ {t("common.create")}</button>
+      </div>
+      <div className="mt-5 grid gap-4">
+        {config.loaders.map((loader) => {
+          const syncStatus = config.loaderSyncs?.find((item) => item.code.toLowerCase() === loader.code.toLowerCase());
+          return <article key={loader.code} className="rounded-lg border border-[var(--line)] p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <input className="field max-w-xs font-bold" value={loader.name} onChange={(event) => updateLoader(loader.code, (item) => ({ ...item, name: event.target.value }))} />
+              <code className="text-xs text-[var(--muted)]">{loader.code}</code>
+              {syncStatus ? <span className={`rounded-full border px-2 py-1 text-xs font-bold ${syncStatus.status === "synced" ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--red)] text-[var(--red)]"}`}>{t(`admin.minecraftVersions.syncStatus.${syncStatus.status}`)}</span> : <span className="rounded-full border border-[var(--line)] px-2 py-1 text-xs font-bold text-[var(--muted)]">{t("admin.minecraftVersions.syncStatus.manual")}</span>}
+              <button className="button-secondary focus-ring ml-auto" type="button" onClick={() => updateLoader(loader.code, (item) => ({ ...item, versions: config.versions.map((version) => version.code) }))}>{t("admin.minecraftVersions.selectAll")}</button>
+              <button className="button-secondary focus-ring" type="button" onClick={() => updateLoader(loader.code, (item) => ({ ...item, versions: [] }))}>{t("admin.minecraftVersions.clear")}</button>
+              <button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => setConfig((current) => current ? { ...current, loaders: current.loaders.filter((item) => item.code !== loader.code) } : current)}>{t("common.delete")}</button>
+            </div>
+            {syncStatus ? <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-[var(--panel-subtle)] px-3 py-2 text-xs text-[var(--muted)]">
+              <a className="text-[var(--accent)] hover:underline" href={syncStatus.sourceUrl} rel="noopener noreferrer" target="_blank">{t("admin.minecraftVersions.loaderSource")}: {versionSourceName(syncStatus.sourceUrl)}</a>
+              <span>{t("admin.minecraftVersions.supportedCount", { count: syncStatus.versionCount })}</span>
+              {syncStatus.usedFallback ? <span>{t("admin.minecraftVersions.fallbackUsed")}</span> : null}
+              <span>{syncStatus.lastSyncedAt ? t("admin.minecraftVersions.lastSynced", { time: syncStatus.lastSyncedAt.replace("T", " ").replace("Z", " UTC") }) : t("admin.minecraftVersions.neverSynced")}</span>
+            </div> : null}
+            {syncStatus?.error ? <p className="mt-2 break-words text-xs text-[var(--red)]">{t("admin.minecraftVersions.sourceError")}: {syncStatus.error}</p> : null}
+            <MinecraftVersionPicker className="mt-3 w-full" config={config} values={loader.versions} onChange={(versions) => updateLoader(loader.code, (item) => ({ ...item, versions }))} />
+          </article>;
+        })}
+      </div>
+    </section>
   </section>;
 }
 

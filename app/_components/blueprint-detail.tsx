@@ -47,8 +47,8 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
       const params = new URLSearchParams({ locale: minecraftLocale(locale) });
       const result = await apiRequest<BlueprintDetailRecord>(`/api/v1/blueprints/${encodeURIComponent(publicId)}?${params}`, {}, token);
       const content = result.canEdit && token
-        ? await loadOwnedResolvedContent("blueprints", publicId, locale, token, "en").catch(() => undefined)
-        : await loadResolvedContent(publicId, locale, "en", token).catch(() => undefined);
+        ? await loadOwnedResolvedContent("blueprints", publicId, locale, token, "en-US").catch(() => undefined)
+        : await loadResolvedContent(publicId, locale, "en-US", token).catch(() => undefined);
       const fields = content?.localization?.fields;
       setRecord(fields ? { ...result, title: fields.name || result.title, description: fields.contentMarkdown || result.description } : result);
       setNotFound(false);

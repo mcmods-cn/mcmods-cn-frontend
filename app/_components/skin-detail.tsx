@@ -47,8 +47,8 @@ export function SkinDetail({ publicId }: { publicId: string }) {
     Promise.allSettled([
       loadSkin(publicId, token || undefined).then(async (baseTexture) => {
         const content = baseTexture.canEdit && token
-          ? await loadOwnedResolvedContent("skins", publicId, locale, token, "en").catch(() => undefined)
-          : await loadResolvedContent(publicId, locale, "en", token).catch(() => undefined);
+          ? await loadOwnedResolvedContent("skins", publicId, locale, token, "en-US").catch(() => undefined)
+          : await loadResolvedContent(publicId, locale, "en-US", token).catch(() => undefined);
         return [baseTexture, content] as const;
       }),
       token ? loadMyPlayerProfiles(token) : Promise.resolve([]),

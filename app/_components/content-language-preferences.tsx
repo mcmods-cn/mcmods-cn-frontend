@@ -87,7 +87,7 @@ export function ContentLanguagePreferences({ token }: { token: string }) {
           className="field font-mono"
           disabled={loading || saving}
           list="editable-content-locales"
-          placeholder="en"
+          placeholder="en-US"
           value={secondary}
           onChange={(event) => setSecondary(event.target.value)}
         />

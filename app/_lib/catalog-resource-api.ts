@@ -56,7 +56,7 @@ function normalizeResourceDocument(value: unknown): CatalogResourceEditorDocumen
     publicId,
     kindCode: text(source.kindCode),
     canonicalId: text(source.canonicalId),
-    defaultLocale: text(source.defaultLocale) || "en",
+    defaultLocale: text(source.defaultLocale) || "en-US",
     publishedRevisionId: positiveNumber(source.publishedRevisionId),
     reviewStatus: reviewStatus(source.reviewStatus),
     localizations: localizations(source.localizations),
