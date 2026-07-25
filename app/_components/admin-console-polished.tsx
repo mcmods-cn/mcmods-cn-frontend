@@ -8,7 +8,14 @@ import { ApiError, apiRequest } from "../_lib/api";
 import type { LevelConfig } from "../_lib/community-api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
-import { computeFileSHA256, formatBytes } from "../_lib/oss-upload";
+import {
+  abortMultipartUpload,
+  completeOSSUpload,
+  computeFileSHA256,
+  formatBytes,
+  putFileToOSS,
+  type OSSDirectUploadTicket,
+} from "../_lib/oss-upload";
 import {
   ActivityMonitorPanel,
   CreatorClaimsPanel,
@@ -301,26 +308,6 @@ type OSSFile = {
   scanStatus: string;
   status: string;
   createdAt: string;
-};
-
-type OSSDirectUploadTicket = {
-  method: string;
-  url: string;
-  headers: Record<string, string>;
-  bucket: string;
-  objectKey: string;
-  category: string;
-  source: string;
-  originalName: string;
-  sourceOriginalName?: string;
-  contentType: string;
-  sizeBytes: number;
-  sourceSizeBytes?: number;
-  converted?: boolean;
-  sha256: string;
-  uploadRequired?: boolean;
-  file?: OSSFile;
-  expiresAt: string;
 };
 
 type LogRow = Record<string, string | number | boolean | null | Record<string, unknown>>;
@@ -4691,6 +4678,7 @@ function OSSFilesPanel({ token }: { token: string }) {
             sha256,
             category,
             source,
+            preferMultipart: true,
           }),
         },
         token,
@@ -4698,23 +4686,13 @@ function OSSFilesPanel({ token }: { token: string }) {
       if (ticket.uploadRequired === false) {
         setMessage(t("admin.oss.fileReused", { id: ticket.file?.id ?? ticket.objectKey }));
       } else {
-        await uploadFileToOSS(ticket, file);
-        await apiRequest(
-          "/api/v1/admin/oss/uploads/complete",
-          {
-            method: "POST",
-            body: JSON.stringify({
-              objectKey: ticket.objectKey,
-              originalName: ticket.originalName,
-              contentType: ticket.contentType,
-              sizeBytes: ticket.sizeBytes,
-              sha256: ticket.sha256,
-              category: ticket.category,
-              source: ticket.source,
-            }),
-          },
-          token,
-        );
+        try {
+          await putFileToOSS(ticket, file);
+        } catch (error) {
+          await abortMultipartUpload("/api/v1/admin/oss/uploads/complete", ticket, token);
+          throw error;
+        }
+        await completeOSSUpload("/api/v1/admin/oss/uploads/complete", ticket, token);
         setMessage(t("admin.oss.uploadSuccess"));
       }
       form.reset();
@@ -4804,32 +4782,6 @@ function OSSFilesPanel({ token }: { token: string }) {
       </div>
     </section>
   );
-}
-
-async function uploadFileToOSS(ticket: OSSDirectUploadTicket, file: File) {
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(ticket.headers ?? {})) {
-    if (key.toLowerCase() !== "host") {
-      headers.set(key, value);
-    }
-  }
-  if (!headers.has("Content-Type")) {
-    headers.set("Content-Type", ticket.contentType || file.type || "application/octet-stream");
-  }
-  let response: Response;
-  try {
-    response = await fetch(ticket.url, {
-      method: ticket.method || "PUT",
-      headers,
-      body: file,
-    });
-  } catch (error) {
-    throw new Error(cleanOSSError(error));
-  }
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `OSS 直传失败（HTTP ${response.status}）`);
-  }
 }
 
 function OSSRowsPanel({ token, title, endpoint }: { token: string; title: string; endpoint: string }) {

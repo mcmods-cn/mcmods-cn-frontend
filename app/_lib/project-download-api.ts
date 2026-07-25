@@ -1,5 +1,13 @@
 import { apiRequest } from "./api";
-import { computeFileSHA256, putFileToOSS, type OSSDirectUploadTicket, type OSSFileRecord } from "./oss-upload";
+import {
+  abortMultipartUpload,
+  completeOSSUpload,
+  computeFileSHA256,
+  putFileToOSS,
+  type OSSDirectUploadTicket,
+  type OSSFileRecord,
+  type OSSUploadMetrics,
+} from "./oss-upload";
 
 export type ProjectFileSource = "internal" | "modrinth" | "curseforge";
 export type ProjectReleaseChannel = "release" | "beta" | "alpha";
@@ -59,7 +67,7 @@ export async function uploadProjectFileToOSS(
   token: string,
   projectType: string,
   projectId: string,
-  onProgress?: (loaded: number, total: number) => void,
+  onProgress?: (loaded: number, total: number, metrics: OSSUploadMetrics) => void,
 ) {
   const sha256 = await computeFileSHA256(file);
   const basePath = projectFilesPath(projectType, projectId);
@@ -73,20 +81,16 @@ export async function uploadProjectFileToOSS(
       category: "project/download",
       source: "project_download",
       projectUniqueId: projectId,
+      projectType,
+      preferMultipart: true,
     }),
   }, token);
   if (ticket.uploadRequired === false && ticket.file) return ticket.file;
-  await putFileToOSS(ticket, file, onProgress);
-  return apiRequest<OSSFileRecord>(`${basePath}/uploads/complete`, {
-    method: "POST",
-    body: JSON.stringify({
-      objectKey: ticket.objectKey,
-      originalName: ticket.originalName,
-      contentType: ticket.contentType,
-      sizeBytes: ticket.sizeBytes,
-      sha256: ticket.sha256,
-      category: ticket.category,
-      source: ticket.source,
-    }),
-  }, token);
+  try {
+    await putFileToOSS(ticket, file, onProgress);
+  } catch (error) {
+    await abortMultipartUpload(`${basePath}/uploads/complete`, ticket, token);
+    throw error;
+  }
+  return completeOSSUpload<OSSFileRecord>(`${basePath}/uploads/complete`, ticket, token);
 }

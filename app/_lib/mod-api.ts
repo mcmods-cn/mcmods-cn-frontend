@@ -156,18 +156,6 @@ export type BackendModApplication = {
   reviewedAt?: string;
 };
 
-export type BackendModComment = {
-  id: number;
-  parentId?: number;
-  rootId?: number;
-  body: string;
-  author: { id: number; username: string; displayName: string; avatarUrl: string; projectRole?: "owner" | "editor" };
-  reactions: Record<string, number>;
-  userReactions: string[];
-  createdAt: string;
-  updatedAt: string;
-};
-
 const emptyFeatures: Record<ModFeature, boolean> = {
   tutorials: false,
   items: false,

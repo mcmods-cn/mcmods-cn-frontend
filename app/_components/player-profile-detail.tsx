@@ -7,6 +7,7 @@ import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { loadPlayerProfile, PlayerProfile, skinTextureURL } from "../_lib/skin-api";
 import { SkinPreview2D } from "./skin-preview";
+import { CommentSection } from "./comment-section";
 
 const SkinViewerCanvas = dynamic(
   () => import("@/components/minecraft-skin/SkinViewerCanvas").then((module) => module.SkinViewerCanvas),
@@ -61,6 +62,7 @@ export function PlayerProfileDetail({ publicId }: { publicId: string }) {
             <TextureCard label={t("skins.capeSlot")} texture={profile.cape} />
           </aside>
         </div>
+        <CommentSection targetKey={publicId} targetType="player_profile" />
       </article>
     </main>
   );

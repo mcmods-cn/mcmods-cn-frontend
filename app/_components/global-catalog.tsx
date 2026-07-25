@@ -42,6 +42,7 @@ import { RecipeEditor } from "./editor/recipe-editor";
 import { RecipeTemplateEditor } from "./editor/recipe-template-editor";
 import { ContentTranslationControl } from "./editor/content-translation-control";
 import { UnifiedRecipeCard, UnifiedRecipeMaterial } from "./unified-recipe-card";
+import { CommentSection } from "./comment-section";
 
 const pageSize = 24;
 
@@ -172,6 +173,7 @@ function CanonicalTagDetail({ publicId }: { publicId: string }) {
     </div>
     <section className="mt-5"><div className="flex flex-wrap items-center gap-3"><h2 className="text-xl font-black">{t("globalCatalog.introduction")}</h2><LocalizationStatusBadge version={localization} /></div><ContentTranslationControl publicId={publicId} onResolved={setResolvedLocalization} />{localization?.fields.summary ? <p className="mt-3 text-base leading-7 text-[var(--muted)]">{localization.fields.summary}</p> : null}{localization?.fields.contentMarkdown ? <div className="markdown-preview mt-3"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={localization.fields.contentMarkdown} /></div> : !localization?.fields.summary ? <p className="mt-3 text-[var(--muted)]">{t("globalCatalog.noIntroduction")}</p> : null}</section>
     <section className="mt-8"><h2 className="text-xl font-black">{t("globalCatalog.tags.items")}</h2><div className="mt-4 grid gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-4">{detail.members.map((member) => <GlobalResourceLink key={member.publicId} locale={locale} resource={catalogRefToGlobalResource(member)} />)}</div></section>
+    <CommentSection targetKey={publicId} targetType="tag" />
   </CatalogFrame>;
 }
 
@@ -282,6 +284,7 @@ function CanonicalRecipeTypeDetail({ publicId }: { publicId: string }) {
     </section>
     <section className="mt-8"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-black">{t("globalCatalog.recipeTypes.recipes")}</h2>{user && templates.length ? <Link className="button-primary focus-ring" href={`/recipe-types?editor=recipe-create&publicId=${encodeURIComponent(publicId)}`}>{t("catalogEditor.recipeCreate")}</Link> : null}</div>{recipeError ? <ErrorBox text={recipeError} /> : null}{recipesLoading ? <Loading /> : recipePage.items.length ? <div className="mt-4 grid gap-5 xl:grid-cols-2">{recipePage.items.map((recipe) => { const legacyRecipe = legacyRecipes.get(recipe.publicId); const editHref = `/recipe-types?editor=recipe-edit&publicId=${encodeURIComponent(publicId)}&recipePublicId=${encodeURIComponent(recipe.publicId)}`; return legacyRecipe ? <GlobalRecipeCard editHref={editHref} key={recipe.publicId} recipe={legacyRecipe} /> : <article className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" key={recipe.publicId}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><strong className="block truncate">{recipe.name || localizedCatalogName(recipe.names, locale, recipe.canonicalSourceId || recipe.publicId)}</strong><code className="mt-1 block truncate text-xs text-[var(--muted)]">{recipe.canonicalSourceId || recipe.publicId}</code><span className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-[var(--muted)]"><span>{t(recipe.source === "canonical" ? "catalogEditor.recipeSourceCanonical" : "catalogEditor.recipeSourceImport")}</span><span>{t("catalogEditor.bindingCount", { count: recipe.bindingCount })}</span>{recipe.sourceVersion ? <span>{recipe.sourceVersion.modName || recipe.sourceVersion.modSiteId} / {recipe.sourceVersion.label}</span> : null}</span></div>{user ? <Link className="button-secondary focus-ring shrink-0 px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</Link> : null}</div></article>; })}</div> : <Empty text={t("catalogEditor.noRecipes")} />}</section>
     <CatalogPagination base={`/recipe-types?publicId=${encodeURIComponent(publicId)}`} page={page} query="" total={recipeTotal} queryMode />
+    <CommentSection targetKey={publicId} targetType="recipe_type" />
   </CatalogFrame>;
 }
 

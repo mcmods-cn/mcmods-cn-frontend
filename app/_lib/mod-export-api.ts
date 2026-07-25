@@ -1,5 +1,12 @@
 import { API_BASE_URL, apiRequest } from "./api";
-import { computeFileSHA256, OSSDirectUploadTicket, OSSFileRecord, putFileToOSS } from "./oss-upload";
+import {
+  abortMultipartUpload,
+  completeOSSUpload,
+  computeFileSHA256,
+  OSSDirectUploadTicket,
+  OSSFileRecord,
+  putFileToOSS,
+} from "./oss-upload";
 import type { CatalogResourceVersion } from "./editor-types";
 
 export type ModExportJob = {
@@ -24,6 +31,7 @@ export type ModExportRevision = {
   minecraftVersion: string;
   loader: string;
   exporterVersion: string;
+  sourceKind: string;
   namespace: string;
   targetVersionPublicId: string;
   isActive: boolean;
@@ -130,7 +138,16 @@ export type ModExportStructure = {
 export type ModExportUploadProgress = {
   phase: "hashing" | "preparing" | "uploading" | "confirming" | "importing";
   percent: number;
+  loadedBytes?: number;
+  totalBytes?: number;
+  bytesPerSecond?: number;
+  etaSeconds?: number;
+  retryCount?: number;
+  stalled?: boolean;
+  multipart?: boolean;
 };
+
+export type CatalogImportSource = "iconrenderer" | "letmeseesee" | "irr";
 
 export type ModExportImportOptions = {
   targetVersionPublicId: string;
@@ -151,28 +168,69 @@ export async function uploadModExportPackage(file: File, siteId: string, token: 
       sha256,
       category: "import-staging",
       source: "mcmods_exporter",
+      preferMultipart: true,
     }),
   }, token);
   let record = ticket.file;
   if (ticket.uploadRequired !== false) {
     onProgress?.({ phase: "uploading", percent: 0 });
-    await putFileToOSS(ticket, file, (loaded, total) => onProgress?.({ phase: "uploading", percent: total > 0 ? Math.round(loaded / total * 100) : 0 }));
+    try {
+      await putFileToOSS(ticket, file, (loaded, total, metrics) => onProgress?.({
+        phase: "uploading",
+        percent: total > 0 ? Math.round(loaded / total * 100) : 0,
+        ...metrics,
+      }));
+    } catch (error) {
+      await abortMultipartUpload(`${root}/uploads/complete`, ticket, token);
+      throw error;
+    }
     onProgress?.({ phase: "confirming", percent: 100 });
-    record = await apiRequest<OSSFileRecord>(`${root}/uploads/complete`, {
-      method: "POST",
-      body: JSON.stringify({
-        objectKey: ticket.objectKey,
-        originalName: ticket.originalName,
-        contentType: ticket.contentType,
-        sizeBytes: ticket.sizeBytes,
-        sha256: ticket.sha256,
-        category: ticket.category,
-        source: ticket.source,
-      }),
-    }, token);
+    record = await completeOSSUpload<OSSFileRecord>(`${root}/uploads/complete`, ticket, token);
   }
   if (!record?.id) throw new Error("mod export upload did not return a file record");
   const job = await apiRequest<ModExportJob>(root, { method: "POST", body: JSON.stringify({ ossFileId: record.id, ...options }) }, token);
+  onProgress?.({ phase: "importing", percent: 100 });
+  return job;
+}
+
+export async function uploadEmbeddedIconCatalog(file: File, siteId: string, token: string, source: CatalogImportSource, options: ModExportImportOptions, onProgress?: (progress: ModExportUploadProgress) => void) {
+  onProgress?.({ phase: "hashing", percent: 0 });
+  const sha256 = await computeFileSHA256(file);
+  onProgress?.({ phase: "preparing", percent: 0 });
+  const root = `/api/v1/mods/${encodeURIComponent(siteId)}/catalog-imports`;
+  const ticket = await apiRequest<OSSDirectUploadTicket>(`${root}/uploads/presign`, {
+    method: "POST",
+    body: JSON.stringify({
+      originalName: file.name,
+      contentType: file.type || "application/json",
+      sizeBytes: file.size,
+      sha256,
+      category: "catalog-import-staging",
+      source,
+      preferMultipart: true,
+    }),
+  }, token);
+  let record = ticket.file;
+  if (ticket.uploadRequired !== false) {
+    onProgress?.({ phase: "uploading", percent: 0 });
+    try {
+      await putFileToOSS(ticket, file, (loaded, total, metrics) => onProgress?.({
+        phase: "uploading",
+        percent: total > 0 ? Math.round(loaded / total * 100) : 0,
+        ...metrics,
+      }));
+    } catch (error) {
+      await abortMultipartUpload(`${root}/uploads/complete`, ticket, token);
+      throw error;
+    }
+    onProgress?.({ phase: "confirming", percent: 100 });
+    record = await completeOSSUpload<OSSFileRecord>(`${root}/uploads/complete`, ticket, token);
+  }
+  if (!record?.id) throw new Error("catalog import upload did not return a file record");
+  const job = await apiRequest<ModExportJob>(root, {
+    method: "POST",
+    body: JSON.stringify({ ossFileId: record.id, source, ...options }),
+  }, token);
   onProgress?.({ phase: "importing", percent: 100 });
   return job;
 }
@@ -188,8 +246,25 @@ export async function waitForModExportJob(siteId: string, jobId: string, token: 
   }
 }
 
+export async function waitForCatalogImportJob(siteId: string, jobId: string, token: string, onProgress: (job: ModExportJob) => void, signal?: AbortSignal) {
+  const path = `/api/v1/mods/${encodeURIComponent(siteId)}/catalog-imports/${encodeURIComponent(jobId)}`;
+  for (;;) {
+    if (signal?.aborted) throw new DOMException("Polling aborted", "AbortError");
+    const job = await apiRequest<ModExportJob>(path, { signal }, token);
+    onProgress(job);
+    if (["ready", "partial", "failed", "cancelled"].includes(job.status)) return job;
+    await abortableDelay(1200, signal);
+  }
+}
+
 export function retryModExportJob(siteId: string, jobId: string, token: string) {
   return apiRequest<ModExportJob>(`/api/v1/mods/${encodeURIComponent(siteId)}/export-imports/${encodeURIComponent(jobId)}/retry`, {
+    method: "POST",
+  }, token);
+}
+
+export function retryCatalogImportJob(siteId: string, jobId: string, token: string) {
+  return apiRequest<ModExportJob>(`/api/v1/mods/${encodeURIComponent(siteId)}/catalog-imports/${encodeURIComponent(jobId)}/retry`, {
     method: "POST",
   }, token);
 }

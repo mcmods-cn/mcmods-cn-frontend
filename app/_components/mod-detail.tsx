@@ -2,10 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
-import { BackendModApplication, BackendModComment } from "../_lib/mod-api";
+import { BackendModApplication } from "../_lib/mod-api";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { ModCatalogEntry } from "../_lib/mod-catalog-data";
 import { useI18n } from "../_lib/i18n-provider";
@@ -13,6 +13,7 @@ import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ModExportData } from "./mod-export-data";
 import { ProjectDownloads } from "./project-downloads";
+import { CommentSection } from "./comment-section";
 
 type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "gallery" | "discussion" | "tutorial" | "issues";
 
@@ -71,12 +72,13 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
             {tab === "downloads" ? <ProjectDownloads projectType="mod" projectId={mod.uniqueId} projectName={displayName} token={token} suggestedVersions={mod.versions} suggestedLoaders={mod.loaders} /> : null}
             {tab === "introduction" ? <ModIntroductionTab mod={mod} /> : null}
             {tab === "gallery" ? <ModGallery images={mod.galleryImages ?? []} emptyText={t("mods.detail.emptyGallery")} /> : null}
-            {tab === "discussion" ? <ModCommentsSection mod={mod} token={token} userID={user?.id} /> : null}
+            {tab === "discussion" ? <EmptyState text={t("mods.detail.bountyDiscussionReserved")} /> : null}
             {tab === "tutorial" ? <EmptyState text={t("mods.detail.emptyTutorial")} /> : null}
             {tab === "issues" ? <EmptyState text={t("mods.detail.emptyIssues")} /> : null}
           </div>
           <aside className="hidden space-y-4 lg:sticky lg:top-20 lg:block lg:h-fit"><ModSidebar mod={mod} locale={locale} /></aside>
         </div>
+        <CommentSection targetKey={mod.uniqueId} targetType="mod" />
       </div>
       {applicationKind ? <ModApplicationModal kind={applicationKind} mod={mod} token={token} onClose={() => setApplicationKind(null)} /> : null}
     </main>
@@ -173,69 +175,6 @@ function ModApplicationModal({ kind, mod, token, onClose }: { kind: "editor" | "
     }
   }
   return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4" role="presentation" onMouseDown={onClose}><form className="surface max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()} onSubmit={submit}><div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t(`mods.applications.${kind}Title`)}</h2><p className="mt-1 text-sm text-[var(--muted)]">{mod.localizedName || mod.name}</p></div><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button></div><label className="mt-5 block"><span className="mb-1.5 block text-sm font-black">{t("mods.applications.proof")}</span><textarea className="field min-h-40 resize-y" required maxLength={10000} value={proof} placeholder={t(`mods.applications.${kind}ProofPlaceholder`)} onChange={(event) => setProof(event.target.value)} /></label><div className="mt-4"><span className="block text-sm font-black">{t("mods.applications.attachments")}</span><label className="button-secondary focus-ring mt-2 inline-flex cursor-pointer"><input className="sr-only" type="file" multiple disabled={uploading || attachments.length >= 10} onChange={(event) => void addFiles(event.target.files)} />{uploading ? t("mods.applications.uploading") : t("mods.applications.addAttachments")}</label><div className="mt-3 grid gap-2">{attachments.map((item) => <div key={`${item.id}-${item.name}`} className="flex items-center justify-between gap-3 rounded-md border border-[var(--line)] px-3 py-2 text-sm"><span className="min-w-0 truncate">{item.name} · {formatBytes(item.size)}</span><button className="text-[var(--red)]" type="button" onClick={() => setAttachments((current) => current.filter((file) => file !== item))}>{t("common.delete")}</button></div>)}</div></div>{message ? <p className="mt-4 rounded-md border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}<div className="mt-5 flex justify-end gap-2"><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.cancel")}</button><button className="button-primary focus-ring" disabled={submitting || uploading} type="submit">{submitting ? t("mods.submission.actions.submitting") : t("mods.applications.submit")}</button></div></form></div>;
-}
-
-const reactionOptions = [
-  ["thumbs_up", "👍"], ["thumbs_down", "👎"], ["laugh", "😄"], ["hooray", "🎉"],
-  ["confused", "😕"], ["heart", "❤️"], ["rocket", "🚀"], ["eyes", "👀"],
-] as const;
-
-function ModCommentsSection({ mod, token, userID }: { mod: ModCatalogEntry; token: string; userID?: number }) {
-  const { locale, t } = useI18n();
-  const [items, setItems] = useState<BackendModComment[]>([]);
-  const [body, setBody] = useState("");
-  const [replyTo, setReplyTo] = useState<BackendModComment | null>(null);
-  const [replyBody, setReplyBody] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  const load = useCallback(async () => {
-    try {
-      const result = await apiRequest<{ items: BackendModComment[] }>(`/api/v1/mods/${encodeURIComponent(mod.siteId)}/comments`, {}, token);
-      setItems(result.items);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.comments.loadFailed"));
-    }
-  }, [mod.siteId, t, token]);
-  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
-  async function publish(content: string, parentId?: number) {
-    if (!token) {
-      setMessage(t("mods.comments.loginRequired"));
-      return;
-    }
-    setSubmitting(true);
-    setMessage("");
-    try {
-      await apiRequest<BackendModComment>(`/api/v1/mods/${encodeURIComponent(mod.siteId)}/comments`, { method: "POST", body: JSON.stringify({ body: content, parentId }) }, token);
-      setBody("");
-      setReplyBody("");
-      setReplyTo(null);
-      await load();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.comments.publishFailed"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-  async function react(comment: BackendModComment, reaction: string) {
-    if (!token) {
-      setMessage(t("mods.comments.loginRequired"));
-      return;
-    }
-    try {
-      await apiRequest(`/api/v1/mods/${encodeURIComponent(mod.siteId)}/comments/${comment.id}/reactions`, { method: "POST", body: JSON.stringify({ reaction }) }, token);
-      await load();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.comments.reactionFailed"));
-    }
-  }
-  const roots = items.filter((item) => !item.parentId);
-  return <section className="mt-8 border-t border-[var(--line)] pt-7"><div className="flex items-end justify-between gap-3"><div><h2 className="text-2xl font-black">{t("mods.comments.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("mods.comments.count", { count: items.length })}</p></div></div>{userID ? <form className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => { event.preventDefault(); void publish(body); }}><textarea className="field min-h-28 resize-y" required value={body} placeholder={t("mods.comments.placeholder")} onChange={(event) => setBody(event.target.value)} /><div className="mt-3 flex justify-end"><button className="button-primary focus-ring" disabled={submitting} type="submit">{t("mods.comments.publish")}</button></div></form> : <Link className="button-primary focus-ring mt-5 inline-flex" href={`/login?next=/mods/${mod.siteId}`}>{t("mods.comments.loginToComment")}</Link>}{message ? <p className="mt-4 rounded-md border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}<div className="mt-6 grid gap-4">{roots.map((comment) => { const replies = items.filter((item) => item.rootId === comment.id); return <article key={comment.id} className="rounded-lg border border-[var(--line)] bg-[var(--panel)]"><CommentBody comment={comment} locale={locale} onReact={react} onReply={() => { setReplyTo(comment); setReplyBody(""); }} />{replies.length ? <div className="border-t border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-2 sm:pl-14">{replies.map((reply) => <div key={reply.id} className="border-b border-[var(--line)] last:border-b-0"><CommentBody compact comment={reply} locale={locale} onReact={react} onReply={() => { setReplyTo(reply); setReplyBody(""); }} /></div>)}</div> : null}{replyTo && (replyTo.id === comment.id || replyTo.rootId === comment.id) ? <form className="border-t border-[var(--line)] p-4 sm:pl-14" onSubmit={(event) => { event.preventDefault(); void publish(replyBody, replyTo.id); }}><p className="mb-2 text-sm font-bold text-[var(--muted)]">{t("mods.comments.replyingTo", { name: replyTo.author.displayName || replyTo.author.username })}</p><textarea className="field min-h-24 resize-y" required value={replyBody} onChange={(event) => setReplyBody(event.target.value)} /><div className="mt-2 flex justify-end gap-2"><button className="button-secondary focus-ring" type="button" onClick={() => setReplyTo(null)}>{t("common.cancel")}</button><button className="button-primary focus-ring" disabled={submitting} type="submit">{t("mods.comments.reply")}</button></div></form> : null}</article>; })}{items.length === 0 ? <EmptyState text={t("mods.comments.empty")} /> : null}</div></section>;
-}
-
-function CommentBody({ comment, locale, compact = false, onReact, onReply }: { comment: BackendModComment; locale: string; compact?: boolean; onReact: (comment: BackendModComment, reaction: string) => void; onReply: () => void }) {
-  const { t } = useI18n();
-  const [pickerOpen, setPickerOpen] = useState(false);
-  return <div className={compact ? "py-4" : "p-4"}><div className="flex gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--accent)] font-black text-white">{(comment.author.displayName || comment.author.username).slice(0, 1).toUpperCase()}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-baseline gap-x-2"><Link className="font-black hover:text-[var(--accent)]" href={`/user/${comment.author.id}`}>{comment.author.displayName || comment.author.username}</Link>{comment.author.projectRole ? <span className="rounded-md border border-[var(--accent)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t(`mods.comments.projectRoles.${comment.author.projectRole}`)}</span> : null}<span className="text-xs text-[var(--muted)]">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</span></div><div className="markdown-preview mt-3 text-sm leading-7"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={comment.body} /></div><div className="mt-3 flex flex-wrap items-center gap-2">{reactionOptions.map(([reaction, emoji]) => { const count = comment.reactions[reaction] ?? 0; return count ? <button key={reaction} className={`focus-ring rounded-full border px-2.5 py-1 text-xs ${comment.userReactions.includes(reaction) ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`} type="button" onClick={() => onReact(comment, reaction)}>{emoji} {count}</button> : null; })}<div className="relative"><button className="focus-ring grid h-8 w-8 place-items-center rounded-full border border-[var(--line)]" type="button" title={t("mods.comments.addReaction")} onClick={() => setPickerOpen((current) => !current)}>☺</button>{pickerOpen ? <div className="absolute bottom-full left-0 z-20 mb-2 flex gap-1 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-2 shadow-xl">{reactionOptions.map(([reaction, emoji]) => <button key={reaction} className="focus-ring grid h-9 w-9 place-items-center rounded-md text-lg hover:bg-[var(--panel-subtle)]" type="button" onClick={() => { setPickerOpen(false); onReact(comment, reaction); }}>{emoji}</button>)}</div> : null}</div><button className="text-xs font-bold text-[var(--accent)] hover:underline" type="button" onClick={onReply}>{t("mods.comments.reply")}</button></div></div></div></div>;
 }
 
 function ModIcon({ icon, name, alt }: { icon: string; name: string; alt: string }) {

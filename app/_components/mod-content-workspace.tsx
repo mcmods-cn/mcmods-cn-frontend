@@ -21,10 +21,18 @@ import {
   type ModContentVersion,
   updateModContentVersion,
 } from "../_lib/mod-content-api";
-import { uploadUserFileToOSS } from "../_lib/oss-upload";
+import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { ModExportImportModal } from "./mod-export-data";
+import {
+  retryCatalogImportJob,
+  type CatalogImportSource,
+  type ModExportJob,
+  type ModExportUploadProgress,
+  uploadEmbeddedIconCatalog,
+  waitForCatalogImportJob,
+} from "../_lib/mod-export-api";
 
-type ImportSource = "" | "icon" | "exporter";
+type ImportSource = "" | "icon" | "exporter" | CatalogImportSource;
 type VersionDraft = { minecraftVersions: string[]; loaders: string[]; modVersion: string; reason: string };
 
 const emptyVersion = (): VersionDraft => ({ minecraftVersions: [], loaders: [], modVersion: "", reason: "" });
@@ -47,7 +55,12 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
   const [versionDraft, setVersionDraft] = useState<VersionDraft>(emptyVersion);
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [activeImportSource, setActiveImportSource] = useState<ImportSource | null>(null);
   const [message, setMessage] = useState("");
+  const importBusy = activeImportSource !== null;
+  const updateImportBusy = useCallback((source: ImportSource, active: boolean) => {
+    setActiveImportSource((current) => active ? source : current === source ? null : current);
+  }, []);
 
   const reload = useCallback(async () => {
     const [nextVersions, nextTemplates, nextSections, mod, nextMinecraftConfig] = await Promise.all([
@@ -74,11 +87,24 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
     const timer = window.setTimeout(() => { void reload().catch((reason) => setMessage(errorText(reason))); }, 0);
     return () => window.clearTimeout(timer);
   }, [reload]);
+  useEffect(() => {
+    if (!importBusy) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [importBusy]);
 
   const selectedVersion = versions.find((item) => item.publicId === selectedVersionId);
-  const currentSections = useMemo(() => sections.filter((item) => item.versionPublicId === selectedVersionId), [sections, selectedVersionId]);
+  const currentSections = useMemo(
+    () => sections.filter((item) => item.versionPublicId === selectedVersionId && !item.parentPublicId),
+    [sections, selectedVersionId],
+  );
 
   function selectVersion(publicId: string) {
+    if (importBusy) return;
     setSelectedVersionId(publicId);
     setAddingVersion(false);
     setEditingVersion(false);
@@ -89,6 +115,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
   }
 
   function startNewVersion() {
+    if (importBusy) return;
     setAddingVersion(true);
     setEditingVersion(false);
     setVersionDraft(emptyVersion());
@@ -199,7 +226,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
   }
 
   return <section className="grid min-h-[680px] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] lg:grid-cols-[270px_minmax(0,1fr)]">
-    <aside className="border-b border-[var(--line)] bg-[var(--panel-subtle)] p-4 lg:border-b-0 lg:border-r"><h2 className="font-black">{t("modContent.versionEditor.versionList")}</h2><p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("modContent.versionEditor.versionListHint")}</p><div className="mt-4 grid gap-2">{versions.map((version) => <button className={`focus-ring rounded-lg border p-3 text-left ${version.publicId === selectedVersionId && !addingVersion ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"}`} key={version.publicId} type="button" onClick={() => selectVersion(version.publicId)}><strong className="block truncate">{version.label}</strong><small className="mt-1 block truncate text-[var(--muted)]">{version.minecraftVersions.join(", ")} · {version.loaders.join(", ")}</small>{version.status !== "active" ? <span className="mt-2 inline-block rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--warning)]">{version.status}</span> : null}</button>)}</div><button aria-label={t("modContent.entry.addVersion")} className={`focus-ring mt-3 grid h-11 w-full place-items-center rounded-lg border border-dashed text-2xl font-black ${addingVersion ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)]"}`} type="button" onClick={startNewVersion}>+</button></aside>
+    <aside className="border-b border-[var(--line)] bg-[var(--panel-subtle)] p-4 lg:border-b-0 lg:border-r"><h2 className="font-black">{t("modContent.versionEditor.versionList")}</h2><p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("modContent.versionEditor.versionListHint")}</p><div className="mt-4 grid gap-2">{versions.map((version) => <button className={`focus-ring rounded-lg border p-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${version.publicId === selectedVersionId && !addingVersion ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"}`} disabled={importBusy} key={version.publicId} type="button" onClick={() => selectVersion(version.publicId)}><strong className="block truncate">{version.label}</strong><small className="mt-1 block truncate text-[var(--muted)]">{version.minecraftVersions.join(", ")} · {version.loaders.join(", ")}</small>{version.status !== "active" ? <span className="mt-2 inline-block rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--warning)]">{version.status}</span> : null}</button>)}</div><button aria-label={t("modContent.entry.addVersion")} className={`focus-ring mt-3 grid h-11 w-full place-items-center rounded-lg border border-dashed text-2xl font-black disabled:cursor-not-allowed disabled:opacity-60 ${addingVersion ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)]"}`} disabled={importBusy} type="button" onClick={startNewVersion}>+</button></aside>
     <div className="min-w-0 p-5 lg:p-7">
       {message ? <p className="mb-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm font-bold">{message}</p> : null}
       {addingVersion || !selectedVersion ? <VersionForm busy={busy} compatibilities={compatibilities} draft={versionDraft} editing={false} minecraftConfig={minecraftConfig} usingGlobalCompatibility={usingGlobalCompatibility} onCancel={selectedVersion ? () => setAddingVersion(false) : undefined} onChange={setVersionDraft} onSave={() => void saveVersion()} /> : <>
@@ -210,9 +237,17 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
             <button className={workspaceModeButton(!editingVersion && importSource === "")} style={workspaceModeStyle(!editingVersion && importSource === "")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("")}>{t("modContent.versionEditor.manualAdd")}</button>
             <button className={workspaceModeButton(!editingVersion && importSource === "exporter")} style={workspaceModeStyle(!editingVersion && importSource === "exporter")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("exporter")}>mcmods_exporter</button>
             <button className={workspaceModeButton(!editingVersion && importSource === "icon")} style={workspaceModeStyle(!editingVersion && importSource === "icon")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("icon")}>IconExporter</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "iconrenderer")} style={workspaceModeStyle(!editingVersion && importSource === "iconrenderer")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("iconrenderer")}>IconRenderer</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "letmeseesee")} style={workspaceModeStyle(!editingVersion && importSource === "letmeseesee")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("letmeseesee")}>LetMeSeeSee (YourCode)</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "irr")} style={workspaceModeStyle(!editingVersion && importSource === "irr")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("irr")}>IRR</button>
           </div>
         </header>
-        {editingVersion ? <VersionForm busy={busy} compatibilities={compatibilities} draft={versionDraft} editing minecraftConfig={minecraftConfig} usingGlobalCompatibility={usingGlobalCompatibility} onCancel={() => setEditingVersion(false)} onChange={setVersionDraft} onSave={() => void saveVersion()} /> : importSource === "exporter" ? <ExporterImportPanel onImported={reload} siteId={siteId} token={token} version={selectedVersion} /> : importSource === "icon" ? <IconExportPanel siteId={siteId} token={token} version={selectedVersion} /> : <div className="mt-6"><div className="mb-4"><h3 className="text-lg font-black">{t("modContent.versionEditor.contentTypes")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.contentTypesHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{currentSections.map((section) => <ContentTypeCard key={section.publicId} locale={locale} section={section} siteId={siteId} templates={templates} onDelete={() => void archiveSection(section)} />)}<AddContentPageCard disabled={selectedVersion.status !== "active"} onClick={() => setTypeDialogOpen(true)} /></div></div>}
+        {importBusy ? <p className="mt-4 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("modContent.catalogImport.continuesInBackground", { importer: importSourceLabel(activeImportSource) })}</p> : null}
+        <div hidden={!editingVersion}><VersionForm busy={busy || importBusy} compatibilities={compatibilities} draft={versionDraft} editing minecraftConfig={minecraftConfig} usingGlobalCompatibility={usingGlobalCompatibility} onCancel={() => setEditingVersion(false)} onChange={setVersionDraft} onSave={() => void saveVersion()} /></div>
+        <div className="mt-6" hidden={editingVersion || importSource !== ""}><div className="mb-4"><h3 className="text-lg font-black">{t("modContent.versionEditor.contentTypes")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.contentTypesHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{currentSections.map((section) => <ContentTypeCard key={section.publicId} locale={locale} section={section} siteId={siteId} templates={templates} onDelete={() => void archiveSection(section)} />)}<AddContentPageCard disabled={selectedVersion.status !== "active" || importBusy} onClick={() => setTypeDialogOpen(true)} /></div></div>
+        <div hidden={editingVersion || importSource !== "exporter"}><ExporterImportPanel blocked={importBusy && activeImportSource !== "exporter"} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} token={token} version={selectedVersion} /></div>
+        <div hidden={editingVersion || importSource !== "icon"}><IconExportPanel blocked={importBusy && activeImportSource !== "icon"} onBusyChange={updateImportBusy} siteId={siteId} token={token} version={selectedVersion} /></div>
+        {(["iconrenderer", "letmeseesee", "irr"] as CatalogImportSource[]).map((source) => <div hidden={editingVersion || importSource !== source} key={source}><EmbeddedIconImportPanel blocked={importBusy && activeImportSource !== source} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} source={source} token={token} version={selectedVersion} /></div>)}
       </>}
     </div>
     {typeDialogOpen && selectedVersion ? <AddContentTypeDialog busy={busy} locale={locale} templates={templates} onClose={() => setTypeDialogOpen(false)} onPreset={(template, displayMode) => void createSection(template, displayMode)} onCustom={(input) => void createCustomSection(input)} /> : null}
@@ -327,21 +362,32 @@ function AddContentTypeDialog({ templates, locale, busy, onClose, onPreset, onCu
   </div>;
 }
 
-function ExporterImportPanel({ siteId, token, version, onImported }: { siteId: string; token: string; version: ModContentVersion; onImported: () => Promise<unknown> }) {
-  return <ModExportImportModal disabled={version.status !== "active"} inline onImported={async () => { await onImported(); }} siteId={siteId} targetVersionId={version.publicId} targetVersionLabel={version.label} token={token} />;
+function ExporterImportPanel({ siteId, token, version, blocked, onImported, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
+  const notifyBusy = useCallback((active: boolean) => onBusyChange("exporter", active), [onBusyChange]);
+  return <ModExportImportModal disabled={blocked || version.status !== "active"} inline onBusyChange={notifyBusy} onImported={async () => { await onImported(); }} siteId={siteId} targetVersionId={version.publicId} targetVersionLabel={version.label} token={token} />;
 }
 
-function IconExportPanel({ siteId, token, version }: { siteId: string; token: string; version: ModContentVersion }) {
+function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; blocked: boolean; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [overwrite, setOverwrite] = useState(false);
-  async function upload(file?: File) {
+  const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
+  useEffect(() => {
+    onBusyChange("icon", busy);
+    return () => onBusyChange("icon", false);
+  }, [busy, onBusyChange]);
+  async function uploadFile(file?: File) {
     if (!file) return;
     if (!file.name.toLowerCase().endsWith(".zip")) { setMessage(t("modContent.iconImport.zipOnly")); return; }
-    setBusy(true); setMessage("");
+    setBusy(true); setMessage(""); setUpload({ phase: "hashing", percent: 0 });
     try {
-      const uploaded = await uploadUserFileToOSS(file, token, `iconexport:${siteId}:${version.publicId}:${overwrite ? "overwrite" : "preserve"}`);
+      const uploaded = await uploadUserFileToOSS(
+        file,
+        token,
+        `iconexport:${siteId}:${version.publicId}:${overwrite ? "overwrite" : "preserve"}`,
+        (loaded, total, metrics) => setUpload({ phase: "uploading", percent: total > 0 ? Math.round(loaded / total * 100) : 0, ...metrics }),
+      );
       setMessage(t("modContent.iconImport.uploaded", { id: uploaded.id }));
     } catch (reason) {
       setMessage(errorText(reason));
@@ -349,7 +395,83 @@ function IconExportPanel({ siteId, token, version }: { siteId: string; token: st
       setBusy(false);
     }
   }
-  return <section className="mt-6"><h3 className="text-lg font-black">{t("modContent.iconImport.title")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.iconImport.description")}</p><ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} /><label className="mt-5 grid min-h-56 cursor-pointer place-items-center rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel-subtle)] p-8 text-center hover:border-[var(--accent)]"><input accept=".zip,application/zip" className="sr-only" disabled={busy || version.status !== "active"} type="file" onChange={(event) => void upload(event.target.files?.[0])} /><span><strong className="text-lg">{busy ? t("modContent.iconImport.uploading") : t("modContent.iconImport.choose")}</strong><small className="mt-2 block text-[var(--muted)]">{t("modContent.iconImport.hint")}</small></span></label>{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}</section>;
+  return <section className="mt-6"><h3 className="text-lg font-black">{t("modContent.iconImport.title")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.iconImport.description")}</p><ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} /><label className="mt-5 grid min-h-56 cursor-pointer place-items-center rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel-subtle)] p-8 text-center hover:border-[var(--accent)]"><input accept=".zip,application/zip" className="sr-only" disabled={busy || blocked || version.status !== "active"} type="file" onChange={(event) => void uploadFile(event.target.files?.[0])} /><span><strong className="text-lg">{busy ? t("modContent.iconImport.uploading") : t("modContent.iconImport.choose")}</strong><small className="mt-2 block text-[var(--muted)]">{t("modContent.iconImport.hint")}</small></span></label>{upload && busy ? <UploadProgressDetails progress={upload} /> : null}{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}</section>;
+}
+
+function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onImported, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; source: CatalogImportSource; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [overwrite, setOverwrite] = useState(false);
+  const [message, setMessage] = useState("");
+  const [job, setJob] = useState<ModExportJob | null>(null);
+  const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
+  const polling = useRef<AbortController | null>(null);
+  const importerName = importSourceLabel(source);
+
+  useEffect(() => () => polling.current?.abort(), []);
+  useEffect(() => {
+    onBusyChange(source, busy);
+    return () => onBusyChange(source, false);
+  }, [busy, onBusyChange, source]);
+
+  async function monitor(initialJob: ModExportJob) {
+    setJob(initialJob);
+    polling.current?.abort();
+    polling.current = new AbortController();
+    const completed = await waitForCatalogImportJob(siteId, initialJob.id, token, setJob, polling.current.signal);
+    if (completed.status === "failed") throw new Error(String(completed.errorDetail.message || completed.errorCode || t("modContent.catalogImport.failed")));
+    if (completed.status === "cancelled") throw new Error(t("modContent.catalogImport.cancelled"));
+    await onImported();
+    setMessage(completed.reviewRequired ? t("modContent.catalogImport.reviewPending") : t("modContent.catalogImport.complete"));
+  }
+
+  async function uploadFile(files?: FileList | File[]) {
+    const selectedFiles = Array.from(files || []);
+    if (!selectedFiles.length) return;
+    if (selectedFiles.some((file) => !file.name.toLowerCase().endsWith(".json"))) {
+      setMessage(t("modContent.catalogImport.jsonOnly"));
+      return;
+    }
+    setBusy(true); setMessage(""); setJob(null); setUpload(null);
+    try {
+      const file = source === "irr" ? await combineIRRCatalogFiles(selectedFiles, t) : selectedFiles[0];
+      const initial = await uploadEmbeddedIconCatalog(file, siteId, token, source, {
+        targetVersionPublicId: version.publicId,
+        overwriteExistingImportData: overwrite,
+      }, setUpload);
+      await monitor(initial);
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) setMessage(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function retry() {
+    if (!job) return;
+    setBusy(true); setMessage("");
+    try {
+      await monitor(await retryCatalogImportJob(siteId, job.id, token));
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) setMessage(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const progress = job?.progress ?? upload?.percent ?? 0;
+  const phase = job ? t(`modContent.catalogImport.stages.${job.currentStage || job.status}`) : upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : "";
+  return <section className="mt-6">
+    <h3 className="text-lg font-black">{t("modContent.catalogImport.title", { importer: importerName })}</h3>
+    <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.catalogImport.description", { importer: importerName, version: version.label })}</p>
+    <ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} />
+    <label className={`mt-5 grid min-h-56 place-items-center rounded-xl border border-dashed p-8 text-center ${busy || blocked || version.status !== "active" ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[var(--accent)]"} border-[var(--line)] bg-[var(--panel-subtle)]`}>
+      <input accept=".json,application/json,application/x-ndjson" className="sr-only" disabled={busy || blocked || version.status !== "active"} multiple={source === "irr"} type="file" onChange={(event) => void uploadFile(event.target.files || undefined)} />
+      <span><strong className="text-lg">{busy ? t("modContent.catalogImport.processing") : t("modContent.catalogImport.choose", { importer: importerName })}</strong><small className="mt-2 block text-[var(--muted)]">{t(source === "irr" ? "modContent.catalogImport.irrHint" : "modContent.catalogImport.hint")}</small></span>
+    </label>
+    {job ? <div className="mt-4"><div className="flex justify-between text-sm font-bold"><span>{phase}</span><span>{progress}%</span></div><div className="mt-2 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div></div> : upload ? <UploadProgressDetails progress={upload} /> : null}
+    {message ? <div className="mt-4 flex items-center gap-3 rounded-lg border border-[var(--line)] p-3 text-sm font-bold"><p className="min-w-0 flex-1">{message}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retry()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
+  </section>;
 }
 
 function ImportOverwriteChoice({ checked, onChange }: { checked: boolean; onChange: (value: boolean) => void }) {
@@ -357,8 +479,78 @@ function ImportOverwriteChoice({ checked, onChange }: { checked: boolean; onChan
   return <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><input className="mt-1 h-4 w-4 accent-[var(--accent)]" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong className="block">{t("mods.exportImport.overwriteExisting")}</strong><small className="mt-1 block leading-5 text-[var(--muted)]">{t("mods.exportImport.overwriteExistingHint")}</small></span></label>;
 }
 
+function UploadProgressDetails({ progress }: { progress: ModExportUploadProgress }) {
+  const { t } = useI18n();
+  const label = t(`mods.exportImport.uploadPhases.${progress.phase}`);
+  const stats = progress.phase === "uploading" && progress.totalBytes
+    ? t("mods.exportImport.uploadStats", {
+      loaded: formatBytes(progress.loadedBytes || 0),
+      total: formatBytes(progress.totalBytes),
+      speed: formatBytes(progress.bytesPerSecond || 0),
+      eta: formatUploadETA(progress.etaSeconds || 0),
+    })
+    : "";
+  const flags = [
+    progress.multipart ? t("mods.exportImport.multipartMode") : "",
+    progress.retryCount ? t("mods.exportImport.retrying", { count: progress.retryCount }) : "",
+    progress.stalled ? t("mods.exportImport.stalled") : "",
+  ].filter(Boolean).join(" · ");
+  return (
+    <div className="mt-4">
+      <div className="flex justify-between text-sm font-bold"><span>{label}</span><span>{progress.percent}%</span></div>
+      {stats ? <p className="mt-1 text-xs text-[var(--muted)]">{stats}{flags ? ` · ${flags}` : ""}</p> : null}
+      <div className="mt-2 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress.percent}%` }} /></div>
+    </div>
+  );
+}
+
 function localizedName(values: ModContentLocalization[], locale: string) { return values.find((item) => item.locale === locale)?.name || values.find((item) => normalizeContentLanguage(item.locale) === "en-US")?.name || values[0]?.name || ""; }
 function uniqueValues(values: string[]) { return [...new Set(values.map((item) => item.trim()).filter(Boolean))]; }
 function toggleValue(values: string[], value: string) { return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]; }
 function versionLabel(versions: string[], loaders: string[]) { return versions.length && loaders.length ? `${versions.join(", ")} / ${loaders.join(", ")}` : ""; }
 function errorText(value: unknown) { return value instanceof Error ? value.message : String(value); }
+
+function importSourceLabel(source: ImportSource | null) {
+  switch (source) {
+    case "exporter": return "mcmods_exporter";
+    case "icon": return "IconExporter";
+    case "iconrenderer": return "IconRenderer";
+    case "letmeseesee": return "LetMeSeeSee (YourCode)";
+    case "irr": return "IRR";
+    default: return "";
+  }
+}
+
+async function combineIRRCatalogFiles(files: File[], t: (key: string, values?: Record<string, string | number>) => string) {
+  if (files.length > 8) throw new Error(t("modContent.catalogImport.irrTooManyFiles"));
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalSize > 128 * 1024 * 1024) throw new Error(t("modContent.catalogImport.irrTooLarge"));
+  const entries: unknown[] = [];
+  for (const file of files) {
+    const raw = (await file.text()).replace(/^\uFEFF/, "").trim();
+    if (!raw) continue;
+    if (raw.startsWith("[")) {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error(t("modContent.catalogImport.irrNotArray", { file: file.name }));
+      entries.push(...parsed);
+      continue;
+    }
+    for (const [index, line] of raw.split(/\r?\n/).entries()) {
+      if (!line.trim()) continue;
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+        throw new Error(t("modContent.catalogImport.irrInvalidLine", { file: file.name, line: index + 1 }));
+      }
+    }
+  }
+  if (!entries.length) throw new Error(t("modContent.catalogImport.irrEmpty"));
+  const jsonl = entries.map((entry) => JSON.stringify(entry)).join("\n");
+  return new File([jsonl], `irr-catalog-${Date.now()}.json`, { type: "application/x-ndjson" });
+}
+
+function formatUploadETA(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0s";
+  if (seconds < 60) return `${Math.ceil(seconds)}s`;
+  return `${Math.floor(seconds / 60)}m ${Math.ceil(seconds % 60)}s`;
+}

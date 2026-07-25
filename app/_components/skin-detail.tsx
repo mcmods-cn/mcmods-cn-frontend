@@ -20,6 +20,7 @@ import {
 } from "../_lib/skin-api";
 import { notifySite } from "../_lib/site-notice";
 import { SkinPreview2D } from "./skin-preview";
+import { CommentSection } from "./comment-section";
 
 const SkinViewerCanvas = dynamic(
   () => import("@/components/minecraft-skin/SkinViewerCanvas").then((module) => module.SkinViewerCanvas),
@@ -194,6 +195,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
             ) : null}
           </aside>
         </div>
+        <CommentSection targetKey={publicId} targetType="skin" />
       </article>
     </main>
   );

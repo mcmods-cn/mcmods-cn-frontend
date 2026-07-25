@@ -7,7 +7,7 @@ import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 
-type NotificationKind = "system" | "reply_mention" | "review" | "new_follower";
+type NotificationKind = "system" | "reply_mention" | "comment_watch_reply" | "review" | "new_follower";
 
 type NotificationItem = {
   id: number;
@@ -51,7 +51,7 @@ type AIBalance = {
 
 type Translation = { title: string; body: string };
 
-const notificationKinds: NotificationKind[] = ["system", "reply_mention", "review", "new_follower"];
+const notificationKinds: NotificationKind[] = ["system", "reply_mention", "comment_watch_reply", "review", "new_follower"];
 
 export function MessagesCenter() {
   const { t, locale } = useI18n();

@@ -14,6 +14,7 @@ import {
   waitForModExportJob,
 } from "../_lib/mod-export-api";
 import { loadModContentSections, loadModContentTemplates, loadModContentVersions, type ModContentSection, type ModContentTemplate, type ModContentVersion } from "../_lib/mod-content-api";
+import { formatBytes } from "../_lib/oss-upload";
 import { useI18n } from "../_lib/i18n-provider";
 import { IconFont } from "./iconfont";
 
@@ -94,7 +95,7 @@ export function ModExportData({ siteId, token, canEdit }: Props) {
       {canEdit ? <Link className="button-primary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/data/edit`}>{t("mods.exportImport.importAction")}</Link> : null}
     </header>
     {message ? <p className="rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{message}</p> : null}
-    {contentVersions.length ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3"><strong className="text-sm">{t("mods.exportImport.dataVersion")}</strong><select className="field min-w-56 flex-1 sm:max-w-md" value={contentVersionId} onChange={(event) => setContentVersionId(event.target.value)}>{contentVersions.map((item) => <option key={item.publicId} value={item.publicId}>{item.label}</option>)}</select>{matchingRevisions.length > 1 ? <select aria-label={t("mods.exportImport.importNamespace")} className="field min-w-44" value={selected?.id ?? ""} onChange={(event) => setSelectedID(event.target.value)}>{matchingRevisions.map((item) => <option key={item.id} value={item.id}>{item.namespace}</option>)}</select> : null}</div> : null}
+    {contentVersions.length ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3"><strong className="text-sm">{t("mods.exportImport.dataVersion")}</strong><select className="field min-w-56 flex-1 sm:max-w-md" value={contentVersionId} onChange={(event) => setContentVersionId(event.target.value)}>{contentVersions.map((item) => <option key={item.publicId} value={item.publicId}>{item.label}</option>)}</select>{matchingRevisions.length > 1 ? <select aria-label={t("mods.exportImport.importNamespace")} className="field min-w-44" value={selected?.id ?? ""} onChange={(event) => setSelectedID(event.target.value)}>{matchingRevisions.map((item) => <option key={item.id} value={item.id}>{item.namespace}{item.sourceKind && item.sourceKind !== "mcmods_exporter" ? ` · ${item.sourceKind}` : ""}</option>)}</select> : null}</div> : null}
     {categories.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{categories.map((category) => <UnifiedCategoryCard category={category} key={category.key} onClick={() => openCategory(category)} />)}</div> : <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-8 text-center text-[var(--muted)]">{t("mods.exportImport.empty")}</div>}
   </section>;
 }
@@ -162,6 +163,7 @@ function mergeCatalogCategories(exportCategories: ModExportCategory[], sections:
     });
   }
   for (const section of sections) {
+    if (section.parentPublicId) continue;
     const key = manualCategoryMap[section.templateCode] ?? `manual:${section.publicId}`;
     const template = templates.find((item) => item.publicId === section.templatePublicId);
     const localization = localizedSection(section, template, locale);
@@ -212,7 +214,7 @@ function UnifiedCategoryCard({ category, onClick }: { category: UnifiedCatalogCa
   return category.section || category.exportCategory ? <button className={`${className} hover:-translate-y-0.5 hover:border-[var(--accent)]`} type="button" onClick={onClick}>{content}</button> : <article className={className}>{content}</article>;
 }
 
-export function ModExportImportModal({ siteId, token, targetVersionId, targetVersionLabel, onClose, onImported, inline = false, disabled = false }: { siteId: string; token: string; targetVersionId: string; targetVersionLabel: string; onClose?: () => void; onImported: () => Promise<void>; inline?: boolean; disabled?: boolean }) {
+export function ModExportImportModal({ siteId, token, targetVersionId, targetVersionLabel, onClose, onImported, onBusyChange, inline = false, disabled = false }: { siteId: string; token: string; targetVersionId: string; targetVersionLabel: string; onClose?: () => void; onImported: () => Promise<void>; onBusyChange?: (busy: boolean) => void; inline?: boolean; disabled?: boolean }) {
   const { t } = useI18n();
   const [job, setJob] = useState<ModExportJob | null>(null);
   const [busy, setBusy] = useState(false);
@@ -223,6 +225,10 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
   const polling = useRef<AbortController | null>(null);
 
   useEffect(() => () => polling.current?.abort(), []);
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
 
   function closeModal() {
     if (busy && !job) return;
@@ -274,7 +280,7 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
 
   const form = <><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><input className="mt-1 h-4 w-4 accent-[var(--accent)]" type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} /><span><strong className="block">{t("mods.exportImport.overwriteExisting")}</strong><small className="mt-1 block leading-5 text-[var(--muted)]">{t("mods.exportImport.overwriteExistingHint")}</small></span></label>
     <label className={`mt-5 grid min-h-48 place-items-center rounded-lg border border-dashed p-6 text-center ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${dragging ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel-subtle)]"}`} onDragEnter={(event) => { event.preventDefault(); if (!disabled) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { if (disabled) { event.preventDefault(); return; } drop(event); }}><input className="sr-only" type="file" accept=".zip,application/zip" disabled={busy || disabled} onChange={(event: ChangeEvent<HTMLInputElement>) => void importFile(event.target.files?.[0])} /><span><strong className="block text-lg">{upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : t("mods.exportImport.drop")}</strong><small className="mt-2 block text-[var(--muted)]">{t("mods.exportImport.dropHint")}</small></span></label>
-    {upload && !job ? <Progress label={t(`mods.exportImport.uploadPhases.${upload.phase}`)} percent={upload.percent} /> : null}
+    {upload && !job ? <Progress label={t(`mods.exportImport.uploadPhases.${upload.phase}`)} percent={upload.percent} upload={upload} /> : null}
     {job ? <><p className="mt-4 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("mods.exportImport.importInBackground")}</p><Progress label={t(`mods.exportImport.stages.${job.currentStage || job.status}`)} percent={job.progress} />{job.reviewRequired ? <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p> : null}</> : null}
     {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
   </>;
@@ -282,8 +288,23 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
   return <div className="fixed inset-0 z-[80] grid place-items-center bg-black/55 p-4" role="presentation" onMouseDown={closeModal}><div className="surface max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("mods.exportImport.modalTitle")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("mods.exportImport.modalDescription")}</p></div><button className="button-secondary focus-ring" disabled={busy && !job} type="button" onClick={closeModal}>{t("common.close")}</button></header><p className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm"><strong>{t("mods.exportImport.dataVersion")}：</strong>{targetVersionLabel}</p>{form}</div></div>;
 }
 
-function Progress({ label, percent }: { label: string; percent: number }) {
-  return <div className="mt-4"><div className="flex justify-between text-sm font-bold"><span>{label}</span><span>{percent}%</span></div><div className="mt-2 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${percent}%` }} /></div></div>;
+function Progress({ label, percent, upload }: { label: string; percent: number; upload?: ModExportUploadProgress }) {
+  const { t } = useI18n();
+  const details = upload?.phase === "uploading" && upload.totalBytes
+    ? t("mods.exportImport.uploadStats", {
+      loaded: formatBytes(upload.loadedBytes || 0),
+      total: formatBytes(upload.totalBytes),
+      speed: formatBytes(upload.bytesPerSecond || 0),
+      eta: formatUploadETA(upload.etaSeconds || 0),
+    })
+    : "";
+  return <div className="mt-4"><div className="flex justify-between gap-3 text-sm font-bold"><span>{label}</span><span>{percent}%</span></div>{details ? <p className="mt-1 text-xs text-[var(--muted)]">{details}{upload?.multipart ? ` · ${t("mods.exportImport.multipartMode")}` : ""}{upload?.retryCount ? ` · ${t("mods.exportImport.retrying", { count: upload.retryCount })}` : ""}{upload?.stalled ? ` · ${t("mods.exportImport.stalled")}` : ""}</p> : null}<div className="mt-2 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${percent}%` }} /></div></div>;
+}
+
+function formatUploadETA(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return "0s";
+  if (seconds < 60) return `${Math.ceil(seconds)}s`;
+  return `${Math.floor(seconds / 60)}m ${Math.ceil(seconds % 60)}s`;
 }
 
 function errorText(reason: unknown, fallback: string) {

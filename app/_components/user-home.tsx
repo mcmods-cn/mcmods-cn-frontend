@@ -11,6 +11,7 @@ import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection,
 import { UserEconomyPanel } from "./user-economy-panel";
 import { UserPlayerProfilesPanel } from "./user-player-profiles-panel";
 import { ContentLanguagePreferences } from "./content-language-preferences";
+import { UserCommentWatchesPanel } from "./user-comment-watches-panel";
 
 type FileQuota = {
   daily: QuotaItem;
@@ -290,6 +291,7 @@ export function UserHome() {
             <nav className="surface flex overflow-x-auto rounded-lg border-b border-[var(--line)]" aria-label={t("user.accountSections")}>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "settings" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=settings", { scroll: false })}>{t("user.settings")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "favorites" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=favorites", { scroll: false })}>{t("favorites.title")}</button>
+              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "comment-watches" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=comment-watches", { scroll: false })}>{t("commentWatches.title")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "files" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=files", { scroll: false })}>{t("user.fileManager")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "economy" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=economy", { scroll: false })}>{t("user.economyAndProgression")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "players" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=players", { scroll: false })}>{t("skins.playerProfiles")}</button>
@@ -429,6 +431,7 @@ export function UserHome() {
               />
             ) : null}
             {activeSection === "players" ? <UserPlayerProfilesPanel token={token} /> : null}
+            {activeSection === "comment-watches" ? <UserCommentWatchesPanel token={token} /> : null}
           </>
         )}
       </section>
@@ -436,10 +439,10 @@ export function UserHome() {
   );
 }
 
-type AccountSection = "settings" | "favorites" | "files" | "economy" | "players";
+type AccountSection = "settings" | "favorites" | "comment-watches" | "files" | "economy" | "players";
 
 function accountSection(value: string | null): AccountSection {
-  return value === "favorites" || value === "files" || value === "economy" || value === "players" ? value : "settings";
+  return value === "favorites" || value === "comment-watches" || value === "files" || value === "economy" || value === "players" ? value : "settings";
 }
 
 function FavoriteCollectionsPanel({ token }: { token: string }) {

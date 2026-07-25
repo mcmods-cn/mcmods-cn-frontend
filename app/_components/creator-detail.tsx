@@ -20,6 +20,7 @@ import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ToolsPlayground } from "./tools-playground";
+import { CommentSection } from "./comment-section";
 
 type CreatorDetailProps = {
   kind: CreatorKind;
@@ -231,6 +232,7 @@ export function CreatorDetail({ kind, publicId }: CreatorDetailProps) {
           </section>
         </aside>
       </div>
+      <div className="mx-auto max-w-7xl px-4 pb-8"><CommentSection targetKey={publicId} targetType="creator" /></div>
 
       {editOpen && token ? (
         <CreatorEditorDialog
@@ -312,7 +314,11 @@ function CreatorEditorDialog({
   async function uploadAvatar(file: File) {
     setUploadingAvatar(true);
     try {
-      const uploaded = await uploadUserFileToOSS(file, token, "creator_avatar");
+      const uploaded = await uploadUserFileToOSS(
+        file,
+        token,
+        `creator_avatar:${detail.creator.kind}:${detail.creator.publicId}`,
+      );
       setAvatarFileId(uploaded.id);
       setAvatarUrl(uploaded.accessUrl || uploaded.url || "");
     } catch (error) {

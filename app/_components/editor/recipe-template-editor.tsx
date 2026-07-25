@@ -220,7 +220,11 @@ export function RecipeTemplateEditor({
     setUploading(true);
     setFailure("");
     try {
-      const uploaded = await uploadUserFileToOSS(file, token, "recipe_gui");
+      const uploaded = await uploadUserFileToOSS(
+        file,
+        token,
+        `recipe_gui:${recipeTypePublicId}:${draft.publicId || "staging"}`,
+      );
       if (!uploaded.id) throw new Error(labels.uploadFailed);
       setDraft((current) => ({ ...current, backgroundFileId: uploaded.id, backgroundUrl: uploaded.accessUrl || uploaded.url || current.backgroundUrl }));
     } catch (reason) {
