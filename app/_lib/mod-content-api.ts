@@ -78,7 +78,13 @@ export type ModContentLayoutPayload = {
   versionPublicId: string;
   rootSectionPublicId: string;
   categories: Array<Pick<ModContentSection, "publicId" | "parentPublicId" | "defaultLocale" | "ordinal" | "localizations">>;
-  resources: Array<Pick<ModContentSectionResource, "resourcePublicId" | "sectionPublicId" | "ordinal">>;
+  resources: Array<Pick<ModContentSectionResource, "resourcePublicId" | "sectionPublicId" | "ordinal"> & {
+    advancement?: {
+      parentResourcePublicId: string;
+      x: number;
+      y: number;
+    };
+  }>;
   reason: string;
   baseRevisionId?: string;
 };
