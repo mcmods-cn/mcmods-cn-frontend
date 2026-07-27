@@ -7,6 +7,7 @@ const zhTW = {
   assetEditor: { ...zhCN.assetEditor, back: "返回詳情", skinTitle: "編輯皮膚", blueprintTitle: "編輯藍圖", submit: "提交編輯", name: "名稱", introduction: "介紹", tags: "標籤", visibility: "可見性", visibilityPublic: "公開", visibilityUnlisted: "不列出", visibilityPrivate: "私密", armModel: "手臂模型", modelClassic: "經典", modelSlim: "纖細", reason: "修改說明", loginRequired: "請先登入後再編輯。", submitted: "已提交；需要審核的語言版本會在審核通過後發佈。", saveFailed: "儲存失敗。", loadFailed: "讀取編輯資料失敗。", defaultReason: "編輯本地化內容" },
   mods: { ...zhCN.mods, submission: { ...zhCN.mods.submission, defaultLocale: "預設內容語言", galleryUploadFailed: "畫廊圖片上傳失敗。", modIds: { title: "Mod ID", hint: "可為不同 Minecraft 版本登記目前或歷史 ID；主要 ID 用於標準顯示，所有 ID 都解析到同一個全域資源身分。", add: "新增 ID", identifier: "Mod ID", minimumVersion: "最低版本", maximumVersion: "最高版本", minimumPlaceholder: "例如 1.18", maximumPlaceholder: "留空表示不限", primary: "主要 ID" }, sections: { ...zhCN.mods.submission.sections, gallery: "畫廊", galleryHint: "圖片會先直接上傳至私有 OSS，並隨本次完整模組修訂一起進入審核。" }, actions: { ...zhCN.mods.submission.actions, uploadGallery: "上傳畫廊圖片", uploadingGallery: "上傳中……" } } },
   catalogEditor: { ...zhCN.catalogEditor },
+  modContent: { ...zhCN.modContent, templates: { ...zhCN.modContent.templates, loot_table: "戰利品表", game_setting: "遊戲設定" } },
   resourceEditor: {
     ...zhCN.resourceEditor,
     catalogShort: "資源", catalogTitle: "全域資源目錄", catalogDescription: "瀏覽並人工維護可重複使用的物品、方塊、流體、化學品及其他遊戲資源。匯入只用於輔助，不會取代人工維護。",

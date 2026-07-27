@@ -11,7 +11,7 @@ import { ModCatalogEntry } from "../_lib/mod-catalog-data";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
-import { ModExportData } from "./mod-export-data";
+import { ModCatalogData } from "./mod-catalog-data";
 import { ProjectDownloads } from "./project-downloads";
 import { CommentSection } from "./comment-section";
 
@@ -122,7 +122,7 @@ function ModSidebar({ mod, locale }: { mod: ModCatalogEntry; locale: string }) {
 }
 
 function ModDataTab({ mod, canEdit, token }: { mod: ModCatalogEntry; canEdit: boolean; token: string }) {
-  return <ModExportData siteId={mod.siteId} token={token} canEdit={canEdit} />;
+  return <ModCatalogData siteId={mod.siteId} token={token} canEdit={canEdit} />;
 }
 
 function ModIntroductionTab({ mod }: { mod: ModCatalogEntry }) {

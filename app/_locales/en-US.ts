@@ -422,7 +422,8 @@ const en = {
       item_block: "Items / blocks", fluid: "Fluids", dimension: "Dimensions", biome: "Biomes", entity: "Entities",
       enchantment: "Enchantments", mob_effect: "Potion effects", multiblock: "Multiblock structures",
       natural_generation: "Natural generation", world_structure: "World structures", key_mapping: "Key mappings",
-      command: "Commands", advancement: "Advancements", skill: "Skills", element: "Elements", chemical: "Chemicals",
+      command: "Commands", advancement: "Advancements", loot_table: "Loot tables", game_setting: "Game settings",
+      skill: "Skills", element: "Elements", chemical: "Chemicals",
     },
   },
   globalCatalog: {

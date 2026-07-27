@@ -422,7 +422,8 @@ const zhCN = {
       item_block: "物品 / 方块", fluid: "流体", dimension: "维度", biome: "群系", entity: "生物",
       enchantment: "附魔", mob_effect: "药水效果", multiblock: "多方块结构",
       natural_generation: "自然生成", world_structure: "世界结构", key_mapping: "绑定热键",
-      command: "指令", advancement: "成就", skill: "技能", element: "元素", chemical: "化学品",
+      command: "指令", advancement: "成就", loot_table: "战利品表", game_setting: "游戏设定",
+      skill: "技能", element: "元素", chemical: "化学品",
     },
   },
   globalCatalog: {

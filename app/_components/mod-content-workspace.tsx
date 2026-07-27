@@ -22,7 +22,7 @@ import {
   updateModContentVersion,
 } from "../_lib/mod-content-api";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
-import { ModExportImportModal } from "./mod-export-data";
+import { ModExportImportModal } from "./mod-catalog-data";
 import {
   retryCatalogImportJob,
   type CatalogImportSource,

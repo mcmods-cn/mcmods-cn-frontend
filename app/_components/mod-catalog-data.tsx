@@ -34,10 +34,9 @@ type Props = {
   siteId: string;
   token: string;
   canEdit: boolean;
-  managementMode?: boolean;
 };
 
-export function ModExportData({ siteId, token, canEdit }: Props) {
+export function ModCatalogData({ siteId, token, canEdit }: Props) {
   const { locale, t } = useI18n();
   const [revisions, setRevisions] = useState<ModExportRevision[]>([]);
   const [selectedID, setSelectedID] = useState("");
@@ -115,7 +114,7 @@ type UnifiedCatalogCategory = {
   section?: ModContentSection;
 };
 
-const manualCategoryMap: Record<string, string> = {
+const contentTemplateCategoryMap: Record<string, string> = {
   item_block: "itemsBlocks",
   fluid: "fluids",
   dimension: "dimensions",
@@ -127,6 +126,8 @@ const manualCategoryMap: Record<string, string> = {
   world_structure: "worldStructures",
   key_mapping: "keybinds",
   advancement: "achievements",
+  loot_table: "lootTables",
+  game_setting: "gameSettings",
   chemical: "industrialMedia",
   multiblock: "multiblocks",
   command: "commands",
@@ -134,7 +135,7 @@ const manualCategoryMap: Record<string, string> = {
   element: "elements",
 };
 
-const manualCategoryAppearance: Record<string, { icon: string; tone: string }> = {
+const contentCategoryAppearance: Record<string, { icon: string; tone: string }> = {
   itemsBlocks: { icon: "cube", tone: "text-emerald-600 bg-emerald-500/10" },
   fluids: { icon: "fluid", tone: "text-cyan-700 bg-cyan-500/10" },
   dimensions: { icon: "database", tone: "text-indigo-700 bg-indigo-500/10" },
@@ -146,6 +147,8 @@ const manualCategoryAppearance: Record<string, { icon: string; tone: string }> =
   worldStructures: { icon: "structure", tone: "text-amber-700 bg-amber-500/10" },
   keybinds: { icon: "keyboard", tone: "text-sky-700 bg-sky-500/10" },
   achievements: { icon: "achievement", tone: "text-yellow-700 bg-yellow-500/10" },
+  lootTables: { icon: "database", tone: "text-yellow-700 bg-yellow-500/10" },
+  gameSettings: { icon: "database", tone: "text-slate-700 bg-slate-500/10" },
   industrialMedia: { icon: "fluid", tone: "text-cyan-700 bg-cyan-500/10" },
   multiblocks: { icon: "structure", tone: "text-orange-700 bg-orange-500/10" },
   commands: { icon: "code", tone: "text-slate-700 bg-slate-500/10" },
@@ -168,7 +171,7 @@ function mergeCatalogCategories(exportCategories: ModExportCategory[], sections:
   }
   for (const section of sections) {
     if (section.parentPublicId) continue;
-    const key = manualCategoryMap[section.templateCode] ?? `manual:${section.publicId}`;
+    const key = contentTemplateCategoryMap[section.templateCode] ?? `custom:${section.publicId}`;
     const template = templates.find((item) => item.publicId === section.templatePublicId);
     const localization = localizedSection(section, template, locale);
     const existing = merged.get(key);
@@ -179,8 +182,8 @@ function mergeCatalogCategories(exportCategories: ModExportCategory[], sections:
       existing.section = section;
       continue;
     }
-    const appearance = manualCategoryAppearance[key] ?? { icon: "database", tone: "text-emerald-700 bg-emerald-500/10" };
-    const standardCategory = !key.startsWith("manual:");
+    const appearance = contentCategoryAppearance[key] ?? { icon: "database", tone: "text-emerald-700 bg-emerald-500/10" };
+    const standardCategory = !key.startsWith("custom:");
     merged.set(key, {
       key,
       title: standardCategory ? t(`mods.detail.dataCategories.${key}`) : localization?.name || localizedSectionName(section, template, locale, t),

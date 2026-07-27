@@ -7,6 +7,7 @@ const ja = {
   assetEditor: { ...en.assetEditor, back: "詳細に戻る", skinTitle: "スキンを編集", blueprintTitle: "ブループリントを編集", submit: "編集を送信", name: "名前", introduction: "紹介", tags: "タグ", visibility: "公開範囲", visibilityPublic: "公開", visibilityUnlisted: "限定公開", visibilityPrivate: "非公開", armModel: "腕モデル", modelClassic: "クラシック", modelSlim: "スリム", reason: "変更内容", loginRequired: "編集するにはログインしてください。", submitted: "送信しました。審査が必要な言語版は承認後に公開されます。", saveFailed: "変更を保存できませんでした。", loadFailed: "編集データを読み込めませんでした。", defaultReason: "ローカライズ内容の編集" },
   mods: { ...en.mods, submission: { ...en.mods.submission, defaultLocale: "既定のコンテンツ言語", galleryUploadFailed: "ギャラリー画像をアップロードできませんでした。", modIds: { title: "Mod ID", hint: "Minecraft のバージョンごとに現在または過去の ID を登録できます。メイン ID は標準表示に使用され、すべての ID は同じグローバルリソース識別子に解決されます。", add: "ID を追加", identifier: "Mod ID", minimumVersion: "最小バージョン", maximumVersion: "最大バージョン", minimumPlaceholder: "例: 1.18", maximumPlaceholder: "空欄なら制限なし", primary: "メイン ID" }, sections: { ...en.mods.submission.sections, gallery: "ギャラリー", galleryHint: "画像は非公開 OSS に直接アップロードされ、この完全な Mod 改訂とともに審査されます。" }, actions: { ...en.mods.submission.actions, uploadGallery: "ギャラリー画像をアップロード", uploadingGallery: "アップロード中……" } } },
   catalogEditor: { ...en.catalogEditor },
+  modContent: { ...en.modContent, templates: { ...en.modContent.templates, loot_table: "戦利品テーブル", game_setting: "ゲーム設定" } },
   resourceEditor: {
     ...en.resourceEditor,
     catalogShort: "リソース", catalogTitle: "グローバルリソースカタログ", catalogDescription: "アイテム、ブロック、流体、化学物質などのゲームリソースを閲覧し、手動で管理します。インポートは補助機能です。",

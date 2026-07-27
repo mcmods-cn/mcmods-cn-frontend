@@ -16,6 +16,7 @@ export const catalogResourceKindCodes = [
   "minecraft.key_mapping",
   "minecraft.advancement",
   "minecraft.loot_table",
+  "minecraft.game_setting",
   "minecraft.structure",
   "mekanism.gas",
   "mekanism.infusion",

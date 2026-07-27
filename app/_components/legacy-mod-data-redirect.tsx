@@ -20,6 +20,8 @@ const legacyCategoryTemplates: Record<string, string> = {
   worldStructures: "world_structure",
   keybinds: "key_mapping",
   achievements: "advancement",
+  lootTables: "loot_table",
+  gameSettings: "game_setting",
   industrialMedia: "chemical",
   multiblocks: "multiblock",
   commands: "command",
