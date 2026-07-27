@@ -81,23 +81,23 @@ interface ResolvedModel {
   customElementGroups: Record<string, ModelElement[]>
 }
 
-export interface ExportedBlockEntityTexture {
+interface ExportedBlockEntityTexture {
   appearance?: string
   path: string
   uv_transform_required?: boolean
 }
 
-export interface ExportedBlockEntityMeshVertex {
+interface ExportedBlockEntityMeshVertex {
   position: number[]
   uv: number[]
   normal: number[]
 }
 
-export interface ExportedBlockEntityMeshFace {
+interface ExportedBlockEntityMeshFace {
   vertices: ExportedBlockEntityMeshVertex[]
 }
 
-export interface ExportedBlockEntityVariant {
+interface ExportedBlockEntityVariant {
   variantId: string
   objPath: string
   meshPath: string

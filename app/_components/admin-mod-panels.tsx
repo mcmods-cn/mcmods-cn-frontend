@@ -9,11 +9,11 @@ import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { formatBytes } from "../_lib/oss-upload";
 
 type ModContentReviewItem = {
-  id: string | number;
+  id: string;
   source: "revision" | "entry" | "catalog" | "blueprint" | "export";
   modSiteId: string;
   modName: string;
-  userId?: number;
+  userId?: string;
   username: string;
   displayName: string;
   title: string;
@@ -178,7 +178,7 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "develo
     }
   }
 
-  async function openAttachment(applicationID: number, attachmentID: number) {
+  async function openAttachment(applicationID: string, attachmentID: string) {
     try {
       const result = await apiRequest<{ url: string }>(`/api/v1/admin/mod-applications/${applicationID}/attachments/${attachmentID}/presign`, { method: "POST" }, token);
       window.open(result.url, "_blank", "noopener,noreferrer");

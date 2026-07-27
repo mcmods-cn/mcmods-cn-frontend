@@ -3,7 +3,7 @@ import { gunzipSync, unzlibSync } from 'fflate'
 import { decode } from 'nbt-ts'
 
 type Compound = Record<string, unknown>
-export type Vec3 = [number, number, number]
+type Vec3 = [number, number, number]
 
 export interface BlueprintState {
   id: string

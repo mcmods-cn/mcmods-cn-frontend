@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { AuthResult, canAccessAdmin, saveAuth } from "../_lib/auth";
+import { AuthResult, AuthUser, canAccessAdmin, cookieSessionToken, saveAuth } from "../_lib/auth";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { useTheme } from "./theme-provider";
@@ -42,16 +42,20 @@ export function SiteLoginPanelClean() {
   const nextPath = safeNextPath(searchParams.get("next"));
 
   useEffect(() => {
-    const oauthToken = searchParams.get("oauthToken");
-    const oauthUser = searchParams.get("oauthUser");
-    if (!oauthToken || !oauthUser) return;
-    try {
-      const user = JSON.parse(oauthUser) as AuthResult["user"];
-      saveAuth({ token: oauthToken, user });
-      router.replace(destinationAfterLogin(nextPath, user));
-    } catch {
-      router.replace("/login?oauthError=1");
-    }
+    if (searchParams.get("oauth") !== "success") return;
+    let cancelled = false;
+    void apiRequest<AuthUser>("/api/v1/auth/me")
+      .then((user) => {
+        if (cancelled) return;
+        saveAuth({ token: cookieSessionToken, user });
+        router.replace(destinationAfterLogin(nextPath, user));
+      })
+      .catch(() => {
+        if (!cancelled) router.replace("/login?oauthError=1");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [nextPath, router, searchParams]);
 
   const visibleMessage = message || (searchParams.get("oauthError") ? t("login.oauthParseFailed") : "");

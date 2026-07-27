@@ -53,7 +53,9 @@ type ToolsPlaygroundProps = {
   embedded?: boolean;
   editorDescription?: string;
   editorTitle?: string;
+  onBusyChange?: (busy: boolean) => void;
   onChange?: (markdown: string) => void;
+  uploadSource?: string;
   value?: string;
 };
 
@@ -90,7 +92,7 @@ const mediaPresets: MediaPreset[] = [
   { fields: ["geogebra"], id: "geogebra", labelKey: "tools.playground.mediaGeogebra", template: "[GeoGebra:{{geogebra}}]" },
 ];
 
-export function ToolsPlayground({ embedded = false, editorDescription, editorTitle, onChange, value }: ToolsPlaygroundProps = {}) {
+export function ToolsPlayground({ embedded = false, editorDescription, editorTitle, onBusyChange, onChange, uploadSource = "playground", value }: ToolsPlaygroundProps = {}) {
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -98,6 +100,8 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   const previewPositionFrameRef = useRef<number | null>(null);
   const drawioFrameRef = useRef<HTMLIFrameElement | null>(null);
   const onChangeRef = useRef(onChange);
+  const onBusyChangeRef = useRef(onBusyChange);
+  const uploadingRef = useRef(false);
   const [markdown, setMarkdown] = useState(() => value ?? t("tools.playground.defaultMarkdown"));
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
   const [rendererConfig, setRendererConfig] = useState<MarkdownRendererConfig>(defaultMarkdownConfig);
@@ -115,6 +119,10 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  useEffect(() => {
+    onBusyChangeRef.current = onBusyChange;
+  }, [onBusyChange]);
 
   useEffect(() => {
     if (embedded) onChangeRef.current?.(markdown);
@@ -439,28 +447,35 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   }
 
   async function uploadFiles(files: File[]) {
-    if (files.length === 0) return;
+    if (files.length === 0 || uploadingRef.current) return;
     if (!token) {
       setEditorMessage(t("tools.playground.loginBeforeUpload"));
       return;
     }
     const placeholders = insertUploadPlaceholders(files);
+    uploadingRef.current = true;
     setUploading(true);
+    onBusyChangeRef.current?.(true);
     setEditorMessage(t("tools.playground.uploadingFiles", { count: files.length }));
     let failed = 0;
-    for (const [index, file] of files.entries()) {
-      const marker = placeholders[index];
-      try {
-        const record = await uploadUserFileToOSS(file, token, "playground");
-        const url = record.accessUrl || record.url || "";
-        if (!url) throw new Error(t("tools.playground.uploadMissingUrl"));
-        replaceMarkdownSnippet(marker, markdownForUploadedFile(file, url));
-      } catch (error) {
-        failed += 1;
-        replaceMarkdownSnippet(marker, `<!-- Upload failed "${safeUploadCommentName(file.name)}": ${cleanPlaygroundError(error, t("tools.playground.operationFailed"))} -->`);
+    try {
+      for (const [index, file] of files.entries()) {
+        const marker = placeholders[index];
+        try {
+          const record = await uploadUserFileToOSS(file, token, uploadSource);
+          const url = record.accessUrl || record.url || "";
+          if (!url) throw new Error(t("tools.playground.uploadMissingUrl"));
+          replaceMarkdownSnippet(marker, markdownForUploadedFile(file, url));
+        } catch (error) {
+          failed += 1;
+          replaceMarkdownSnippet(marker, `<!-- Upload failed "${safeUploadCommentName(file.name)}": ${cleanPlaygroundError(error, t("tools.playground.operationFailed"))} -->`);
+        }
       }
+    } finally {
+      uploadingRef.current = false;
+      setUploading(false);
+      onBusyChangeRef.current?.(false);
     }
-    setUploading(false);
     setEditorMessage(failed > 0 ? t("tools.playground.uploadFailedCount", { count: failed }) : t("tools.playground.uploadInserted"));
   }
 
@@ -905,7 +920,14 @@ function DrawioModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 bg-white">
-      <iframe ref={frameRef} className="h-screen w-screen border-0 bg-white" src={src} title={title} />
+      <iframe
+        ref={frameRef}
+        className="h-screen w-screen border-0 bg-white"
+        src={src}
+        title={title}
+        referrerPolicy="no-referrer"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"
+      />
     </div>
   );
 }

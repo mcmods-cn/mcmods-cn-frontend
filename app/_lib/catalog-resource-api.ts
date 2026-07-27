@@ -30,12 +30,12 @@ export type CatalogResourceEditorDocument = {
   kindCode: string;
   canonicalId: string;
   defaultLocale: string;
-  publishedRevisionId?: number;
+  publishedRevisionId?: string;
   reviewStatus?: "pending" | "approved" | "rejected";
   localizations: CatalogEditorLocalization[];
   definition: Record<string, unknown>;
-  iconFileId?: number;
-  renderFileId?: number;
+  iconFileId?: string;
+  renderFileId?: string;
   iconUrl?: string;
   renderUrl?: string;
 };
@@ -50,14 +50,14 @@ export async function loadCatalogResourceForEditing(publicId: string, token: str
 function normalizeResourceDocument(value: unknown): CatalogResourceEditorDocument {
   const source = record(value);
   const publicId = text(source.publicId);
-  const iconFileId = positiveNumber(source.iconFileId);
-  const renderFileId = positiveNumber(source.renderFileId);
+  const iconFileId = text(source.iconFileId) || undefined;
+  const renderFileId = text(source.renderFileId) || undefined;
   return {
     publicId,
     kindCode: text(source.kindCode),
     canonicalId: text(source.canonicalId),
     defaultLocale: text(source.defaultLocale) || "en-US",
-    publishedRevisionId: positiveNumber(source.publishedRevisionId),
+    publishedRevisionId: text(source.publishedRevisionId) || undefined,
     reviewStatus: reviewStatus(source.reviewStatus),
     localizations: localizations(source.localizations),
     definition: record(source.definition),
@@ -80,7 +80,7 @@ function localizations(value: unknown): CatalogEditorLocalization[] {
         summary: text(source.summary),
         contentMarkdown: text(source.contentMarkdown),
       },
-      revisionId: positiveNumber(source.publishedRevisionId),
+      revisionId: text(source.publishedRevisionId) || undefined,
       provenance: provenance === "ai" || provenance === "human_corrected" || provenance === "import" ? provenance : "human",
       reviewStatus: reviewStatus(source.reviewStatus) ?? "approved",
       generatedFromLocale: text(source.sourceLocale) || undefined,
@@ -100,9 +100,4 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown) {
   return typeof value === "string" ? value : "";
-}
-
-function positiveNumber(value: unknown) {
-  const result = Number(value);
-  return Number.isFinite(result) && result > 0 ? result : undefined;
 }

@@ -81,9 +81,9 @@ const emptyTask: TaskDefinition = {
 export function CreatorClaimsPanel({ token }: { token: string }) {
   const { t } = useI18n();
   const [items, setItems] = useState<CreatorClaim[]>([]);
-  const [notes, setNotes] = useState<Record<number, string>>({});
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [reviewing, setReviewing] = useState<number | null>(null);
+  const [reviewing, setReviewing] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);

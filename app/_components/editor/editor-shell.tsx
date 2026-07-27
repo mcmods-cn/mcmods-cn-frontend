@@ -67,7 +67,9 @@ export function EditorShell({
     <form aria-busy={busy || deleting} onSubmit={submit}>
       <header className="border-b border-[var(--line)] bg-[var(--panel)]">
         <div className="mx-auto max-w-[1500px] px-4 py-6 lg:px-6">
-          <Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={backHref}>{labels.back ?? t("common.previous")}</Link>
+          {busy || deleting
+            ? <span aria-disabled="true" className="text-sm font-bold text-[var(--muted)] opacity-60">{labels.back ?? t("common.previous")}</span>
+            : <Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={backHref}>{labels.back ?? t("common.previous")}</Link>}
           <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
             <div className="min-w-0">
               <h1 className="text-3xl font-black">{title}</h1>
@@ -134,7 +136,9 @@ function EditorActions({
   const { t } = useI18n();
   return <div className="flex flex-wrap items-center justify-end gap-2">
     {canDelete && onDelete ? <button className="button-secondary focus-ring text-[var(--red)]" disabled={busy || deleting} type="button" onClick={() => void onDelete()}>{deleting ? labels.deleting ?? t("common.loading") : labels.delete ?? t("common.delete")}</button> : null}
-    <Link className="button-secondary focus-ring" href={cancelHref}>{labels.cancel ?? t("common.cancel")}</Link>
+    {busy || deleting
+      ? <span aria-disabled="true" className="button-secondary pointer-events-none opacity-60">{labels.cancel ?? t("common.cancel")}</span>
+      : <Link className="button-secondary focus-ring" href={cancelHref}>{labels.cancel ?? t("common.cancel")}</Link>}
     <button className="button-primary focus-ring" disabled={busy || deleting || !canSubmit} type="submit">{submitText}</button>
   </div>;
 }

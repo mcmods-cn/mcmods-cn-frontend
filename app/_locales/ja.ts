@@ -1,4 +1,4 @@
-﻿import en from "./en";
+﻿import en from "./en-US";
 const ja = {
   ...en,
   common: { ...en.common, home: "ホーム", login: "ログイン", register: "登録", logout: "ログアウト", admin: "管理", save: "保存", delete: "削除", language: "言語" },

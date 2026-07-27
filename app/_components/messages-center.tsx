@@ -10,20 +10,20 @@ import { useI18n } from "../_lib/i18n-provider";
 type NotificationKind = "system" | "reply_mention" | "comment_watch_reply" | "review" | "new_follower";
 
 type NotificationItem = {
-  id: number;
+  id: string;
   kind: NotificationKind;
   title: string;
   body: string;
   sourceLocale: string;
   read: boolean;
-  actors: Array<{ id: number; username: string; displayName: string }>;
+  actors: Array<{ id: string; username: string; displayName: string }>;
   createdAt: string;
   updatedAt: string;
 };
 
 type Conversation = {
-  id: number;
-  partnerId: number;
+  id: string;
+  partnerId: string;
   username: string;
   displayName: string;
   lastMessage: string;
@@ -32,10 +32,10 @@ type Conversation = {
 };
 
 type DirectMessage = {
-  id: number;
-  conversationId: number;
-  senderId: number;
-  recipientId: number;
+  id: string;
+  conversationId: string;
+  senderId: string;
+  recipientId: string;
   body: string;
   readAt?: string;
   createdAt: string;
@@ -57,17 +57,17 @@ export function MessagesCenter() {
   const { t, locale } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const searchParams = useSearchParams();
-  const targetUserID = Number(searchParams.get("user") ?? 0);
-  const [mode, setMode] = useState<"notifications" | "chats">(targetUserID > 0 ? "chats" : "notifications");
+  const targetUserID = searchParams.get("user") ?? "";
+  const [mode, setMode] = useState<"notifications" | "chats">(targetUserID ? "chats" : "notifications");
   const [kind, setKind] = useState<NotificationKind>("system");
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [selectedConversationID, setSelectedConversationID] = useState<number | null>(null);
+  const [selectedConversationID, setSelectedConversationID] = useState<string | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [messageDraft, setMessageDraft] = useState("");
-  const [translations, setTranslations] = useState<Record<number, Translation>>({});
-  const [translatingID, setTranslatingID] = useState<number | null>(null);
+  const [translations, setTranslations] = useState<Record<string, Translation>>({});
+  const [translatingID, setTranslatingID] = useState<string | null>(null);
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [aiBalance, setAIBalance] = useState<AIBalance | null>(null);
   const [status, setStatus] = useState("");
@@ -97,7 +97,7 @@ export function MessagesCenter() {
     setAIBalance(await apiRequest<AIBalance>("/api/v1/notifications/ai-balance", {}, token));
   }, [token]);
 
-  const loadMessages = useCallback(async (conversationID: number) => {
+  const loadMessages = useCallback(async (conversationID: string) => {
     if (!token) return;
     const result = await apiRequest<DirectMessage[]>(`/api/v1/messages/conversations/${conversationID}`, {}, token);
     setMessages(result);
@@ -116,9 +116,9 @@ export function MessagesCenter() {
   }, [loadBalance, loadConversations, loadNotifications, loadUnreadNotifications, t, token]);
 
   useEffect(() => {
-    if (!token || targetUserID <= 0 || targetUserID === user?.id) return;
+    if (!token || !targetUserID || targetUserID === user?.id) return;
     let cancelled = false;
-    apiRequest<{ id: number }>(
+    apiRequest<{ id: string }>(
       "/api/v1/messages/conversations",
       { method: "POST", body: JSON.stringify({ userId: targetUserID }) },
       token,
@@ -181,7 +181,7 @@ export function MessagesCenter() {
     setTranslatingID(item.id);
     setStatus("");
     try {
-      const started = await apiRequest<{ cached: boolean; taskId?: number; translation?: Translation }>(
+      const started = await apiRequest<{ cached: boolean; taskId?: string; translation?: Translation }>(
         `/api/v1/notifications/${item.id}/translate`,
         { method: "POST", body: JSON.stringify({ targetLocale: locale }) },
         token,
@@ -357,7 +357,7 @@ function MessageState({ text, children }: { text: string; children?: React.React
   return <div className="grid min-h-56 place-items-center p-6 text-center text-sm text-[var(--muted)]"><div>{text}{children}</div></div>;
 }
 
-async function waitForTranslation(taskID: number, token: string): Promise<Translation> {
+async function waitForTranslation(taskID: string, token: string): Promise<Translation> {
   const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     const task = await apiRequest<{ status: string; error?: string; translation?: Translation }>(`/api/v1/notifications/translations/${taskID}`, {}, token);

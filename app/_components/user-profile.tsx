@@ -11,7 +11,7 @@ import { UserHome } from "./user-home";
 import { SkinPreview2D } from "./skin-preview";
 
 type PublicUserProfile = {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
   status: string;
@@ -27,7 +27,7 @@ type PublicUserProfile = {
   profileBackgroundUrl: string;
 };
 
-export function UserProfile({ userId }: { userId: number }) {
+export function UserProfile({ userId }: { userId: string }) {
   const { t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const searchParams = useSearchParams();

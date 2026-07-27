@@ -15,7 +15,7 @@ export type CatalogTagEditorDocument = {
   registry: string;
   canonicalId: string;
   defaultLocale: string;
-  publishedRevisionId?: number;
+  publishedRevisionId?: string;
   reviewStatus: ReviewStatus;
   localizations: CatalogEditorLocalization[];
   members: CatalogResourceRef[];
@@ -26,7 +26,7 @@ export type CatalogRecipeTypeEditorDocument = {
   publicId: string;
   canonicalId: string;
   defaultLocale: string;
-  publishedRevisionId?: number;
+  publishedRevisionId?: string;
   reviewStatus: ReviewStatus;
   localizations: CatalogEditorLocalization[];
   catalysts: CatalogResourceRef[];
@@ -43,7 +43,7 @@ export type CatalogLocalizationPayload = {
 };
 
 export type CatalogTagMutation = {
-  baseRevisionId?: number;
+  baseRevisionId?: string;
   reason: string;
   defaultLocale: string;
   localizations: CatalogLocalizationPayload[];
@@ -53,7 +53,7 @@ export type CatalogTagMutation = {
 };
 
 export type CatalogRecipeTypeMutation = {
-  baseRevisionId?: number;
+  baseRevisionId?: string;
   reason: string;
   defaultLocale: string;
   localizations: CatalogLocalizationPayload[];
@@ -65,10 +65,10 @@ export type CatalogRecipeTypeMutation = {
 type RawEditResult = Partial<EditResult> & {
   publicId?: string;
   objectPublicId?: string;
-  revisionId?: number;
-  changeRequestId?: number;
+  revisionId?: string;
+  changeRequestId?: string;
   reviewStatus?: "pending" | "approved" | "rejected";
-  activityEventId?: number;
+  activityEventId?: string;
 };
 
 const tagsPath = "/api/v1/tags";
@@ -90,7 +90,7 @@ export async function updateCatalogTag(publicId: string, payload: CatalogTagMuta
   return normalizeEditResult(value);
 }
 
-export async function archiveCatalogTag(publicId: string, baseRevisionId: number | undefined, reason: string, token: string) {
+export async function archiveCatalogTag(publicId: string, baseRevisionId: string | undefined, reason: string, token: string) {
   const value = await apiRequest<RawEditResult>(`${tagsPath}/${encodeURIComponent(publicId)}`, {
     method: "DELETE",
     body: JSON.stringify({ baseRevisionId, reason }),
@@ -114,7 +114,7 @@ export async function updateCatalogRecipeType(publicId: string, payload: Catalog
   return normalizeEditResult(value);
 }
 
-export async function archiveCatalogRecipeType(publicId: string, baseRevisionId: number | undefined, reason: string, token: string) {
+export async function archiveCatalogRecipeType(publicId: string, baseRevisionId: string | undefined, reason: string, token: string) {
   const value = await apiRequest<RawEditResult>(`${recipeTypesPath}/${encodeURIComponent(publicId)}`, {
     method: "DELETE",
     body: JSON.stringify({ baseRevisionId, reason }),
@@ -130,7 +130,7 @@ function normalizeTagDocument(value: unknown): CatalogTagEditorDocument {
     registry: text(source.registry),
     canonicalId: text(source.canonicalId) || text(source.tagId),
     defaultLocale: text(source.defaultLocale) || "en-US",
-    publishedRevisionId: optionalNumber(source.publishedRevisionId),
+    publishedRevisionId: text(source.publishedRevisionId) || undefined,
     reviewStatus: normalizeReviewStatus(source.reviewStatus),
     localizations: normalizeLocalizations(source.localizations),
     members: normalizeResources(source.members ?? source.memberResources),
@@ -144,7 +144,7 @@ function normalizeRecipeTypeDocument(value: unknown): CatalogRecipeTypeEditorDoc
     publicId: text(source.publicId),
     canonicalId: text(source.canonicalId) || text(source.recipeTypeId),
     defaultLocale: text(source.defaultLocale) || "en-US",
-    publishedRevisionId: optionalNumber(source.publishedRevisionId),
+    publishedRevisionId: text(source.publishedRevisionId) || undefined,
     reviewStatus: normalizeReviewStatus(source.reviewStatus),
     localizations: normalizeLocalizations(source.localizations),
     catalysts: normalizeResources(source.catalysts ?? source.catalystResources),
@@ -166,7 +166,7 @@ function normalizeLocalizations(value: unknown): CatalogEditorLocalization[] {
         summary: text(fields.summary ?? source.summary),
         contentMarkdown: text(fields.contentMarkdown ?? source.contentMarkdown),
       },
-      revisionId: optionalNumber(source.revisionId ?? source.publishedRevisionId),
+      revisionId: text(source.revisionId ?? source.publishedRevisionId) || undefined,
       provenance: normalizeProvenance(source.provenance),
       reviewStatus: normalizeReviewStatus(source.reviewStatus),
       generatedFromLocale: text(source.generatedFromLocale ?? source.sourceLocale) || undefined,
@@ -227,10 +227,10 @@ function normalizeResourceVersions(value: unknown): CatalogResourceVersion[] {
 function normalizeEditResult(value: RawEditResult): EditResult {
   return {
     objectPublicId: value.objectPublicId || value.publicId || "",
-    revisionId: optionalNumber(value.revisionId),
-    changeRequestId: number(value.changeRequestId),
+    revisionId: text(value.revisionId) || undefined,
+    changeRequestId: text(value.changeRequestId),
     reviewStatus: value.reviewStatus === "approved" || value.reviewStatus === "rejected" ? value.reviewStatus : "pending",
-    activityEventId: number(value.activityEventId),
+    activityEventId: text(value.activityEventId),
   };
 }
 
@@ -268,9 +268,4 @@ function text(value: unknown) {
 function number(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function optionalNumber(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }

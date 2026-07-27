@@ -288,7 +288,7 @@ function CreatorEditorDialog({
   const [name, setName] = useState(detail.creator.name);
   const [descriptionMarkdown, setDescriptionMarkdown] = useState(detail.descriptionMarkdown);
   const [avatarUrl, setAvatarUrl] = useState(detail.creator.avatarUrl);
-  const [avatarFileId, setAvatarFileId] = useState<number>();
+  const [avatarFileId, setAvatarFileId] = useState<string>();
   const [links, setLinks] = useState<CreatorLink[]>(detail.links);
   const [collaborators, setCollaborators] = useState<CreatorSummary[]>(detail.collaborators);
   const [members, setMembers] = useState<CreatorMember[]>(detail.members);
@@ -573,7 +573,7 @@ function TeamMembersEditor({
     if (!customRole.trim()) return;
     setCreatingRole(true);
     try {
-      const result = await apiRequest<{ id: number; code: string; name: string }>(
+      const result = await apiRequest<{ id: string; code: string; name: string }>(
         "/api/v1/creator-roles",
         { method: "POST", body: JSON.stringify({ name: customRole.trim(), description: "", translations: {} }) },
         token,
@@ -603,7 +603,7 @@ function TeamMembersEditor({
                 className="field"
                 value={member.role.id}
                 onChange={(event) => {
-                  const role = roles.find((item) => item.id === Number(event.target.value));
+                  const role = roles.find((item) => item.id === event.target.value);
                   if (!role) return;
                   onChange(members.map((item, itemIndex) => itemIndex === index ? { ...item, role: { id: role.id, code: role.code, name: role.name } } : item));
                 }}

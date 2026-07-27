@@ -3,10 +3,10 @@ import { API_BASE_URL, apiRequest } from "./api";
 export type SkinKind = "skin" | "cape";
 export type SkinModel = "default" | "slim";
 export type SkinVisibility = "public" | "unlisted" | "private";
-export type SkinReviewStatus = "pending" | "approved" | "rejected";
+type SkinReviewStatus = "pending" | "approved" | "rejected";
 
-export type SkinOwner = {
-  id: number;
+type SkinOwner = {
+  id: string;
   publicId?: string;
   username: string;
   displayName: string;
@@ -72,7 +72,7 @@ export type PlayerProfile = {
 };
 
 export type LauncherSession = {
-  id: string | number;
+  id: string;
   createdAt?: string;
   updatedAt?: string;
   lastSeenAt?: string;
@@ -92,7 +92,7 @@ export type SkinQuery = {
 };
 
 export type CreateSkinInput = {
-  fileId: number;
+  fileId: string;
   name: string;
   description: string;
   kind: SkinKind;
@@ -139,7 +139,7 @@ export function createSkin(input: CreateSkinInput, token: string) {
 }
 
 export function updateSkin(publicId: string, input: Partial<Omit<CreateSkinInput, "fileId">> & { reason?: string }, token: string) {
-  return apiRequest<SkinTexture | { updated: boolean; reviewRequired: boolean; revisionId: number; changeRequestId?: number }>(`/api/v1/skins/${encodeURIComponent(publicId)}`, {
+  return apiRequest<SkinTexture | { updated: boolean; reviewRequired: boolean; revisionId: string; changeRequestId?: string }>(`/api/v1/skins/${encodeURIComponent(publicId)}`, {
     method: "PUT",
     body: JSON.stringify(input),
   }, token);
@@ -167,7 +167,7 @@ export async function loadMyPlayerProfiles(token: string) {
   return normalizeItems(response);
 }
 
-export async function loadPublicPlayerProfiles(userId: number, token?: string) {
+export async function loadPublicPlayerProfiles(userId: string, token?: string) {
   const response = await apiRequest<ItemsResponse<PlayerProfile>>(`/api/v1/users/${userId}/player-profiles`, {}, token);
   return normalizeItems(response);
 }
@@ -221,8 +221,8 @@ export async function loadLauncherSessions(token: string) {
   return normalizeItems(response);
 }
 
-export function deleteLauncherSession(id: string | number, token: string) {
-  return apiRequest<{ deleted?: boolean }>(`/api/v1/users/me/launcher-sessions/${encodeURIComponent(String(id))}`, { method: "DELETE" }, token);
+export function deleteLauncherSession(id: string, token: string) {
+  return apiRequest<{ deleted?: boolean }>(`/api/v1/users/me/launcher-sessions/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
 }
 
 export function skinTextureURL(texture?: Pick<SkinTexture, "textureHash" | "textureUrl"> | null) {
@@ -239,7 +239,7 @@ export function launcherServiceURL(service?: SkinServiceInfo | null) {
   return value.endsWith("/") ? value : `${value}/`;
 }
 
-export function absoluteAPIURL(value: string) {
+function absoluteAPIURL(value: string) {
   if (!value) return "";
   try {
     return new URL(value).toString();

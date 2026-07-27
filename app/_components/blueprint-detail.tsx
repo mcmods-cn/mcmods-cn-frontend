@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BlueprintBlock, StructureRendererLoadResult } from "@/lib/mcmods-exporter/renderer";
 import { IndexedHttpAssetSource } from "@/lib/mcmods-exporter/renderer";
-import { API_BASE_URL, ApiError, apiRequest } from "../_lib/api";
+import { API_BASE_URL, ApiError, apiRequest, isBearerAccessToken } from "../_lib/api";
 import type { BlueprintDetailRecord, BlueprintMaterial } from "../_lib/blueprint-api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { loadFavoriteMembership } from "../_lib/favorite-api";
@@ -94,8 +94,8 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
     key: `${publicId}:${record?.updatedAt ?? "pending"}`,
     name: `${publicId}.json`,
     load: async () => {
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-      const response = await fetch(`${API_BASE_URL}/api/v1/blueprints/${encodeURIComponent(publicId)}/render`, { headers });
+      const headers = isBearerAccessToken(token) ? { Authorization: `Bearer ${token}` } : undefined;
+      const response = await fetch(`${API_BASE_URL}/api/v1/blueprints/${encodeURIComponent(publicId)}/render`, { credentials: "include", headers });
       if (!response.ok) throw new Error(await readResponseError(response));
       return new Uint8Array(await response.arrayBuffer());
     },
@@ -118,7 +118,7 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
     catch (error) { notifySite(cleanError(error), t("blueprints.title"), "danger"); }
   }
 
-  async function download(variantId: number) {
+  async function download(variantId: string) {
     try {
       const result = await apiRequest<{ url: string }>(`/api/v1/blueprints/${encodeURIComponent(publicId)}/variants/${variantId}/download`, { method: "POST" }, token);
       window.location.assign(result.url);
@@ -234,7 +234,11 @@ function LayerControl({ activeLayer, topLayer, showAbove, showBelow, onLayerChan
 
 function Metric({ label, value }: { label: string; value: string }) { return <div><dt className="text-sm text-[var(--muted)]">{label}</dt><dd className="mt-1 text-lg font-black">{value}</dd></div>; }
 function Badge({ children }: { children: React.ReactNode }) { return <span className="rounded bg-[var(--accent-soft)] px-2 py-1 text-[10px] font-black text-[var(--accent)]">{children}</span>; }
-function materialDetailsURL(material?: BlueprintMaterial) { if (!material?.sourceModSiteId || !material.sourceRevisionId) return ""; const query = new URLSearchParams({ registry: "blocks", objectId: material.blockId }); if (material.entityId) query.set("entityId", material.entityId); return `/mods/${encodeURIComponent(material.sourceModSiteId)}/data/${encodeURIComponent(material.sourceRevisionId)}/itemsBlocks/entry?${query}`; }
+function materialDetailsURL(material?: BlueprintMaterial) {
+  if (material?.detailUrl) return material.detailUrl;
+  if (!material?.sourceModSiteId || !material.sourceVersionPublicId || !material.entityId) return "";
+  return `/mods/${encodeURIComponent(material.sourceModSiteId)}/resources/${encodeURIComponent(material.entityId)}?version=${encodeURIComponent(material.sourceVersionPublicId)}`;
+}
 function normalizeBlueprintFormat(value: string) { const normalized = value.toLowerCase().replace(/^\./, ""); return normalized === "schematic" ? "schem" : normalized; }
 function stateLabel(id: string, properties: Record<string, string>) { const values = Object.entries(properties); return values.length ? `${id}[${values.map(([key, value]) => `${key}=${value}`).join(",")}]` : id; }
 function csvCell(value: string) { return `"${value.replaceAll('"', '""')}"`; }

@@ -448,7 +448,7 @@ function accountSection(value: string | null): AccountSection {
 function FavoriteCollectionsPanel({ token }: { token: string }) {
   const { t } = useI18n();
   const [collections, setCollections] = useState<FavoriteCollection[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [items, setItems] = useState<FavoriteCollectionItem[]>([]);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);

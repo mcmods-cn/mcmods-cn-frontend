@@ -6,6 +6,10 @@ import { apiRequest } from "../_lib/api";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import { modExportCategories, ModExportCategory, modExportCategoryTitle } from "../_lib/mod-export-catalog";
 import {
+  cancelModExportJob,
+  cancelModExportUpload,
+  getActiveModExportJob,
+  getModExportJob,
   ModExportJob,
   ModExportRevision,
   ModExportUploadProgress,
@@ -13,6 +17,14 @@ import {
   uploadModExportPackage,
   waitForModExportJob,
 } from "../_lib/mod-export-api";
+import {
+  createPersistedModExportUploadTask,
+  deletePersistedModExportUploadTask,
+  modExportUploadTaskKey,
+  type PersistedModExportUploadTask,
+  readPersistedModExportUploadTask,
+  updatePersistedModExportUploadTask,
+} from "../_lib/mod-export-upload-store";
 import { loadModContentSections, loadModContentTemplates, loadModContentVersions, type ModContentSection, type ModContentTemplate, type ModContentVersion } from "../_lib/mod-content-api";
 import { formatBytes } from "../_lib/oss-upload";
 import { useI18n } from "../_lib/i18n-provider";
@@ -71,17 +83,9 @@ export function ModExportData({ siteId, token, canEdit }: Props) {
   );
 
   function openCategory(category: UnifiedCatalogCategory) {
-    if (category.section) {
-      window.open(
-        `/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(category.section.publicId)}`,
-        "_blank",
-        "noopener,noreferrer",
-      );
-      return;
-    }
-    if (!selected?.id || !category.exportCategory) return;
+    if (!category.section) return;
     window.open(
-      `/mods/${encodeURIComponent(siteId)}/data/${encodeURIComponent(selected.id)}/${encodeURIComponent(category.exportCategory.key)}`,
+      `/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(category.section.publicId)}`,
       "_blank",
       "noopener,noreferrer",
     );
@@ -169,9 +173,8 @@ function mergeCatalogCategories(exportCategories: ModExportCategory[], sections:
     const localization = localizedSection(section, template, locale);
     const existing = merged.get(key);
     if (existing) {
-      // A content section is the canonical index shared by manual edits and
-      // imports. Exporter counts are only a legacy fallback when no section
-      // has been materialized for the selected data version.
+      // A content section is the only public index shared by manual edits and
+      // imports. Export categories only contribute imported metadata.
       existing.count = section.resourceCount;
       existing.section = section;
       continue;
@@ -188,7 +191,7 @@ function mergeCatalogCategories(exportCategories: ModExportCategory[], sections:
       section,
     });
   }
-  return [...merged.values()];
+  return [...merged.values()].filter((category) => category.section);
 }
 
 function localizedSectionName(section: ModContentSection, template: ModContentTemplate | undefined, locale: string, t: (key: string, values?: Record<string, string | number>) => string) {
@@ -211,7 +214,7 @@ function UnifiedCategoryCard({ category, onClick }: { category: UnifiedCatalogCa
   const { t } = useI18n();
   const content = <><span className="flex items-start gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-md text-xl ${category.tone}`}><IconFont name={category.icon} fallback={category.key.slice(0, 1).toUpperCase()} /></span><span className="min-w-0"><strong className="block text-lg">{category.title}</strong><small className="mt-2 block line-clamp-2 leading-6 text-[var(--muted)]">{category.description}</small></span></span><span className="mt-4 block text-xs font-bold text-[var(--muted)]">{t("mods.detail.entries", { count: category.count })}</span></>;
   const className = "focus-ring relative min-h-36 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-left transition-transform";
-  return category.section || category.exportCategory ? <button className={`${className} hover:-translate-y-0.5 hover:border-[var(--accent)]`} type="button" onClick={onClick}>{content}</button> : <article className={className}>{content}</article>;
+  return category.section ? <button className={`${className} hover:-translate-y-0.5 hover:border-[var(--accent)]`} type="button" onClick={onClick}>{content}</button> : <article className={className}>{content}</article>;
 }
 
 export function ModExportImportModal({ siteId, token, targetVersionId, targetVersionLabel, onClose, onImported, onBusyChange, inline = false, disabled = false }: { siteId: string; token: string; targetVersionId: string; targetVersionLabel: string; onClose?: () => void; onImported: () => Promise<void>; onBusyChange?: (busy: boolean) => void; inline?: boolean; disabled?: boolean }) {
@@ -223,12 +226,77 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
   const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
   const [overwrite, setOverwrite] = useState(false);
   const polling = useRef<AbortController | null>(null);
+  const uploading = useRef<AbortController | null>(null);
+  const activeTask = useRef<PersistedModExportUploadTask | null>(null);
+  const completedParts = useRef(new Set<number>());
+  const persistenceQueue = useRef(Promise.resolve());
+  const restoredTaskKey = useRef("");
+  const taskKey = useMemo(
+    () => modExportUploadTaskKey(siteId, targetVersionId, token),
+    [siteId, targetVersionId, token],
+  );
 
   useEffect(() => () => polling.current?.abort(), []);
   useEffect(() => {
     onBusyChange?.(busy);
     return () => onBusyChange?.(false);
   }, [busy, onBusyChange]);
+  useEffect(() => {
+    if (restoredTaskKey.current === taskKey) return;
+    restoredTaskKey.current = taskKey;
+    activeTask.current = null;
+    completedParts.current.clear();
+    setJob(null);
+    setUpload(null);
+    setError("");
+    let cancelled = false;
+    void Promise.all([
+      readPersistedModExportUploadTask(taskKey),
+      getActiveModExportJob(siteId, targetVersionId, token),
+    ]).then(async ([persisted, activeJob]) => {
+      if (cancelled) return;
+      if (activeJob) {
+        const now = Date.now();
+        activeTask.current = persisted?.task || {
+          key: taskKey,
+          siteId,
+          targetVersionId,
+          overwriteExistingImportData: activeJob.overwriteExistingImportData,
+          phase: "importing",
+          completedPartNumbers: [],
+          jobId: activeJob.id,
+          createdAt: now,
+          updatedAt: now,
+        };
+        setOverwrite(activeJob.overwriteExistingImportData);
+        setBusy(true);
+        setError("");
+        await monitorJob(activeJob);
+        return;
+      }
+      if (!persisted) return;
+      activeTask.current = persisted.task;
+      completedParts.current = new Set(persisted.task.completedPartNumbers);
+      setOverwrite(persisted.task.overwriteExistingImportData);
+      setBusy(true);
+      setError("");
+      if (persisted.task.jobId) {
+        const restoredJob = await getModExportJob(siteId, persisted.task.jobId, token);
+        if (cancelled) return;
+        await monitorJob(restoredJob);
+        return;
+      }
+      await runPersistedUpload(persisted.task, persisted.file);
+    }).catch((reason) => {
+      if (!cancelled) {
+        setBusy(false);
+        setError(errorText(reason, t("mods.exportImport.errors.upload")));
+      }
+    });
+    return () => { cancelled = true; };
+    // The task is restored exactly once for this mounted version workspace.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteId, targetVersionId, taskKey, token]);
 
   function closeModal() {
     if (busy && !job) return;
@@ -236,8 +304,22 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
     onClose?.();
   }
 
+  function persistTaskPatch(
+    patch: Partial<Omit<PersistedModExportUploadTask, "key" | "siteId" | "targetVersionId" | "createdAt">>,
+  ) {
+    const current = activeTask.current;
+    if (!current) return persistenceQueue.current;
+    activeTask.current = { ...current, ...patch, updatedAt: Date.now() };
+    const persistedPatch = { ...patch };
+    persistenceQueue.current = persistenceQueue.current
+      .catch(() => undefined)
+      .then(() => updatePersistedModExportUploadTask(taskKey, persistedPatch));
+    return persistenceQueue.current;
+  }
+
   async function monitorJob(initialJob: ModExportJob) {
     setJob(initialJob);
+    await persistTaskPatch({ phase: "importing", jobId: initialJob.id });
     polling.current?.abort();
     polling.current = new AbortController();
     const completed = await waitForModExportJob(siteId, initialJob.id, token, setJob, polling.current.signal);
@@ -246,8 +328,48 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
       const translated = t(key);
       throw new Error(translated === key ? String(completed.errorDetail.message ?? completed.errorCode ?? t("mods.exportImport.errors.upload")) : translated);
     }
-    if (completed.status === "cancelled") throw new Error(t("mods.exportImport.stages.cancelled"));
+    if (completed.status === "cancelled") {
+      await deletePersistedModExportUploadTask(taskKey);
+      activeTask.current = null;
+      throw new Error(t("mods.exportImport.stages.cancelled"));
+    }
+    await deletePersistedModExportUploadTask(taskKey);
+    activeTask.current = null;
     await onImported();
+  }
+
+  async function runPersistedUpload(task: PersistedModExportUploadTask, file: File) {
+    activeTask.current = task;
+    completedParts.current = new Set(task.completedPartNumbers);
+    uploading.current?.abort();
+    uploading.current = new AbortController();
+    const controller = uploading.current;
+    const initialTicket = task.ticket;
+    const importedJob = await uploadModExportPackage(
+      file,
+      siteId,
+      token,
+      {
+        targetVersionPublicId: targetVersionId,
+        overwriteExistingImportData: task.overwriteExistingImportData,
+      },
+      setUpload,
+      {
+        signal: controller.signal,
+        resumeTicket: initialTicket,
+        completedPartNumbers: completedParts.current,
+        onTicket: async (ticket) => {
+          await persistTaskPatch({ ticket });
+        },
+        onPartComplete: (partNumber) => {
+          completedParts.current.add(partNumber);
+          void persistTaskPatch({ completedPartNumbers: [...completedParts.current].sort((left, right) => left - right) });
+        },
+      },
+    );
+    await persistenceQueue.current;
+    await persistTaskPatch({ phase: "importing", jobId: importedJob.id });
+    await monitorJob(importedJob);
   }
 
   async function importFile(file?: File) {
@@ -258,10 +380,35 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
     }
     setBusy(true); setError(""); setJob(null); setUpload(null);
     try {
-      await monitorJob(await uploadModExportPackage(file, siteId, token, { targetVersionPublicId: targetVersionId, overwriteExistingImportData: overwrite }, setUpload));
+      const now = Date.now();
+      const task: PersistedModExportUploadTask = {
+        key: taskKey,
+        siteId,
+        targetVersionId,
+        overwriteExistingImportData: overwrite,
+        phase: "uploading",
+        completedPartNumbers: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      await createPersistedModExportUploadTask(task, file);
+      await runPersistedUpload(task, file);
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.upload")));
     } finally { setBusy(false); }
+  }
+
+  async function resumeUpload() {
+    setBusy(true); setError("");
+    try {
+      const persisted = await readPersistedModExportUploadTask(taskKey);
+      if (!persisted) throw new Error(t("mods.exportImport.errors.upload"));
+      await runPersistedUpload(persisted.task, persisted.file);
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.upload")));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function retryImport() {
@@ -274,6 +421,33 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
     } finally { setBusy(false); }
   }
 
+  async function cancelImport() {
+    const currentTask = activeTask.current;
+    if (!currentTask && !job) return;
+    uploading.current?.abort();
+    polling.current?.abort();
+    setBusy(true);
+    setError("");
+    try {
+      const jobId = currentTask?.jobId || job?.id;
+      if (jobId) {
+        await cancelModExportJob(siteId, jobId, token);
+      } else if (currentTask?.ticket) {
+        await cancelModExportUpload(siteId, currentTask.ticket, token);
+      }
+      await deletePersistedModExportUploadTask(taskKey);
+      activeTask.current = null;
+      completedParts.current.clear();
+      setJob(null);
+      setUpload(null);
+      setError(t("mods.exportImport.stages.cancelled"));
+    } catch (reason) {
+      setError(errorText(reason, t("mods.exportImport.errors.upload")));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function drop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault(); setDragging(false); void importFile(event.dataTransfer.files[0]);
   }
@@ -282,7 +456,8 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
     <label className={`mt-5 grid min-h-48 place-items-center rounded-lg border border-dashed p-6 text-center ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${dragging ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel-subtle)]"}`} onDragEnter={(event) => { event.preventDefault(); if (!disabled) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { if (disabled) { event.preventDefault(); return; } drop(event); }}><input className="sr-only" type="file" accept=".zip,application/zip" disabled={busy || disabled} onChange={(event: ChangeEvent<HTMLInputElement>) => void importFile(event.target.files?.[0])} /><span><strong className="block text-lg">{upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : t("mods.exportImport.drop")}</strong><small className="mt-2 block text-[var(--muted)]">{t("mods.exportImport.dropHint")}</small></span></label>
     {upload && !job ? <Progress label={t(`mods.exportImport.uploadPhases.${upload.phase}`)} percent={upload.percent} upload={upload} /> : null}
     {job ? <><p className="mt-4 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("mods.exportImport.importInBackground")}</p><Progress label={t(`mods.exportImport.stages.${job.currentStage || job.status}`)} percent={job.progress} />{job.reviewRequired ? <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p> : null}</> : null}
-    {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
+    {(busy || activeTask.current) && !["ready", "partial", "failed", "cancelled"].includes(job?.status || "") ? <div className="mt-4 flex justify-end"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void cancelImport()}>{t("common.cancel")}</button></div> : null}
+    {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : !job && activeTask.current ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void resumeUpload()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
   </>;
   if (inline) return <section className="mt-6"><h3 className="text-lg font-black">{t("mods.exportImport.modalTitle")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.exportImport.targetDescription", { version: targetVersionLabel })}</p>{form}</section>;
   return <div className="fixed inset-0 z-[80] grid place-items-center bg-black/55 p-4" role="presentation" onMouseDown={closeModal}><div className="surface max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("mods.exportImport.modalTitle")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("mods.exportImport.modalDescription")}</p></div><button className="button-secondary focus-ring" disabled={busy && !job} type="button" onClick={closeModal}>{t("common.close")}</button></header><p className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm"><strong>{t("mods.exportImport.dataVersion")}：</strong>{targetVersionLabel}</p>{form}</div></div>;

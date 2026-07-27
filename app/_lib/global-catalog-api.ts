@@ -34,7 +34,7 @@ export type GlobalTagDetail = {
   tagId: string;
   contentMarkdown: string;
   contentLocale: string;
-  publishedRevisionId?: number;
+  publishedRevisionId?: string;
   memberCount: number;
   members: GlobalResource[];
   limit: number;

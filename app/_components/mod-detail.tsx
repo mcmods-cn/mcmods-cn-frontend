@@ -140,7 +140,7 @@ function ModRelationshipsTab({ mod }: { mod: ModCatalogEntry }) {
 function ModApplicationModal({ kind, mod, token, onClose }: { kind: "editor" | "developer"; mod: ModCatalogEntry; token: string; onClose: () => void }) {
   const { t } = useI18n();
   const [proof, setProof] = useState("");
-  const [attachments, setAttachments] = useState<Array<{ id: number; name: string; size: number }>>([]);
+  const [attachments, setAttachments] = useState<Array<{ id: string; name: string; size: number }>>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
@@ -149,7 +149,7 @@ function ModApplicationModal({ kind, mod, token, onClose }: { kind: "editor" | "
     setUploading(true);
     setMessage("");
     try {
-      const uploaded: Array<{ id: number; name: string; size: number }> = [];
+      const uploaded: Array<{ id: string; name: string; size: number }> = [];
       for (const file of Array.from(files).slice(0, Math.max(0, 10 - attachments.length))) {
         const record = await uploadUserFileToOSS(file, token, "application");
         uploaded.push({ id: record.id, name: record.originalName, size: record.sizeBytes });

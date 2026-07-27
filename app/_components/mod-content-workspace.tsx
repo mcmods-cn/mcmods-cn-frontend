@@ -60,7 +60,14 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
   const importBusy = activeImportSource !== null;
   const updateImportBusy = useCallback((source: ImportSource, active: boolean) => {
     setActiveImportSource((current) => active ? source : current === source ? null : current);
-  }, []);
+    if (!active || !selectedVersionId) return;
+    setAddingVersion(false);
+    setEditingVersion(false);
+    setImportSource(source);
+    setTypeDialogOpen(false);
+    const query = new URLSearchParams({ version: selectedVersionId, import: source });
+    window.history.replaceState(null, "", `/mods/${encodeURIComponent(siteId)}/data/edit?${query}`);
+  }, [selectedVersionId, siteId]);
 
   const reload = useCallback(async () => {
     const [nextVersions, nextTemplates, nextSections, mod, nextMinecraftConfig] = await Promise.all([
@@ -126,7 +133,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
   }
 
   function startVersionEdit() {
-    if (!selectedVersion) return;
+    if (!selectedVersion || importBusy) return;
     setAddingVersion(false);
     setEditingVersion(true);
     setImportSource("");
@@ -137,6 +144,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
 
   function selectWorkspaceMode(source: ImportSource) {
     if (!selectedVersion) return;
+    if (importBusy && source !== activeImportSource) return;
     setAddingVersion(false);
     setEditingVersion(false);
     setImportSource(source);
@@ -233,13 +241,13 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5">
           <div><h2 className="text-2xl font-black">{selectedVersion.label}</h2><p className="mt-2 text-sm text-[var(--muted)]">{selectedVersion.minecraftVersions.join(", ")} · {selectedVersion.loaders.join(", ")}{selectedVersion.modVersion ? ` · ${selectedVersion.modVersion}` : ""}</p></div>
           <div className="flex flex-wrap gap-2">
-            <button className={workspaceModeButton(editingVersion)} style={workspaceModeStyle(editingVersion)} type="button" onClick={startVersionEdit}>{t("modContent.versionEditor.editVersion")}</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "")} style={workspaceModeStyle(!editingVersion && importSource === "")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("")}>{t("modContent.versionEditor.manualAdd")}</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "exporter")} style={workspaceModeStyle(!editingVersion && importSource === "exporter")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("exporter")}>mcmods_exporter</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "icon")} style={workspaceModeStyle(!editingVersion && importSource === "icon")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("icon")}>IconExporter</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "iconrenderer")} style={workspaceModeStyle(!editingVersion && importSource === "iconrenderer")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("iconrenderer")}>IconRenderer</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "letmeseesee")} style={workspaceModeStyle(!editingVersion && importSource === "letmeseesee")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("letmeseesee")}>LetMeSeeSee (YourCode)</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "irr")} style={workspaceModeStyle(!editingVersion && importSource === "irr")} disabled={selectedVersion.status !== "active"} type="button" onClick={() => selectWorkspaceMode("irr")}>IRR</button>
+            <button className={workspaceModeButton(editingVersion)} style={workspaceModeStyle(editingVersion)} disabled={importBusy} type="button" onClick={startVersionEdit}>{t("modContent.versionEditor.editVersion")}</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "")} style={workspaceModeStyle(!editingVersion && importSource === "")} disabled={selectedVersion.status !== "active" || importBusy} type="button" onClick={() => selectWorkspaceMode("")}>{t("modContent.versionEditor.manualAdd")}</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "exporter")} style={workspaceModeStyle(!editingVersion && importSource === "exporter")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "exporter"} type="button" onClick={() => selectWorkspaceMode("exporter")}>mcmods_exporter</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "icon")} style={workspaceModeStyle(!editingVersion && importSource === "icon")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "icon"} type="button" onClick={() => selectWorkspaceMode("icon")}>IconExporter</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "iconrenderer")} style={workspaceModeStyle(!editingVersion && importSource === "iconrenderer")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "iconrenderer"} type="button" onClick={() => selectWorkspaceMode("iconrenderer")}>IconRenderer</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "letmeseesee")} style={workspaceModeStyle(!editingVersion && importSource === "letmeseesee")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "letmeseesee"} type="button" onClick={() => selectWorkspaceMode("letmeseesee")}>LetMeSeeSee (YourCode)</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "irr")} style={workspaceModeStyle(!editingVersion && importSource === "irr")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "irr"} type="button" onClick={() => selectWorkspaceMode("irr")}>IRR</button>
           </div>
         </header>
         {importBusy ? <p className="mt-4 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("modContent.catalogImport.continuesInBackground", { importer: importSourceLabel(activeImportSource) })}</p> : null}
@@ -395,7 +403,7 @@ function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { si
       setBusy(false);
     }
   }
-  return <section className="mt-6"><h3 className="text-lg font-black">{t("modContent.iconImport.title")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.iconImport.description")}</p><ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} /><label className="mt-5 grid min-h-56 cursor-pointer place-items-center rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel-subtle)] p-8 text-center hover:border-[var(--accent)]"><input accept=".zip,application/zip" className="sr-only" disabled={busy || blocked || version.status !== "active"} type="file" onChange={(event) => void uploadFile(event.target.files?.[0])} /><span><strong className="text-lg">{busy ? t("modContent.iconImport.uploading") : t("modContent.iconImport.choose")}</strong><small className="mt-2 block text-[var(--muted)]">{t("modContent.iconImport.hint")}</small></span></label>{upload && busy ? <UploadProgressDetails progress={upload} /> : null}{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}</section>;
+  return <section className="mt-6"><h3 className="text-lg font-black">{t("modContent.iconImport.title")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.iconImport.description")}</p><ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} /><label className={`mt-5 grid min-h-56 place-items-center rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel-subtle)] p-8 text-center ${busy || blocked || version.status !== "active" ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[var(--accent)]"}`}><input accept=".zip,application/zip" className="sr-only" disabled={busy || blocked || version.status !== "active"} type="file" onChange={(event) => void uploadFile(event.target.files?.[0])} /><span><strong className="text-lg">{busy ? t("modContent.iconImport.uploading") : t("modContent.iconImport.choose")}</strong><small className="mt-2 block text-[var(--muted)]">{t("modContent.iconImport.hint")}</small></span></label>{upload && busy ? <UploadProgressDetails progress={upload} /> : null}{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}</section>;
 }
 
 function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onImported, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; source: CatalogImportSource; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
@@ -467,7 +475,7 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
     <ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} />
     <label className={`mt-5 grid min-h-56 place-items-center rounded-xl border border-dashed p-8 text-center ${busy || blocked || version.status !== "active" ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-[var(--accent)]"} border-[var(--line)] bg-[var(--panel-subtle)]`}>
       <input accept=".json,application/json,application/x-ndjson" className="sr-only" disabled={busy || blocked || version.status !== "active"} multiple={source === "irr"} type="file" onChange={(event) => void uploadFile(event.target.files || undefined)} />
-      <span><strong className="text-lg">{busy ? t("modContent.catalogImport.processing") : t("modContent.catalogImport.choose", { importer: importerName })}</strong><small className="mt-2 block text-[var(--muted)]">{t(source === "irr" ? "modContent.catalogImport.irrHint" : "modContent.catalogImport.hint")}</small></span>
+      <span><strong className="text-lg">{busy ? t("modContent.catalogImport.processing") : t("modContent.catalogImport.choose", { importer: importerName })}</strong><small className="mt-2 block text-[var(--muted)]">{t(source === "irr" ? "modContent.catalogImport.irrHint" : "modContent.catalogImport.hint", { importer: importerName })}</small></span>
     </label>
     {job ? <div className="mt-4"><div className="flex justify-between text-sm font-bold"><span>{phase}</span><span>{progress}%</span></div><div className="mt-2 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div></div> : upload ? <UploadProgressDetails progress={upload} /> : null}
     {message ? <div className="mt-4 flex items-center gap-3 rounded-lg border border-[var(--line)] p-3 text-sm font-bold"><p className="min-w-0 flex-1">{message}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retry()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}

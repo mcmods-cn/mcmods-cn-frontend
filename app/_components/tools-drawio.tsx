@@ -171,6 +171,8 @@ export function ToolsDrawio() {
           className="h-[calc(100vh-7.75rem)] w-full border-0 bg-white"
           src={editorUrl}
           title={t("tools.drawio.title")}
+          referrerPolicy="no-referrer"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"
         />
       </section>
     </main>

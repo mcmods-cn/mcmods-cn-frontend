@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { API_BASE_URL, isBearerAccessToken } from "./api";
 
 export type AuthUser = {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
   email: string;
@@ -14,7 +15,7 @@ export type AuthUser = {
 };
 
 export type AuthResult = {
-  token: string;
+  token?: string;
   user: AuthUser;
 };
 
@@ -24,58 +25,85 @@ export type AuthSnapshot = {
   user: AuthUser | null;
 };
 
-const tokenKeys = ["mcmods-token", "mcmods-admin-token"] as const;
-const userKeys = ["mcmods-user", "mcmods-admin-user"] as const;
+export const cookieSessionToken = "cookie-session";
+
+const legacyStorageKeys = ["mcmods-token", "mcmods-admin-token", "mcmods-user", "mcmods-admin-user"] as const;
+const authSyncKey = "mcmods-auth-sync";
+
+let activeToken = "";
+let activeUser: AuthUser | null = null;
+let bootstrapRequest: Promise<AuthUser | null> | null = null;
 
 export function saveAuth(result: AuthResult) {
-  const userJson = JSON.stringify(result.user);
-  for (const key of tokenKeys) {
-    window.localStorage.setItem(key, result.token);
-  }
-  for (const key of userKeys) {
-    window.localStorage.setItem(key, userJson);
-  }
+  activeToken = result.token || cookieSessionToken;
+  activeUser = result.user;
+  removeLegacyStoredAuth();
+  broadcastAuthChange("login");
   window.dispatchEvent(new Event("mcmods-auth-change"));
 }
 
 export function clearAuth() {
-  let changed = false;
-  for (const key of tokenKeys) {
-    changed ||= window.localStorage.getItem(key) !== null;
-    window.localStorage.removeItem(key);
-  }
-  for (const key of userKeys) {
-    changed ||= window.localStorage.getItem(key) !== null;
-    window.localStorage.removeItem(key);
-  }
-  if (changed) {
-    window.dispatchEvent(new Event("mcmods-auth-change"));
-  }
-}
+  const token = activeToken;
+  activeToken = "";
+  activeUser = null;
+  bootstrapRequest = null;
+  removeLegacyStoredAuth();
+  broadcastAuthChange("logout");
+  window.dispatchEvent(new Event("mcmods-auth-change"));
 
-function readAuthSnapshot() {
-  const token = readFirst(tokenKeys);
-  const savedUser = readFirst(userKeys);
-  return {
-    token,
-    user: token && !isTokenExpired(token) ? parseStoredUser(savedUser) : null,
-  };
+  const headers = new Headers();
+  if (isBearerAccessToken(token)) headers.set("Authorization", `Bearer ${token}`);
+  void fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+  }).catch(() => undefined);
 }
 
 export function useAuthSnapshot(): AuthSnapshot {
   const [snapshot, setSnapshot] = useState<AuthSnapshot>({ ready: false, token: "", user: null });
 
   useEffect(() => {
-    const refresh = () => {
-      const { token, user } = readAuthSnapshot();
-      setSnapshot({ ready: true, token, user });
+    let cancelled = false;
+    const publish = (ready = true) => {
+      if (!cancelled) setSnapshot({ ready, token: activeToken, user: activeUser });
     };
+    const refresh = () => {
+      if (activeUser) {
+        publish();
+        return;
+      }
+      publish(false);
+      void bootstrapAuth().then(() => publish());
+    };
+    const expire = () => {
+      activeToken = "";
+      activeUser = null;
+      bootstrapRequest = null;
+      removeLegacyStoredAuth();
+      publish();
+    };
+    const syncAcrossTabs = (event: StorageEvent) => {
+      if (event.key !== authSyncKey) return;
+      if (event.newValue?.startsWith("logout:")) {
+        expire();
+        return;
+      }
+      activeToken = "";
+      activeUser = null;
+      bootstrapRequest = null;
+      refresh();
+    };
+
     refresh();
-    window.addEventListener("storage", refresh);
+    window.addEventListener("storage", syncAcrossTabs);
     window.addEventListener("mcmods-auth-change", refresh);
+    window.addEventListener("mcmods-auth-expired", expire);
     return () => {
-      window.removeEventListener("storage", refresh);
+      cancelled = true;
+      window.removeEventListener("storage", syncAcrossTabs);
       window.removeEventListener("mcmods-auth-change", refresh);
+      window.removeEventListener("mcmods-auth-expired", expire);
     };
   }, []);
 
@@ -99,9 +127,7 @@ export function useAuthSnapshot(): AuthSnapshot {
 }
 
 export function canAccessAdmin(user: AuthUser | null) {
-  if (!user) {
-    return false;
-  }
+  if (!user) return false;
   return (
     user.permissions.includes("admin.access") ||
     user.permissions.includes("admin.*") ||
@@ -110,35 +136,41 @@ export function canAccessAdmin(user: AuthUser | null) {
   );
 }
 
-function readFirst(keys: readonly string[]) {
-  for (const key of keys) {
-    const value = window.localStorage.getItem(key);
-    if (value) {
-      return value;
-    }
-  }
-  return "";
+async function bootstrapAuth() {
+  if (activeUser) return activeUser;
+  if (bootstrapRequest) return bootstrapRequest;
+  bootstrapRequest = fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  })
+    .then(async (response) => {
+      if (!response.ok) return null;
+      const envelope = (await response.json()) as { data?: AuthUser };
+      if (!envelope.data) return null;
+      activeToken = cookieSessionToken;
+      activeUser = envelope.data;
+      return activeUser;
+    })
+    .catch(() => null)
+    .finally(() => {
+      bootstrapRequest = null;
+    });
+  return bootstrapRequest;
 }
 
-function parseStoredUser(savedUser: string) {
-  if (!savedUser) {
-    return null;
-  }
-  try {
-    return JSON.parse(savedUser) as AuthUser;
-  } catch {
-    return null;
-  }
+function removeLegacyStoredAuth() {
+  if (typeof window === "undefined") return;
+  for (const key of legacyStorageKeys) window.localStorage.removeItem(key);
 }
 
-function isTokenExpired(token: string) {
-  const expiresAt = tokenExpiresAt(token);
-  return expiresAt !== null && expiresAt <= Date.now();
+function broadcastAuthChange(kind: "login" | "logout") {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(authSyncKey, `${kind}:${Date.now()}:${Math.random()}`);
 }
 
 function tokenExpiresAt(token: string): number | null {
+  if (!isBearerAccessToken(token) || typeof window === "undefined") return null;
   const payload = token.split(".")[1];
-  if (!payload || typeof window === "undefined") return null;
   try {
     const normalized = payload.replaceAll("-", "+").replaceAll("_", "/");
     const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");

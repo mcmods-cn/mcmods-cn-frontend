@@ -517,7 +517,6 @@ function safeImageURL(value?: string) {
   }
 }
 
-export const recipeTemplateEditableLocales = supportedLocales.map((item) => item.code);
 
 function editableLocale(value: string | undefined, fallback: Locale): Locale {
   return supportedLocales.some((item) => item.code === value) ? value as Locale : fallback;

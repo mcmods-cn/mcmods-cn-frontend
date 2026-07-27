@@ -3,19 +3,19 @@ export type ModMaintenanceStatus = "active" | "lowFrequency" | "discontinued" | 
 export type ModSourceStatus = "open" | "partial" | "closed" | "unknown";
 export type ModFeature = "tutorials" | "items" | "gallery" | "downloads" | "reviewed" | "claimed" | "serverSupport" | "modpackAllowed" | "severeIssues";
 
-export type ModTeamMember = {
+type ModTeamMember = {
   name: string;
   initials: string;
   roleKey: string;
 };
 
-export type ModRelationship = {
+type ModRelationship = {
   type: "dependency" | "extension" | "integration";
   relatedModName: string;
   notes: string;
 };
 
-export type ModRelationshipGroup = {
+type ModRelationshipGroup = {
   label: string;
   loader: string;
   minecraftVersions: string[];
@@ -24,7 +24,7 @@ export type ModRelationshipGroup = {
   relationships: ModRelationship[];
 };
 
-export type ModLoaderCompatibility = { loader: string; versions: string[] };
+type ModLoaderCompatibility = { loader: string; versions: string[] };
 
 export type ModCatalogEntry = {
   siteId: string;
@@ -58,7 +58,7 @@ export type ModCatalogEntry = {
   features: Record<ModFeature, boolean>;
   bodyMarkdown?: string;
   reviewStatus?: "pending" | "approved" | "rejected";
-  createdBy?: number;
+  createdBy?: string;
   links?: Array<{ type: string; url: string; note: string }>;
   relationshipGroups?: ModRelationshipGroup[];
   galleryImages?: Array<{ publicId?: string; name?: string; url?: string }>;

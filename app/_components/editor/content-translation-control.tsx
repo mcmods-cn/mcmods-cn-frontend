@@ -26,7 +26,7 @@ export function ContentTranslationControl({
   const { ready, token, user } = useAuthSnapshot();
   const [languageSettings, setLanguageSettings] = useState<{ token: string; primaryLocale: string; secondaryLocale: string }>();
   const [document, setDocument] = useState<ResolvedContentDocument<ResolvedCatalogFields>>();
-  const [pendingTaskId, setPendingTaskId] = useState<number>();
+  const [pendingTaskId, setPendingTaskId] = useState<string>();
   const [requesting, setRequesting] = useState(false);
   const [pollAttempt, setPollAttempt] = useState(0);
   const [error, setError] = useState("");

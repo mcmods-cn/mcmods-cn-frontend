@@ -7,7 +7,7 @@ export type ReviewStatus = "draft" | "pending" | "approved" | "rejected";
 export type LocalizationVersion<TFields = Record<string, string>> = {
   locale: ContentLanguageTag;
   fields: TFields;
-  revisionId?: number;
+  revisionId?: string;
   provenance: TranslationProvenance;
   reviewStatus: ReviewStatus;
   generatedFromLocale?: ContentLanguageTag;
@@ -15,7 +15,7 @@ export type LocalizationVersion<TFields = Record<string, string>> = {
   updatedAt?: string;
 };
 
-export type ContentResolutionReason =
+type ContentResolutionReason =
   | "exact"
   | "auto_ai"
   | "secondary"
@@ -27,9 +27,9 @@ export type ContentResolutionReason =
   | "first_available"
   | "missing";
 
-export type TranslationCost = "free_system" | "user_daily_tokens" | "none";
+type TranslationCost = "free_system" | "user_daily_tokens" | "none";
 
-export type TranslationTaskStatus = "queued" | "running" | "retrying" | "completed" | "ready" | "failed";
+type TranslationTaskStatus = "queued" | "running" | "retrying" | "completed" | "ready" | "failed";
 
 export type ContentResolution = {
   requestedLocale: ContentLanguageTag;
@@ -43,36 +43,13 @@ export type ContentResolution = {
 
 export type EditResult = {
   objectPublicId: string;
-  revisionId?: number;
-  changeRequestId: number;
+  revisionId?: string;
+  changeRequestId: string;
   reviewStatus: Exclude<ReviewStatus, "draft">;
-  activityEventId: number;
+  activityEventId: string;
 };
 
-export type EditorOperation = "create" | "update" | "delete" | "translate";
-
-export type EditCommand<TPayload> = {
-  objectType: string;
-  objectPublicId?: string;
-  operation: EditorOperation;
-  baseRevisionId?: number;
-  locale?: ContentLanguageTag;
-  changeReason?: string;
-  source?: "manual" | "import" | "ai";
-  payload: TPayload;
-};
-
-export type EditorCapabilities = {
-  canCreate: boolean;
-  canEditInvariant: boolean;
-  canEditLocalized: boolean;
-  canDelete: boolean;
-  canSubmit: boolean;
-  canReview?: boolean;
-  editableLocales?: ContentLanguageTag[];
-};
-
-export type CatalogResourceSource = {
+type CatalogResourceSource = {
   publicId?: string;
   siteId?: string;
   name?: string;
@@ -105,6 +82,9 @@ export type CatalogResourceVersion = {
   revisionId: string;
   registry: string;
   iconPath: string;
+  previewPath?: string;
+  iconFileId?: string;
+  renderFileId?: string;
   modSiteId: string;
   names: Record<string, string>;
   name?: string;
@@ -137,16 +117,16 @@ export type TranslationRequest = {
 
 export type TranslationRequestResult = {
   cached?: boolean;
-  taskId?: number;
+  taskId?: string;
   status?: TranslationTaskStatus;
   countsTowardDailyTokenQuota?: boolean;
   resolution?: ContentResolution;
   editResult?: EditResult;
 };
 
-export type ResolvedContentTranslationState = {
+type ResolvedContentTranslationState = {
   status: TranslationTaskStatus | "not_required" | "request_required" | "unavailable" | "no_source";
-  taskId?: number;
+  taskId?: string;
   automatic: boolean;
   canRequest: boolean;
   countsTowardDailyTokenQuota: boolean;
@@ -166,7 +146,7 @@ export type ResolvedContentDocument<TFields = Record<string, string>> = {
 };
 
 export type ContentTranslationTask = {
-  taskId: number;
+  taskId: string;
   status: TranslationTaskStatus;
   error?: string;
   targetLocale?: ContentLanguageTag;

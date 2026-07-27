@@ -1,7 +1,7 @@
 import { apiRequest } from "./api";
 
 export type OSSFileRecord = {
-  id: number;
+  id: string;
   bucket: string;
   endpoint: string;
   region: string;
@@ -22,7 +22,7 @@ export type OSSFileRecord = {
   url?: string;
   accessUrl?: string;
   blueprintId?: string;
-  blueprint?: { id: string; status: string; jobId?: number };
+  blueprint?: { id: string; status: string; jobId?: string };
 };
 
 export type OSSDirectUploadTicket = {
@@ -38,10 +38,11 @@ export type OSSDirectUploadTicket = {
   contentType: string;
   sizeBytes: number;
   sha256: string;
+  expiresAt?: string;
   uploadRequired?: boolean;
   file?: OSSFileRecord;
   blueprintId?: string;
-  blueprint?: { id: string; status: string; jobId?: number };
+  blueprint?: { id: string; status: string; jobId?: string };
   multipart?: {
     uploadId: string;
     partSize: number;
@@ -63,6 +64,12 @@ export type OSSUploadMetrics = {
   retryCount: number;
   stalled: boolean;
   multipart: boolean;
+};
+
+export type OSSPutOptions = {
+  signal?: AbortSignal;
+  completedPartNumbers?: Iterable<number>;
+  onPartComplete?: (partNumber: number) => void;
 };
 
 export async function uploadUserFileToOSS(
@@ -135,9 +142,10 @@ export async function putFileToOSS(
   ticket: OSSDirectUploadTicket,
   file: File,
   onProgress?: (loaded: number, total: number, metrics: OSSUploadMetrics) => void,
+  options: OSSPutOptions = {},
 ) {
   if (ticket.multipart) {
-    await putMultipartFileToOSS(ticket, file, onProgress);
+    await putMultipartFileToOSS(ticket, file, onProgress, options);
     return;
   }
   if (!ticket.url) throw new Error("OSS upload ticket has no upload URL");
@@ -148,11 +156,12 @@ export async function putFileToOSS(
     ticket.headers,
     file,
     (loaded, retryCount, stalled) => report(loaded, retryCount, stalled),
+    options.signal,
   );
   report(file.size, 0, false, true);
 }
 
-export function ossUploadCompletionPayload(ticket: OSSDirectUploadTicket, multipartAction = "complete") {
+function ossUploadCompletionPayload(ticket: OSSDirectUploadTicket, multipartAction = "complete") {
   return {
     objectKey: ticket.objectKey,
     originalName: ticket.originalName,
@@ -199,16 +208,23 @@ async function putMultipartFileToOSS(
   ticket: OSSDirectUploadTicket,
   file: File,
   onProgress?: (loaded: number, total: number, metrics: OSSUploadMetrics) => void,
+  options: OSSPutOptions = {},
 ) {
   const multipart = ticket.multipart;
   if (!multipart || multipart.parts.length === 0 || multipart.partSize <= 0) {
     throw new Error("OSS multipart upload ticket is incomplete");
   }
   const report = createUploadReporter(file.size, true, onProgress);
-  const loadedByPart = new Array<number>(multipart.parts.length).fill(0);
+  const completed = new Set(options.completedPartNumbers || []);
+  const loadedByPart = multipart.parts.map((part) => completed.has(part.partNumber) ? part.sizeBytes : 0);
   const controller = new AbortController();
-  let nextPart = 0;
+  const pendingPartIndexes = multipart.parts
+    .map((part, index) => completed.has(part.partNumber) ? -1 : index)
+    .filter((index) => index >= 0);
+  let nextPendingPart = 0;
   let highestRetry = 0;
+  const abort = () => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener("abort", abort, { once: true });
 
   const reportAggregate = (retryCount: number, stalled: boolean, final = false) => {
     highestRetry = Math.max(highestRetry, retryCount);
@@ -216,9 +232,10 @@ async function putMultipartFileToOSS(
   };
   const worker = async () => {
     for (;;) {
-      const index = nextPart;
-      nextPart += 1;
-      if (index >= multipart.parts.length) return;
+      if (controller.signal.aborted) throw new DOMException("OSS upload aborted", "AbortError");
+      const index = pendingPartIndexes[nextPendingPart];
+      nextPendingPart += 1;
+      if (index === undefined) return;
       const part = multipart.parts[index];
       const start = (part.partNumber - 1) * multipart.partSize;
       const body = file.slice(start, start + part.sizeBytes);
@@ -234,15 +251,20 @@ async function putMultipartFileToOSS(
         controller.signal,
       );
       loadedByPart[index] = part.sizeBytes;
+      completed.add(part.partNumber);
+      options.onPartComplete?.(part.partNumber);
       reportAggregate(0, false);
     }
   };
 
   try {
-    await Promise.all(Array.from({ length: Math.min(4, multipart.parts.length) }, () => worker()));
+    reportAggregate(0, false);
+    await Promise.all(Array.from({ length: Math.min(4, pendingPartIndexes.length) }, () => worker()));
   } catch (error) {
     controller.abort();
     throw error;
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
   }
   report(file.size, highestRetry, false, true);
 }
@@ -372,7 +394,7 @@ function uploadRetryDelay(milliseconds: number, signal?: AbortSignal) {
 
 function normalizeUploadResult(record: OSSFileRecord | undefined, ticket: OSSDirectUploadTicket) {
   const file = record ?? ({
-    id: 0,
+    id: "",
     bucket: ticket.bucket,
     endpoint: "",
     region: "",

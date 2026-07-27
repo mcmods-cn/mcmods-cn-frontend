@@ -76,7 +76,7 @@ export class IndexedHttpAssetSource implements AssetSource, BinarySource {
   }
 }
 
-export function normalizePath(path: string): string {
+function normalizePath(path: string): string {
   return path.replaceAll('\\', '/').replace(/^\.\//, '').replace(/^\/+/, '')
 }
 

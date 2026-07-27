@@ -44,7 +44,7 @@ export type ProjectFilesResponse = {
 };
 
 export type CreateProjectFileInput = {
-  ossFileId: number;
+  ossFileId: string;
   displayName: string;
   versionName: string;
   releaseChannel: ProjectReleaseChannel;

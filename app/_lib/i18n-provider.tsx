@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
-import en from "../_locales/en";
+import en from "../_locales/en-US";
 import zhCN from "../_locales/zh-CN";
 import zhTW from "../_locales/zh-TW";
 import ja from "../_locales/ja";
@@ -11,10 +11,10 @@ import es from "../_locales/es";
 import ru from "../_locales/ru";
 
 export type Locale = "zh-CN" | "zh-TW" | "en-US" | "ja-JP" | "fr-FR" | "de-DE" | "es-ES" | "ru-RU";
-export type LocaleMessages = TranslationValue;
+type LocaleMessages = TranslationValue;
 export type TranslationValue = string | { [key: string]: TranslationValue };
 
-export const defaultLocale: Locale = "zh-CN";
+const defaultLocale: Locale = "zh-CN";
 export const supportedLocales: Array<{ code: Locale; label: string }> = [
   { code: "zh-CN", label: "简体中文" },
   { code: "zh-TW", label: "繁體中文" },
@@ -26,7 +26,7 @@ export const supportedLocales: Array<{ code: Locale; label: string }> = [
   { code: "ru-RU", label: "Русский" },
 ];
 
-export const dictionaries: Record<Locale, LocaleMessages> = {
+const dictionaries: Record<Locale, LocaleMessages> = {
   "zh-CN": zhCN,
   "zh-TW": zhTW,
   "en-US": en,

@@ -19,7 +19,6 @@ const definitions: ReadonlyArray<Omit<ModExportCategory, "count">> = [
   { key: "naturalGeneration", registries: [], icon: "biome", tone: "text-green-700 bg-green-500/10", documentKind: "natural_generation" },
   { key: "worldStructures", registries: [], icon: "structure", tone: "text-amber-700 bg-amber-500/10", documentKind: "world_structures" },
   { key: "lootTables", registries: [], icon: "database", tone: "text-yellow-700 bg-yellow-500/10", documentKind: "loot_tables" },
-  { key: "industrialMedia", registries: [], icon: "fluid", tone: "text-cyan-700 bg-cyan-500/10", documentKind: "ingredients" },
   { key: "fluids", registries: ["fluids"], icon: "fluid", tone: "text-cyan-700 bg-cyan-500/10" },
   { key: "keybinds", registries: [], icon: "keyboard", tone: "text-sky-700 bg-sky-500/10", documentKind: "key_mappings" },
   { key: "achievements", registries: [], icon: "achievement", tone: "text-yellow-700 bg-yellow-500/10", documentKind: "advancements" },
@@ -27,13 +26,12 @@ const definitions: ReadonlyArray<Omit<ModExportCategory, "count">> = [
 
 // These registries are imported to derive classifications and relationships.
 // They are implementation data, not standalone documentation categories.
-const internalRegistries = new Set(["block_entity_types", "creative_tabs", "menu_types", "worldgen_data"]);
+const internalRegistries = new Set(["block_entity_types", "creative_tabs", "ingredients", "menu_types", "worldgen_data"]);
 
 const legacyCategoryAliases: Readonly<Record<string, string>> = {
   "registry:advancements": "achievements",
   "registry:biomes": "biomes",
   "registry:dimensions": "dimensions",
-  "registry:ingredients": "industrialMedia",
   "registry:key_mappings": "keybinds",
   "registry:loot_tables": "lootTables",
   "registry:natural_generation": "naturalGeneration",

@@ -122,7 +122,7 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
     })),
     defaultLocale: stringValue(row.defaultLocale) || undefined,
     localizations: normalizeLocalizations(row.localizations),
-    publishedRevisionId: optionalNumber(row.publishedRevisionId),
+    publishedRevisionId: stringValue(row.publishedRevisionId) || undefined,
     reviewStatus: optionalReviewStatus(row.reviewStatus),
   };
 }
@@ -165,7 +165,7 @@ export async function loadRecipeSummaries(
       canonicalSourceId: stringValue(row.canonicalSourceId),
       identitySource: stringValue(row.identitySource),
       templatePublicId: stringValue(row.templatePublicId) || undefined,
-      publishedRevisionId: optionalNumber(row.publishedRevisionId),
+      publishedRevisionId: stringValue(row.publishedRevisionId) || undefined,
       definition: objectValue(row.definition),
       bindingCount: numberValue(row.bindingCount),
       source: row.source === "canonical" ? "canonical" as const : "import" as const,
@@ -201,7 +201,7 @@ export async function saveRecipeTemplate(
   return normalizeMutationResult(result, publicId);
 }
 
-export async function deleteRecipeTemplate(publicId: string, baseRevisionId: number | undefined, reason: string, token: string) {
+export async function deleteRecipeTemplate(publicId: string, baseRevisionId: string | undefined, reason: string, token: string) {
   const result = await apiRequest<RawMutationResult>(
     `/api/v1/recipe-templates/${encodeURIComponent(publicId)}`,
     { method: "DELETE", body: JSON.stringify({ baseRevisionId, reason }) },
@@ -226,7 +226,7 @@ export async function saveRecipe(
   return normalizeMutationResult(result, publicId);
 }
 
-export async function deleteRecipe(publicId: string, baseRevisionId: number | undefined, reason: string, token: string) {
+export async function deleteRecipe(publicId: string, baseRevisionId: string | undefined, reason: string, token: string) {
   const result = await apiRequest<RawMutationResult>(
     `/api/v1/catalog/recipes/${encodeURIComponent(publicId)}`,
     { method: "DELETE", body: JSON.stringify({ baseRevisionId, reason }) },
@@ -239,10 +239,10 @@ function normalizeMutationResult(value: RawMutationResult, fallbackPublicId = ""
   return {
     objectPublicId: stringValue(value.objectPublicId) || stringValue(value.publicId) || fallbackPublicId,
     operation: stringValue(value.operation),
-    revisionId: numberValue(value.revisionId),
-    changeRequestId: numberValue(value.changeRequestId),
+    revisionId: stringValue(value.revisionId) || undefined,
+    changeRequestId: stringValue(value.changeRequestId),
     reviewStatus: value.reviewStatus === "pending" || value.status === "pending" ? "pending" : value.reviewStatus === "rejected" ? "rejected" : "approved",
-    activityEventId: numberValue(value.activityEventId),
+    activityEventId: stringValue(value.activityEventId),
   };
 }
 
@@ -272,7 +272,7 @@ function normalizeRecipeTemplate(value: unknown, recipeTypePublicId: string, det
     detailLoaded,
     recipeTypePublicId: stringValue(row.recipeTypePublicId) || recipeTypePublicId,
     templateKey,
-    backgroundFileId: optionalNumber(row.backgroundFileId),
+    backgroundFileId: stringValue(row.backgroundFileId) || undefined,
     backgroundUrl: stringValue(row.backgroundUrl) || stringValue(row.backgroundAccessUrl) || stringValue(definition.backgroundUrl) || undefined,
     canvas: {
       width,
@@ -302,7 +302,7 @@ function normalizeRecipeTemplate(value: unknown, recipeTypePublicId: string, det
     slotCount: optionalNumber(row.slotCount) ?? arrayValue(row.slots).length,
     defaultLocale: stringValue(row.defaultLocale) || undefined,
     localizations: normalizeLocalizations(row.localizations),
-    publishedRevisionId: optionalNumber(row.publishedRevisionId),
+    publishedRevisionId: stringValue(row.publishedRevisionId) || undefined,
     reviewStatus: optionalReviewStatus(row.reviewStatus),
   };
 }
@@ -364,7 +364,7 @@ function normalizeLocalizations(value: unknown): LocalizationVersion<RecipeLocal
         summary: stringValue(item.summary),
         contentMarkdown: stringValue(item.contentMarkdown),
       },
-      revisionId: optionalNumber(item.publishedRevisionId),
+      revisionId: stringValue(item.publishedRevisionId) || undefined,
       provenance: normalizeProvenance(provenance),
       reviewStatus: normalizeReviewStatus(reviewStatus),
       generatedFromLocale: stringValue(item.sourceLocale) || undefined,

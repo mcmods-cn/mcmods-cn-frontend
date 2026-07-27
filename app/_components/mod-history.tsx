@@ -11,7 +11,7 @@ export function ModHistory({ siteId }: { siteId: string }) {
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [items, setItems] = useState<BackendModRevision[]>([]);
-  const [selected, setSelected] = useState<number[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -23,7 +23,7 @@ export function ModHistory({ siteId }: { siteId: string }) {
     return () => { cancelled = true; };
   }, [ready, siteId, t, token]);
 
-  function toggle(id: number) {
+  function toggle(id: string) {
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current.slice(-1), id]);
   }
 

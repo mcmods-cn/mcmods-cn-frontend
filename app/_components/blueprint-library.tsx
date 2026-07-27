@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { FormEvent, useEffect, useState } from "react";
-import { API_BASE_URL, apiRequest } from "../_lib/api";
+import { API_BASE_URL, apiRequest, isBearerAccessToken } from "../_lib/api";
 import { BlueprintListResponse, type BlueprintRequiredMod } from "../_lib/blueprint-api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
@@ -94,8 +94,8 @@ function BlueprintCover({ path, token }: { path: string; token?: string }) {
     let cancelled = false;
     let objectURL = "";
     const headers = new Headers();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    fetch(`${API_BASE_URL}${path}`, { headers })
+    if (isBearerAccessToken(token)) headers.set("Authorization", `Bearer ${token}`);
+    fetch(`${API_BASE_URL}${path}`, { credentials: "include", headers })
       .then((response) => response.ok && response.status !== 204 ? response.blob() : null)
       .then((blob) => {
         if (!blob || cancelled) return;

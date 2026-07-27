@@ -318,7 +318,7 @@ export function ModCatalog() {
                   <ModCard
                     key={mod.siteId}
                     expanded={expandedCards.has(mod.siteId)}
-                    favorite={favoriteSlugs.has(mod.siteId)}
+                    favorite={favoriteSlugs.has(mod.uniqueId)}
                     locale={locale}
                     mod={mod}
                     t={t}
@@ -368,8 +368,8 @@ export function ModCatalog() {
           </aside>
         </div>
       ) : null}
-      {favoriteTarget && token ? <FavoritePickerModal entityType="mod" entityKey={favoriteTarget.siteId} title={favoriteTarget.name} token={token} onClose={() => setFavoriteTarget(null)} onSaved={(selected) => {
-        setFavoriteSlugs((current) => { const next = new Set(current); if (selected) next.add(favoriteTarget.siteId); else next.delete(favoriteTarget.siteId); return next; });
+      {favoriteTarget && token ? <FavoritePickerModal entityType="mod" entityKey={favoriteTarget.uniqueId} title={favoriteTarget.name} token={token} onClose={() => setFavoriteTarget(null)} onSaved={(selected) => {
+        setFavoriteSlugs((current) => { const next = new Set(current); if (selected) next.add(favoriteTarget.uniqueId); else next.delete(favoriteTarget.uniqueId); return next; });
         setNotice(t(selected ? "mods.notices.favorited" : "mods.notices.unfavorited"));
         setFavoriteTarget(null);
       }} /> : null}

@@ -297,7 +297,14 @@ function DrawioDiagramPreview({ xml, sourcePosition }: { xml: string; sourcePosi
       ) : (
         <span className="drawio-preview-loading">{t("tools.playground.diagramLoading")}</span>
       )}
-      <iframe key={xml} ref={iframeRef} src={drawioPreviewUrl()} title="draw.io diagram exporter" />
+      <iframe
+        key={xml}
+        ref={iframeRef}
+        src={drawioPreviewUrl()}
+        title="draw.io diagram exporter"
+        referrerPolicy="no-referrer"
+        sandbox="allow-scripts allow-same-origin"
+      />
     </figure>
   );
 }
@@ -336,7 +343,14 @@ function GeoGebraZoomEmbed({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={t("tools.playground.geogebraExpanded")} onMouseDown={() => setExpanded(false)}>
           <section className="flex h-[min(92vh,1200px)] w-full flex-col overflow-hidden rounded-lg bg-[var(--panel)] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
             <header className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3"><h2 className="font-bold">{t("tools.playground.geogebraExpanded")}</h2><button className="button-secondary focus-ring" type="button" onClick={() => setExpanded(false)}>{t("common.close")}</button></header>
-            <iframe className="min-h-0 w-full flex-1 border-0" allowFullScreen src={geoGebraSourceForViewport(src, expandedViewport)} title={t("tools.playground.geogebraExpanded")} />
+            <iframe
+              className="min-h-0 w-full flex-1 border-0"
+              allowFullScreen
+              src={geoGebraSourceForViewport(src, expandedViewport)}
+              title={t("tools.playground.geogebraExpanded")}
+              referrerPolicy="strict-origin-when-cross-origin"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
+            />
           </section>
         </div>,
         document.body,
@@ -629,6 +643,7 @@ function createVideoEmbedNode(payload: string, isMainlandChina: boolean): Elemen
             allowFullScreen: true,
             loading: "lazy",
             referrerPolicy: "strict-origin-when-cross-origin",
+            sandbox: "allow-scripts allow-same-origin allow-forms allow-presentation",
             src: embed.src,
             title: embed.title,
           },
@@ -726,6 +741,7 @@ function createGeoGebraEmbedNode(payload: string): Element | null {
           allowFullScreen: true,
           loading: "lazy",
           referrerPolicy: "strict-origin-when-cross-origin",
+          sandbox: "allow-scripts allow-same-origin allow-forms allow-presentation",
           src,
           title: `GeoGebra ${id}`,
         },

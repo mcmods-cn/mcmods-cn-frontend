@@ -17,7 +17,7 @@ export type CreatorLink = {
 };
 
 export type CreatorRole = {
-  id: number;
+  id: string;
   code: string;
   name: string;
   description: string;
@@ -33,7 +33,7 @@ export type CreatorMember = {
   title: string;
 };
 
-export type CreatorWork = {
+type CreatorWork = {
   uniqueId: string;
   siteId: string;
   primaryName: string;
@@ -50,7 +50,7 @@ export type CreatorDetail = {
   members: CreatorMember[];
   works: CreatorWork[];
   claimedUser: {
-    id: number;
+    id: string;
     publicId: string;
     username: string;
     displayName: string;
@@ -58,7 +58,7 @@ export type CreatorDetail = {
   } | null;
   canEdit: boolean;
   canClaim: boolean;
-  publishedRevisionId?: number;
+  publishedRevisionId?: string;
 };
 
 export type CreatorSnapshot = {
@@ -66,18 +66,18 @@ export type CreatorSnapshot = {
   name: string;
   descriptionMarkdown: string;
   avatarUrl: string;
-  avatarFileId?: number;
+  avatarFileId?: string;
   links: CreatorLink[];
   collaboratorIds: string[];
-  members: Array<{ creatorId: string; roleId: number; title: string }>;
+  members: Array<{ creatorId: string; roleId: string; title: string }>;
 };
 
 export type CreatorClaim = {
-  id: number;
+  id: string;
   creatorId: string;
   kind: CreatorKind;
   name: string;
-  userId: number;
+  userId: string;
   username: string;
   displayName: string;
   proofMarkdown: string;
@@ -185,8 +185,8 @@ export type TaskDefinition = {
 };
 
 export type ActivityEvent = {
-  id: number;
-  userId?: number;
+  id: string;
+  userId?: string;
   username?: string;
   action: string;
   actionName: string;

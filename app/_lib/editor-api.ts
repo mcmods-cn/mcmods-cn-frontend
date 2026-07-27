@@ -2,8 +2,6 @@ import { API_BASE_URL, apiRequest } from "./api";
 import type {
   CatalogResourcePage,
   CatalogResourceQuery,
-  EditCommand,
-  EditResult,
   ContentTranslationTask,
   LocalizationVersion,
   ResolvedContentDocument,
@@ -38,7 +36,7 @@ export function loadCatalogResources(query: CatalogResourceQuery, token = "", si
       name?: string;
 	  names?: Record<string, string>;
 	  iconUrl?: string;
-	  iconFileId?: number;
+	  iconFileId?: string;
 	  source?: {
 		publicId?: string;
 		siteId?: string;
@@ -65,17 +63,6 @@ export function loadCatalogResources(query: CatalogResourceQuery, token = "", si
 	  source: item.source,
     })),
   }));
-}
-
-export function submitEditorChange<TPayload>(
-  path: string,
-  command: EditCommand<TPayload>,
-  token: string,
-) {
-  return apiRequest<EditResult>(path, {
-    method: "POST",
-    body: JSON.stringify(command),
-  }, token);
 }
 
 export function requestContentTranslation(
@@ -132,7 +119,7 @@ export async function loadOwnedResolvedContent(
   return normalizeResolvedContent(value);
 }
 
-export function loadContentTranslationTask(taskId: number, token: string, signal?: AbortSignal) {
+export function loadContentTranslationTask(taskId: string, token: string, signal?: AbortSignal) {
   return apiRequest<ContentTranslationTask>(
     `/api/v1/content/translations/${encodeURIComponent(String(taskId))}`,
     { cache: "no-store", signal },
@@ -166,7 +153,7 @@ export function normalizeResolvedContent(value: unknown): ResolvedContentDocumen
     editableLocales: Array.isArray(source.editableLocales) ? source.editableLocales.filter((item): item is string => typeof item === "string") : [],
     translation: {
       status: normalizeTranslationState(record(source.translation).status),
-      taskId: optionalNumber(record(source.translation).taskId),
+      taskId: text(record(source.translation).taskId) || undefined,
       automatic: record(source.translation).automatic === true,
       canRequest: record(source.translation).canRequest === true,
       countsTowardDailyTokenQuota: record(source.translation).countsTowardDailyTokenQuota === true,
@@ -185,7 +172,7 @@ function normalizeResolvedLocalization(value: unknown): LocalizationVersion<Reso
       summary: text(source.summary),
       contentMarkdown: text(source.contentMarkdown),
     },
-    revisionId: optionalNumber(source.publishedRevisionId),
+    revisionId: text(source.publishedRevisionId) || undefined,
     provenance: provenance === "ai" || provenance === "human_corrected" || provenance === "original" || provenance === "import" ? provenance : "human",
     reviewStatus: reviewStatus === "pending" || reviewStatus === "rejected" || reviewStatus === "draft" ? reviewStatus : "approved",
     generatedFromLocale: text(source.sourceLocale) || undefined,
@@ -214,9 +201,4 @@ function record(value: unknown): Record<string, unknown> {
 
 function text(value: unknown) {
   return typeof value === "string" ? value : "";
-}
-
-function optionalNumber(value: unknown) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }

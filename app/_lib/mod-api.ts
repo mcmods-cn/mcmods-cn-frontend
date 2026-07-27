@@ -1,18 +1,18 @@
 import { ModCatalogEntry, ModFeature } from "./mod-catalog-data";
 import type { CreatorKind } from "./community-api";
 
-export type BackendModLink = { type: string; url: string; note: string };
+type BackendModLink = { type: string; url: string; note: string };
 export type BackendModAuthor = {
   creatorId?: string;
   kind?: CreatorKind;
   name: string;
   avatarUrl?: string;
-  roleId?: number;
+  roleId?: string;
   role: string;
 };
 export type BackendModRelationship = {
   type: "dependency" | "extension" | "integration";
-  relatedModId?: number;
+  relatedModId?: string;
   relatedModName: string;
   notes: string;
 };
@@ -28,7 +28,6 @@ export type BackendModRelationshipGroup = {
 
 export type BackendModCompatibility = { loader: string; versions: string[] };
 export type BackendModIdentifier = {
-  id?: number;
   identifier: string;
   primary: boolean;
   minecraftVersionMin: string;
@@ -38,7 +37,7 @@ export type BackendModIdentifier = {
 export type BackendModLocalization = { locale: string; name: string; summary: string; contentMarkdown: string };
 export type BackendModGalleryImage = {
   publicId?: string;
-  fileId: number;
+  fileId: string;
   name?: string;
   contentType?: string;
   sizeBytes?: number;
@@ -63,7 +62,7 @@ export type MinecraftVersionConfig = {
 };
 
 export type BackendModRecord = {
-  id: number;
+  id: string;
   uniqueId: string;
   siteId: string;
   primaryName: string;
@@ -90,11 +89,11 @@ export type BackendModRecord = {
   searchKeywords: string[];
   submissionMethod: "manual" | "modrinth" | "curseforge" | "github";
   reviewStatus: "pending" | "approved" | "rejected";
-  createdBy?: number;
+  createdBy?: string;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
-  publishedRevisionId?: number;
+  publishedRevisionId?: string;
   tags: string[];
   authors: BackendModAuthor[];
   links: BackendModLink[];
@@ -119,19 +118,19 @@ export type BackendModImportJob = {
 };
 
 export type BackendModRevision = {
-  id: number;
-  modId: number;
+  id: string;
+  modId: string;
   version: number;
   status: "pending" | "approved" | "rejected";
   snapshot: CreateModPayload;
   changeReason: string;
-  submittedBy?: number;
-  reviewedBy?: number;
+  submittedBy?: string;
+  reviewedBy?: string;
   reviewNote: string;
   createdAt: string;
   reviewedAt?: string;
-  baseRevisionId?: number;
-  changeRequestId: number;
+  baseRevisionId?: string;
+  changeRequestId: string;
   schemaVersion: number;
   snapshotHash: string;
 };
@@ -140,18 +139,18 @@ export type BackendModRevisionList = { items: BackendModRevision[] };
 export type BackendModRevisionComparison = { before: BackendModRevision; after: BackendModRevision; changedFields: string[] };
 
 export type BackendModApplication = {
-  id: number;
-  modId: number;
+  id: string;
+  modId: string;
   modSiteId: string;
   modName: string;
-  userId: number;
+  userId: string;
   username: string;
   displayName: string;
   kind: "editor" | "developer";
   proof: string;
   status: "pending" | "approved" | "rejected";
   reviewNote: string;
-  attachments: Array<{ id: number; originalName: string; objectKey: string; sizeBytes: number }>;
+  attachments: Array<{ id: string; originalName: string; objectKey: string; sizeBytes: number }>;
   createdAt: string;
   reviewedAt?: string;
 };

@@ -76,7 +76,7 @@ type PanelId =
   | "ai-task-logs";
 
 type User = {
-  id: number;
+  id: string;
   username: string;
   email: string;
   displayName: string;
@@ -235,7 +235,7 @@ type AITaskModelConfig = {
 };
 
 type AITaskStatus = {
-  id: number;
+  id: string;
   status: "queued" | "running" | "completed" | "failed";
   result?: AITranslationResult;
   error?: string;
@@ -293,7 +293,7 @@ type OSSConfig = {
 };
 
 type OSSFile = {
-  id: number;
+  id: string;
   bucket: string;
   objectKey: string;
   category: string;
@@ -2064,7 +2064,7 @@ function UserRolePanel({
   refreshUsers: () => Promise<void>;
 }) {
   const { locale, t } = useI18n();
-  const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? users[0] ?? null;
   const [details, setDetails] = useState<UserPermissionDetails | null>(null);
   const [draft, setDraft] = useState<UserPermissionEntry[]>([]);
@@ -2814,7 +2814,7 @@ function AITaskLogsPanel({ token }: { token: string }) {
   async function createTestTask() {
     setMessage("");
     try {
-      await apiRequest<{ id: number; taskUid: string; status: string }>(
+      await apiRequest<{ id: string; taskUid: string; status: string }>(
         "/api/v1/admin/ai/tasks",
         {
           method: "POST",
@@ -3627,7 +3627,7 @@ function UsersPanelV2({
     };
   }, [searchQuery, t, token]);
 
-  async function openUserDetails(userID: number) {
+  async function openUserDetails(userID: string) {
     setSelectedUserDetails(null);
     setDetailsLoading(true);
     try {
@@ -5430,7 +5430,7 @@ function aiTaskTypeLabel(taskType: string, t: (key: string, params?: Record<stri
 }
 
 async function runAITranslationTask(token: string, taskType: string, payload: Record<string, unknown>) {
-  const created = await apiRequest<{ id: number; taskUid: string; status: string }>(
+  const created = await apiRequest<{ id: string; taskUid: string; status: string }>(
     "/api/v1/admin/ai/tasks",
     { method: "POST", body: JSON.stringify({ taskType, payload }) },
     token,

@@ -20,7 +20,7 @@ export function FavoritePickerModal({ entityType, entityKey, title, token, onClo
 }) {
   const { t } = useI18n();
   const [collections, setCollections] = useState<FavoriteCollection[]>([]);
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [newName, setNewName] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

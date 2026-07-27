@@ -80,11 +80,13 @@ export function CommentSection({ targetType, targetKey, className = "" }: Commen
       const result = await createComment(targetType, targetKey, content, parentId, token);
       if ("watchOnly" in result) {
         setMessage(t("mods.comments.cyWatched"));
+      } else {
+        setItems((current) => appendPublishedComment(current, result));
+        setTotal((current) => current + 1);
       }
       setBody("");
       setReplyBody("");
       setReplyTo(null);
-      await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("mods.comments.publishFailed"));
     } finally {
@@ -149,7 +151,7 @@ type CommentTreeProps = {
   items: CommentItem[];
   loading: boolean;
   token: string;
-  userID?: number;
+  userID?: string;
   sort: string;
   replyTo: CommentItem | null;
   replyBody: string;
@@ -459,6 +461,25 @@ function mergeComments(current: CommentItem[], incoming: CommentItem[]) {
   const merged = new Map(current.map((item) => [item.id, item]));
   for (const item of incoming) merged.set(item.id, item);
   return [...merged.values()];
+}
+
+function appendPublishedComment(current: CommentItem[], incoming: CommentItem) {
+  const byID = new Map(current.map((item) => [item.id, item]));
+  const ancestors = new Set<string>();
+  let ancestorID = incoming.parentId;
+  while (ancestorID && !ancestors.has(ancestorID)) {
+    ancestors.add(ancestorID);
+    ancestorID = byID.get(ancestorID)?.parentId;
+  }
+  const updated = current.map((item) => {
+    if (!ancestors.has(item.id)) return item;
+    return {
+      ...item,
+      childCount: item.childCount + (item.id === incoming.parentId ? 1 : 0),
+      descendantCount: item.descendantCount + 1,
+    };
+  });
+  return mergeComments(updated, [incoming]);
 }
 
 function toggleSet(current: Set<string>, value: string) {

@@ -18,7 +18,7 @@ export type RecipeTemplateSlot = {
   definition?: Record<string, unknown>;
 };
 
-export type RecipeTemplateCanvas = {
+type RecipeTemplateCanvas = {
   width: number;
   height: number;
   imageScale: number;
@@ -30,7 +30,7 @@ export type RecipeTemplateRecord = {
   detailLoaded?: boolean;
   recipeTypePublicId: string;
   templateKey: string;
-  backgroundFileId?: number;
+  backgroundFileId?: string;
   backgroundUrl?: string;
   canvas: RecipeTemplateCanvas;
   definition?: Record<string, unknown>;
@@ -38,7 +38,7 @@ export type RecipeTemplateRecord = {
   slotCount?: number;
   defaultLocale?: ContentLanguageTag;
   localizations?: LocalizationVersion<RecipeLocalizedFields>[];
-  publishedRevisionId?: number;
+  publishedRevisionId?: string;
   reviewStatus?: ReviewStatus;
 };
 
@@ -90,16 +90,16 @@ export type RecipeRecord = {
   bindings: Record<string, RecipeBinding>;
   defaultLocale?: ContentLanguageTag;
   localizations?: LocalizationVersion<RecipeLocalizedFields>[];
-  publishedRevisionId?: number;
+  publishedRevisionId?: string;
   reviewStatus?: ReviewStatus;
 };
 
-export type RecipeSummary = {
+type RecipeSummary = {
   publicId: string;
   canonicalSourceId: string;
   identitySource: string;
   templatePublicId?: string;
-  publishedRevisionId?: number;
+  publishedRevisionId?: string;
   definition: Record<string, unknown>;
   bindingCount: number;
   source: "canonical" | "import";
@@ -119,19 +119,19 @@ export type RecipeSummaryPage = {
 };
 
 export type RecipeTemplateMutation = {
-  baseRevisionId?: number;
+  baseRevisionId?: string;
   reason: string;
   defaultLocale: string;
   localizations: Array<RecipeLocalizedFields & { locale: string }>;
   templateKey: string;
-  backgroundFileId?: number;
+  backgroundFileId?: string;
   canvas: RecipeTemplateCanvas;
   definition: Record<string, unknown>;
   slots: RecipeTemplateSlot[];
 };
 
 export type RecipeMutation = {
-  baseRevisionId?: number;
+  baseRevisionId?: string;
   reason: string;
   defaultLocale: string;
   localizations: Array<RecipeLocalizedFields & { locale: string }>;

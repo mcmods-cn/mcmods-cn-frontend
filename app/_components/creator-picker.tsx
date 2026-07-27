@@ -53,7 +53,7 @@ export function CreatorPicker({
                 className="field"
                 value={author.roleId ?? ""}
                 onChange={(event) => {
-                  const roleId = Number(event.target.value) || undefined;
+                  const roleId = event.target.value || undefined;
                   const role = roles.find((item) => item.id === roleId);
                   update(index, { ...author, roleId, role: role?.name || "" });
                 }}

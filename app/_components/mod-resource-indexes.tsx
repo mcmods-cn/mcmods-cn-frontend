@@ -2,14 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo } from "react";
-import { useI18n } from "../_lib/i18n-provider";
+import { useMemo, useState } from "react";
 
 export type ResourceIndexEntry = {
   key: string;
   id: string;
   name: string;
-  kindCode: string;
   iconURL: string;
   href: string;
   parentId?: string;
@@ -18,18 +16,25 @@ export type ResourceIndexEntry = {
   frame?: string;
 };
 
-export function ItemBlockResourceIndex({ entries, openInNewTab = false }: { entries: ResourceIndexEntry[]; openInNewTab?: boolean }) {
-  const { t } = useI18n();
-  const groups = [
-    { kindCode: "minecraft.block", label: t("mods.exportImport.registries.blocks") },
-    { kindCode: "minecraft.item", label: t("mods.exportImport.registries.items") },
-  ].map((group) => ({ ...group, entries: entries.filter((entry) => entry.kindCode === group.kindCode) }))
-    .filter((group) => group.entries.length);
+export type CompactResourceGroup = {
+  key: string;
+  label: string;
+  entries: ResourceIndexEntry[];
+  depth?: number;
+};
 
+export function CompactResourceIndex({ groups, openInNewTab = false }: { groups: CompactResourceGroup[]; openInNewTab?: boolean }) {
   return <div className="mt-6 divide-y divide-[var(--line)] overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
-    {groups.map((group) => <section className="grid lg:grid-cols-[140px_minmax(0,1fr)]" key={group.kindCode}>
-      <h2 className="bg-[var(--panel-subtle)] p-4 font-black text-[var(--accent)]">{group.label}</h2>
-      <div className="flex flex-wrap gap-x-3 gap-y-2 p-4">{group.entries.map((entry) => <CompactResourceLink entry={entry} key={entry.key} openInNewTab={openInNewTab} />)}</div>
+    {groups.map((group) => <section className="grid lg:grid-cols-[140px_minmax(0,1fr)]" key={group.key}>
+      <h2
+        className="bg-[var(--panel-subtle)] p-4 font-black text-[var(--accent)]"
+        style={{ paddingInlineStart: `${16 + (group.depth ?? 0) * 16}px` }}
+      >
+        {group.label}
+      </h2>
+      <div className="flex flex-wrap content-start gap-x-3 gap-y-2 p-4">
+        {group.entries.map((entry) => <CompactResourceLink entry={entry} key={entry.key} openInNewTab={openInNewTab} />)}
+      </div>
     </section>)}
   </div>;
 }
@@ -72,9 +77,25 @@ function CompactResourceLink({ entry, openInNewTab }: { entry: ResourceIndexEntr
     target={openInNewTab ? "_blank" : undefined}
     title={`${entry.name}\n${entry.id}`}
   >
-    {entry.iconURL ? <Image unoptimized alt="" className="h-8 w-8 shrink-0 object-contain [image-rendering:pixelated]" height={32} src={entry.iconURL} width={32} /> : <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-[10px] font-bold text-[var(--muted)]">?</span>}
+    <CompactResourceIcon src={entry.iconURL} />
     <strong className="min-w-0 truncate">{entry.name}</strong>
   </Link>;
+}
+
+function CompactResourceIcon({ src }: { src: string }) {
+  const [failedSource, setFailedSource] = useState("");
+  if (!src || failedSource === src) {
+    return <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-[10px] font-bold text-[var(--muted)]" aria-hidden="true">?</span>;
+  }
+  return <Image
+    unoptimized
+    alt=""
+    className="h-8 w-8 shrink-0 object-contain [image-rendering:pixelated]"
+    height={32}
+    onError={() => setFailedSource(src)}
+    src={src}
+    width={32}
+  />;
 }
 
 function advancementGroups(entries: ResourceIndexEntry[]) {

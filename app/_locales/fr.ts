@@ -1,4 +1,4 @@
-﻿import en from "./en";
+﻿import en from "./en-US";
 const fr = {
   ...en,
   common: { ...en.common, home: "Accueil", login: "Connexion", register: "Inscription", logout: "Déconnexion", admin: "Admin", save: "Enregistrer", delete: "Supprimer", language: "Langue" },

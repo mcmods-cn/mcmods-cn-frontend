@@ -41,11 +41,6 @@ export function toEditableContentLanguage(value: ContentLanguageTag | null | und
   return editableContentLanguages.find((item) => item.toLowerCase().startsWith(`${language}-`));
 }
 
-export function isEditableContentLanguage(value: ContentLanguageTag | null | undefined): value is Locale {
-  const normalized = normalizeContentLanguage(value);
-  return editableLanguageSet.has(normalized);
-}
-
 export function contentLanguageCandidates(
   primary: ContentLanguageTag,
   secondary = "",
@@ -96,13 +91,6 @@ export function resolveAvailableLocalization<TFields>(
   return undefined;
 }
 
-export function canEditLocalization<TFields>(
-  version: LocalizationVersion<TFields> | undefined,
-  locale: ContentLanguageTag,
-) {
-  return Boolean(toEditableContentLanguage(locale)) && (version?.editable ?? true);
-}
-
 export function localizedCatalogResourceName(
   resource: Pick<CatalogResourceRef, "id" | "names" | "resolvedName">,
   primary: ContentLanguageTag,
@@ -127,7 +115,7 @@ export function localizedCatalogResourceName(
   return resource.id;
 }
 
-export function contentLanguageAliases(value: ContentLanguageTag) {
+function contentLanguageAliases(value: ContentLanguageTag) {
   const editable = toEditableContentLanguage(value);
   const normalized = normalizeContentLanguage(value);
   const aliases = editable ? minecraftLocaleAliases[editable] : [normalized];

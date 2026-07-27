@@ -165,6 +165,12 @@ function ProjectFileRow({ file, locale, deletingAllowed, downloading, onDownload
 }) {
   const { t } = useI18n();
   const name = file.displayName || file.fileName;
+  const scanBlocked = file.source === "internal" && file.scanStatus !== "clean";
+  const downloadLabel = scanBlocked
+    ? t(file.scanStatus === "rejected" ? "mods.detail.downloads.scanRejected" : "mods.detail.downloads.scanPending")
+    : downloading
+      ? t("mods.detail.downloads.preparing")
+      : t("mods.detail.downloads.download");
   return <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center">
     <ReleaseMark channel={file.releaseChannel} />
     <div className="min-w-0 flex-1">
@@ -179,7 +185,7 @@ function ProjectFileRow({ file, locale, deletingAllowed, downloading, onDownload
     </div>
     <div className="flex shrink-0 gap-2">
       {deletingAllowed ? <button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={onDelete}>{t("common.delete")}</button> : null}
-      <button className="button-primary focus-ring" disabled={downloading} type="button" onClick={onDownload}>{downloading ? t("mods.detail.downloads.preparing") : t("mods.detail.downloads.download")}</button>
+      <button className="button-primary focus-ring" disabled={downloading || scanBlocked} type="button" onClick={onDownload}>{downloadLabel}</button>
     </div>
   </div>;
 }

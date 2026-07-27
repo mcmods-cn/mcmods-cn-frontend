@@ -1,5 +1,5 @@
-export type BlueprintUploader = {
-  id: number;
+type BlueprintUploader = {
+  id: string;
   displayName: string;
   username: string;
   avatarUrl?: string;
@@ -15,7 +15,7 @@ export type BlueprintRequiredMod = {
   namespaces: string[];
 };
 
-export type BlueprintSummary = {
+type BlueprintSummary = {
   id: string;
   title: string;
   description: string;
@@ -32,8 +32,8 @@ export type BlueprintSummary = {
   requiredMods: BlueprintRequiredMod[];
 };
 
-export type BlueprintVariant = {
-  id: number;
+type BlueprintVariant = {
+  id: string;
   format: string;
   original: boolean;
   recommended: boolean;
@@ -56,10 +56,12 @@ export type BlueprintMaterial = {
   previewPath?: string;
   sourceRevisionId?: string;
   sourceModSiteId?: string;
+  sourceVersionPublicId?: string;
+  detailUrl?: string;
   entityId?: string;
 };
 
-export type BlueprintAssetRevision = { id: string; siteId: string; paths: string[] };
+type BlueprintAssetRevision = { id: string; siteId: string; paths: string[] };
 
 export type BlueprintDetailRecord = BlueprintSummary & {
   entityCount: number;
