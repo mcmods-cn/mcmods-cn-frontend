@@ -39,7 +39,6 @@ type Props = {
 export function ModCatalogData({ siteId, token, canEdit }: Props) {
   const { locale, t } = useI18n();
   const [revisions, setRevisions] = useState<ModExportRevision[]>([]);
-  const [selectedID, setSelectedID] = useState("");
   const [contentVersions, setContentVersions] = useState<ModContentVersion[]>([]);
   const [contentSections, setContentSections] = useState<ModContentSection[]>([]);
   const [contentTemplates, setContentTemplates] = useState<ModContentTemplate[]>([]);
@@ -54,12 +53,12 @@ export function ModCatalogData({ siteId, token, canEdit }: Props) {
       loadModContentTemplates(siteId, token),
     ]);
     const catalogVersions = versions.filter((item) => item.status === "active");
-    setRevisions(revisionResult.items);
+    const activeRevisions = revisionResult.items.filter((item) => item.isActive);
+    setRevisions(activeRevisions);
     setContentVersions(catalogVersions);
     setContentSections(sections);
     setContentTemplates(templates);
     setContentVersionId((current) => catalogVersions.some((item) => item.publicId === current) ? current : catalogVersions[0]?.publicId ?? "");
-    setSelectedID((current) => revisionResult.items.some((item) => item.id === current) ? current : revisionResult.items[0]?.id ?? "");
   }, [siteId, token]);
 
   useEffect(() => {
@@ -69,12 +68,7 @@ export function ModCatalogData({ siteId, token, canEdit }: Props) {
     return () => window.clearTimeout(timer);
   }, [loadCatalog, t]);
 
-  const selectedVersion = contentVersions.find((item) => item.publicId === contentVersionId);
-  const matchingRevisions = useMemo(
-    () => revisions.filter((revision) => !selectedVersion || revision.targetVersionPublicId === selectedVersion.publicId),
-    [revisions, selectedVersion],
-  );
-  const selected = matchingRevisions.find((item) => item.id === selectedID) ?? matchingRevisions[0];
+  const selected = revisions.find((revision) => revision.targetVersionPublicId === contentVersionId);
   const selectedSections = contentSections.filter((item) => item.versionPublicId === contentVersionId);
   const categories = useMemo(
     () => mergeCatalogCategories(modExportCategories(selected), selectedSections, contentTemplates, locale, t),
@@ -98,7 +92,12 @@ export function ModCatalogData({ siteId, token, canEdit }: Props) {
       {canEdit ? <Link className="button-primary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/data/edit`}>{t("mods.exportImport.importAction")}</Link> : null}
     </header>
     {message ? <p className="rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{message}</p> : null}
-    {contentVersions.length ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3"><strong className="text-sm">{t("mods.exportImport.dataVersion")}</strong><select className="field min-w-56 flex-1 sm:max-w-md" value={contentVersionId} onChange={(event) => setContentVersionId(event.target.value)}>{contentVersions.map((item) => <option key={item.publicId} value={item.publicId}>{item.label}</option>)}</select>{matchingRevisions.length > 1 ? <select aria-label={t("mods.exportImport.importNamespace")} className="field min-w-44" value={selected?.id ?? ""} onChange={(event) => setSelectedID(event.target.value)}>{matchingRevisions.map((item) => <option key={item.id} value={item.id}>{item.namespace}{item.sourceKind && item.sourceKind !== "mcmods_exporter" ? ` · ${item.sourceKind}` : ""}</option>)}</select> : null}</div> : null}
+    {contentVersions.length ? <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3">
+      <strong className="text-sm">{t("mods.exportImport.dataVersion")}</strong>
+      <select className="field min-w-56 flex-1 sm:max-w-md" value={contentVersionId} onChange={(event) => setContentVersionId(event.target.value)}>
+        {contentVersions.map((item) => <option key={item.publicId} value={item.publicId}>{item.label}</option>)}
+      </select>
+    </div> : null}
     {categories.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{categories.map((category) => <UnifiedCategoryCard category={category} key={category.key} onClick={() => openCategory(category)} />)}</div> : <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-8 text-center text-[var(--muted)]">{t("mods.exportImport.empty")}</div>}
   </section>;
 }

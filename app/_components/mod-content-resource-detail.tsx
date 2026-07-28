@@ -26,7 +26,7 @@ import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { IndexedHttpAssetSource } from "@/lib/mcmods-exporter/renderer";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { CommentSection } from "./comment-section";
-import { ModRecipeGallery, ModResourceProperties } from "./mod-resource-components";
+import { ModLootTableView, ModRecipeGallery, ModResourceProperties } from "./mod-resource-components";
 
 const BlockModelCanvas = dynamic(() => import("@/components/mcmods-exporter/BlockModelCanvas").then((module) => module.BlockModelCanvas), { ssr: false });
 
@@ -134,6 +134,7 @@ function ResourcePresentation({
   return <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1fr)_320px]">
     <div className="min-w-0">
       {children}
+      {registry === "loot_tables" ? <ModLootTableView data={effectiveDefinition} /> : null}
       {detailError ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{detailError}</p> : null}
       {entryDetail?.recipes.length ? <ModRecipeGallery title={t("mods.exportImport.entry.recipes")} recipes={entryDetail.recipes} revisionId={revisionId} /> : null}
       {entryDetail?.uses.length ? <ModRecipeGallery title={t("mods.exportImport.entry.uses")} recipes={entryDetail.uses} revisionId={revisionId} /> : null}
@@ -170,6 +171,7 @@ function registryForKind(kindCode: string) {
   if (normalized.includes("effect") || normalized.includes("potion")) return "mob_effects";
   if (normalized.includes("natural_generation")) return "natural_generation";
   if (normalized.includes("world_structure") || normalized.includes("structure")) return "world_structures";
+  if (normalized.includes("loot_table")) return "loot_tables";
   return "";
 }
 

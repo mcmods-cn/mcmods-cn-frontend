@@ -12,6 +12,8 @@ import {
   UnifiedRecipeCard,
   type UnifiedRecipeMaterial,
 } from "./unified-recipe-card";
+import { RecipeEditLink } from "./recipe-edit-link";
+import { useRotatingValue } from "./rotating-resource";
 
 export function ModResourceProperties({
   data,
@@ -62,7 +64,7 @@ export function ModResourceProperties({
     property("attackDamage", combat.attack_damage), property("attackSpeed", combat.attack_speed),
     property("attackDamageModifier", combat.attack_damage_modifier), property("attackSpeedModifier", combat.attack_speed_modifier),
     property("enchantable", enchanting.enchantable), property("enchantingPower", enchanting.enchantment_value),
-    property("compatibleEnchantments", enchanting.compatible_enchantments), tagProperty("itemTags", data.item_tags, "minecraft:item"),
+    resourceProperty("compatibleEnchantments", enchanting.compatible_enchantments, data.resourceSources), tagProperty("itemTags", data.item_tags, "minecraft:item"),
   ].filter(hasPropertyValue) : [];
   const entityRows: PropertyRow[] = isEntity ? [
     property("maxHealth", data.max_health), property("armorValue", data.armor_value),
@@ -118,9 +120,10 @@ export function ModResourceProperties({
 type PropertyRow = {
   key: string;
   value: unknown;
-  kind?: "tag" | "loot" | "item";
+  kind?: "tag" | "loot" | "item" | "resource";
   registry?: string;
   href?: string;
+  resourceSources?: unknown;
 };
 
 function property(key: string, value: unknown): PropertyRow {
@@ -135,16 +138,14 @@ function itemProperty(key: string, value: unknown): PropertyRow {
   return { key, value, kind: "item" };
 }
 
+function resourceProperty(key: string, value: unknown, resourceSources: unknown): PropertyRow {
+  return { key, value, kind: "resource", resourceSources };
+}
+
 function lootProperty(key: string, value: unknown, resourceSources: unknown): PropertyRow {
   const id = stringValue(value);
   const source = record(record(resourceSources)[id]);
-  const href = stringValue(source.detailUrl)
-    || canonicalImportedResourceHref(
-      stringValue(source.sourceModSiteId),
-      stringValue(source.sourceVersionPublicId),
-      stringValue(source.entityId),
-    );
-  return { key, value, kind: "loot", href };
+  return { key, value, kind: "loot", href: resourceSourceHref(source) };
 }
 
 function hasPropertyValue(row: PropertyRow) {
@@ -186,7 +187,7 @@ function EntityAttributes({ attributes }: { attributes: Record<string, unknown>[
 }
 
 function PropertyValue({ row }: { row: PropertyRow }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   if (row.kind === "loot" && row.href) {
     return <Link className="text-[var(--accent)] hover:underline" href={row.href} target="_blank" rel="noopener noreferrer">{String(row.value)}</Link>;
   }
@@ -195,6 +196,18 @@ function PropertyValue({ row }: { row: PropertyRow }) {
     return <span className="flex flex-wrap gap-1">{values.map((raw) => {
       const value = raw.replace(/^#/, "");
       return <Link className="rounded bg-[var(--accent-soft)] px-2 py-1 text-xs text-[var(--accent)] hover:underline" href={`/mods-tag?registry=${encodeURIComponent(row.registry || "minecraft:item")}&tagId=${encodeURIComponent(value)}`} target="_blank" rel="noopener noreferrer" key={raw}>#{value}</Link>;
+    })}</span>;
+  }
+  if (row.kind === "resource") {
+    const values = Array.isArray(row.value) ? row.value.map(String) : [String(row.value)];
+    const sources = record(row.resourceSources);
+    return <span className="flex flex-wrap gap-1">{values.map((value) => {
+      const source = record(sources[value]);
+      const href = resourceSourceHref(source);
+      const label = localizedRecordValue(source.names, minecraftLocale(locale)) || value;
+      return href
+        ? <Link className="rounded bg-[var(--accent-soft)] px-2 py-1 text-xs text-[var(--accent)] hover:underline" href={href} key={value} rel="noopener noreferrer" target="_blank" title={value}>{label}</Link>
+        : <code className="rounded bg-[var(--panel-subtle)] px-2 py-1 text-xs" key={value}>{label}</code>;
     })}</span>;
   }
   if (row.kind === "item" && Array.isArray(row.value)) {
@@ -212,6 +225,161 @@ function AttributeSlot({ slot }: { slot: Record<string, unknown> }) {
       <span className="mt-1 block text-[var(--muted)]">{String(modifier.amount ?? 0)} · {String(modifier.operation ?? modifier.operation_id ?? "add")}</span>
     </div>)}</div>
   </div>;
+}
+
+export function ModLootTableView({ data }: { data: Record<string, unknown> }) {
+  const { locale, t } = useI18n();
+  const definition = record(data.definition);
+  const normalizedPools = arrayRecords(data.pools);
+  const definitionPools = arrayRecords(definition.pools);
+  const pools = normalizedPools.length ? normalizedPools : definitionPools;
+  const sources = record(data.resourceSources);
+  const category = lootCategory(data);
+  const possibleItemIDs = uniqueStrings([
+    ...stringArray(data.possible_item_ids),
+    ...lootEntryItemIDs(pools),
+  ]);
+  const referencedLootTables = uniqueStrings([
+    ...stringArray(data.referenced_loot_tables),
+    ...lootEntryReferenceIDs(pools),
+  ]);
+  const definitionAvailable = data.definition_available === true
+    || Object.keys(definition).length > 0
+    || pools.length > 0;
+  const visibleItems = possibleItemIDs.slice(0, 24);
+
+  return <section className="mt-7 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)]">
+    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--panel-subtle)] px-5 py-4">
+      <div>
+        <h2 className="text-xl font-black">{t("mods.exportImport.entry.loot.title")}</h2>
+        <p className="mt-1 text-sm font-bold text-[var(--muted)]">{t("mods.exportImport.entry.loot.poolCount", { count: pools.length })}</p>
+      </div>
+      <span className="rounded-full bg-[var(--accent-soft)] px-3 py-1.5 text-sm font-black text-[var(--accent)]">{t(`mods.exportImport.entry.loot.categories.${category}`)}</span>
+    </header>
+
+    {possibleItemIDs.length ? <div className="border-b border-[var(--line)] p-5">
+      <h3 className="text-sm font-black">{t("mods.exportImport.entry.loot.possibleContents")}</h3>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+        {visibleItems.map((itemID) => <LootResourceChip id={itemID} key={itemID} locale={locale} source={record(sources[itemID])} />)}
+      </div>
+      {possibleItemIDs.length > visibleItems.length ? <p className="mt-3 text-xs font-bold text-[var(--muted)]">{t("mods.exportImport.entry.loot.moreContents", { count: possibleItemIDs.length - visibleItems.length })}</p> : null}
+    </div> : null}
+
+    {!definitionAvailable ? <div className="m-5 rounded-lg border border-dashed border-[var(--warning)] bg-[color-mix(in_srgb,var(--warning)_7%,transparent)] p-4">
+      <strong className="block text-[var(--warning)]">{t("mods.exportImport.entry.loot.definitionUnavailable")}</strong>
+      <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("mods.exportImport.entry.loot.definitionUnavailableHint")}</p>
+    </div> : <div className="space-y-4 p-5">
+      {pools.map((pool, index) => <LootPool key={`${index}:${String(pool.pool_index ?? "")}`} number={index + 1} pool={pool} sources={sources} />)}
+    </div>}
+
+    {referencedLootTables.length ? <div className="border-t border-[var(--line)] p-5">
+      <h3 className="text-sm font-black">{t("mods.exportImport.entry.loot.references")}</h3>
+      <div className="mt-3 flex flex-wrap gap-2">{referencedLootTables.map((referenceID) => {
+        const source = record(sources[referenceID]);
+        const href = stringValue(source.detailUrl);
+        return href
+          ? <Link className="rounded bg-[var(--accent-soft)] px-2.5 py-1.5 font-mono text-xs font-bold text-[var(--accent)] hover:underline" href={href} key={referenceID} rel="noopener noreferrer" target="_blank">{referenceID}</Link>
+          : <code className="rounded bg-[var(--panel-subtle)] px-2.5 py-1.5 text-xs" key={referenceID}>{referenceID}</code>;
+      })}</div>
+    </div> : null}
+  </section>;
+}
+
+function LootPool({
+  number,
+  pool,
+  sources,
+}: {
+  number: number;
+  pool: Record<string, unknown>;
+  sources: Record<string, unknown>;
+}) {
+  const { t } = useI18n();
+  const entries = arrayRecords(pool.entries);
+  const conditions = lootRuleNames(pool.conditions ?? pool.condition_types);
+  const functions = lootRuleNames(pool.functions ?? pool.function_types);
+  return <article className="overflow-hidden rounded-lg border border-[var(--line)]">
+    <header className="flex flex-wrap items-start justify-between gap-3 bg-[var(--panel-subtle)] px-4 py-3">
+      <div><h3 className="font-black">{t("mods.exportImport.entry.loot.pool", { number })}</h3><span className="mt-1 block text-xs font-bold text-[var(--muted)]">{t("mods.exportImport.entry.loot.entryCount", { count: numberValue(pool.entry_count, entries.length) })}</span></div>
+      <dl className="flex flex-wrap gap-2 text-xs">
+        <div className="rounded bg-[var(--panel)] px-2 py-1"><dt className="inline font-bold text-[var(--muted)]">{t("mods.exportImport.entry.loot.rolls")}: </dt><dd className="inline font-black">{formatLootNumber(pool.rolls)}</dd></div>
+        {pool.bonus_rolls !== undefined ? <div className="rounded bg-[var(--panel)] px-2 py-1"><dt className="inline font-bold text-[var(--muted)]">{t("mods.exportImport.entry.loot.bonusRolls")}: </dt><dd className="inline font-black">{formatLootNumber(pool.bonus_rolls)}</dd></div> : null}
+      </dl>
+    </header>
+    {conditions.length || functions.length ? <div className="flex flex-wrap gap-2 border-t border-[var(--line)] px-4 py-3">
+      <LootRuleChips label={t("mods.exportImport.entry.loot.condition")} rules={conditions} />
+      <LootRuleChips label={t("mods.exportImport.entry.loot.function")} rules={functions} />
+    </div> : null}
+    {entries.length ? <div className="grid gap-2 border-t border-[var(--line)] p-3 sm:grid-cols-2">{entries.map((entry, index) => <LootEntryCard entry={entry} key={`${index}:${lootEntryIdentity(entry)}`} sources={sources} />)}</div> : <p className="border-t border-[var(--line)] p-4 text-sm text-[var(--muted)]">{t("mods.exportImport.entry.loot.noEntries")}</p>}
+  </article>;
+}
+
+function LootEntryCard({
+  entry,
+  sources,
+}: {
+  entry: Record<string, unknown>;
+  sources: Record<string, unknown>;
+}) {
+  const { locale, t } = useI18n();
+  const type = stringValue(entry.entry_type) || stringValue(entry.type);
+  const kind = stringValue(entry.entry_kind);
+  const rawName = stringValue(entry.name) || stringValue(entry.value);
+  const itemID = stringValue(entry.item_id) || ((kind === "item" || /(^|:)item$/.test(type)) ? rawName : "");
+  const tagID = stringValue(entry.tag_id) || ((kind === "tag" || type.includes(":tag")) ? rawName.replace(/^#/, "") : "");
+  const referenceID = stringValue(entry.loot_table_id) || ((kind.includes("loot_table") || type.includes("loot_table")) ? rawName : "");
+  const sourceID = itemID || referenceID;
+  const source = record(sources[sourceID]);
+  const href = tagID
+    ? `/mods-tag?registry=minecraft:item&tagId=${encodeURIComponent(tagID)}`
+    : stringValue(source.detailUrl);
+  const title = localizedRecordValue(source.names, minecraftLocale(locale))
+    || (tagID ? `#${tagID}` : sourceID || rawName || type || kind || "?");
+  const iconPath = stringValue(source.iconPath);
+  const sourceRevisionID = stringValue(source.sourceRevisionId);
+  const iconURL = iconPath && sourceRevisionID ? modExportAssetURL(sourceRevisionID, iconPath) : "";
+  const conditions = lootRuleNames(entry.conditions ?? entry.condition_types);
+  const functions = lootRuleNames(entry.functions ?? entry.function_types);
+  const children = arrayRecords(entry.children);
+  const content = <div className="flex min-w-0 items-center gap-3">
+    {iconURL ? <Image unoptimized alt="" className="h-12 w-12 shrink-0 object-contain [image-rendering:pixelated]" height={48} src={iconURL} width={48} /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-sm font-black text-[var(--muted)]">{tagID ? "#" : referenceID ? "↗" : type.includes("empty") ? "∅" : "?"}</span>}
+    <span className="min-w-0 flex-1"><strong className="block truncate">{title}</strong><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{tagID ? `#${tagID}` : sourceID || type}</code></span>
+  </div>;
+  return <article className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3">
+    {href ? <Link className="focus-ring block rounded hover:text-[var(--accent)]" href={href} rel="noopener noreferrer" target="_blank">{content}</Link> : content}
+    <div className="mt-2 flex flex-wrap gap-1 text-[10px] font-bold text-[var(--muted)]">
+      {entry.weight !== undefined ? <span className="rounded bg-[var(--panel-subtle)] px-1.5 py-1">{t("mods.exportImport.entry.loot.weight")}: {String(entry.weight)}</span> : null}
+      {entry.quality !== undefined ? <span className="rounded bg-[var(--panel-subtle)] px-1.5 py-1">{t("mods.exportImport.entry.loot.quality")}: {String(entry.quality)}</span> : null}
+      {lootEntryQuantity(entry) ? <span className="rounded bg-[var(--panel-subtle)] px-1.5 py-1">× {lootEntryQuantity(entry)}</span> : null}
+      {conditions.map((rule) => <span className="rounded bg-[var(--accent-soft)] px-1.5 py-1 text-[var(--accent)]" key={`c:${rule}`}>{t("mods.exportImport.entry.loot.condition")}: {rule}</span>)}
+      {functions.map((rule) => <span className="rounded bg-[var(--panel-subtle)] px-1.5 py-1" key={`f:${rule}`}>{t("mods.exportImport.entry.loot.function")}: {rule}</span>)}
+    </div>
+    {children.length ? <div className="mt-3 grid gap-2 border-l-2 border-[var(--accent)] pl-2">{children.map((child, index) => <LootEntryCard entry={child} key={`${index}:${lootEntryIdentity(child)}`} sources={sources} />)}</div> : null}
+  </article>;
+}
+
+function LootResourceChip({
+  id,
+  locale,
+  source,
+}: {
+  id: string;
+  locale: string;
+  source: Record<string, unknown>;
+}) {
+  const name = localizedRecordValue(source.names, minecraftLocale(locale)) || id;
+  const iconPath = stringValue(source.iconPath);
+  const revisionID = stringValue(source.sourceRevisionId);
+  const iconURL = iconPath && revisionID ? modExportAssetURL(revisionID, iconPath) : "";
+  const href = stringValue(source.detailUrl);
+  const content = <><span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-[var(--panel-subtle)]">{iconURL ? <Image unoptimized alt="" className="h-9 w-9 object-contain [image-rendering:pixelated]" height={36} src={iconURL} width={36} /> : <span className="text-xs font-black text-[var(--muted)]">?</span>}</span><span className="min-w-0"><strong className="block truncate text-sm">{name}</strong><code className="block truncate text-[10px] text-[var(--muted)]">{id}</code></span></>;
+  return href
+    ? <Link className="focus-ring flex min-w-0 items-center gap-2 rounded-lg border border-[var(--line)] p-2 hover:border-[var(--accent)]" href={href} rel="noopener noreferrer" target="_blank">{content}</Link>
+    : <div className="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--line)] p-2">{content}</div>;
+}
+
+function LootRuleChips({ label, rules }: { label: string; rules: string[] }) {
+  return <>{rules.map((rule) => <span className="rounded bg-[var(--accent-soft)] px-2 py-1 text-[10px] font-bold text-[var(--accent)]" key={`${label}:${rule}`}>{label}: {rule}</span>)}</>;
 }
 
 export function ModRecipeGallery({
@@ -278,7 +446,7 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
     : "";
   return <UnifiedRecipeCard
     badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}
-    editAction={editHref ? <Link className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</Link> : undefined}
+    editAction={editHref ? <RecipeEditLink className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</RecipeEditLink> : undefined}
     labels={{
       materials: t("globalCatalog.materials"),
       note: t("globalCatalog.recipeNote"),
@@ -366,9 +534,8 @@ function ModRecipeSlot({
   canvasWidth: number;
   showVisual: boolean;
 }) {
+  const item = record(useRotatingValue(Array.isArray(slot.alternatives) ? slot.alternatives : []));
   if (slot.ingredient_present === false || slot.coordinates_available === false) return null;
-  const alternatives = Array.isArray(slot.alternatives) ? slot.alternatives : [];
-  const item = record(alternatives[0]);
   const itemId = stringValue(item.item) || stringValue(item.resource_location);
   const tagId = stringValue(slot.tag) || stringValue(item.tag);
   const tagEntityId = stringValue(slot.tagEntityId);
@@ -444,6 +611,15 @@ function canonicalImportedResourceHref(
   return `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourcePublicId)}?version=${encodeURIComponent(versionPublicId)}`;
 }
 
+function resourceSourceHref(source: Record<string, unknown>) {
+  return stringValue(source.detailUrl)
+    || canonicalImportedResourceHref(
+      stringValue(source.sourceModSiteId),
+      stringValue(source.sourceVersionPublicId),
+      stringValue(source.entityId),
+    );
+}
+
 function localizedRecordValue(value: unknown, locale: string) {
   const names = Object.fromEntries(
     Object.entries(record(value)).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
@@ -453,6 +629,99 @@ function localizedRecordValue(value: unknown, locale: string) {
 
 function arrayRecords(value: unknown) {
   return Array.isArray(value) ? value.map(record) : [];
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function lootCategory(data: Record<string, unknown>) {
+  const category = stringValue(data.category).toLowerCase();
+  const path = (stringValue(data.path) || stringValue(data.id).split(":").slice(1).join(":")).toLowerCase();
+  if (category === "block" || category === "blocks" || path.startsWith("blocks/")) return "blocks";
+  if (category === "chest" || category === "chests" || path.startsWith("chests/")) return "chests";
+  if (category === "entity" || category === "entities" || path.startsWith("entities/")) return "entities";
+  if (category === "fishing" || path.startsWith("gameplay/fishing") || path.startsWith("fishing/")) return "fishing";
+  if (category === "archaeology" || path.startsWith("archaeology/")) return "archaeology";
+  if (category === "equipment" || path.startsWith("equipment/")) return "equipment";
+  if (category === "gameplay" || path.startsWith("gameplay/")) return "gameplay";
+  return "other";
+}
+
+function lootEntryItemIDs(pools: Record<string, unknown>[]) {
+  const result: string[] = [];
+  const visit = (entries: Record<string, unknown>[]) => {
+    for (const entry of entries) {
+      const type = stringValue(entry.entry_type) || stringValue(entry.type);
+      const kind = stringValue(entry.entry_kind);
+      const name = stringValue(entry.name) || stringValue(entry.value);
+      const itemID = stringValue(entry.item_id) || ((kind === "item" || /(^|:)item$/.test(type)) ? name : "");
+      if (itemID) result.push(itemID);
+      visit(arrayRecords(entry.children));
+    }
+  };
+  for (const pool of pools) visit(arrayRecords(pool.entries));
+  return result;
+}
+
+function lootEntryReferenceIDs(pools: Record<string, unknown>[]) {
+  const result: string[] = [];
+  const visit = (entries: Record<string, unknown>[]) => {
+    for (const entry of entries) {
+      const type = stringValue(entry.entry_type) || stringValue(entry.type);
+      const kind = stringValue(entry.entry_kind);
+      const name = stringValue(entry.name) || stringValue(entry.value);
+      const referenceID = stringValue(entry.loot_table_id) || ((kind.includes("loot_table") || type.includes("loot_table")) ? name : "");
+      if (referenceID) result.push(referenceID);
+      visit(arrayRecords(entry.children));
+    }
+  };
+  for (const pool of pools) visit(arrayRecords(pool.entries));
+  return result;
+}
+
+function lootEntryIdentity(entry: Record<string, unknown>) {
+  return stringValue(entry.item_id)
+    || stringValue(entry.loot_table_id)
+    || stringValue(entry.name)
+    || stringValue(entry.value)
+    || stringValue(entry.entry_type)
+    || stringValue(entry.type);
+}
+
+function lootRuleNames(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return uniqueStrings(value.map((rule) => {
+    if (typeof rule === "string") return rule;
+    const item = record(rule);
+    return stringValue(item.condition)
+      || stringValue(item.function)
+      || stringValue(item.type)
+      || stringValue(item.predicate);
+  }));
+}
+
+function lootEntryQuantity(entry: Record<string, unknown>) {
+  if (entry.count !== undefined) return formatLootNumber(entry.count);
+  for (const item of arrayRecords(entry.functions)) {
+    const kind = stringValue(item.function) || stringValue(item.type);
+    if (kind.includes("set_count") && item.count !== undefined) return formatLootNumber(item.count);
+  }
+  return "";
+}
+
+function formatLootNumber(value: unknown): string {
+  if (typeof value === "number") return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  if (typeof value === "string") return value;
+  const range = record(value);
+  const min = range.min ?? range.minimum;
+  const max = range.max ?? range.maximum;
+  if (min !== undefined || max !== undefined) return `${String(min ?? max)}–${String(max ?? min)}`;
+  return Object.keys(range).length ? JSON.stringify(range) : "-";
 }
 
 function formatExportProperty(

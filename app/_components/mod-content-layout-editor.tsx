@@ -1,7 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { type DragEvent, type PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type DragEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { advancementConnectedGroups } from "../_lib/advancement-graph";
 import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import {
@@ -31,6 +40,18 @@ type DraggedAdvancement = {
   startY: number;
 };
 
+type AdvancementPortSide = "input" | "output";
+
+type DraggedAdvancementLink = {
+  resourcePublicId: string;
+  side: AdvancementPortSide;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  currentClientX: number;
+  currentClientY: number;
+};
+
 const advancementColumnWidth = 280;
 const advancementRowHeight = 132;
 const advancementNodeWidth = 240;
@@ -45,9 +66,9 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   const [categories, setCategories] = useState<ModContentSection[]>([]);
   const [resources, setResources] = useState<ModContentSectionResource[]>([]);
   const [advancementLayouts, setAdvancementLayouts] = useState<AdvancementLayouts>({});
+  const [advancementHistory, setAdvancementHistory] = useState<AdvancementLayouts[]>([]);
   const [draggedResource, setDraggedResource] = useState("");
   const [draggedAdvancement, setDraggedAdvancement] = useState<DraggedAdvancement>();
-  const [linkParent, setLinkParent] = useState("");
   const [categoryLocale, setCategoryLocale] = useState<string>(locale);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryParent, setNewCategoryParent] = useState(sectionId);
@@ -75,6 +96,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
         setCategories(page.categories || []);
         setResources(page.items);
         setAdvancementLayouts(createAdvancementLayouts(page.items));
+        setAdvancementHistory([]);
         setNewCategoryParent(page.section.publicId);
         setLoadedComplete(true);
         setBusy(false);
@@ -101,6 +123,25 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
     window.setTimeout(() => {
       if (!window.closed) window.location.assign(fallback);
     }, 120);
+  }
+
+  function commitAdvancementLayouts(next: AdvancementLayouts, previous = advancementLayouts) {
+    if (sameAdvancementLayouts(next, previous)) {
+      setAdvancementLayouts(next);
+      return;
+    }
+    setAdvancementHistory((history) => [...history, cloneAdvancementLayouts(previous)].slice(-50));
+    setAdvancementLayouts(next);
+    setError("");
+  }
+
+  function undoAdvancementLayout() {
+    const previous = advancementHistory.at(-1);
+    if (!previous) return;
+    setAdvancementLayouts(cloneAdvancementLayouts(previous));
+    setAdvancementHistory((history) => history.slice(0, -1));
+    setDraggedAdvancement(undefined);
+    setError("");
   }
 
   async function save() {
@@ -169,15 +210,16 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
         </p>
         {isAdvancement
           ? <AdvancementLayoutEditor
+            canUndo={advancementHistory.length > 0}
             defaultLocale={section.defaultLocale}
             dragged={draggedAdvancement}
             layouts={advancementLayouts}
-            linkParent={linkParent}
             locale={locale}
             resources={resources}
             onDrag={setDraggedAdvancement}
-            onLayoutsChange={setAdvancementLayouts}
-            onLinkParentChange={setLinkParent}
+            onLayoutsCommit={commitAdvancementLayouts}
+            onLayoutsPreview={setAdvancementLayouts}
+            onUndo={undoAdvancementLayout}
             onError={setError}
           />
           : <CategoryLayoutEditor
@@ -382,10 +424,11 @@ function AdvancementLayoutEditor({
   layouts,
   locale,
   defaultLocale,
-  linkParent,
   dragged,
-  onLayoutsChange,
-  onLinkParentChange,
+  canUndo,
+  onLayoutsPreview,
+  onLayoutsCommit,
+  onUndo,
   onDrag,
   onError,
 }: {
@@ -393,28 +436,222 @@ function AdvancementLayoutEditor({
   layouts: AdvancementLayouts;
   locale: string;
   defaultLocale: string;
-  linkParent: string;
   dragged?: DraggedAdvancement;
-  onLayoutsChange: (value: AdvancementLayouts) => void;
-  onLinkParentChange: (value: string) => void;
+  canUndo: boolean;
+  onLayoutsPreview: (value: AdvancementLayouts) => void;
+  onLayoutsCommit: (value: AdvancementLayouts, previous?: AdvancementLayouts) => void;
+  onUndo: () => void;
   onDrag: (value: DraggedAdvancement | undefined) => void;
   onError: (value: string) => void;
 }) {
   const { t } = useI18n();
+  const [linkDrag, setLinkDrag] = useState<DraggedAdvancementLink>();
+  const [keyboardPort, setKeyboardPort] = useState<{ resourcePublicId: string; side: AdvancementPortSide }>();
   const positions = resources.map((resource) => ({ resource, layout: layouts[resource.resourcePublicId] })).filter((item) => item.layout);
-  const minX = Math.min(0, ...positions.map((item) => item.layout.x));
-  const minY = Math.min(0, ...positions.map((item) => item.layout.y));
+  const groups = advancementConnectedGroups(
+    positions,
+    (item) => item.resource.resourcePublicId,
+    (item) => item.layout.parentResourcePublicId,
+  );
+
+  function connect(parentResourcePublicId: string, childResourcePublicId: string) {
+    if (!parentResourcePublicId || parentResourcePublicId === childResourcePublicId || createsAdvancementCycle(layouts, parentResourcePublicId, childResourcePublicId)) {
+      onError(t("modContent.sectionActions.invalidAdvancementLink"));
+      return;
+    }
+    const next = cloneAdvancementLayouts(layouts);
+    const parentGroup = groups.find((group) => group.some((item) => item.resource.resourcePublicId === parentResourcePublicId));
+    const childGroup = groups.find((group) => group.some((item) => item.resource.resourcePublicId === childResourcePublicId));
+    if (parentGroup && childGroup && parentGroup !== childGroup) {
+      const parent = next[parentResourcePublicId];
+      const child = next[childResourcePublicId];
+      const offsetX = parent.x + 1 - child.x;
+      const offsetY = parent.y - child.y;
+      for (const publicID of advancementDescendantIDs(layouts, childResourcePublicId)) {
+        next[publicID] = {
+          ...next[publicID],
+          x: roundGraphCoordinate(next[publicID].x + offsetX),
+          y: roundGraphCoordinate(next[publicID].y + offsetY),
+        };
+      }
+    }
+    next[childResourcePublicId] = {
+      ...next[childResourcePublicId],
+      parentResourcePublicId,
+    };
+    onError("");
+    setKeyboardPort(undefined);
+    onLayoutsCommit(next);
+  }
+
+  function activateKeyboardPort(resourcePublicId: string, side: AdvancementPortSide) {
+    if (!keyboardPort || keyboardPort.side === side) {
+      setKeyboardPort(keyboardPort?.resourcePublicId === resourcePublicId && keyboardPort.side === side
+        ? undefined
+        : { resourcePublicId, side });
+      return;
+    }
+    const parentResourcePublicId = side === "output" ? resourcePublicId : keyboardPort.resourcePublicId;
+    const childResourcePublicId = side === "input" ? resourcePublicId : keyboardPort.resourcePublicId;
+    connect(parentResourcePublicId, childResourcePublicId);
+  }
+
+  function beginLinkDrag(event: ReactPointerEvent<HTMLButtonElement>, resourcePublicId: string, side: AdvancementPortSide) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const startClientX = bounds.left + bounds.width / 2;
+    const startClientY = bounds.top + bounds.height / 2;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setKeyboardPort(undefined);
+    setLinkDrag({
+      resourcePublicId,
+      side,
+      pointerId: event.pointerId,
+      startClientX,
+      startClientY,
+      currentClientX: event.clientX,
+      currentClientY: event.clientY,
+    });
+  }
+
+  function moveLinkDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!linkDrag || linkDrag.pointerId !== event.pointerId) return;
+    setLinkDrag({ ...linkDrag, currentClientX: event.clientX, currentClientY: event.clientY });
+  }
+
+  function finishLinkDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!linkDrag || linkDrag.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-advancement-port='true']");
+    const targetResourcePublicId = target?.dataset.resourcePublicId || "";
+    const targetSide = target?.dataset.portSide as AdvancementPortSide | undefined;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setLinkDrag(undefined);
+    if (!targetResourcePublicId || !targetSide || targetSide === linkDrag.side) return;
+    const parentResourcePublicId = linkDrag.side === "output" ? linkDrag.resourcePublicId : targetResourcePublicId;
+    const childResourcePublicId = linkDrag.side === "input" ? linkDrag.resourcePublicId : targetResourcePublicId;
+    connect(parentResourcePublicId, childResourcePublicId);
+  }
+
+  function cancelLinkDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (!linkDrag || linkDrag.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    setLinkDrag(undefined);
+  }
+
+  return <div className="mt-5">
+    <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3 text-sm">
+      <strong className="min-w-0 flex-1">{t("modContent.sectionActions.advancementNodeLinkHint")}</strong>
+      <button
+        className="button-secondary focus-ring px-3 py-1.5"
+        disabled={!canUndo}
+        type="button"
+        onClick={() => {
+          setKeyboardPort(undefined);
+          setLinkDrag(undefined);
+          onUndo();
+        }}
+      >
+        {t("modContent.sectionActions.undoAdvancementLayout")}
+      </button>
+    </div>
+    <div className="space-y-4">
+      {groups.map((group) => <AdvancementLayoutBoard
+        defaultLocale={defaultLocale}
+        dragged={dragged}
+        group={group}
+        keyboardPort={keyboardPort}
+        key={group[0]?.resource.resourcePublicId}
+        layouts={layouts}
+        linkDrag={linkDrag}
+        locale={locale}
+        onBeginLinkDrag={beginLinkDrag}
+        onCancelLinkDrag={cancelLinkDrag}
+        onDrag={onDrag}
+        onFinishLinkDrag={finishLinkDrag}
+        onKeyboardPort={activateKeyboardPort}
+        onLayoutsCommit={onLayoutsCommit}
+        onLayoutsPreview={onLayoutsPreview}
+        onMoveLinkDrag={moveLinkDrag}
+        onUnlink={(childResourcePublicId) => onLayoutsCommit({
+          ...layouts,
+          [childResourcePublicId]: {
+            ...layouts[childResourcePublicId],
+            parentResourcePublicId: "",
+          },
+        })}
+      />)}
+    </div>
+    {linkDrag ? <svg aria-hidden="true" className="pointer-events-none fixed inset-0 z-[100] h-screen w-screen">
+      <path
+        d={advancementScreenLinkPath(linkDrag)}
+        fill="none"
+        stroke="#66d9ad"
+        strokeDasharray="8 6"
+        strokeLinecap="round"
+        strokeWidth="4"
+      />
+    </svg> : null}
+  </div>;
+}
+
+type AdvancementPosition = {
+  resource: ModContentSectionResource;
+  layout: AdvancementNodeLayout;
+};
+
+function AdvancementLayoutBoard({
+  group,
+  layouts,
+  locale,
+  defaultLocale,
+  dragged,
+  linkDrag,
+  keyboardPort,
+  onLayoutsPreview,
+  onLayoutsCommit,
+  onDrag,
+  onBeginLinkDrag,
+  onMoveLinkDrag,
+  onFinishLinkDrag,
+  onCancelLinkDrag,
+  onKeyboardPort,
+  onUnlink,
+}: {
+  group: AdvancementPosition[];
+  layouts: AdvancementLayouts;
+  locale: string;
+  defaultLocale: string;
+  dragged?: DraggedAdvancement;
+  linkDrag?: DraggedAdvancementLink;
+  keyboardPort?: { resourcePublicId: string; side: AdvancementPortSide };
+  onLayoutsPreview: (value: AdvancementLayouts) => void;
+  onLayoutsCommit: (value: AdvancementLayouts, previous?: AdvancementLayouts) => void;
+  onDrag: (value: DraggedAdvancement | undefined) => void;
+  onBeginLinkDrag: (event: ReactPointerEvent<HTMLButtonElement>, resourcePublicId: string, side: AdvancementPortSide) => void;
+  onMoveLinkDrag: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onFinishLinkDrag: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onCancelLinkDrag: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onKeyboardPort: (resourcePublicId: string, side: AdvancementPortSide) => void;
+  onUnlink: (childResourcePublicId: string) => void;
+}) {
+  const { t } = useI18n();
+  const minX = Math.min(0, ...group.map((item) => item.layout.x));
+  const minY = Math.min(0, ...group.map((item) => item.layout.y));
   const offsetX = -minX + 0.25;
   const offsetY = -minY + 0.25;
-  const pointByID = new Map(positions.map((item) => [item.resource.resourcePublicId, {
+  const pointByID = new Map(group.map((item) => [item.resource.resourcePublicId, {
     x: (item.layout.x + offsetX) * advancementColumnWidth + 24,
     y: (item.layout.y + offsetY) * advancementRowHeight + 24,
   }]));
-  const width = Math.max(1100, ...[...pointByID.values()].map((point) => point.x + advancementNodeWidth + 80));
-  const height = Math.max(620, ...[...pointByID.values()].map((point) => point.y + advancementNodeHeight + 80));
+  const width = Math.max(900, ...[...pointByID.values()].map((point) => point.x + advancementNodeWidth + 80));
+  const height = Math.max(240, ...[...pointByID.values()].map((point) => point.y + advancementNodeHeight + 60));
 
   function beginDrag(event: ReactPointerEvent<HTMLDivElement>, resourcePublicId: string) {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || linkDrag) return;
     const layout = layouts[resourcePublicId];
     if (!layout) return;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -432,7 +669,7 @@ function AdvancementLayoutEditor({
     if (!dragged || dragged.pointerId !== event.pointerId) return;
     const x = roundGraphCoordinate(dragged.startX + (event.clientX - dragged.startClientX) / advancementColumnWidth);
     const y = roundGraphCoordinate(dragged.startY + (event.clientY - dragged.startClientY) / advancementRowHeight);
-    onLayoutsChange({
+    onLayoutsPreview({
       ...layouts,
       [dragged.resourcePublicId]: { ...layouts[dragged.resourcePublicId], x, y },
     });
@@ -440,77 +677,173 @@ function AdvancementLayoutEditor({
 
   function finishDrag(event: ReactPointerEvent<HTMLDivElement>) {
     if (!dragged || dragged.pointerId !== event.pointerId) return;
+    const x = roundGraphCoordinate(dragged.startX + (event.clientX - dragged.startClientX) / advancementColumnWidth);
+    const y = roundGraphCoordinate(dragged.startY + (event.clientY - dragged.startClientY) / advancementRowHeight);
+    const previous = {
+      ...layouts,
+      [dragged.resourcePublicId]: {
+        ...layouts[dragged.resourcePublicId],
+        x: dragged.startX,
+        y: dragged.startY,
+      },
+    };
+    const next = {
+      ...layouts,
+      [dragged.resourcePublicId]: {
+        ...layouts[dragged.resourcePublicId],
+        x,
+        y,
+      },
+    };
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    onDrag(undefined);
+    onLayoutsCommit(next, previous);
+  }
+
+  function cancelDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!dragged || dragged.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    onLayoutsPreview({
+      ...layouts,
+      [dragged.resourcePublicId]: {
+        ...layouts[dragged.resourcePublicId],
+        x: dragged.startX,
+        y: dragged.startY,
+      },
+    });
     onDrag(undefined);
   }
 
-  function connect(childResourcePublicId: string) {
-    if (!linkParent || linkParent === childResourcePublicId || createsAdvancementCycle(layouts, linkParent, childResourcePublicId)) {
-      onError(t("modContent.sectionActions.invalidAdvancementLink"));
-      return;
-    }
-    onError("");
-    onLayoutsChange({
-      ...layouts,
-      [childResourcePublicId]: {
-        ...layouts[childResourcePublicId],
-        parentResourcePublicId: linkParent,
-      },
-    });
-    onLinkParentChange("");
+  function unlinkByKeyboard(event: ReactKeyboardEvent<SVGPathElement>, childResourcePublicId: string) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onUnlink(childResourcePublicId);
   }
 
-  return <div className="mt-5">
-    <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3 text-sm">
-      <strong>{linkParent ? t("modContent.sectionActions.advancementParentSelected") : t("modContent.sectionActions.advancementLinkIdle")}</strong>
-      {linkParent ? <><code className="text-xs text-[var(--muted)]">{resources.find((item) => item.resourcePublicId === linkParent)?.canonicalId}</code><button className="button-secondary px-3 py-1" type="button" onClick={() => onLinkParentChange("")}>{t("common.cancel")}</button></> : null}
-    </div>
-    <div className="overflow-auto rounded-xl border border-[var(--line)] bg-[#26231e] shadow-inner">
-      <div className="relative" style={{ width, height, backgroundImage: "linear-gradient(#ffffff09 1px, transparent 1px), linear-gradient(90deg, #ffffff09 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
-        <svg className="pointer-events-none absolute inset-0" height={height} width={width}>
-          {positions.map(({ resource, layout }) => {
-            const child = pointByID.get(resource.resourcePublicId);
-            const parent = pointByID.get(layout.parentResourcePublicId);
-            if (!child || !parent) return null;
-            const parentX = parent.x + advancementNodeWidth;
-            const parentY = parent.y + advancementNodeHeight / 2;
-            const childX = child.x;
-            const childY = child.y + advancementNodeHeight / 2;
-            const middleX = (parentX + childX) / 2;
-            return <path d={`M ${parentX} ${parentY} C ${middleX} ${parentY}, ${middleX} ${childY}, ${childX} ${childY}`} fill="none" key={resource.resourcePublicId} stroke="#66d9ad" strokeWidth="3" />;
-          })}
-        </svg>
-        {positions.map(({ resource, layout }) => {
-          const point = pointByID.get(resource.resourcePublicId)!;
-          const iconURL = resourceIconURL(resource);
-          const selected = linkParent === resource.resourcePublicId;
-          return <article
-            className={`absolute overflow-hidden rounded-lg border-2 bg-[var(--panel)] text-[var(--foreground)] shadow-lg ${selected ? "border-[var(--accent)] ring-4 ring-[var(--accent-soft)]" : "border-[#777064]"}`}
-            key={resource.resourcePublicId}
-            style={{ left: point.x, top: point.y, width: advancementNodeWidth, minHeight: advancementNodeHeight }}
-          >
-            <div
-              className="flex touch-none cursor-grab items-center gap-2 border-b border-[var(--line)] px-2 py-2 active:cursor-grabbing"
-              onPointerDown={(event) => beginDrag(event, resource.resourcePublicId)}
-              onPointerMove={moveDrag}
-              onPointerUp={finishDrag}
-              onPointerCancel={finishDrag}
-            >
-              {iconURL ? <Image unoptimized alt="" className="h-8 w-8 shrink-0 object-contain [image-rendering:pixelated]" height={32} src={iconURL} width={32} /> : <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[var(--panel-subtle)]">?</span>}
-              <span className="min-w-0"><strong className="block truncate text-sm">{resourceName(resource, locale, defaultLocale)}</strong><code className="block truncate text-[10px] text-[var(--muted)]">{resource.canonicalId}</code></span>
-            </div>
-            <div className="flex flex-wrap gap-1 p-2">
-              <button className="button-secondary px-2 py-1 text-xs" type="button" onClick={() => onLinkParentChange(selected ? "" : resource.resourcePublicId)}>
-                {t(selected ? "common.cancel" : "modContent.sectionActions.selectAdvancementParent")}
-              </button>
-              {linkParent && !selected ? <button className="button-primary px-2 py-1 text-xs" type="button" onClick={() => connect(resource.resourcePublicId)}>{t("modContent.sectionActions.connectAdvancementHere")}</button> : null}
-              {layout.parentResourcePublicId ? <button className="button-secondary px-2 py-1 text-xs text-[var(--red)]" type="button" onClick={() => onLayoutsChange({ ...layouts, [resource.resourcePublicId]: { ...layout, parentResourcePublicId: "" } })}>{t("modContent.sectionActions.unlinkAdvancement")}</button> : null}
-            </div>
-          </article>;
+  return <div className="overflow-auto rounded-xl border border-[#4a4335] bg-[#26231e] shadow-inner">
+    <div className="relative" style={{ width, height, backgroundImage: "linear-gradient(#ffffff09 1px, transparent 1px), linear-gradient(90deg, #ffffff09 1px, transparent 1px)", backgroundSize: "24px 24px" }}>
+      <svg className="pointer-events-none absolute inset-0" height={height} width={width}>
+        {group.map(({ resource, layout }) => {
+          const child = pointByID.get(resource.resourcePublicId);
+          const parent = pointByID.get(layout.parentResourcePublicId);
+          if (!child || !parent) return null;
+          const path = advancementBoardLinkPath(parent, child);
+          const parentName = resourceName(group.find((item) => item.resource.resourcePublicId === layout.parentResourcePublicId)!.resource, locale, defaultLocale);
+          const childName = resourceName(resource, locale, defaultLocale);
+          const label = t("modContent.sectionActions.removeAdvancementLink", { parent: parentName, child: childName });
+          return <g className="group" key={resource.resourcePublicId}>
+            <title>{label}</title>
+            <path
+              aria-label={label}
+              className="cursor-pointer stroke-transparent outline-none"
+              d={path}
+              fill="none"
+              pointerEvents="stroke"
+              role="button"
+              strokeWidth="18"
+              tabIndex={0}
+              onClick={() => onUnlink(resource.resourcePublicId)}
+              onKeyDown={(event) => unlinkByKeyboard(event, resource.resourcePublicId)}
+            />
+            <path
+              className="transition-colors group-hover:stroke-[var(--red)] group-focus-within:stroke-[var(--red)]"
+              d={path}
+              fill="none"
+              pointerEvents="none"
+              stroke="#66d9ad"
+              strokeLinecap="round"
+              strokeWidth="3"
+            />
+          </g>;
         })}
-      </div>
+      </svg>
+      {group.map(({ resource }) => {
+        const point = pointByID.get(resource.resourcePublicId)!;
+        const iconURL = resourceIconURL(resource);
+        const name = resourceName(resource, locale, defaultLocale);
+        return <article
+          className="absolute rounded-lg border-2 border-[#777064] bg-[var(--panel)] text-[var(--foreground)] shadow-lg"
+          key={resource.resourcePublicId}
+          style={{ left: point.x, top: point.y, width: advancementNodeWidth, minHeight: advancementNodeHeight }}
+        >
+          <AdvancementPort
+            active={keyboardPort?.resourcePublicId === resource.resourcePublicId && keyboardPort.side === "input"}
+            label={t("modContent.sectionActions.advancementInputNode", { name })}
+            resourcePublicId={resource.resourcePublicId}
+            side="input"
+            onBeginLinkDrag={onBeginLinkDrag}
+            onCancelLinkDrag={onCancelLinkDrag}
+            onFinishLinkDrag={onFinishLinkDrag}
+            onKeyboardPort={onKeyboardPort}
+            onMoveLinkDrag={onMoveLinkDrag}
+          />
+          <div
+            className="flex min-h-[92px] touch-none cursor-grab items-center gap-3 overflow-hidden rounded-md px-3 py-3 active:cursor-grabbing"
+            onPointerDown={(event) => beginDrag(event, resource.resourcePublicId)}
+            onPointerMove={moveDrag}
+            onPointerUp={finishDrag}
+            onPointerCancel={cancelDrag}
+          >
+            {iconURL ? <Image unoptimized alt="" className="h-10 w-10 shrink-0 object-contain [image-rendering:pixelated]" height={40} src={iconURL} width={40} /> : <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-[var(--panel-subtle)]">?</span>}
+            <span className="min-w-0"><strong className="block truncate text-sm">{name}</strong><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{resource.canonicalId}</code></span>
+          </div>
+          <AdvancementPort
+            active={keyboardPort?.resourcePublicId === resource.resourcePublicId && keyboardPort.side === "output"}
+            label={t("modContent.sectionActions.advancementOutputNode", { name })}
+            resourcePublicId={resource.resourcePublicId}
+            side="output"
+            onBeginLinkDrag={onBeginLinkDrag}
+            onCancelLinkDrag={onCancelLinkDrag}
+            onFinishLinkDrag={onFinishLinkDrag}
+            onKeyboardPort={onKeyboardPort}
+            onMoveLinkDrag={onMoveLinkDrag}
+          />
+        </article>;
+      })}
     </div>
   </div>;
+}
+
+function AdvancementPort({
+  resourcePublicId,
+  side,
+  label,
+  active,
+  onBeginLinkDrag,
+  onMoveLinkDrag,
+  onFinishLinkDrag,
+  onCancelLinkDrag,
+  onKeyboardPort,
+}: {
+  resourcePublicId: string;
+  side: AdvancementPortSide;
+  label: string;
+  active: boolean;
+  onBeginLinkDrag: (event: ReactPointerEvent<HTMLButtonElement>, resourcePublicId: string, side: AdvancementPortSide) => void;
+  onMoveLinkDrag: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onFinishLinkDrag: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onCancelLinkDrag: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onKeyboardPort: (resourcePublicId: string, side: AdvancementPortSide) => void;
+}) {
+  return <button
+    aria-label={label}
+    aria-pressed={active}
+    className={`focus-ring absolute top-1/2 z-20 grid h-8 w-8 -translate-y-1/2 touch-none place-items-center rounded-full border-2 shadow-md transition-colors ${side === "input" ? "-left-4" : "-right-4"} ${active ? "border-white bg-[var(--accent)] ring-4 ring-[var(--accent-soft)]" : "border-[#d7d0c2] bg-[#26231e] hover:border-[var(--accent)] hover:bg-[var(--accent)]"}`}
+    data-advancement-port="true"
+    data-port-side={side}
+    data-resource-public-id={resourcePublicId}
+    title={label}
+    type="button"
+    onClick={(event) => {
+      if (event.detail === 0) onKeyboardPort(resourcePublicId, side);
+    }}
+    onPointerCancel={onCancelLinkDrag}
+    onPointerDown={(event) => onBeginLinkDrag(event, resourcePublicId, side)}
+    onPointerMove={onMoveLinkDrag}
+    onPointerUp={onFinishLinkDrag}
+  >
+    <span className="h-3 w-3 rounded-full bg-[#66d9ad]" />
+  </button>;
 }
 
 function ResourceChip({ resource, locale, defaultLocale, categories, dragged, canMoveUp, canMoveDown, onCategoryChange, onDragStart, onMove, onDrop }: {
@@ -567,6 +900,53 @@ function createsAdvancementCycle(layouts: AdvancementLayouts, parentResourcePubl
     current = layouts[current]?.parentResourcePublicId || "";
   }
   return false;
+}
+
+function advancementDescendantIDs(layouts: AdvancementLayouts, rootPublicID: string) {
+  const result = new Set<string>([rootPublicID]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [publicID, layout] of Object.entries(layouts)) {
+      if (!result.has(publicID) && result.has(layout.parentResourcePublicId)) {
+        result.add(publicID);
+        changed = true;
+      }
+    }
+  }
+  return result;
+}
+
+function cloneAdvancementLayouts(layouts: AdvancementLayouts): AdvancementLayouts {
+  return Object.fromEntries(Object.entries(layouts).map(([publicID, layout]) => [publicID, { ...layout }]));
+}
+
+function sameAdvancementLayouts(left: AdvancementLayouts, right: AdvancementLayouts) {
+  const leftIDs = Object.keys(left);
+  const rightIDs = Object.keys(right);
+  return leftIDs.length === rightIDs.length && leftIDs.every((publicID) => {
+    const leftLayout = left[publicID];
+    const rightLayout = right[publicID];
+    return rightLayout
+      && leftLayout.parentResourcePublicId === rightLayout.parentResourcePublicId
+      && leftLayout.x === rightLayout.x
+      && leftLayout.y === rightLayout.y;
+  });
+}
+
+function advancementBoardLinkPath(parent: { x: number; y: number }, child: { x: number; y: number }) {
+  const parentX = parent.x + advancementNodeWidth;
+  const parentY = parent.y + advancementNodeHeight / 2;
+  const childX = child.x;
+  const childY = child.y + advancementNodeHeight / 2;
+  const middleX = (parentX + childX) / 2;
+  return `M ${parentX} ${parentY} C ${middleX} ${parentY}, ${middleX} ${childY}, ${childX} ${childY}`;
+}
+
+function advancementScreenLinkPath(link: DraggedAdvancementLink) {
+  const direction = link.side === "output" ? 1 : -1;
+  const distance = Math.max(60, Math.abs(link.currentClientX - link.startClientX) / 2);
+  return `M ${link.startClientX} ${link.startClientY} C ${link.startClientX + direction * distance} ${link.startClientY}, ${link.currentClientX - direction * distance} ${link.currentClientY}, ${link.currentClientX} ${link.currentClientY}`;
 }
 
 function normalizeCategoryOrdinals(categories: ModContentSection[]) {

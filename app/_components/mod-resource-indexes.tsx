@@ -3,12 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { advancementConnectedGroups } from "../_lib/advancement-graph";
+import { useRotatingValue } from "./rotating-resource";
 
 export type ResourceIndexEntry = {
   key: string;
   id: string;
   name: string;
   iconURL: string;
+  iconURLs?: string[];
   href: string;
   parentId?: string;
   x?: number;
@@ -77,14 +80,16 @@ function CompactResourceLink({ entry, openInNewTab }: { entry: ResourceIndexEntr
     target={openInNewTab ? "_blank" : undefined}
     title={`${entry.name}\n${entry.id}`}
   >
-    <CompactResourceIcon src={entry.iconURL} />
+    <CompactResourceIcon sources={entry.iconURLs?.length ? entry.iconURLs : entry.iconURL ? [entry.iconURL] : []} />
     <strong className="min-w-0 truncate">{entry.name}</strong>
   </Link>;
 }
 
-function CompactResourceIcon({ src }: { src: string }) {
-  const [failedSource, setFailedSource] = useState("");
-  if (!src || failedSource === src) {
+function CompactResourceIcon({ sources }: { sources: string[] }) {
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const availableSources = useMemo(() => sources.filter((source) => !failedSources.includes(source)), [failedSources, sources]);
+  const src = useRotatingValue(availableSources, 1000) || "";
+  if (!src) {
     return <span className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-[10px] font-bold text-[var(--muted)]" aria-hidden="true">?</span>;
   }
   return <Image
@@ -92,25 +97,14 @@ function CompactResourceIcon({ src }: { src: string }) {
     alt=""
     className="h-8 w-8 shrink-0 object-contain [image-rendering:pixelated]"
     height={32}
-    onError={() => setFailedSource(src)}
+    onError={() => setFailedSources((current) => current.includes(src) ? current : [...current, src])}
     src={src}
     width={32}
   />;
 }
 
 function advancementGroups(entries: ResourceIndexEntry[]) {
-  const byId = new Map(entries.map((entry) => [entry.id, entry]));
-  const groups = new Map<string, ResourceIndexEntry[]>();
-  for (const entry of entries) {
-    let root = entry;
-    const visited = new Set<string>();
-    while (root.parentId && byId.has(root.parentId) && !visited.has(root.id)) {
-      visited.add(root.id);
-      root = byId.get(root.parentId)!;
-    }
-    groups.set(root.id, [...(groups.get(root.id) ?? []), entry]);
-  }
-  return [...groups.values()];
+  return advancementConnectedGroups(entries, (entry) => entry.id, (entry) => entry.parentId ?? "");
 }
 
 function advancementDepth(entry: ResourceIndexEntry, entries: Map<string, ResourceIndexEntry>) {

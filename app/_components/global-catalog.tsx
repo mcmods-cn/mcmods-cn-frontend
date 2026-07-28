@@ -42,6 +42,8 @@ import { RecipeTemplateEditor } from "./editor/recipe-template-editor";
 import { ContentTranslationControl } from "./editor/content-translation-control";
 import { recipeIngredientMergeKey, UnifiedRecipeCard, UnifiedRecipeMaterial } from "./unified-recipe-card";
 import { CommentSection } from "./comment-section";
+import { RecipeEditLink } from "./recipe-edit-link";
+import { useRotatingValue } from "./rotating-resource";
 
 const pageSize = 24;
 
@@ -256,6 +258,7 @@ function CatalogRecipeEditorRoute({ recipeTypePublicId, recipePublicId = "" }: {
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const router = useRouter();
+  const closeOnComplete = useSearchParams().get("closeOnComplete") === "1";
   const [initialValue, setInitialValue] = useState<Awaited<ReturnType<typeof loadRecipe>>>();
   const [loading, setLoading] = useState(Boolean(recipePublicId));
   const [error, setError] = useState("");
@@ -282,15 +285,33 @@ function CatalogRecipeEditorRoute({ recipeTypePublicId, recipePublicId = "" }: {
   if (loading) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><Loading /></CatalogFrame>;
   if (error || recipePublicId && !initialValue) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><ErrorBox text={error || t("catalogEditor.loadFailed")} /></CatalogFrame>;
   const seed = initialValue ?? { recipeTypePublicId, templatePublicId: "", canonicalSourceId: "", definition: {}, bindings: {}, defaultLocale: locale };
+  const returnHref = `/recipe-types?publicId=${encodeURIComponent(recipeTypePublicId)}`;
+  const finishEditing = () => {
+    if (!closeOnComplete) {
+      router.replace(returnHref);
+      return;
+    }
+    window.close();
+    window.setTimeout(() => {
+      if (!window.closed) router.replace(returnHref);
+    }, 100);
+  };
   return <CatalogFrame active="recipes" description={t("catalogEditor.recipeDescription")} title={title}>
-    <div className="mb-5 border-b border-[var(--line)] pb-3"><Link className="font-bold text-[var(--accent)] hover:underline" href={`/recipe-types?publicId=${encodeURIComponent(recipeTypePublicId)}`}>{t("globalCatalog.backToRecipeTypes")}</Link></div>
+    <div className="mb-5 border-b border-[var(--line)] pb-3">{closeOnComplete ? <button className="font-bold text-[var(--accent)] hover:underline" type="button" onClick={finishEditing}>{t("globalCatalog.backToRecipeTypes")}</button> : <Link className="font-bold text-[var(--accent)] hover:underline" href={returnHref}>{t("globalCatalog.backToRecipeTypes")}</Link>}</div>
     <RecipeEditor
       defaultLocale={locale}
       initialValue={seed}
       labels={recipeEditorLabels(t)}
       token={token}
-      onDeleted={(result) => { if (result.reviewStatus === "approved") router.replace(`/recipe-types?publicId=${encodeURIComponent(recipeTypePublicId)}`); }}
+      onCancel={finishEditing}
+      onDeleted={(result) => {
+        if (closeOnComplete || result.reviewStatus === "approved") finishEditing();
+      }}
       onSaved={(result) => {
+        if (closeOnComplete) {
+          finishEditing();
+          return;
+        }
         if (!recipePublicId && result.reviewStatus === "approved" && result.objectPublicId) router.replace(`/recipe-types?editor=recipe-edit&publicId=${encodeURIComponent(recipeTypePublicId)}&recipePublicId=${encodeURIComponent(result.objectPublicId)}`);
       }}
     />
@@ -415,6 +436,7 @@ function recipeEditorLabels(t: CatalogTranslator): RecipeEditorLabels {
     outputCandidateHint: t("catalogEditor.outputCandidateHint"),
     removeCandidate: t("catalogEditor.removeResource"),
     changeReason: t("catalogEditor.changeReason"),
+    cancel: t("common.cancel"),
     save: t("common.save"),
     saving: t("common.saving"),
     delete: t("catalogEditor.archive"),
@@ -534,7 +556,7 @@ function GlobalRecipeCard({ recipe, editHref }: { recipe: GlobalRecipe; editHref
   const recipeType = typeof layout.underlying_recipe_type_id === "string" ? layout.underlying_recipe_type_id : "";
   const templateID = typeof layout.template_id === "string" ? layout.template_id : "";
   const visual = <div className="relative mx-auto" style={{ width, height }}>{background ? <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={catalogAssetURL(recipe.revisionId, background)} /> : null}{slots.map((slot, index) => <RecipeSlot canvasWidth={width} key={index} locale={locale} scale={displayScale} showVisual={!contains} slot={slot} />)}</div>;
-  return <UnifiedRecipeCard badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)} editAction={user && editHref ? <Link className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</Link> : undefined} labels={unifiedRecipeLabels(t)} materials={materials} note={recipe.note} recipeId={recipe.recipeId} recipeType={recipeType} recipeTypeHref={recipeType ? `/recipe-types?id=${encodeURIComponent(recipeType)}` : undefined} source={sourceMod ? `${sourceMod}${sourceVersion ? `@${sourceVersion}` : ""}` : ""} sourceHref={recipe.modSiteId ? `/mods/${encodeURIComponent(recipe.modSiteId)}` : undefined} technicalInfo={{ recipeIdSource: recipe.recipeIdSource, templateId: templateID, fingerprint: recipe.semanticFingerprint }} visual={visual} />;
+  return <UnifiedRecipeCard badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)} editAction={user && editHref ? <RecipeEditLink className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</RecipeEditLink> : undefined} labels={unifiedRecipeLabels(t)} materials={materials} note={recipe.note} recipeId={recipe.recipeId} recipeType={recipeType} recipeTypeHref={recipeType ? `/recipe-types?id=${encodeURIComponent(recipeType)}` : undefined} source={sourceMod ? `${sourceMod}${sourceVersion ? `@${sourceVersion}` : ""}` : ""} sourceHref={recipe.modSiteId ? `/mods/${encodeURIComponent(recipe.modSiteId)}` : undefined} technicalInfo={{ recipeIdSource: recipe.recipeIdSource, templateId: templateID, fingerprint: recipe.semanticFingerprint }} visual={visual} />;
 }
 
 function GlobalRecipeCandidateChanceLabel({ candidate, slot, locale }: { candidate: Record<string, unknown>; slot: Record<string, unknown>; locale: string }) {
@@ -558,9 +580,8 @@ function GlobalRecipeCandidateChanceLabel({ candidate, slot, locale }: { candida
 }
 
 function RecipeSlot({ slot, scale, locale, canvasWidth, showVisual }: { slot: Record<string, unknown>; scale: number; locale: string; canvasWidth: number; showVisual: boolean }) {
-  const alternatives = Array.isArray(slot.alternatives) ? slot.alternatives.map(record) : [];
-  const item = useRotatingValue(alternatives);
-  if (!item) return null;
+  const item = record(useRotatingValue(Array.isArray(slot.alternatives) ? slot.alternatives : []));
+  if (!Object.keys(item).length) return null;
   const itemId = String(item.item || item.resource_location || "");
   const tagId = typeof slot.tag === "string" ? slot.tag : typeof item.tag === "string" ? item.tag : "";
   const sourceRevisionId = typeof item.sourceRevisionId === "string" ? item.sourceRevisionId : "";
@@ -631,7 +652,6 @@ function ResourceIcon({ resource, size }: { resource?: GlobalResource; size: num
 function CatalystIcon({ catalyst, size }: { catalyst?: RecipeCatalyst; size: number }) { const src = catalyst ? catalogAssetURL(catalyst.revisionId, catalyst.iconPath) : ""; return src ? <Image unoptimized alt="" className="shrink-0 object-contain [image-rendering:pixelated]" height={size} width={size} src={src} /> : <span className="grid shrink-0 place-items-center rounded-md bg-[var(--panel-subtle)] text-xs font-black" style={{ width: size, height: size }}>GUI</span>; }
 function CatalystChip({ catalyst, locale }: { catalyst: RecipeCatalyst; locale: string }) { return <span className="flex items-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel)] px-3 py-2"><CatalystIcon catalyst={catalyst} size={32} /><span className="font-bold">{localizedCatalogName(catalyst.names, locale, catalystID(catalyst))}</span></span>; }
 function CatalogPagination({ base, page, total, query, queryMode = false }: { base: string; page: number; total: number; query: string; queryMode?: boolean }) { const { t } = useI18n(); const pages = Math.max(1, Math.ceil(total / pageSize)); if (pages <= 1) return null; const href = (next: number) => { const separator = queryMode || base.includes("?") ? "&" : "?"; const queryPart = query ? `${separator}q=${encodeURIComponent(query)}&page=${next}` : `${separator}page=${next}`; return `${base}${queryPart}`; }; return <nav className="mt-7 flex items-center justify-center gap-3"><Link className={`button-secondary focus-ring ${page <= 1 ? "pointer-events-none opacity-40" : ""}`} href={href(Math.max(1, page - 1))}>{t("globalCatalog.previous")}</Link><span className="text-sm font-bold text-[var(--muted)]">{page} / {pages}</span><Link className={`button-secondary focus-ring ${page >= pages ? "pointer-events-none opacity-40" : ""}`} href={href(Math.min(pages, page + 1))}>{t("globalCatalog.next")}</Link></nav>; }
-function useRotatingValue<T>(values: T[] | undefined) { const [index, setIndex] = useState(0); useEffect(() => { if (!values || values.length <= 1) return; const timer = window.setInterval(() => setIndex((value) => (value + 1) % values.length), 1000); return () => window.clearInterval(timer); }, [values]); return values?.[index % Math.max(1, values.length)]; }
 function resourceAtVersion(resource: GlobalResource, version: CatalogResourceVersion): GlobalResource { return { ...resource, registry: version.registry || resource.registry, names: Object.keys(version.names).length ? version.names : resource.names, revisionId: version.revisionId, modSiteId: version.modSiteId || resource.modSiteId, iconPath: version.iconPath, iconUrl: version.iconUrl, detailUrl: version.detailUrl, versions: resource.versions }; }
 function catalogRefToGlobalResource(resource: CatalogResourceRef): GlobalResource { return { entityId: resource.entityId || "", publicId: resource.publicId, id: resource.id, registry: resource.registry, names: resource.names, revisionId: "", modSiteId: resource.source?.siteId || "", iconPath: "", iconUrl: resource.iconUrl, versions: resource.versions ?? [] }; }
 function catalystID(value: RecipeCatalyst) { return value.item || value.resource_location || ""; }

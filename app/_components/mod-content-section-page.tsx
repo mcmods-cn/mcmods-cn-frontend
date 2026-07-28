@@ -16,6 +16,7 @@ import { modExportAssetURL } from "../_lib/mod-export-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { ModContentSectionActions } from "./mod-content-section-actions";
 import { AdvancementResourceIndex, CompactResourceIndex, type CompactResourceGroup, type ResourceIndexEntry } from "./mod-resource-indexes";
+import { useRotatingValue } from "./rotating-resource";
 
 export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; sectionId: string }) {
   const { locale, t } = useI18n();
@@ -142,18 +143,19 @@ function CategorizedSectionResources({ siteId, root, categories, resources, loca
 function SectionResourceLink({ siteId, section, resource, locale, compact = false }: { siteId: string; section: ModContentSection; resource: ModContentSectionResource; locale: string; compact?: boolean }) {
   const name = localizedResourceName(resource, locale, section.defaultLocale) || resource.canonicalId || resource.resourcePublicId;
   const href = `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resource.resourcePublicId)}?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`;
-  const iconURL = sectionResourceIconURL(resource);
+  const iconURLs = sectionResourceIconURLs(resource);
   return <Link className={`focus-ring flex min-w-0 items-center bg-[var(--panel)] hover:bg-[var(--panel-subtle)] ${compact ? "max-w-80 gap-2 rounded-lg border border-[var(--line)] px-2 py-1.5" : "min-h-24 gap-4 p-4"}`} href={href}>
-    <SectionResourceIcon compact={compact} src={iconURL} />
+    <SectionResourceIcon compact={compact} sources={iconURLs} />
     <span className="min-w-0"><strong className="block truncate">{name}</strong><code className="mt-1 block truncate text-xs text-[var(--muted)]">{resource.canonicalId}</code></span>
   </Link>;
 }
 
-function SectionResourceIcon({ compact, src }: { compact: boolean; src: string }) {
-  const [failedSource, setFailedSource] = useState("");
-  const failed = !src || failedSource === src;
+function SectionResourceIcon({ compact, sources }: { compact: boolean; sources: string[] }) {
+  const [failedSources, setFailedSources] = useState<string[]>([]);
+  const availableSources = useMemo(() => sources.filter((source) => !failedSources.includes(source)), [failedSources, sources]);
+  const src = useRotatingValue(availableSources, 1000) || "";
   const className = compact ? "h-8 w-8 text-[10px]" : "h-14 w-14 text-sm";
-  if (failed) {
+  if (!src) {
     return <span className={`${className} grid shrink-0 place-items-center rounded bg-[var(--panel-subtle)] font-black text-[var(--muted)]`} aria-hidden="true">?</span>;
   }
   const size = compact ? 32 : 56;
@@ -162,7 +164,7 @@ function SectionResourceIcon({ compact, src }: { compact: boolean; src: string }
     alt=""
     className={`${className} shrink-0 object-contain [image-rendering:pixelated]`}
     height={size}
-    onError={() => setFailedSource(src)}
+    onError={() => setFailedSources((current) => current.includes(src) ? current : [...current, src])}
     src={src}
     width={size}
   />;
@@ -176,6 +178,7 @@ function sectionResourceIndexEntry(siteId: string, section: ModContentSection, r
     id: resource.canonicalId || resource.resourcePublicId,
     name: localizedResourceName(resource, locale, section.defaultLocale) || resource.canonicalId || resource.resourcePublicId,
     iconURL: sectionResourceIconURL(resource),
+    iconURLs: sectionResourceIconURLs(resource),
     href: `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resource.resourcePublicId)}?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`,
     parentId: typeof definition.parent === "string" ? definition.parent : undefined,
     x: finiteNumber(display.x),
@@ -187,6 +190,20 @@ function sectionResourceIndexEntry(siteId: string, section: ModContentSection, r
 function sectionResourceIconURL(resource: ModContentSectionResource) {
   if (resource.iconFileId) return modContentResourceAssetURL(resource.resourcePublicId, resource.versionPublicId, "icon");
   return resource.revisionId && resource.iconPath ? modExportAssetURL(resource.revisionId, resource.iconPath) : "";
+}
+
+function sectionResourceIconURLs(resource: ModContentSectionResource) {
+  const previews = Array.isArray(resource.definition?.previewResources) ? resource.definition.previewResources : [];
+  const previewURLs = previews.flatMap((value) => {
+    const preview = record(value);
+    const revisionId = typeof preview.sourceRevisionId === "string" ? preview.sourceRevisionId : "";
+    const iconPath = typeof preview.iconPath === "string" ? preview.iconPath : "";
+    return revisionId && iconPath ? [modExportAssetURL(revisionId, iconPath)] : [];
+  });
+  const uniquePreviewURLs = [...new Set(previewURLs)];
+  if (uniquePreviewURLs.length) return uniquePreviewURLs;
+  const fallback = sectionResourceIconURL(resource);
+  return fallback ? [fallback] : [];
 }
 
 function localizedResourceName(resource: ModContentSectionResource, locale: string, defaultLocale: string) {

@@ -60,6 +60,7 @@ export type RecipeEditorLabels = {
   outputCandidateHint: string;
   removeCandidate: string;
   changeReason: string;
+  cancel: string;
   save: string;
   saving: string;
   delete: string;
@@ -92,6 +93,7 @@ export function RecipeEditor({
   labels,
   onSaved,
   onDeleted,
+  onCancel,
 }: {
   token: string;
   initialValue?: RecipeRecord;
@@ -101,6 +103,7 @@ export function RecipeEditor({
   labels: RecipeEditorLabels;
   onSaved?: (result: CatalogEditResult, value: RecipeRecord) => void;
   onDeleted?: (result: CatalogEditResult) => void;
+  onCancel?: () => void;
 }) {
   const { locale: uiLocale } = useI18n();
   const [contentDefaultLocale] = useState<Locale>(() => editableLocale(initialValue?.defaultLocale, defaultLocale ?? uiLocale));
@@ -360,7 +363,7 @@ export function RecipeEditor({
     {validation.length ? <div className="rounded-lg border border-[var(--red)] bg-red-50 p-3 text-sm text-[var(--red)]" role="alert"><strong>{labels.validationSummary}</strong><ul className="mt-2 list-disc pl-5">{validation.map((item, index) => <li key={`${item}:${index}`}>{item}</li>)}</ul></div> : null}
     {failure ? <p className="rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]" role="alert">{failure}</p> : null}
     {message ? <p className="rounded-lg border border-[var(--line)] p-3 text-sm font-bold" role="status">{message}</p> : null}
-    <div className="flex flex-wrap justify-end gap-2">{draft.publicId ? <button className="button-secondary focus-ring text-[var(--red)]" disabled={saving || deleting || pendingReview} type="button" onClick={() => void removeRecipe()}>{deleting ? labels.deleting : labels.delete}</button> : null}<button className="button-primary focus-ring" disabled={saving || deleting || pendingReview || validation.length > 0} type="button" onClick={() => void submit()}>{saving ? labels.saving : labels.save}</button></div>
+    <div className="flex flex-wrap justify-end gap-2">{onCancel ? <button className="button-secondary focus-ring" disabled={saving || deleting} type="button" onClick={onCancel}>{labels.cancel}</button> : null}{draft.publicId ? <button className="button-secondary focus-ring text-[var(--red)]" disabled={saving || deleting || pendingReview} type="button" onClick={() => void removeRecipe()}>{deleting ? labels.deleting : labels.delete}</button> : null}<button className="button-primary focus-ring" disabled={saving || deleting || pendingReview || validation.length > 0} type="button" onClick={() => void submit()}>{saving ? labels.saving : labels.save}</button></div>
 
     {selectedSlot ? <ResourcePickerDialog labels={labels.resourcePicker} multiple open={pickerOpen} token={token} value={pickerValue} onClose={() => setPickerOpen(false)} onConfirm={(resources) => setResources(selectedSlot, resources)} /> : null}
   </div>;
