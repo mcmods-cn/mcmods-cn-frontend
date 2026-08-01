@@ -881,7 +881,8 @@ function createAdvancementLayouts(resources: ModContentSectionResource[]): Advan
   const layouts: AdvancementLayouts = {};
   resources.forEach((resource, index) => {
     const display = record(record(resource.definition).display);
-    const parentCanonicalID = stringValue(record(resource.definition).parent);
+		const definition = record(resource.definition);
+		const parentCanonicalID = stringValue(definition.parentId) || stringValue(definition.parent);
     layouts[resource.resourcePublicId] = {
       parentResourcePublicId: publicIDByCanonicalID.get(parentCanonicalID) || "",
       x: finiteCoordinate(display.x, index % 5),

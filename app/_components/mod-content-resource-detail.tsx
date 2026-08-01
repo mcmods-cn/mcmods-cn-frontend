@@ -168,8 +168,13 @@ function registryForKind(kindCode: string) {
   if (normalized.includes("entity")) return "entity_types";
   if (normalized.includes("fluid")) return "fluids";
   if (normalized.includes("effect") || normalized.includes("potion")) return "mob_effects";
+  if (normalized.includes("enchantment")) return "enchantments";
+  if (normalized.includes("advancement")) return "advancements";
+  if (normalized.includes("key_mapping")) return "key_mappings";
   if (normalized.includes("natural_generation")) return "natural_generation";
   if (normalized.includes("world_structure") || normalized.includes("structure")) return "world_structures";
+  if (normalized.includes("dimension")) return "dimensions";
+  if (normalized.includes("biome")) return "biomes";
   if (normalized.includes("loot_table")) return "loot_tables";
   return "";
 }
@@ -220,6 +225,7 @@ function presentationDefinition(canonical: Record<string, unknown>) {
     compatibleEnchantments: "compatible_enchantments",
     itemTags: "item_tags",
     repairItems: "repair_items",
+    repairTag: "repair_tag",
     incorrectBlocksForDrops: "incorrect_blocks_for_drops",
     attributeModifiers: "attribute_modifiers",
     armorToughness: "armor_toughness",
@@ -243,6 +249,32 @@ function presentationDefinition(canonical: Record<string, unknown>) {
     breedingMaterials: "breeding_materials",
     defaultEquipment: "default_equipment",
     parentId: "parent",
+    childrenIds: "children",
+    iconItemId: "icon_item_id",
+    minimumLevel: "minimum_level",
+    maximumLevel: "maximum_level",
+    maximumCriteriaRequired: "max_criteria_required",
+    sendsTelemetryEvent: "sends_telemetry_event",
+    rarityWeight: "rarity_weight",
+    anvilCost: "anvil_cost",
+    treasureOnly: "treasure_only",
+    supportedItemsTag: "supported_items_tag",
+    supportedItems: "supported_items",
+    exclusiveWith: "exclusive_with",
+    effectComponentCount: "effect_component_count",
+    colorRGB: "color_rgb",
+    effectAttributeModifiers: "effect_attribute_modifiers",
+    ingredientKind: "ingredient_kind",
+    bucketItemId: "bucket_item_id",
+    fluidTags: "fluid_tags",
+    sourceModId: "source_mod_id",
+    sourceDetection: "source_detection",
+    categoryTranslationKey: "category_translation_key",
+    categoryNames: "category_names",
+    defaultKey: "default_key",
+    boundKey: "bound_key",
+    defaultBinding: "is_default",
+    unbound: "is_unbound",
     definitionAvailable: "definition_available",
     possibleItemIds: "possible_item_ids",
     referencedLootTables: "referenced_loot_tables",
@@ -264,6 +296,28 @@ function presentationDefinition(canonical: Record<string, unknown>) {
     maxDistanceFromCenter: "max_distance_from_center",
     structureSetIds: "structure_set_ids",
     definitionSource: "definition_source",
+    biomeTag: "biome_tag",
+    dimensionType: "dimension_type",
+    generatorType: "generator_type",
+    generatorSettings: "generator_settings",
+    biomeSource: "biome_source",
+    biomeIds: "biome_ids",
+    ambientLight: "ambient_light",
+    coordinateScale: "coordinate_scale",
+    minimumY: "minimum_y",
+    logicalHeight: "logical_height",
+    hasSkylight: "has_skylight",
+    hasCeiling: "has_ceiling",
+    bedWorks: "bed_works",
+    respawnAnchorWorks: "respawn_anchor_works",
+    hasRaids: "has_raids",
+    infiniburnTag: "infiniburn_tag",
+    hasPrecipitation: "has_precipitation",
+    creatureSpawnProbability: "creature_spawn_probability",
+    spawnData: "spawn_data",
+    spawnedEntityIds: "spawned_entity_ids",
+    featureIds: "feature_ids",
+    carverIds: "carver_ids",
   };
   for (const [key, alias] of Object.entries(aliases)) {
     if (canonical[key] !== undefined) result[alias] = structuredClone(canonical[key]);

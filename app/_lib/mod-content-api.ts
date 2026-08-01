@@ -3,13 +3,14 @@ import type { CatalogResourceVersion } from "./editor-types";
 
 export type ModContentLocalization = { locale: string; name: string; summary: string; contentMarkdown: string };
 export type ModContentLocalizedNames = Record<string, string>;
-export type ModContentEntryFieldType = "number" | "text" | "boolean" | "list" | "reference-list" | "json";
+export type ModContentEntryFieldType = "number" | "text" | "boolean" | "list" | "reference" | "reference-list" | "json";
 export type ModContentEntryField = {
   code: string;
   type: ModContentEntryFieldType;
   names: ModContentLocalizedNames;
   paths: string[][];
-  referenceKind?: "enchantment" | "tag";
+  referenceKind?: string;
+  referenceRegistry?: string;
   editable?: boolean;
 };
 export type ModContentEntryGroup = {

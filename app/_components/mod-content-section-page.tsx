@@ -180,7 +180,9 @@ function sectionResourceIndexEntry(siteId: string, section: ModContentSection, r
     iconURL: sectionResourceIconURL(resource),
     iconURLs: sectionResourceIconURLs(resource),
     href: `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resource.resourcePublicId)}?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`,
-    parentId: typeof definition.parent === "string" ? definition.parent : undefined,
+    parentId: typeof definition.parentId === "string"
+      ? definition.parentId
+      : typeof definition.parent === "string" ? definition.parent : undefined,
     x: finiteNumber(display.x),
     y: finiteNumber(display.y),
     frame: typeof display.frame === "string" ? display.frame : undefined,

@@ -35,14 +35,15 @@ import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-cro
 type EditorMode = "create" | "edit";
 type LocalizedFields = { name: string; contentMarkdown: string };
 type EditorLocalization = LocalizationVersion<LocalizedFields>;
-type DefinitionFieldKind = "number" | "text" | "boolean" | "list" | "reference-list";
+type DefinitionFieldKind = "number" | "text" | "boolean" | "list" | "reference" | "reference-list";
 type DefinitionPath = readonly string[];
 type DefinitionField = {
   label?: string;
   labelKey: string;
   kind: DefinitionFieldKind;
   paths: readonly DefinitionPath[];
-  referenceKind?: "enchantment" | "tag";
+  referenceKind?: string;
+  referenceRegistry?: string;
 };
 type DefinitionGroup = {
   description?: string;
@@ -233,8 +234,8 @@ export function ModContentResourceEditor({
 
   const fields = localizationFields(localizations, selectedLocale);
   const entryTypes = useMemo(
-    () => compatibleEntryTypes(template?.definition.entryTypes, kindCode),
-    [kindCode, template],
+    () => compatibleEntryTypes(template?.definition.entryTypes),
+    [template],
   );
   const selectedEntryType = entryTypes.find((item) => item.code === entryTypeCode)
     || entryTypes[0];
@@ -471,16 +472,13 @@ export function ModContentResourceEditor({
           <span>{t("resourceEditor.entryType")}</span>
           <select className="field" value={selectedEntryType?.code || entryTypeCode} onChange={(event) => {
             const nextCode = event.target.value;
-            const nextType = entryTypes.find((item) => item.code === nextCode);
-            const requiredKind = nextType?.kindCodes?.[0];
             setEntryTypeCode(nextCode);
-            if (requiredKind && !nextType?.kindCodes?.includes(kindCode)) setKindCode(requiredKind);
             setInvalidDefinitionFields(new Set());
           }}>
             {entryTypes.map((item) => <option key={item.code} value={item.code}>{localizedSchemaName(item.names, locale, item.code)}</option>)}
           </select>
           <small className="font-normal text-[var(--muted)]">{t("resourceEditor.identityKind")}: {localizedResourceKind(kindCode, locale)}</small>
-          {mode === "create" && !selectedEntryType?.kindCodes?.length && templateKindCodes.length > 1
+          {mode === "create" && templateKindCodes.length > 1
             ? <select aria-label={t("resourceEditor.identityKind")} className="field" value={kindCode} onChange={(event) => setKindCode(event.target.value)}>
               {templateKindCodes.map((item) => <option key={item} value={item}>{localizedResourceKind(item, locale)}</option>)}
             </select>
@@ -770,13 +768,15 @@ function DefinitionFieldEditor({
     ? Array.isArray(value) ? value.join(", ") : typeof value === "string" ? value : ""
     : value === undefined || value === null ? "" : String(value);
   const [draftState, setDraftState] = useState({ external: text, value: text });
-  if (field.kind === "reference-list" && field.referenceKind) {
+  if ((field.kind === "reference" || field.kind === "reference-list") && field.referenceKind) {
     return <ReferenceListFieldEditor
       definition={definition}
       field={field}
       path={path}
       token={token}
-      values={Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []}
+      values={Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === "string")
+        : typeof value === "string" && value ? [value] : []}
       onChange={onChange}
       onValidityChange={() => onValidityChange(fieldId, true)}
     />;
@@ -860,11 +860,12 @@ function ReferenceListFieldEditor({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const tagPicker = field.referenceKind === "tag";
-  const kind = tagPicker ? "tag" : "minecraft.enchantment";
+  const kind = normalizedReferenceKind(field.referenceKind || "resource");
+  const registry = field.referenceRegistry || (tagPicker ? "minecraft:item" : registryForKind(kind));
   const pickerValue = values.map((identifier): CatalogResourceRef => ({
     publicId: `unresolved:${kind}:${identifier.toLowerCase()}`,
     id: identifier,
-    registry: tagPicker ? "minecraft:item" : namespaceFromIdentifier(identifier),
+    registry: tagPicker ? registry : namespaceFromIdentifier(identifier),
     kind,
     names: {},
     unresolved: true,
@@ -875,7 +876,8 @@ function ReferenceListFieldEditor({
   function confirm(resources: CatalogResourceRef[]) {
     const identifiers = [...new Set(resources.map((resource) => resource.rawIdentifier || resource.id).map((item) => item.trim()).filter(Boolean))];
     onValidityChange();
-    onChange(setDefinitionValue(definition, path, identifiers.length ? identifiers : undefined));
+    const nextValue = field.kind === "reference" ? identifiers[0] : identifiers;
+    onChange(setDefinitionValue(definition, path, identifiers.length ? nextValue : undefined));
     setOpen(false);
   }
 
@@ -887,23 +889,24 @@ function ReferenceListFieldEditor({
     </button>
     <ResourcePickerDialog
       allowUnresolved
-      initialKind={tagPicker ? "" : "minecraft.enchantment"}
+      initialKind={tagPicker ? "" : kind}
+      initialRegistry={tagPicker ? registry : ""}
       loadPage={tagPicker ? loadTagPickerPage : undefined}
-      multiple
+      multiple={field.kind === "reference-list"}
       open={open}
       token={token}
       unresolvedKind={kind}
-      unresolvedRegistry={tagPicker ? "minecraft:item" : "minecraft"}
+      unresolvedRegistry={registry}
       value={pickerValue}
       labels={{
         title: label,
-        description: t(tagPicker ? "resourceEditor.referencePicker.tagDescription" : "resourceEditor.referencePicker.enchantmentDescription"),
+        description: t(tagPicker ? "resourceEditor.referencePicker.tagDescription" : kind === "minecraft.enchantment" ? "resourceEditor.referencePicker.enchantmentDescription" : "resourceEditor.referencePicker.resourceDescription"),
         searchPlaceholder: t("common.search"),
         empty: t("resourceEditor.referencePicker.empty"),
         selected: t("resourceEditor.referencePicker.selected"),
-        notFound: t(tagPicker ? "resourceEditor.referencePicker.tagNotFound" : "resourceEditor.referencePicker.enchantmentNotFound"),
-        manualPrompt: t(tagPicker ? "resourceEditor.referencePicker.tagPrompt" : "resourceEditor.referencePicker.enchantmentPrompt"),
-        manualPlaceholder: tagPicker ? "minecraft:tag_name" : "namespace:enchantment_id",
+        notFound: t(tagPicker ? "resourceEditor.referencePicker.tagNotFound" : kind === "minecraft.enchantment" ? "resourceEditor.referencePicker.enchantmentNotFound" : "resourceEditor.referencePicker.resourceNotFound"),
+        manualPrompt: t(tagPicker ? "resourceEditor.referencePicker.tagPrompt" : kind === "minecraft.enchantment" ? "resourceEditor.referencePicker.enchantmentPrompt" : "resourceEditor.referencePicker.resourcePrompt"),
+        manualPlaceholder: tagPicker ? "minecraft:tag_name" : "namespace:resource_id",
         insert: t("resourceEditor.referencePicker.insert"),
       }}
       onClose={() => setOpen(false)}
@@ -918,6 +921,7 @@ const loadTagPickerPage: ResourcePageLoader = async (options, token) => {
     offset: String(options.offset),
   });
   if (options.query) query.set("q", options.query);
+  if (options.registry) query.set("registry", options.registry);
   const page = await loadGlobalTags(query, token);
   return {
     total: page.total,
@@ -989,15 +993,15 @@ function EditorGate({ text, login = false }: { text: string; login?: boolean }) 
   </main>;
 }
 
-function compatibleEntryTypes(entryTypes: ModContentEntryType[] | undefined, kindCode: string) {
+function compatibleEntryTypes(entryTypes: ModContentEntryType[] | undefined) {
   const values = Array.isArray(entryTypes) && entryTypes.length
     ? entryTypes
     : [{ code: "default", names: { "en-US": "Default", "zh-CN": "默认", "zh-TW": "預設" }, groups: [] }];
-  return values.filter((item) => !item.kindCodes?.length || item.kindCodes.some((kind) => kind.toLowerCase() === kindCode.toLowerCase()));
+  return values;
 }
 
 function inferredEntryTypeCode(entryTypes: ModContentEntryType[] | undefined, kindCode: string) {
-  const compatible = compatibleEntryTypes(entryTypes, kindCode);
+  const compatible = compatibleEntryTypes(entryTypes);
   const explicit = compatible.find((item) => item.code !== "default" && item.kindCodes?.some((kind) => kind.toLowerCase() === kindCode.toLowerCase()));
   const specific = compatible.filter((item) => item.code !== "default");
   return explicit?.code
@@ -1020,8 +1024,18 @@ function groupsForEntryType(entryType: ModContentEntryType, locale: string): Def
 	  // Database documents use stable field codes. paths are importer aliases.
 	  paths: [[field.code]],
       referenceKind: field.referenceKind,
+      referenceRegistry: field.referenceRegistry,
     })),
   }));
+}
+
+function normalizedReferenceKind(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "enchantment") return "minecraft.enchantment";
+  if (normalized === "item") return "minecraft.item";
+  if (normalized === "block") return "minecraft.block";
+  if (normalized === "entity" || normalized === "entity_type") return "minecraft.entity_type";
+  return normalized;
 }
 
 function isEditablePrimitiveEntryField(field: ModContentEntryField): field is ModContentEntryField & { type: DefinitionFieldKind } {
@@ -1036,6 +1050,11 @@ function registryForKind(kindCode: string) {
   if (normalized.includes("mob_effect") || normalized.includes("effect")) return "mob_effects";
   if (normalized.includes("potion")) return "potions";
   if (normalized.includes("fluid")) return "fluids";
+  if (normalized.includes("biome")) return "biomes";
+  if (normalized.includes("dimension")) return "dimensions";
+  if (normalized.includes("loot_table")) return "loot_tables";
+  if (normalized.includes("structure")) return "world_structures";
+  if (normalized.includes("natural_generation")) return "natural_generation";
   return "items";
 }
 

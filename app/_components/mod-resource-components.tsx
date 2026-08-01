@@ -22,7 +22,7 @@ export function ModResourceProperties({
   data: Record<string, unknown>;
   registry: string;
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const durability = record(data.durability);
   const tool = record(data.tool);
   const tier = record(tool.tier);
@@ -32,15 +32,26 @@ export function ModResourceProperties({
   const placement = record(data.placement);
   const isNaturalGeneration = registry === "natural_generation";
   const isWorldStructure = registry === "world_structures";
+  const isDimension = registry === "dimensions";
+  const isBiome = registry === "biomes";
   const isBlock = registry === "blocks";
   const isEntity = registry === "entity_types";
+  const isEnchantment = registry === "enchantments" || [data.minimum_level, data.maximum_level, data.supported_items_tag].some(hasValue);
+  const isMobEffect = registry === "mob_effects" || [data.color_rgb, data.effect_attribute_modifiers].some(hasValue);
+  const isFluid = registry === "fluids" || (registry === "ingredients" && data.ingredient_kind === "fluid") || [data.bucket_item_id, data.fluid_tags].some(hasValue);
+  const isAdvancement = registry === "advancements" || [data.parent, data.children, data.criteria, data.requirements].some(hasValue);
+  const isKeyMapping = registry === "key_mappings" || [data.default_key, data.category_translation_key].some(hasValue);
+  const hasBlockProperties = isBlock || [
+    data.hardness, data.explosion_resistance, data.requires_correct_tool, data.block_tags,
+    data.friction, data.light_emission, data.loot_table,
+  ].some(hasValue);
   const hasItemProperties = registry === "items"
     || Object.keys(tool).length > 0
     || Object.keys(combat).length > 0
     || Object.keys(enchanting).length > 0
     || attributeModifiers.length > 0
     || Array.isArray(data.item_types);
-  const blockRows: PropertyRow[] = isBlock ? [
+  const blockRows: PropertyRow[] = hasBlockProperties ? [
     property("hardness", data.hardness), property("explosionResistance", data.explosion_resistance),
     property("requiresCorrectTool", data.requires_correct_tool), property("preferredTools", data.preferred_tools),
     property("requiredTier", data.required_tier), property("requiredMiningLevel", data.required_mining_level),
@@ -58,7 +69,8 @@ export function ModResourceProperties({
     property("maxStackSize", data.max_stack_size), property("primaryType", data.primary_type), property("itemTypes", data.item_types),
     property("tierId", tier.id), property("miningLevel", tier.mining_level ?? tool.mining_level), property("tierDurability", tier.durability),
     property("miningSpeed", tier.mining_speed ?? tool.mining_speed), property("attackDamageBonus", tier.attack_damage_bonus ?? tool.attack_damage),
-    property("enchantmentValue", tier.enchantment_value ?? data.enchantment_value), itemProperty("repairItems", tier.repair_items ?? data.repair_items),
+    property("enchantmentValue", tier.enchantment_value ?? data.enchantment_value), resourceProperty("repairItems", tier.repair_items ?? data.repair_items, data.resourceSources),
+    tagProperty("repairTag", data.repair_tag, "minecraft:item"),
     tagProperty("incorrectBlocksForDrops", tier.incorrect_blocks_for_drops ?? data.incorrect_blocks_for_drops, "minecraft:block"),
     property("attackDamage", combat.attack_damage), property("attackSpeed", combat.attack_speed),
     property("attackDamageModifier", combat.attack_damage_modifier), property("attackSpeedModifier", combat.attack_speed_modifier),
@@ -75,7 +87,7 @@ export function ModResourceProperties({
     property("trackingRange", data.client_tracking_range), property("updateInterval", data.update_interval),
     property("runtimePropertiesAvailable", data.runtime_properties_available), property("spawnEggCount", data.spawn_egg_count),
     lootProperty("defaultLootTable", data.default_loot_table, data.resourceSources),
-    itemProperty("spawnEggs", data.spawn_eggs), itemProperty("breedingMaterials", data.breeding_materials ?? data.breed_items),
+    resourceProperty("spawnEggs", data.spawn_eggs, data.resourceSources), resourceProperty("breedingMaterials", data.breeding_materials ?? data.breed_items, data.resourceSources),
     property("defaultEquipment", data.default_equipment),
   ].filter(hasPropertyValue) : [];
   const naturalRows: PropertyRow[] = isNaturalGeneration ? [
@@ -84,14 +96,68 @@ export function ModResourceProperties({
     itemProperty("targets", data.targets), property("size", data.size), property("discardChance", data.discard_chance_on_air_exposure),
     property("count", placement.count), property("distribution", placement.distribution), property("minY", placement.min_y), property("maxY", placement.max_y),
     property("probability", data.probability), itemProperty("generationSteps", data.generation_steps), itemProperty("biomeSelectors", data.biome_selectors),
-    itemProperty("resolvedBiomes", data.resolved_biome_ids), itemProperty("dimensions", data.dimension_ids), property("dimensionResolution", data.dimension_resolution),
+    resourceProperty("resolvedBiomes", data.resolved_biome_ids, data.resourceSources), resourceProperty("dimensions", data.dimension_ids, data.resourceSources), property("dimensionResolution", data.dimension_resolution),
     property("normalizationStatus", data.normalization_status),
   ].filter(hasPropertyValue) : [];
   const structureRows: PropertyRow[] = isWorldStructure ? [
-    property("structureType", data.structure_type), itemProperty("biomes", Array.isArray(data.biomes) ? data.biomes : data.biomes ? [data.biomes] : []),
+    property("structureType", data.structure_type), tagProperty("biomeTag", data.biome_tag, "minecraft:worldgen/biome"),
+    resourceProperty("biomes", data.biome_ids, data.resourceSources),
     property("generationStep", data.generation_step), property("terrainAdaptation", data.terrain_adaptation),
     property("startPool", data.start_pool), property("jigsawSize", data.jigsaw_size), property("startHeight", data.start_height),
     property("maxDistance", data.max_distance_from_center), itemProperty("structureSets", data.structure_set_ids), property("definitionSource", data.definition_source),
+  ].filter(hasPropertyValue) : [];
+  const dimensionRows: PropertyRow[] = isDimension ? [
+    property("dimensionType", data.dimension_type), property("generatorType", data.generator_type),
+    property("generatorSettings", data.generator_settings), property("biomeSource", data.biome_source),
+    resourceProperty("biomes", data.biome_ids, data.resourceSources), property("ambientLight", data.ambient_light),
+    property("coordinateScale", data.coordinate_scale), property("minimumY", data.minimum_y), property("height", data.height),
+    property("logicalHeight", data.logical_height), property("natural", data.natural), property("ultrawarm", data.ultrawarm),
+    property("hasSkylight", data.has_skylight), property("hasCeiling", data.has_ceiling), property("bedWorks", data.bed_works),
+    property("respawnAnchorWorks", data.respawn_anchor_works), property("hasRaids", data.has_raids),
+    tagProperty("infiniburnTag", data.infiniburn_tag, "minecraft:block"),
+  ].filter(hasPropertyValue) : [];
+  const biomeRows: PropertyRow[] = isBiome ? [
+    property("hasPrecipitation", data.has_precipitation), property("temperature", data.temperature), property("downfall", data.downfall),
+    property("creatureSpawnProbability", data.creature_spawn_probability), property("effects", data.effects), property("spawnData", data.spawn_data),
+    resourceProperty("spawnedEntities", data.spawned_entity_ids, data.resourceSources),
+    resourceProperty("naturalGeneration", data.feature_ids, data.resourceSources),
+    resourceProperty("carvers", data.carver_ids, data.resourceSources),
+    resourceProperty("dimensions", data.dimension_ids, data.resourceSources),
+  ].filter(hasPropertyValue) : [];
+  const enchantmentRows: PropertyRow[] = isEnchantment ? [
+    property("minimumLevel", data.minimum_level), property("maximumLevel", data.maximum_level), property("rarity", data.rarity),
+    property("rarityWeight", data.rarity_weight), property("anvilCost", data.anvil_cost), property("treasureOnly", data.treasure_only),
+    property("curse", data.curse), property("tradeable", data.tradeable), property("discoverable", data.discoverable), property("slots", data.slots),
+    tagProperty("supportedItemsTag", data.supported_items_tag, "minecraft:item"),
+    resourceProperty("supportedItems", data.supported_items, data.resourceSources),
+    resourceProperty("exclusiveWith", data.exclusive_with, data.resourceSources),
+    property("costs", data.costs), property("effectComponentCount", data.effect_component_count),
+  ].filter(hasPropertyValue) : [];
+  const mobEffectRows: PropertyRow[] = isMobEffect ? [
+    property("category", data.category), property("colorRGB", data.color_rgb), property("beneficial", data.beneficial),
+    property("instant", data.instant), property("attributeModifiers", data.effect_attribute_modifiers),
+  ].filter(hasPropertyValue) : [];
+  const fluidRows: PropertyRow[] = isFluid ? [
+    property("ingredientKind", data.ingredient_kind), property("source", data.source), property("amount", data.amount),
+    resourceProperty("bucketItem", data.bucket_item_id, data.resourceSources), tagProperty("fluidTags", data.fluid_tags, "minecraft:fluid"),
+    property("density", data.density), property("temperature", data.temperature), property("viscosity", data.viscosity),
+    property("luminosity", data.luminosity), property("gaseous", data.gaseous),
+  ].filter(hasPropertyValue) : [];
+  const advancementDisplay = record(data.display);
+  const advancementRows: PropertyRow[] = isAdvancement ? [
+    resourceProperty("parent", data.parent, data.resourceSources), resourceProperty("children", data.children, data.resourceSources),
+    property("description", localizedRecordValue(advancementDisplay.description_names, minecraftLocale(locale))),
+    resourceProperty("icon", data.icon_item_id ?? record(advancementDisplay.icon).item, data.resourceSources), property("frame", advancementDisplay.frame),
+    property("positionX", advancementDisplay.x), property("positionY", advancementDisplay.y), property("hidden", advancementDisplay.hidden),
+    property("showToast", advancementDisplay.show_toast), property("announceChat", advancementDisplay.announce_chat), property("background", advancementDisplay.background),
+    property("criteria", data.criteria), property("requirements", data.requirements), property("maximumCriteriaRequired", data.max_criteria_required),
+    property("rewards", data.rewards), property("sendsTelemetryEvent", data.sends_telemetry_event),
+  ].filter(hasPropertyValue) : [];
+  const keyMappingRows: PropertyRow[] = isKeyMapping ? [
+    property("sourceModId", data.source_mod_id), property("sourceDetection", data.source_detection),
+    property("category", localizedRecordValue(data.category_names, minecraftLocale(locale)) || data.category_translation_key),
+    property("categoryTranslationKey", data.category_translation_key), property("defaultKey", data.default_key), property("boundKey", data.bound_key),
+    property("defaultBinding", data.is_default), property("unbound", data.is_unbound),
   ].filter(hasPropertyValue) : [];
 
   if (!blockRows.length
@@ -99,11 +165,25 @@ export function ModResourceProperties({
     && !entityRows.length
     && !naturalRows.length
     && !structureRows.length
+    && !dimensionRows.length
+    && !biomeRows.length
+    && !enchantmentRows.length
+    && !mobEffectRows.length
+    && !fluidRows.length
+    && !advancementRows.length
+    && !keyMappingRows.length
     && !attributeModifiers.length) return null;
 
   return <div className="mt-4 space-y-4">
     {naturalRows.length ? <PropertyGroup namespace="naturalGenerationProperties" title={t("mods.exportImport.entry.naturalGenerationProperties.title")} rows={naturalRows} /> : null}
     {structureRows.length ? <PropertyGroup namespace="worldStructureProperties" title={t("mods.exportImport.entry.worldStructureProperties.title")} rows={structureRows} /> : null}
+    {dimensionRows.length ? <PropertyGroup namespace="dimensionProperties" title={t("mods.exportImport.entry.dimensionProperties.title")} rows={dimensionRows} /> : null}
+    {biomeRows.length ? <PropertyGroup namespace="biomeProperties" title={t("mods.exportImport.entry.biomeProperties.title")} rows={biomeRows} /> : null}
+    {enchantmentRows.length ? <PropertyGroup namespace="enchantmentProperties" title={t("mods.exportImport.entry.enchantmentProperties.title")} rows={enchantmentRows} /> : null}
+    {mobEffectRows.length ? <PropertyGroup namespace="mobEffectProperties" title={t("mods.exportImport.entry.mobEffectProperties.title")} rows={mobEffectRows} /> : null}
+    {fluidRows.length ? <PropertyGroup namespace="fluidProperties" title={t("mods.exportImport.entry.fluidProperties.title")} rows={fluidRows} /> : null}
+    {advancementRows.length ? <PropertyGroup namespace="advancementProperties" title={t("mods.exportImport.entry.advancementProperties.title")} rows={advancementRows} /> : null}
+    {keyMappingRows.length ? <PropertyGroup namespace="keyMappingProperties" title={t("mods.exportImport.entry.keyMappingProperties.title")} rows={keyMappingRows} /> : null}
     {blockRows.length ? <PropertyGroup namespace="blockProperties" title={t("mods.exportImport.entry.blockProperties.title")} rows={blockRows} /> : null}
     {toolRows.length ? <PropertyGroup namespace="toolProperties" title={t("mods.exportImport.entry.toolProperties.title")} rows={toolRows} /> : null}
     {entityRows.length ? <PropertyGroup namespace="entityProperties" title={t("mods.exportImport.entry.entityProperties.title")} rows={entityRows} /> : null}
@@ -146,11 +226,14 @@ function lootProperty(key: string, value: unknown, resourceSources: unknown): Pr
 }
 
 function hasPropertyValue(row: PropertyRow) {
-  const value = row.value;
-  return value !== undefined
-    && value !== null
-    && value !== ""
-    && (!Array.isArray(value) || value.length > 0);
+	return hasValue(row.value);
+}
+
+function hasValue(value: unknown) {
+	return value !== undefined
+		&& value !== null
+		&& value !== ""
+		&& (!Array.isArray(value) || value.length > 0);
 }
 
 function PropertyGroup({
@@ -160,7 +243,7 @@ function PropertyGroup({
 }: {
   title: string;
   rows: PropertyRow[];
-  namespace: "blockProperties" | "toolProperties" | "entityProperties" | "naturalGenerationProperties" | "worldStructureProperties";
+  namespace: "blockProperties" | "toolProperties" | "entityProperties" | "naturalGenerationProperties" | "worldStructureProperties" | "dimensionProperties" | "biomeProperties" | "enchantmentProperties" | "mobEffectProperties" | "fluidProperties" | "advancementProperties" | "keyMappingProperties";
 }) {
   const { t } = useI18n();
   return <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
