@@ -25,7 +25,13 @@ export type CommentItem = {
   depth: number;
   body: string;
   deleted: boolean;
-  author: { id: string; username: string; displayName: string; avatarUrl: string };
+  author: {
+    id: string;
+    username: string;
+    displayName: string;
+    avatarUrl: string;
+    projectRole?: "owner" | "editor";
+  };
   parent?: { id: string; authorName: string; bodySummary: string; deleted: boolean };
   reactions: Record<string, number>;
   userReactions: string[];

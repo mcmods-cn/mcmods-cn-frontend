@@ -188,7 +188,7 @@ function sectionResourceIndexEntry(siteId: string, section: ModContentSection, r
 }
 
 function sectionResourceIconURL(resource: ModContentSectionResource) {
-  if (resource.iconFileId) return modContentResourceAssetURL(resource.resourcePublicId, resource.versionPublicId, "icon");
+  if (resource.iconFileId) return modContentResourceAssetURL(resource.resourcePublicId, resource.versionPublicId, "icon-small");
   return resource.revisionId && resource.iconPath ? modExportAssetURL(resource.revisionId, resource.iconPath) : "";
 }
 

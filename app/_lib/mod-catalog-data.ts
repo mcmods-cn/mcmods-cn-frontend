@@ -11,7 +11,10 @@ type ModTeamMember = {
 
 type ModRelationship = {
   type: "dependency" | "extension" | "integration";
+  relatedModId?: string;
+  relatedModSiteId?: string;
   relatedModName: string;
+  relatedModIdentifier?: string;
   notes: string;
 };
 

@@ -13,7 +13,6 @@ import {
   BackendModIdentifier,
   BackendModGalleryImage,
   BackendModLocalization,
-  BackendModList,
   BackendModRecord,
   BackendModRelationship,
   BackendModRelationshipGroup,
@@ -38,6 +37,9 @@ import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { CreatorPicker } from "./creator-picker";
 import { ToolsPlayground } from "./tools-playground";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
+import { ModResourcePickerDialog } from "./editor/mod-resource-picker";
+import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
+import type { CatalogResourceRef } from "../_lib/editor-types";
 
 type ModDraft = Omit<CreateModPayload, "searchKeywords"> & { searchKeywords: string };
 
@@ -98,7 +100,8 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   const [minecraftConfig, setMinecraftConfig] = useState<MinecraftVersionConfig>(() => fallbackMinecraftConfig());
   const [selectedLocale, setSelectedLocale] = useState<Locale>(locale);
   const [galleryUploading, setGalleryUploading] = useState(false);
-  const [availableMods, setAvailableMods] = useState<BackendModRecord[]>([]);
+  const [iconCropFile, setIconCropFile] = useState<File>();
+  const [iconUploading, setIconUploading] = useState(false);
 
   const localized = modLocalization(draft, selectedLocale);
   const localizationVersions = draft.localizations.map((item) => ({
@@ -116,15 +119,6 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => {
-    if (!ready || !token) return;
-    let cancelled = false;
-    apiRequest<BackendModList>("/api/v1/mods?limit=100", {}, token)
-      .then((result) => { if (!cancelled) setAvailableMods(result.items.filter((item) => item.siteId !== siteId)); })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [ready, siteId, token]);
 
   useEffect(() => {
     if (!ready || !siteId) return;
@@ -238,6 +232,29 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     }
   }
 
+  async function uploadModIcon(output: SquareCropOutput) {
+    if (!token) return;
+    const file = output.files.get(128);
+    if (!file) {
+      URL.revokeObjectURL(output.previewUrl);
+      setMessage(t("mods.submission.iconUploadFailed"));
+      return;
+    }
+    setIconUploading(true);
+    setMessage("");
+    try {
+      const record = await uploadUserFileToOSS(file, token, `mod_icon:${siteId || draft.siteId || "draft"}`);
+      const iconUrl = record.accessUrl || record.url || "";
+      if (!iconUrl) throw new Error(t("mods.submission.iconUploadFailed"));
+      setDraft((current) => ({ ...current, iconUrl }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("mods.submission.iconUploadFailed"));
+    } finally {
+      URL.revokeObjectURL(output.previewUrl);
+      setIconUploading(false);
+    }
+  }
+
   if (!ready || loading) {
     const importing = loading && importMethod !== "manual";
     return <EditorState text={importing ? t("mods.submission.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
@@ -284,6 +301,39 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
             <Field label={t("mods.submission.fields.abbreviation")} hint={t("mods.submission.hints.abbreviation")}><input className="field" maxLength={32} pattern="[\x21-\x7E]*" value={draft.abbreviation} onChange={(event) => setDraft({ ...draft, abbreviation: event.target.value })} /></Field>
           </div>
           <Field label={`${t("mods.submission.fields.summary")} (${selectedLocale})`} hint={t("mods.submission.hints.summary")}><textarea className="field min-h-24 resize-y" maxLength={500} value={localized.summary} onChange={(event) => setDraft(updateModLocalization(draft, selectedLocale, { summary: event.target.value }))} /></Field>
+          <div className="mt-4 flex flex-wrap items-center gap-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
+            <div className="grid h-32 w-32 shrink-0 place-items-center overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)]">
+              {draft.iconUrl
+                ? <Image unoptimized alt={t("mods.submission.fields.icon")} className="h-full w-full object-contain" height={128} src={apiAssetURL(draft.iconUrl)} width={128} />
+                : <span className="text-4xl font-black text-[var(--muted)]">?</span>}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-black">{t("mods.submission.fields.icon")}</h3>
+              <p className="mt-1 text-sm leading-6 text-[var(--muted)]">{t("mods.submission.hints.icon")}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label className={`button-secondary focus-ring inline-flex cursor-pointer ${iconUploading ? "pointer-events-none opacity-60" : ""}`}>
+                  {iconUploading ? t("mods.submission.actions.uploadingIcon") : t(draft.iconUrl ? "mods.submission.actions.replaceIcon" : "mods.submission.actions.uploadIcon")}
+                  <input
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    className="sr-only"
+                    disabled={iconUploading}
+                    type="file"
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      event.currentTarget.value = "";
+                      if (!file) return;
+                      if (!file.type.startsWith("image/")) {
+                        setMessage(t("mods.submission.iconUploadFailed"));
+                        return;
+                      }
+                      setIconCropFile(file);
+                    }}
+                  />
+                </label>
+                {draft.iconUrl ? <button className="button-secondary focus-ring text-[var(--red)]" disabled={iconUploading} type="button" onClick={() => setDraft((current) => ({ ...current, iconUrl: "" }))}>{t("common.delete")}</button> : null}
+              </div>
+            </div>
+          </div>
           <ModIdentifierEditor config={minecraftConfig} optionCodes={modSupportedVersionOptions(draft, minecraftConfig)} values={draft.modIds} onChange={(modIds) => setDraft({ ...draft, modIds, modId: modIds.find((item) => item.primary)?.identifier ?? modIds[0]?.identifier ?? "" })} />
         </FormSection>
 
@@ -316,7 +366,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.relationships")} description={t("mods.submission.sections.relationshipsHint")}>
-          <RelationshipGroupEditor groups={draft.relationshipGroups} config={minecraftConfig} compatibilities={draft.compatibilities} availableMods={availableMods} onChange={(relationshipGroups) => setDraft({ ...draft, relationshipGroups })} />
+          <RelationshipGroupEditor groups={draft.relationshipGroups} config={minecraftConfig} compatibilities={draft.compatibilities} currentSiteId={siteId} token={token} onChange={(relationshipGroups) => setDraft({ ...draft, relationshipGroups })} />
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.platformIDs")}>
@@ -347,6 +397,16 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24 resize-y" maxLength={500} value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
         {message ? <p className="mb-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{message}</p> : null}
         <div className="flex justify-end"><button className="button-primary focus-ring px-6" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
+        <SquareImageCropDialog
+          file={iconCropFile}
+          minimumSize={128}
+          outputSizes={[128]}
+          onCancel={() => setIconCropFile(undefined)}
+          onConfirm={(output) => {
+            setIconCropFile(undefined);
+            void uploadModIcon(output);
+          }}
+        />
       </form>
     </main>
   );
@@ -396,9 +456,28 @@ function CompatibilityEditor({ config, value, onChange }: { config: MinecraftVer
   return <div className="grid gap-4"><div><h3 className="text-sm font-black">{t("mods.submission.compatibility.loaders")}</h3><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">{config.loaders.map((loader) => <label key={loader.code} className="flex cursor-pointer items-center gap-2 text-sm font-semibold"><input className="h-4 w-4 accent-[var(--accent)]" type="checkbox" checked={selectedLoaders.has(loader.code)} onChange={() => toggleLoader(loader.code)} />{loader.name}</label>)}</div></div>{value.map((compatibility) => { const loader = config.loaders.find((item) => item.code === compatibility.loader); const versions = loader?.versions ?? config.versions.map((item) => item.code); return <section key={compatibility.loader} className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-black">{loader?.name ?? compatibility.loader}</h3><span className="text-xs font-bold text-[var(--muted)]">{t("mods.submission.compatibility.selectedCount", { count: compatibility.versions.length })}</span></div><MinecraftVersionPicker className="mt-3 w-full" config={config} optionCodes={versions} values={compatibility.versions} onChange={(selectedVersions) => onChange(value.map((item) => item.loader === compatibility.loader ? { ...item, versions: selectedVersions } : item))} /></section>; })}{value.length === 0 ? <p className="rounded-lg border border-dashed border-[var(--line)] p-5 text-center text-sm font-semibold text-[var(--muted)]">{t("mods.submission.compatibility.empty")}</p> : null}</div>;
 }
 
-function RelationshipGroupEditor({ groups, config, compatibilities, availableMods, onChange }: { groups: BackendModRelationshipGroup[]; config: MinecraftVersionConfig; compatibilities: BackendModCompatibility[]; availableMods: BackendModRecord[]; onChange: (groups: BackendModRelationshipGroup[]) => void }) {
-  const { t } = useI18n();
+function RelationshipGroupEditor({ groups, config, compatibilities, currentSiteId = "", token = "", onChange }: { groups: BackendModRelationshipGroup[]; config: MinecraftVersionConfig; compatibilities: BackendModCompatibility[]; currentSiteId?: string; token?: string; onChange: (groups: BackendModRelationshipGroup[]) => void }) {
+  const { locale, t } = useI18n();
+  const [pickerTarget, setPickerTarget] = useState<{ groupIndex: number; relationshipIndex: number }>();
   const allowedLoaders = compatibilities.length ? compatibilities.map((item) => item.loader) : config.loaders.map((item) => item.code);
+  const selectedRelationship = pickerTarget ? groups[pickerTarget.groupIndex]?.relationships[pickerTarget.relationshipIndex] : undefined;
+  const pickerValue = selectedRelationship && (selectedRelationship.relatedModId || selectedRelationship.relatedModIdentifier || selectedRelationship.relatedModName)
+    ? [relationshipPickerResource(selectedRelationship, locale)]
+    : [];
+
+  function insertRelationships(resources: CatalogResourceRef[]) {
+    if (!pickerTarget) return;
+    const group = groups[pickerTarget.groupIndex];
+    const previous = group.relationships[pickerTarget.relationshipIndex];
+    const inserted = resources.map((resource): BackendModRelationship => resource.unresolved
+      ? { type: previous.type, relatedModName: "", relatedModIdentifier: resource.rawIdentifier || resource.id, notes: previous.notes }
+      : { type: previous.type, relatedModId: resource.publicId, relatedModName: localizedModPickerName(resource, locale), notes: previous.notes });
+    const relationships = [...group.relationships];
+    relationships.splice(pickerTarget.relationshipIndex, 1, ...inserted);
+    onChange(replaceAt(groups, pickerTarget.groupIndex, { ...group, relationships }));
+    setPickerTarget(undefined);
+  }
+
   return <div className="grid gap-4">{groups.map((group, groupIndex) => {
     const allowedVersions = relationshipVersionOptions(group.loader, compatibilities, config);
     return <section key={groupIndex} className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
@@ -409,9 +488,46 @@ function RelationshipGroupEditor({ groups, config, compatibilities, availableMod
         <MinecraftVersionPicker config={config} emptyLabelKey="mods.submission.allSupportedMinecraftVersions" optionCodes={allowedVersions} values={group.minecraftVersions} onChange={(minecraftVersions) => onChange(replaceAt(groups, groupIndex, { ...group, minecraftVersions }))} />
         <input className="field" value={group.modVersion} placeholder={t("mods.submission.placeholders.modVersion")} onChange={(event) => onChange(replaceAt(groups, groupIndex, { ...group, modVersion: event.target.value }))} />
       </div>
-      <div className="mt-4 grid gap-2">{group.relationships.map((relationship, relationshipIndex) => <div key={relationshipIndex} className="flex items-start gap-2"><div className="grid flex-1 gap-2 md:grid-cols-[180px_1fr_1fr]"><select className="field" value={relationship.type} onChange={(event) => updateRelationship(groups, groupIndex, relationshipIndex, { ...relationship, type: event.target.value as BackendModRelationship["type"] }, onChange)}>{(["dependency", "extension", "integration"] as const).map((type) => <option key={type} value={type}>{t(`mods.submission.relationshipTypes.${type}`)}</option>)}</select><select className="field" required value={relationship.relatedModId ?? ""} onChange={(event) => { const relatedModId = event.target.value; const selected = availableMods.find((item) => item.id === relatedModId); updateRelationship(groups, groupIndex, relationshipIndex, { ...relationship, relatedModId: selected?.id, relatedModName: selected?.secondaryName || selected?.primaryName || "" }, onChange); }}><option value="">{t("mods.submission.placeholders.selectRelatedMod")}</option>{availableMods.map((item) => <option key={item.id} value={item.id}>{item.secondaryName || item.primaryName} ({item.siteId})</option>)}</select><input className="field" value={relationship.notes} placeholder={t("mods.submission.placeholders.relationshipNotes")} onChange={(event) => updateRelationship(groups, groupIndex, relationshipIndex, { ...relationship, notes: event.target.value }, onChange)} /></div><button className="button-secondary focus-ring shrink-0" type="button" onClick={() => onChange(replaceAt(groups, groupIndex, { ...group, relationships: group.relationships.filter((_, index) => index !== relationshipIndex) }))}>{t("common.delete")}</button></div>)}<button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => onChange(replaceAt(groups, groupIndex, { ...group, relationships: [...group.relationships, emptyRelationship()] }))}>+ {t("mods.submission.actions.addRelationship")}</button></div>
+      <div className="mt-4 grid gap-2">{group.relationships.map((relationship, relationshipIndex) => <div key={relationshipIndex} className="flex items-start gap-2"><div className="grid flex-1 gap-2 md:grid-cols-[180px_1fr_1fr]"><select className="field" value={relationship.type} onChange={(event) => updateRelationship(groups, groupIndex, relationshipIndex, { ...relationship, type: event.target.value as BackendModRelationship["type"] }, onChange)}>{(["dependency", "extension", "integration"] as const).map((type) => <option key={type} value={type}>{t(`mods.submission.relationshipTypes.${type}`)}</option>)}</select><button className="field focus-ring flex items-center gap-2 text-left" type="button" onClick={() => setPickerTarget({ groupIndex, relationshipIndex })}><span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] font-black">{relationship.relatedModIdentifier ? "?" : "M"}</span><span className="truncate">{relationship.relatedModName || relationship.relatedModIdentifier || t("mods.submission.placeholders.selectRelatedMod")}</span></button><input className="field" value={relationship.notes} placeholder={t("mods.submission.placeholders.relationshipNotes")} onChange={(event) => updateRelationship(groups, groupIndex, relationshipIndex, { ...relationship, notes: event.target.value }, onChange)} /></div><button className="button-secondary focus-ring shrink-0" type="button" onClick={() => onChange(replaceAt(groups, groupIndex, { ...group, relationships: group.relationships.filter((_, index) => index !== relationshipIndex) }))}>{t("common.delete")}</button></div>)}<button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => onChange(replaceAt(groups, groupIndex, { ...group, relationships: [...group.relationships, emptyRelationship()] }))}>+ {t("mods.submission.actions.addRelationship")}</button></div>
     </section>;
-  })}<button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => onChange([...groups, emptyRelationshipGroup()])}>+ {t("mods.submission.actions.addCondition")}</button></div>;
+  })}<button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => onChange([...groups, emptyRelationshipGroup()])}>+ {t("mods.submission.actions.addCondition")}</button>
+    <ModResourcePickerDialog
+      excludeSiteId={currentSiteId}
+      multiple
+      open={Boolean(pickerTarget)}
+      token={token}
+      value={pickerValue}
+      onClose={() => setPickerTarget(undefined)}
+      onConfirm={insertRelationships}
+    />
+  </div>;
+}
+
+function relationshipPickerResource(relationship: BackendModRelationship, locale: string): CatalogResourceRef {
+  const identifier = relationship.relatedModIdentifier || relationship.relatedModName;
+  if (!relationship.relatedModId) {
+    return {
+      publicId: `unresolved:mod:${identifier.toLowerCase()}`,
+      id: identifier,
+      registry: "mods",
+      kind: "mod",
+      names: {},
+      unresolved: true,
+      rawIdentifier: identifier,
+    };
+  }
+  return {
+    publicId: relationship.relatedModId,
+    id: identifier || relationship.relatedModId,
+    registry: "mods",
+    kind: "mod",
+    names: { [locale]: relationship.relatedModName },
+    resolvedName: relationship.relatedModName,
+  };
+}
+
+function localizedModPickerName(resource: CatalogResourceRef, locale: string) {
+  return resource.names[locale] || resource.resolvedName || Object.values(resource.names).find(Boolean) || resource.id;
 }
 
 function updateRelationship(groups: BackendModRelationshipGroup[], groupIndex: number, relationshipIndex: number, relationship: BackendModRelationship, onChange: (groups: BackendModRelationshipGroup[]) => void) {
@@ -480,7 +596,15 @@ function payloadFromDraft(draft: ModDraft): CreateModPayload {
 
 function normalizeModDraft(draft: ModDraft): ModDraft {
   const defaultLocale = draft.defaultLocale || "zh-CN";
-  const localizations = draft.localizations?.length ? draft.localizations : [{ locale: defaultLocale, name: draft.secondaryName || draft.primaryName, summary: draft.summary, contentMarkdown: draft.bodyMarkdown }];
+  const sourceLocalizations = draft.localizations?.length
+    ? draft.localizations
+    : [{ locale: defaultLocale, name: draft.secondaryName || draft.primaryName, summary: draft.summary, contentMarkdown: draft.bodyMarkdown }];
+  const localizations = sourceLocalizations.map((item) => item.locale === defaultLocale ? {
+    ...item,
+    name: item.name || draft.secondaryName || draft.primaryName,
+    summary: item.summary || draft.summary,
+    contentMarkdown: item.contentMarkdown || draft.bodyMarkdown,
+  } : item);
   const modIds = (draft.modIds?.length ? draft.modIds : draft.modId ? [{ identifier: draft.modId, primary: true, minecraftVersionMin: "", minecraftVersionMax: "", minecraftVersions: [] }] : [{ identifier: "", primary: true, minecraftVersionMin: "", minecraftVersionMax: "", minecraftVersions: [] }]).map((item) => ({ ...item, minecraftVersions: item.minecraftVersions ?? [] }));
   return { ...draft, defaultLocale, localizations, modIds, links: (draft.links ?? []).map((link) => ({ ...link, note: link.note ?? "" })), githubProjectPath: draft.githubProjectPath ?? githubProjectPathFromLinks(draft.links ?? []), galleryImages: draft.galleryImages ?? [] };
 }

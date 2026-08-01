@@ -402,8 +402,7 @@ function recipeEditorLabels(t: CatalogTranslator): RecipeEditorLabels {
   return {
     localization: t("catalogEditor.editLanguage"),
     localizedName: t("catalogEditor.localizedName"),
-    localizedSummary: t("catalogEditor.summary"),
-    localizedDescription: t("catalogEditor.contentMarkdown"),
+    localizedNote: t("globalCatalog.recipeNote"),
     invariantSettings: t("catalogEditor.invariantFields"),
     recipeType: t("globalCatalog.recipeTypes.title"),
     selectRecipeType: t("catalogEditor.selectRecipeType"),
@@ -450,7 +449,6 @@ function recipeEditorLabels(t: CatalogTranslator): RecipeEditorLabels {
     invalidDefinition: t("catalogEditor.invalidDefinition"),
     invalidAmount: t("catalogEditor.invalidAmount"),
     invalidProbability: t("catalogEditor.invalidProbability"),
-    missingRequiredSlot: t("catalogEditor.missingRequiredSlot"),
     missingOutput: t("catalogEditor.missingOutput"),
     loadFailed: t("catalogEditor.loadFailed"),
     saveFailed: t("catalogEditor.saveFailed"),
@@ -555,7 +553,7 @@ function GlobalRecipeCard({ recipe, editHref }: { recipe: GlobalRecipe; editHref
   const layoutKind = typeof layout.layout_kind === "string" ? layout.layout_kind : "unknown";
   const recipeType = typeof layout.underlying_recipe_type_id === "string" ? layout.underlying_recipe_type_id : "";
   const templateID = typeof layout.template_id === "string" ? layout.template_id : "";
-  const visual = <div className="relative mx-auto" style={{ width, height }}>{background ? <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={catalogAssetURL(recipe.revisionId, background)} /> : null}{slots.map((slot, index) => <RecipeSlot canvasWidth={width} key={index} locale={locale} scale={displayScale} showVisual={!contains} slot={slot} />)}</div>;
+  const visual = <div className="relative mx-auto" style={{ width, height }}>{background ? <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={catalogAssetURL(recipe.revisionId, background)} /> : null}{slots.map((slot, index) => <RecipeSlot key={index} locale={locale} scale={displayScale} showVisual={!contains} slot={slot} />)}</div>;
   return <UnifiedRecipeCard badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)} editAction={user && editHref ? <RecipeEditLink className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</RecipeEditLink> : undefined} labels={unifiedRecipeLabels(t)} materials={materials} note={recipe.note} recipeId={recipe.recipeId} recipeType={recipeType} recipeTypeHref={recipeType ? `/recipe-types?id=${encodeURIComponent(recipeType)}` : undefined} source={sourceMod ? `${sourceMod}${sourceVersion ? `@${sourceVersion}` : ""}` : ""} sourceHref={recipe.modSiteId ? `/mods/${encodeURIComponent(recipe.modSiteId)}` : undefined} technicalInfo={{ recipeIdSource: recipe.recipeIdSource, templateId: templateID, fingerprint: recipe.semanticFingerprint }} visual={visual} />;
 }
 
@@ -579,7 +577,7 @@ function GlobalRecipeCandidateChanceLabel({ candidate, slot, locale }: { candida
   return <span className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-[#242424] px-1 py-0.5 text-[9px] font-black leading-none text-white shadow" title={chanceText}>{badgeText}</span>;
 }
 
-function RecipeSlot({ slot, scale, locale, canvasWidth, showVisual }: { slot: Record<string, unknown>; scale: number; locale: string; canvasWidth: number; showVisual: boolean }) {
+function RecipeSlot({ slot, scale, locale, showVisual }: { slot: Record<string, unknown>; scale: number; locale: string; showVisual: boolean }) {
   const item = record(useRotatingValue(Array.isArray(slot.alternatives) ? slot.alternatives : []));
   if (!Object.keys(item).length) return null;
   const itemId = String(item.item || item.resource_location || "");
@@ -592,7 +590,7 @@ function RecipeSlot({ slot, scale, locale, canvasWidth, showVisual }: { slot: Re
   const tooltipResourceId = tagId && itemId ? `${itemId} · ${resourceId}` : resourceId;
   const presentation = recipeSlotPresentation(slot, item, scale);
   const src = iconPath && sourceRevisionId ? catalogAssetURL(sourceRevisionId, iconPath) : "";
-  const content = <><RecipeResourceVisual canvasWidth={canvasWidth} fallback={tagId ? "#" : "?"} name={displayName} presentation={presentation} resourceId={tooltipResourceId} showVisual={showVisual} src={src} /><GlobalRecipeCandidateChanceLabel candidate={item} locale={locale} slot={slot} /></>;
+  const content = <><RecipeResourceVisual fallback={tagId ? "#" : "?"} name={displayName} presentation={presentation} resourceId={tooltipResourceId} showVisual={showVisual} src={src} /><GlobalRecipeCandidateChanceLabel candidate={item} locale={locale} slot={slot} /></>;
   const label = `${displayName || resourceId} (${tooltipResourceId})`;
   const slotClass = "group focus-ring absolute z-10 hover:z-40 focus-visible:z-40";
   if (tagId) return <Link aria-label={label} className={slotClass} href={`/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`} style={presentation.style}>{content}</Link>;

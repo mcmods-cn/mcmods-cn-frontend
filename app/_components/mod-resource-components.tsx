@@ -29,7 +29,6 @@ export function ModResourceProperties({
   const combat = record(data.combat);
   const enchanting = record(data.enchanting);
   const attributeModifiers = arrayRecords(data.attribute_modifiers);
-  const entityAttributes = arrayRecords(data.default_attributes);
   const placement = record(data.placement);
   const isNaturalGeneration = registry === "natural_generation";
   const isWorldStructure = registry === "world_structures";
@@ -100,8 +99,7 @@ export function ModResourceProperties({
     && !entityRows.length
     && !naturalRows.length
     && !structureRows.length
-    && !attributeModifiers.length
-    && !entityAttributes.length) return null;
+    && !attributeModifiers.length) return null;
 
   return <div className="mt-4 space-y-4">
     {naturalRows.length ? <PropertyGroup namespace="naturalGenerationProperties" title={t("mods.exportImport.entry.naturalGenerationProperties.title")} rows={naturalRows} /> : null}
@@ -109,7 +107,6 @@ export function ModResourceProperties({
     {blockRows.length ? <PropertyGroup namespace="blockProperties" title={t("mods.exportImport.entry.blockProperties.title")} rows={blockRows} /> : null}
     {toolRows.length ? <PropertyGroup namespace="toolProperties" title={t("mods.exportImport.entry.toolProperties.title")} rows={toolRows} /> : null}
     {entityRows.length ? <PropertyGroup namespace="entityProperties" title={t("mods.exportImport.entry.entityProperties.title")} rows={entityRows} /> : null}
-    {entityAttributes.length ? <EntityAttributes attributes={entityAttributes} /> : null}
     {attributeModifiers.length ? <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
       <h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{t("mods.exportImport.entry.toolProperties.attributeModifiers")}</h2>
       <div className="divide-y divide-[var(--line)]">{attributeModifiers.map((slot, index) => <AttributeSlot key={index} slot={slot} />)}</div>
@@ -171,17 +168,6 @@ function PropertyGroup({
     <dl className="divide-y divide-[var(--line)]">{rows.map((row) => <div className="px-4 py-3" key={row.key}>
       <dt className="text-xs font-bold text-[var(--muted)]">{t(`mods.exportImport.entry.${namespace}.${row.key}`)}</dt>
       <dd className="mt-1 break-words text-sm font-semibold"><PropertyValue row={row} /></dd>
-    </div>)}</dl>
-  </section>;
-}
-
-function EntityAttributes({ attributes }: { attributes: Record<string, unknown>[] }) {
-  const { t } = useI18n();
-  return <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
-    <h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{t("mods.exportImport.entry.entityProperties.defaultAttributes")}</h2>
-    <dl className="divide-y divide-[var(--line)]">{attributes.map((attribute, index) => <div className="px-4 py-3" key={`${stringValue(attribute.attribute)}-${index}`}>
-      <dt><code className="break-all text-xs font-bold text-[var(--accent)]">{stringValue(attribute.attribute) || "-"}</code></dt>
-      <dd className="mt-1 text-sm text-[var(--muted)]">{t("mods.exportImport.entry.entityProperties.baseValue")}: {String(attribute.base_value ?? "-")} / {t("mods.exportImport.entry.entityProperties.defaultValue")}: {String(attribute.default_value ?? "-")}</dd>
     </div>)}</dl>
   </section>;
 }
@@ -438,7 +424,7 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
   const visual = background
     ? <div className="relative mx-auto" style={{ width, height }}>
       <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={modExportAssetURL(revisionId, background)} />
-      {slots.map((value, index) => <ModRecipeSlot canvasWidth={width} key={index} locale={locale} scale={displayScale} showVisual={!containsIngredients} slot={value} />)}
+      {slots.map((value, index) => <ModRecipeSlot key={index} locale={locale} scale={displayScale} showVisual={!containsIngredients} slot={value} />)}
     </div>
     : <div className="grid min-h-32 place-items-center p-4 text-sm text-slate-700">{String(recipe.type || "Recipe")}</div>;
   const editHref = user && recipePublicID && recipeType
@@ -525,13 +511,11 @@ function ModRecipeSlot({
   slot,
   scale,
   locale,
-  canvasWidth,
   showVisual,
 }: {
   slot: Record<string, unknown>;
   scale: number;
   locale: string;
-  canvasWidth: number;
   showVisual: boolean;
 }) {
   const item = record(useRotatingValue(Array.isArray(slot.alternatives) ? slot.alternatives : []));
@@ -550,7 +534,6 @@ function ModRecipeSlot({
   const src = iconPath && sourceRevisionId ? modExportAssetURL(sourceRevisionId, iconPath) : "";
   const content = <>
     <RecipeResourceVisual
-      canvasWidth={canvasWidth}
       fallback={tagId ? "#" : "?"}
       name={displayName}
       presentation={presentation}

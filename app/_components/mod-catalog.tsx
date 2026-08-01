@@ -29,6 +29,16 @@ import { useI18n } from "../_lib/i18n-provider";
 import { loadFavoriteCollections, loadFavoriteItems } from "../_lib/favorite-api";
 import { FavoritePickerModal } from "./favorite-picker-modal";
 import { ModSubmissionModal } from "./mod-submission-modal";
+import {
+  CatalogEmptyState,
+  CatalogFilterGroup,
+  CatalogFilterPanel,
+  CatalogFilterSidebar,
+  CatalogMobileFilterDrawer,
+  CatalogOptionList,
+  CatalogPagination,
+  CatalogRadioList,
+} from "./catalog-list-ui";
 
 type CatalogView = "list" | "grid";
 type CatalogPreferences = { view: CatalogView; pageSize: number; sort: string };
@@ -253,22 +263,20 @@ export function ModCatalog() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[272px_minmax(0,1fr)]">
-          <aside className="hidden lg:block">
-            <div className="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]">
-              <FilterPanel
-                expandedGroups={expandedGroups}
-                filters={filters}
-                mods={backendMods}
-                resultCount={filteredMods.length}
-                t={t}
-                onClear={clearFilters}
-                onClose={null}
-                onGroupToggle={toggleGroup}
-                onParamChange={replaceParams}
-                onToggleList={toggleListParam}
-              />
-            </div>
-          </aside>
+          <CatalogFilterSidebar>
+            <FilterPanel
+              expandedGroups={expandedGroups}
+              filters={filters}
+              mods={backendMods}
+              resultCount={filteredMods.length}
+              t={t}
+              onClear={clearFilters}
+              onClose={null}
+              onGroupToggle={toggleGroup}
+              onParamChange={replaceParams}
+              onToggleList={toggleListParam}
+            />
+          </CatalogFilterSidebar>
 
           <section className="min-w-0" ref={resultsTopRef}>
             <div className="border-b border-[var(--line)] pb-4">
@@ -331,17 +339,31 @@ export function ModCatalog() {
                 ))}
               </div>
             ) : (
-              <EmptyResults filters={filters} t={t} onClear={clearFilters} onSubmit={() => setNotice(t("mods.notices.submitPending"))} />
+              <CatalogEmptyState
+                clearLabel={t("mods.empty.clear")}
+                description={filters.versionMode === "all" && filters.versions.length > 1
+                  ? t("mods.empty.versionSuggestion", { versions: filters.versions.join("、") })
+                  : t("mods.empty.description")}
+                title={t("mods.empty.title")}
+                onClear={clearFilters}
+              />
             )}
 
-            <Pagination
+            <CatalogPagination
               currentPage={currentPage}
               pageSize={filters.pageSize}
-              start={filteredMods.length === 0 ? 0 : pageStart + 1}
-              end={Math.min(pageStart + filters.pageSize, filteredMods.length)}
-              t={t}
-              total={filteredMods.length}
               totalPages={totalPages}
+              labels={{
+                previous: t("mods.pagination.previous"),
+                next: t("mods.pagination.next"),
+                pageSize: t("mods.pagination.pageSize"),
+                pageSummary: t("mods.pagination.pageSummary", { page: currentPage, pages: totalPages }),
+                itemSummary: t("mods.pagination.itemSummary", {
+                  start: filteredMods.length === 0 ? 0 : pageStart + 1,
+                  end: Math.min(pageStart + filters.pageSize, filteredMods.length),
+                  total: filteredMods.length,
+                }),
+              }}
               onPageChange={changePage}
               onPageSizeChange={(pageSize) => changePreference({ pageSize })}
             />
@@ -349,25 +371,20 @@ export function ModCatalog() {
         </div>
       </div>
 
-      {mobileFiltersOpen ? (
-        <div className="fixed inset-0 z-[60] flex" role="dialog" aria-modal="true" aria-label={t("mods.filtersTitle")}>
-          <button className="absolute inset-0 bg-black/45" aria-label={t("common.close")} type="button" onClick={() => setMobileFiltersOpen(false)} />
-          <aside className="relative h-full w-[min(90vw,360px)] overflow-y-auto bg-[var(--panel)] shadow-2xl">
-            <FilterPanel
-              expandedGroups={expandedGroups}
-              filters={filters}
-              mods={backendMods}
-              resultCount={filteredMods.length}
-              t={t}
-              onClear={clearFilters}
-              onClose={() => setMobileFiltersOpen(false)}
-              onGroupToggle={toggleGroup}
-              onParamChange={replaceParams}
-              onToggleList={toggleListParam}
-            />
-          </aside>
-        </div>
-      ) : null}
+      <CatalogMobileFilterDrawer open={mobileFiltersOpen} title={t("mods.filtersTitle")} onClose={() => setMobileFiltersOpen(false)}>
+        <FilterPanel
+          expandedGroups={expandedGroups}
+          filters={filters}
+          mods={backendMods}
+          resultCount={filteredMods.length}
+          t={t}
+          onClear={clearFilters}
+          onClose={() => setMobileFiltersOpen(false)}
+          onGroupToggle={toggleGroup}
+          onParamChange={replaceParams}
+          onToggleList={toggleListParam}
+        />
+      </CatalogMobileFilterDrawer>
       {favoriteTarget && token ? <FavoritePickerModal entityType="mod" entityKey={favoriteTarget.uniqueId} title={favoriteTarget.name} token={token} onClose={() => setFavoriteTarget(null)} onSaved={(selected) => {
         setFavoriteSlugs((current) => { const next = new Set(current); if (selected) next.add(favoriteTarget.uniqueId); else next.delete(favoriteTarget.uniqueId); return next; });
         setNotice(t(selected ? "mods.notices.favorited" : "mods.notices.unfavorited"));
@@ -414,16 +431,17 @@ function FilterPanel({
   ];
 
   return (
-    <div>
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--line)] bg-[var(--panel)] px-4 py-4">
-        <h2 className="font-black">{t("mods.filtersTitle")}</h2>
-        <div className="flex items-center gap-2">
-          <button className="text-xs font-bold text-[var(--accent)] hover:underline" type="button" onClick={onClear}>{t("mods.clearAll")}</button>
-          {onClose ? <button className="button-secondary focus-ring px-2 py-1 text-xs" type="button" onClick={onClose}>{t("common.close")}</button> : null}
-        </div>
-      </div>
+    <CatalogFilterPanel
+      clearLabel={t("mods.clearAll")}
+      closeLabel={t("common.close")}
+      showResultsLabel={onClose ? t("mods.showResults", { count: resultCount }) : undefined}
+      title={t("mods.filtersTitle")}
+      onClear={onClear}
+      onClose={onClose ?? undefined}
+      onShowResults={onClose ?? undefined}
+    >
 
-      <FilterGroup group="versions" label={t("mods.groups.versions")} expanded={expandedGroups.has("versions")} onToggle={onGroupToggle}>
+      <CatalogFilterGroup group="versions" label={t("mods.groups.versions")} expanded={expandedGroups.has("versions")} onToggle={onGroupToggle}>
         <div className="mb-3 grid grid-cols-2 rounded-lg border border-[var(--line)] p-1">
           {(["any", "all"] as const).map((mode) => (
             <button key={mode} className={`focus-ring rounded-md px-2 py-1.5 text-xs font-bold ${filters.versionMode === mode ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`} type="button" onClick={() => onParamChange({ versionMode: mode === "any" ? null : mode })}>
@@ -431,89 +449,56 @@ function FilterPanel({
             </button>
           ))}
         </div>
-        <OptionList options={versions} selected={filters.versions} label={(item) => item} onToggle={(item) => onToggleList("version", item)} />
+        <CatalogOptionList options={versions} selected={filters.versions} label={(item) => item} onToggle={(item) => onToggleList("version", item)} />
         <div className="mt-2 grid gap-1">
           <SmallToggle active={showAllVersions} label={t(showAllVersions ? "mods.showLessVersions" : "mods.showAllVersions")} onClick={() => setShowAllVersions((value) => !value)} />
           <SmallToggle active={showSnapshots} label={t("mods.showSnapshots")} onClick={() => setShowSnapshots((value) => !value)} />
           <SmallToggle active={showAprilFools} label={t("mods.showAprilFools")} onClick={() => setShowAprilFools((value) => !value)} />
         </div>
-      </FilterGroup>
+      </CatalogFilterGroup>
 
-      <FilterGroup group="loaders" label={t("mods.groups.loaders")} expanded={expandedGroups.has("loaders")} onToggle={onGroupToggle}>
-        <OptionList
+      <CatalogFilterGroup group="loaders" label={t("mods.groups.loaders")} expanded={expandedGroups.has("loaders")} onToggle={onGroupToggle}>
+        <CatalogOptionList
           options={loaderOptions}
           selected={filters.loaders}
           label={(item) => item}
           count={(item) => mods.filter((mod) => mod.loaders.includes(item)).length}
           onToggle={(item) => onToggleList("loader", item)}
         />
-      </FilterGroup>
+      </CatalogFilterGroup>
 
-      <FilterGroup group="primary" label={t("mods.groups.primary")} expanded={expandedGroups.has("primary")} onToggle={onGroupToggle}>
-        <RadioList options={primaryCategoryOptions} selected={filters.primaryCategories[0] ?? ""} label={(item) => t(`mods.categories.${item}`)} onChange={(item) => onParamChange({ primary: item })} />
-      </FilterGroup>
+      <CatalogFilterGroup group="primary" label={t("mods.groups.primary")} expanded={expandedGroups.has("primary")} onToggle={onGroupToggle}>
+        <CatalogRadioList options={primaryCategoryOptions} selected={filters.primaryCategories[0] ?? ""} label={(item) => t(`mods.categories.${item}`)} onChange={(item) => onParamChange({ primary: item })} />
+      </CatalogFilterGroup>
 
-      <FilterGroup group="tags" label={t("mods.groups.tags")} expanded={expandedGroups.has("tags")} onToggle={onGroupToggle}>
-        <OptionList options={tagOptions} selected={filters.tags} label={(item) => t(`mods.tags.${item}`)} onToggle={(item) => onToggleList("tag", item)} />
-      </FilterGroup>
+      <CatalogFilterGroup group="tags" label={t("mods.groups.tags")} expanded={expandedGroups.has("tags")} onToggle={onGroupToggle}>
+        <CatalogOptionList options={tagOptions} selected={filters.tags} label={(item) => t(`mods.tags.${item}`)} onToggle={(item) => onToggleList("tag", item)} />
+      </CatalogFilterGroup>
 
-      <FilterGroup group="environment" label={t("mods.groups.environment")} expanded={expandedGroups.has("environment")} onToggle={onGroupToggle}>
-        <OptionList options={environmentOptions} selected={filters.environments} label={(item) => t(`mods.environments.${item}`)} onToggle={(item) => onToggleList("environment", item)} />
-      </FilterGroup>
+      <CatalogFilterGroup group="environment" label={t("mods.groups.environment")} expanded={expandedGroups.has("environment")} onToggle={onGroupToggle}>
+        <CatalogOptionList options={environmentOptions} selected={filters.environments} label={(item) => t(`mods.environments.${item}`)} onToggle={(item) => onToggleList("environment", item)} />
+      </CatalogFilterGroup>
 
-      <FilterGroup group="status" label={t("mods.groups.status")} expanded={expandedGroups.has("status")} onToggle={onGroupToggle}>
-        <OptionList options={maintenanceOptions} selected={filters.statuses} label={(item) => t(`mods.statuses.${item}`)} onToggle={(item) => onToggleList("status", item)} />
-      </FilterGroup>
+      <CatalogFilterGroup group="status" label={t("mods.groups.status")} expanded={expandedGroups.has("status")} onToggle={onGroupToggle}>
+        <CatalogOptionList options={maintenanceOptions} selected={filters.statuses} label={(item) => t(`mods.statuses.${item}`)} onToggle={(item) => onToggleList("status", item)} />
+      </CatalogFilterGroup>
 
-      <FilterGroup group="source" label={t("mods.groups.source")} expanded={expandedGroups.has("source")} onToggle={onGroupToggle}>
-        <OptionList options={sourceOptions} selected={filters.sources} label={(item) => t(`mods.sources.${item}`)} onToggle={(item) => onToggleList("source", item)} />
+      <CatalogFilterGroup group="source" label={t("mods.groups.source")} expanded={expandedGroups.has("source")} onToggle={onGroupToggle}>
+        <CatalogOptionList options={sourceOptions} selected={filters.sources} label={(item) => t(`mods.sources.${item}`)} onToggle={(item) => onToggleList("source", item)} />
         <div className="my-3 border-t border-[var(--line)]" />
         <p className="mb-2 text-xs font-bold text-[var(--muted)]">{t("mods.licenseLabel")}</p>
-        <OptionList options={licenseOptions} selected={filters.licenses} label={(item) => item} onToggle={(item) => onToggleList("license", item)} />
-      </FilterGroup>
+        <CatalogOptionList options={licenseOptions} selected={filters.licenses} label={(item) => item} onToggle={(item) => onToggleList("license", item)} />
+      </CatalogFilterGroup>
 
-      <FilterGroup group="updated" label={t("mods.groups.updated")} expanded={expandedGroups.has("updated")} onToggle={onGroupToggle}>
-        <RadioList options={updatedOptions} selected={filters.updated || "all"} label={(item) => t(`mods.updated.${item}`)} onChange={(item) => onParamChange({ updated: item === "all" ? null : item })} />
-      </FilterGroup>
+      <CatalogFilterGroup group="updated" label={t("mods.groups.updated")} expanded={expandedGroups.has("updated")} onToggle={onGroupToggle}>
+        <CatalogRadioList options={updatedOptions} selected={filters.updated || "all"} label={(item) => t(`mods.updated.${item}`)} onChange={(item) => onParamChange({ updated: item === "all" ? null : item })} />
+      </CatalogFilterGroup>
 
-      <FilterGroup group="advanced" label={t("mods.groups.advanced")} expanded={expandedGroups.has("advanced")} onToggle={onGroupToggle}>
-        <OptionList options={advancedOptions} selected={filters.features} label={(item) => t(`mods.features.${item}`)} onToggle={(item) => onToggleList("feature", item)} />
-      </FilterGroup>
-
-      <div className="sticky bottom-0 border-t border-[var(--line)] bg-[var(--panel)] p-4">
-        <button className="button-primary focus-ring w-full" type="button" onClick={onClose ?? (() => undefined)}>{t("mods.showResults", { count: resultCount })}</button>
-      </div>
-    </div>
+      <CatalogFilterGroup group="advanced" label={t("mods.groups.advanced")} expanded={expandedGroups.has("advanced")} onToggle={onGroupToggle}>
+        <CatalogOptionList options={advancedOptions} selected={filters.features} label={(item) => t(`mods.features.${item}`)} onToggle={(item) => onToggleList("feature", item)} />
+      </CatalogFilterGroup>
+    </CatalogFilterPanel>
   );
-}
-
-function FilterGroup({ group, label, expanded, onToggle, children }: { group: string; label: string; expanded: boolean; onToggle: (group: string, open: boolean) => void; children: React.ReactNode }) {
-  return (
-    <details className="border-b border-[var(--line)]" open={expanded} onToggle={(event) => onToggle(group, event.currentTarget.open)}>
-      <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-black hover:bg-[var(--panel-subtle)]">
-        {label}<span className="text-[var(--muted)]" aria-hidden="true">{expanded ? "−" : "+"}</span>
-      </summary>
-      <div className="px-4 pb-4">{children}</div>
-    </details>
-  );
-}
-
-function OptionList<T extends string>({ options, selected, label, count, onToggle }: { options: readonly T[]; selected: readonly string[]; label: (value: T) => string; count?: (value: T) => number; onToggle: (value: T) => void }) {
-  return (
-    <div className="grid gap-1">
-      {options.map((option) => (
-        <label key={option} className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-[var(--panel-subtle)]">
-          <input className="h-4 w-4 shrink-0 accent-[var(--accent)]" type="checkbox" checked={selected.includes(option)} onChange={() => onToggle(option)} />
-          <span className="min-w-0 flex-1">{label(option)}</span>
-          {count ? <span className="text-xs tabular-nums text-[var(--muted)]">{count(option)}</span> : null}
-        </label>
-      ))}
-    </div>
-  );
-}
-
-function RadioList<T extends string>({ options, selected, label, onChange }: { options: readonly T[]; selected: string; label: (value: T) => string; onChange: (value: T) => void }) {
-  return <div className="grid gap-1">{options.map((option) => <label key={option} className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-[var(--panel-subtle)]"><input className="h-4 w-4 accent-[var(--accent)]" type="radio" checked={selected === option} onChange={() => onChange(option)} /><span>{label(option)}</span></label>)}</div>;
 }
 
 function SmallToggle({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
@@ -626,37 +611,6 @@ function Stat({ label, value }: { label: string; value: string }) {
   return <div><span className="block text-[10px] font-bold text-[var(--muted)]">{label}</span><span className="font-black tabular-nums">{value}</span></div>;
 }
 
-function EmptyResults({ filters, t, onClear, onSubmit }: { filters: CatalogFilters; t: Translation; onClear: () => void; onSubmit: () => void }) {
-  const incompatibleVersions = filters.versionMode === "all" && filters.versions.length > 1;
-  return (
-    <div className="mt-4 border-y border-[var(--line)] py-16 text-center">
-      <div className="mx-auto grid h-14 w-14 place-items-center rounded-lg bg-[var(--panel-subtle)] text-2xl font-black text-[var(--muted)]" aria-hidden="true">0</div>
-      <h2 className="mt-4 text-xl font-black">{t("mods.empty.title")}</h2>
-      <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-[var(--muted)]">{incompatibleVersions ? t("mods.empty.versionSuggestion", { versions: filters.versions.join("、") }) : t("mods.empty.description")}</p>
-      <div className="mt-5 flex flex-wrap justify-center gap-2">
-        <button className="button-primary focus-ring" type="button" onClick={onClear}>{t("mods.empty.clear")}</button>
-        <button className="button-secondary focus-ring" type="button" onClick={onSubmit}>{t("mods.empty.submit")}</button>
-      </div>
-    </div>
-  );
-}
-
-function Pagination({ currentPage, totalPages, pageSize, start, end, total, t, onPageChange, onPageSizeChange }: { currentPage: number; totalPages: number; pageSize: number; start: number; end: number; total: number; t: Translation; onPageChange: (page: number) => void; onPageSizeChange: (size: number) => void }) {
-  const pages = paginationPages(currentPage, totalPages);
-  return (
-    <div className="mt-6 border-t border-[var(--line)] pt-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap items-center gap-1">
-          <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={currentPage <= 1} type="button" onClick={() => onPageChange(currentPage - 1)}>{t("mods.pagination.previous")}</button>
-          {pages.map((page, index) => page === "ellipsis" ? <span key={`ellipsis-${index}`} className="px-2 text-[var(--muted)]">…</span> : <button key={page} className={`focus-ring h-9 min-w-9 rounded-md border px-2 text-sm font-bold ${page === currentPage ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] bg-[var(--panel)]"}`} type="button" onClick={() => onPageChange(page)}>{page}</button>)}
-          <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={currentPage >= totalPages} type="button" onClick={() => onPageChange(currentPage + 1)}>{t("mods.pagination.next")}</button>
-        </div>
-        <label className="flex items-center gap-2 text-sm font-bold text-[var(--muted)]">{t("mods.pagination.pageSize")}<select className="field h-9 w-24 py-0" value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))}>{[20, 40, 60].map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
-      </div>
-      <div className="mt-3 flex flex-wrap justify-between gap-2 text-xs font-semibold text-[var(--muted)]"><span>{t("mods.pagination.pageSummary", { page: currentPage, pages: totalPages })}</span><span>{t("mods.pagination.itemSummary", { start, end, total })}</span></div>
-    </div>
-  );
-}
 
 function parseFilters(params: URLSearchParams, preferences: CatalogPreferences) {
   const pageSize = [20, 40, 60].includes(Number(params.get("size"))) ? Number(params.get("size")) : preferences.pageSize;
@@ -812,18 +766,6 @@ function formatCompact(value: number, locale: string) {
 
 function formatDate(value: string, locale: string) {
   return new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric" }).format(new Date(value));
-}
-
-function paginationPages(current: number, total: number): Array<number | "ellipsis"> {
-  if (total <= 7) return Array.from({ length: total }, (_, index) => index + 1);
-  const pages = new Set([1, total, current - 1, current, current + 1]);
-  const sorted = [...pages].filter((page) => page > 0 && page <= total).sort((left, right) => left - right);
-  const result: Array<number | "ellipsis"> = [];
-  sorted.forEach((page, index) => {
-    if (index > 0 && page - sorted[index - 1] > 1) result.push("ellipsis");
-    result.push(page);
-  });
-  return result;
 }
 
 function modDescription(mod: ModCatalogEntry, t: Translation) {

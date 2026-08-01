@@ -37,16 +37,7 @@ const primaryCategories: HomeCategory[] = [
   { titleKey: "nav.news", descriptionKey: "home.categories.newsDesc", href: "/news", meta: "News" },
   { titleKey: "nav.discussions", descriptionKey: "home.categories.discussionsDesc", href: "/discussions", meta: "Community" },
   { titleKey: "nav.tools", descriptionKey: "home.categories.toolsDesc", href: "/tools", meta: "Tools" },
-  {
-    titleKey: "nav.servers",
-    descriptionKey: "home.categories.serversDesc",
-    href: "/servers",
-    meta: "Servers",
-    children: [
-      { titleKey: "nav.serverList", href: "/servers/list" },
-      { titleKey: "nav.serverPacks", href: "/servers/packs" },
-    ],
-  },
+  { titleKey: "nav.servers", descriptionKey: "home.categories.serversDesc", href: "/servers", meta: "Servers" },
 ];
 
 const quickLinks = [

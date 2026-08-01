@@ -13,10 +13,17 @@
   --muted: #68756f;
   --accent: #2f8d68;
   --accent-strong: #1e6f52;
+  --accent-soft: #e4f3ec;
   --blue: #2d6ea3;
   --violet: #7357a5;
   --red: #b24343;
+  --red-soft: #f9e8e8;
+  --danger: var(--red);
+  --danger-soft: var(--red-soft);
+  --success: var(--accent);
+  --success-soft: var(--accent-soft);
   --warning: #9b6a1d;
+  --warning-soft: #fbf1dd;
   color-scheme: light;
 }
 
@@ -36,10 +43,17 @@
   --muted: #9ca8a2;
   --accent: #66bf94;
   --accent-strong: #8fd8b2;
+  --accent-soft: #1d382d;
   --blue: #79aee0;
   --violet: #b5a1dd;
   --red: #ee8585;
+  --red-soft: #402525;
+  --danger: var(--red);
+  --danger-soft: var(--red-soft);
+  --success: var(--accent);
+  --success-soft: var(--accent-soft);
   --warning: #dfb464;
+  --warning-soft: #3a3020;
   color-scheme: dark;
 }
 
@@ -83,11 +97,6 @@ a {
   border: 1px solid var(--line);
 }
 
-.subtle-surface {
-  background: var(--panel-subtle);
-  border: 1px solid var(--line);
-}
-
 .field {
   width: 100%;
   border: 1px solid var(--line);
@@ -101,6 +110,13 @@ a {
 .field:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.field.catalog-page-size-select {
+  width: 6rem;
+  height: 2.5rem;
+  padding: 0.35rem 2rem 0.35rem 0.75rem;
+  line-height: 1.25rem;
 }
 
 .button-primary {

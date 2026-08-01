@@ -5,7 +5,6 @@ import type {
   RecipeMutation,
   RecipeLocalizedFields,
   RecipeRecord,
-  RecipeSummaryPage,
   RecipeSourceVersionOption,
   RecipeTemplateMutation,
   RecipeTemplateRecord,
@@ -103,6 +102,7 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
           const item = objectValue(candidate);
           const canonicalId = stringValue(item.canonicalId) || stringValue(item.id) || stringValue(item.rawResourceId) || stringValue(item.resourcePublicId);
           const publicId = stringValue(item.resourcePublicId) || stringValue(item.publicId);
+          const unresolved = item.unresolved === true || Boolean(stringValue(item.rawResourceId));
           const probability = optionalNumber(item.probability);
           return {
             resource: {
@@ -110,7 +110,10 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
               id: canonicalId,
               registry: canonicalId.includes(":") ? canonicalId.slice(0, canonicalId.indexOf(":")) : "",
               kind: stringValue(item.kindCode) || stringValue(item.kind),
-      names: stringValue(item.name) ? { [stringValue(row.defaultLocale) || "en-US"]: stringValue(item.name) } : {},
+              names: stringValue(item.name) ? { [stringValue(row.defaultLocale) || "en-US"]: stringValue(item.name) } : {},
+              iconUrl: stringValue(item.iconUrl) || undefined,
+              unresolved,
+              rawIdentifier: unresolved ? canonicalId : undefined,
             },
             amount: numberValue(item.amount, 1),
             probability,
@@ -140,48 +143,6 @@ function normalizeRecipeSourceVersion(value: unknown): RecipeSourceVersionOption
     minecraftVersions: arrayValue(row.minecraftVersions).map(stringValue).filter(Boolean),
     loaders: arrayValue(row.loaders).map(stringValue).filter(Boolean),
     modVersion: stringValue(row.modVersion),
-  };
-}
-
-export async function loadRecipeSummaries(
-  recipeTypePublicId: string,
-  locale: string,
-  token = "",
-  limit = 40,
-  offset = 0,
-  signal?: AbortSignal,
-): Promise<RecipeSummaryPage> {
-  const parameters = new URLSearchParams({ locale, limit: String(limit), offset: String(offset) });
-  const value = await apiRequest<unknown>(
-    `/api/v1/recipe-types/${encodeURIComponent(recipeTypePublicId)}/recipes?${parameters}`,
-    { signal },
-    token || undefined,
-  );
-  const envelope = objectValue(value);
-  const items = arrayValue(envelope.items).map((entry) => {
-    const row = objectValue(entry);
-    return {
-      publicId: stringValue(row.publicId),
-      canonicalSourceId: stringValue(row.canonicalSourceId),
-      identitySource: stringValue(row.identitySource),
-      templatePublicId: stringValue(row.templatePublicId) || undefined,
-      publishedRevisionId: stringValue(row.publishedRevisionId) || undefined,
-      definition: objectValue(row.definition),
-      bindingCount: numberValue(row.bindingCount),
-      source: row.source === "canonical" ? "canonical" as const : "import" as const,
-      sourceVersionPublicId: stringValue(row.sourceVersionPublicId) || undefined,
-      sourceVersion: normalizeRecipeSourceVersion(row.sourceVersion),
-      importRevisionId: stringValue(row.importRevisionId) || undefined,
-      locale: stringValue(row.locale) || undefined,
-      name: stringValue(row.name) || undefined,
-      names: stringRecord(row.names),
-    };
-  }).filter((item) => item.publicId);
-  return {
-    items,
-    total: numberValue(envelope.total, items.length),
-    limit: numberValue(envelope.limit, limit),
-    offset: numberValue(envelope.offset, offset),
   };
 }
 
@@ -346,10 +307,6 @@ function localizedName(value: unknown) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
   return "";
-}
-
-function stringRecord(value: unknown): Record<string, string> {
-  return Object.fromEntries(Object.entries(objectValue(value)).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
 
 function normalizeLocalizations(value: unknown): LocalizationVersion<RecipeLocalizedFields>[] {

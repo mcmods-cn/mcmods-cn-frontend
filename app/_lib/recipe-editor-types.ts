@@ -94,30 +94,6 @@ export type RecipeRecord = {
   reviewStatus?: ReviewStatus;
 };
 
-type RecipeSummary = {
-  publicId: string;
-  canonicalSourceId: string;
-  identitySource: string;
-  templatePublicId?: string;
-  publishedRevisionId?: string;
-  definition: Record<string, unknown>;
-  bindingCount: number;
-  source: "canonical" | "import";
-  sourceVersionPublicId?: string;
-  sourceVersion?: RecipeSourceVersionOption;
-  importRevisionId?: string;
-  locale?: string;
-  name?: string;
-  names: Record<string, string>;
-};
-
-export type RecipeSummaryPage = {
-  items: RecipeSummary[];
-  total: number;
-  limit: number;
-  offset: number;
-};
-
 export type RecipeTemplateMutation = {
   baseRevisionId?: string;
   reason: string;
@@ -142,7 +118,9 @@ export type RecipeMutation = {
   definition: Record<string, unknown>;
   bindings: Record<string, {
     candidates: Array<{
-      resourcePublicId: string;
+      resourcePublicId?: string;
+      rawResourceId?: string;
+      kindCode?: string;
       amount: number;
       probability?: number;
       byproduct?: boolean;

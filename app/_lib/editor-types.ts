@@ -67,6 +67,8 @@ export type CatalogResourceRef = {
   resolvedName?: string;
   resolvedLocale?: ContentLanguageTag;
   iconUrl?: string;
+  unresolved?: boolean;
+  rawIdentifier?: string;
   source?: CatalogResourceSource;
   versions?: CatalogResourceVersion[];
 };

@@ -63,7 +63,6 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
       })}</div>
     </header>
     {!current || !versionDetail ? <section className="mt-8 rounded-lg border border-dashed border-[var(--red)] bg-[var(--panel)] p-8 text-center"><h2 className="text-xl font-black">{current?.label}</h2><p className="mt-3 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionContentMissing")}</p></section> : <ResourcePresentation canonicalId={detail.canonicalId} current={current} definition={versionDetail.definition} key={current.publicId} kindCode={detail.kindCode} name={localization?.name || detail.canonicalId} resourceId={resourceId}>
-      {localization?.summary ? <p className="leading-7 text-[var(--muted)]">{localization.summary}</p> : null}
       {localization?.contentMarkdown ? <div className="markdown-preview mt-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={localization.contentMarkdown} /></div> : <p className="mt-5 text-[var(--muted)]">{t("mods.exportImport.entry.noIntroduction")}</p>}
     </ResourcePresentation>}
     {current && versionDetail ? <CommentSection targetKey={`${resourceId}~${current.publicId}`} targetType="mod_resource" /> : null}
@@ -124,10 +123,10 @@ function ResourcePresentation({
       },
     );
   }, [modelAssetPaths, revisionId, token]);
-  const effectiveDefinition = useMemo(() => ({
-    ...objectValue(entryDetail?.data),
-    ...definition,
-  }), [definition, entryDetail]);
+  const effectiveDefinition = useMemo(
+    () => presentationDefinition(mergeDefinition(objectValue(entryDetail?.data), definition)),
+    [definition, entryDetail],
+  );
   const defaultBlockState = useMemo(() => objectValue(effectiveDefinition.default_state), [effectiveDefinition]);
   const canShow3D = Boolean(entryDetail?.modelAvailable && modelSource);
 
@@ -177,6 +176,134 @@ function registryForKind(kindCode: string) {
 
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function mergeDefinition(base: Record<string, unknown>, overrides: Record<string, unknown>) {
+  const result = structuredClone(base);
+  for (const [key, value] of Object.entries(overrides)) {
+    const current = result[key];
+    result[key] = Object.keys(objectValue(current)).length && Object.keys(objectValue(value)).length
+      ? mergeDefinition(objectValue(current), objectValue(value))
+      : structuredClone(value);
+  }
+  return result;
+}
+
+// API documents use stable camelCase field codes. Existing visualizers consume
+// exporter-shaped names, so expand a presentation-only compatibility view in
+// browser memory without restoring duplicate/raw fields in PostgreSQL.
+function presentationDefinition(canonical: Record<string, unknown>) {
+  const result = structuredClone(canonical);
+  const aliases: Record<string, string> = {
+    defaultState: "default_state",
+    explosionResistance: "explosion_resistance",
+    harvestLevel: "required_mining_level",
+    speedFactor: "speed_factor",
+    jumpFactor: "jump_factor",
+    lightLevel: "light_emission",
+    requiresCorrectTool: "requires_correct_tool",
+    preferredTools: "preferred_tools",
+    requiredTier: "required_tier",
+    miningTags: "mining_tags",
+    tierTags: "tier_tags",
+    blockTags: "block_tags",
+    canOcclude: "can_occlude",
+    blocksMotion: "blocks_motion",
+    renderShape: "render_shape",
+    hasBlockEntity: "has_block_entity",
+    randomlyTicking: "randomly_ticking",
+    pistonReaction: "piston_reaction",
+    lootTable: "loot_table",
+    maxStackSize: "max_stack_size",
+    primaryType: "primary_type",
+    itemTypes: "item_types",
+    compatibleEnchantments: "compatible_enchantments",
+    itemTags: "item_tags",
+    repairItems: "repair_items",
+    incorrectBlocksForDrops: "incorrect_blocks_for_drops",
+    attributeModifiers: "attribute_modifiers",
+    armorToughness: "armor_toughness",
+    knockbackResistance: "knockback_resistance",
+    equipmentSlot: "equipment_slot",
+    maxHealth: "max_health",
+    armorValue: "armor_value",
+    eyeHeight: "eye_height",
+    fireImmune: "fire_immune",
+    maxAirSupply: "max_air_supply",
+    mobType: "mob_type",
+    waterAnimal: "water_animal",
+    canSummon: "can_summon",
+    canSerialize: "can_serialize",
+    trackingRange: "client_tracking_range",
+    updateInterval: "update_interval",
+    runtimePropertiesAvailable: "runtime_properties_available",
+    spawnEggCount: "spawn_egg_count",
+    defaultLootTable: "default_loot_table",
+    spawnEggs: "spawn_eggs",
+    breedingMaterials: "breeding_materials",
+    defaultEquipment: "default_equipment",
+    parentId: "parent",
+    definitionAvailable: "definition_available",
+    possibleItemIds: "possible_item_ids",
+    referencedLootTables: "referenced_loot_tables",
+    entryKind: "entry_kind",
+    featureType: "feature_type",
+    carverType: "carver_type",
+    generationSteps: "generation_steps",
+    biomeSelectors: "biome_selectors",
+    resolvedBiomeIds: "resolved_biome_ids",
+    dimensionIds: "dimension_ids",
+    normalizationStatus: "normalization_status",
+    catalogKind: "catalog_kind",
+    structureType: "structure_type",
+    generationStep: "generation_step",
+    terrainAdaptation: "terrain_adaptation",
+    startPool: "start_pool",
+    jigsawSize: "jigsaw_size",
+    startHeight: "start_height",
+    maxDistanceFromCenter: "max_distance_from_center",
+    structureSetIds: "structure_set_ids",
+    definitionSource: "definition_source",
+  };
+  for (const [key, alias] of Object.entries(aliases)) {
+    if (canonical[key] !== undefined) result[alias] = structuredClone(canonical[key]);
+  }
+  if (canonical.durability !== undefined) result.max_damage = canonical.durability;
+  const tier = compactObject({
+    id: canonical.tierId,
+    mining_level: canonical.miningLevel,
+    durability: canonical.tierDurability,
+    mining_speed: canonical.miningSpeed,
+    attack_damage_bonus: canonical.attackDamageBonus,
+    enchantment_value: canonical.enchantmentValue,
+    repair_items: canonical.repairItems,
+    incorrect_blocks_for_drops: canonical.incorrectBlocksForDrops,
+  });
+  if (Object.keys(tier).length) result.tool = { tier };
+  const combat = compactObject({
+    attack_damage_modifier: canonical.attackDamageModifier,
+    attack_speed_modifier: canonical.attackSpeedModifier,
+    modifiers: canonical.combatModifiers,
+  });
+  if (Object.keys(combat).length) result.combat = combat;
+  const enchanting = compactObject({
+    enchantable: canonical.enchantable,
+    enchantment_value: canonical.enchantability,
+    compatible_enchantments: canonical.compatibleEnchantments,
+  });
+  if (Object.keys(enchanting).length) result.enchanting = enchanting;
+  const armor = compactObject({
+    defense: canonical.armorValue,
+    toughness: canonical.armorToughness,
+    knockback_resistance: canonical.knockbackResistance,
+    slot: canonical.equipmentSlot,
+  });
+  if (Object.keys(armor).length) result.armor = armor;
+  return result;
+}
+
+function compactObject(value: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
 function resolveVersionLocalization(values: ModContentLocalization[], locale: string, defaultLocale: string) {

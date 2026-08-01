@@ -26,8 +26,7 @@ import { CatalogResourceIdentity } from "./selected-resource-list";
 export type RecipeEditorLabels = {
   localization: string;
   localizedName: string;
-  localizedSummary: string;
-  localizedDescription: string;
+  localizedNote: string;
   invariantSettings: string;
   recipeType: string;
   selectRecipeType: string;
@@ -74,7 +73,6 @@ export type RecipeEditorLabels = {
   invalidDefinition: string;
   invalidAmount: string;
   invalidProbability: string;
-  missingRequiredSlot: string;
   missingOutput: string;
   loadFailed: string;
   saveFailed: string;
@@ -118,7 +116,6 @@ export function RecipeEditor({
   const [loadedTemplateDetail, setLoadedTemplateDetail] = useState<RecipeTemplateRecord>();
   const [selectedSlotKey, setSelectedSlotKey] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [definitionText, setDefinitionText] = useState(() => prettyJSON(initialValue?.definition ?? {}));
   const [reason, setReason] = useState("");
   const [loadingTypes, setLoadingTypes] = useState(!providedRecipeTypes);
   const [loadingSourceVersions, setLoadingSourceVersions] = useState(true);
@@ -140,7 +137,7 @@ export function RecipeEditor({
   const selectedSlot = selectedTemplate?.slots.find((slot) => slot.slotKey === effectiveSelectedSlotKey);
   const selectedBinding = selectedSlot ? draft.bindings[selectedSlot.slotKey] : undefined;
   const currentVersion = versions.find((version) => version.locale === activeLocale) ?? versions[0];
-  const validation = validateRecipe(draft, selectedTemplate, definitionText, versions, contentDefaultLocale, labels);
+  const validation = validateRecipe(draft, selectedTemplate, versions, contentDefaultLocale, labels);
 
   useEffect(() => {
     if (providedRecipeTypes) return;
@@ -285,7 +282,7 @@ export function RecipeEditor({
     setFailure("");
     setMessage("");
     try {
-      const definition = JSON.parse(definitionText) as Record<string, unknown>;
+      const definition: Record<string, unknown> = {};
       const payload = recipeMutation(draft, selectedTemplate, versions, dirtyLocales, contentDefaultLocale, reason, definition);
       const result = await saveRecipe(draft.recipeTypePublicId, draft.publicId, payload, token);
       const next = { ...draft, publicId: result.objectPublicId || draft.publicId, definition, publishedRevisionId: result.reviewStatus === "approved" ? result.revisionId : draft.publishedRevisionId };
@@ -328,8 +325,7 @@ export function RecipeEditor({
     <section className="surface grid gap-4 rounded-lg border border-[var(--line)] p-4">
       <h2 className="text-lg font-black">{labels.localization}</h2>
       <label className="grid gap-2 text-sm font-bold">{labels.localizedName}<input className="field" value={currentVersion?.fields.name ?? ""} onChange={(event) => changeLocalizedField("name", event.target.value)} /></label>
-      <label className="grid gap-2 text-sm font-bold">{labels.localizedSummary}<textarea className="field min-h-20" value={currentVersion?.fields.summary ?? ""} onChange={(event) => changeLocalizedField("summary", event.target.value)} /></label>
-      <label className="grid gap-2 text-sm font-bold">{labels.localizedDescription}<textarea className="field min-h-32" value={currentVersion?.fields.contentMarkdown ?? ""} onChange={(event) => changeLocalizedField("contentMarkdown", event.target.value)} /></label>
+      <label className="grid gap-2 text-sm font-bold">{labels.localizedNote}<textarea className="field min-h-24" value={currentVersion?.fields.contentMarkdown ?? ""} onChange={(event) => changeLocalizedField("contentMarkdown", event.target.value)} /></label>
     </section>
 
     <section className="surface grid gap-4 rounded-lg border border-[var(--line)] p-4">
@@ -340,7 +336,6 @@ export function RecipeEditor({
       </div>
       <label className="grid gap-2 text-sm font-bold">{labels.sourceVersion}<select className="field" disabled={loadingSourceVersions} value={draft.sourceVersionPublicId ?? ""} onChange={(event) => setDraft((current) => ({ ...current, sourceVersionPublicId: event.target.value || undefined }))}><option value="">{loadingSourceVersions ? labels.loadingSourceVersions : labels.noSourceVersion}</option>{sourceVersionGroups(sourceVersions).map((group) => <optgroup key={group.key} label={group.label}>{group.items.map((item) => <option key={item.publicId} value={item.publicId}>{sourceVersionOptionLabel(item)}</option>)}</optgroup>)}</select><small className="text-[var(--muted)]">{!loadingSourceVersions && !sourceVersions.length ? labels.noSourceVersions : labels.sourceVersionHint}</small></label>
       <label className="grid gap-2 text-sm font-bold">{labels.canonicalSourceId}<input className="field font-mono" required value={draft.canonicalSourceId} onChange={(event) => setDraft((current) => ({ ...current, canonicalSourceId: event.target.value }))} /></label>
-      <label className="grid gap-2 text-sm font-bold">{labels.definition}<textarea className="field min-h-28 font-mono text-xs" spellCheck={false} value={definitionText} onChange={(event) => setDefinitionText(event.target.value)} /></label>
     </section>
 
     <section className="surface rounded-lg border border-[var(--line)] p-4">
@@ -355,7 +350,7 @@ export function RecipeEditor({
       {!selectedSlot ? <p className="mt-4 rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">{labels.noSelectedSlot}</p> : <div className="mt-4 grid gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3"><div><strong className="font-mono">{selectedSlot.slotKey}</strong><span className="ml-2 rounded bg-[var(--panel-subtle)] px-2 py-1 text-xs font-black">{slotRoleLabel(selectedSlot.role, labels)}</span></div><div className="flex flex-wrap gap-2"><button className="button-primary focus-ring" type="button" onClick={() => setPickerOpen(true)}>{labels.chooseResources}</button>{selectedBinding?.candidates.length ? <button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => setResources(selectedSlot, [])}>{labels.clearResources}</button> : null}</div></div>
         {selectedSlot.role === "output" ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm text-[var(--muted)]">{labels.outputCandidateHint}</p> : null}
-        {!selectedBinding?.candidates.length ? <p className="rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">{labels.candidates}: {labels.required}</p> : <div className="grid gap-3">{selectedBinding.candidates.map((candidate, candidateIndex) => <CandidateEditor candidate={candidate} index={candidateIndex} key={`${candidate.resource.publicId}:${candidate.resource.id}:${candidateIndex}`} labels={labels} role={selectedSlot.role} onChange={(patch) => updateCandidate(selectedSlot, candidateIndex, patch)} onRemove={() => removeCandidate(selectedSlot, candidateIndex)} />)}</div>}
+        {!selectedBinding?.candidates.length ? <p className="rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">{labels.candidates}: 0</p> : <div className="grid gap-3">{selectedBinding.candidates.map((candidate, candidateIndex) => <CandidateEditor candidate={candidate} index={candidateIndex} key={`${candidate.resource.publicId}:${candidate.resource.id}:${candidateIndex}`} labels={labels} role={selectedSlot.role} onChange={(patch) => updateCandidate(selectedSlot, candidateIndex, patch)} onRemove={() => removeCandidate(selectedSlot, candidateIndex)} />)}</div>}
       </div>}
     </section>
 
@@ -365,7 +360,25 @@ export function RecipeEditor({
     {message ? <p className="rounded-lg border border-[var(--line)] p-3 text-sm font-bold" role="status">{message}</p> : null}
     <div className="flex flex-wrap justify-end gap-2">{onCancel ? <button className="button-secondary focus-ring" disabled={saving || deleting} type="button" onClick={onCancel}>{labels.cancel}</button> : null}{draft.publicId ? <button className="button-secondary focus-ring text-[var(--red)]" disabled={saving || deleting || pendingReview} type="button" onClick={() => void removeRecipe()}>{deleting ? labels.deleting : labels.delete}</button> : null}<button className="button-primary focus-ring" disabled={saving || deleting || pendingReview || validation.length > 0} type="button" onClick={() => void submit()}>{saving ? labels.saving : labels.save}</button></div>
 
-    {selectedSlot ? <ResourcePickerDialog labels={labels.resourcePicker} multiple open={pickerOpen} token={token} value={pickerValue} onClose={() => setPickerOpen(false)} onConfirm={(resources) => setResources(selectedSlot, resources)} /> : null}
+    {selectedSlot ? <ResourcePickerDialog
+      allowUnresolved
+      initialKind="minecraft.item"
+      labels={{
+        ...labels.resourcePicker,
+        notFound: labels.resourcePicker.notFound ?? "没有我寻找的物品？",
+        manualPrompt: labels.resourcePicker.manualPrompt ?? "请在这里填写物品 ID",
+        manualPlaceholder: labels.resourcePicker.manualPlaceholder ?? "namespace:item_id",
+        insert: labels.resourcePicker.insert ?? labels.chooseResources,
+      }}
+      multiple
+      open={pickerOpen}
+      token={token}
+      unresolvedKind="minecraft.item"
+      unresolvedRegistry="minecraft"
+      value={pickerValue}
+      onClose={() => setPickerOpen(false)}
+      onConfirm={(resources) => setResources(selectedSlot, resources)}
+    /> : null}
   </div>;
 }
 
@@ -374,6 +387,7 @@ function RecipeCanvasSlot({ slot, binding, canvas, selected, labels, onSelect }:
   const icon = catalogResourceIconURL(first?.iconUrl);
   const count = binding?.candidates.length ?? 0;
   return <button aria-label={`${slotRoleLabel(slot.role, labels)} ${slot.slotKey}`} className={`absolute overflow-visible border-2 bg-black/10 ${slotVisualClass(slot.role, selected)}`} style={{ left: `${slot.rect.x / canvas.canvas.width * 100}%`, top: `${slot.rect.y / canvas.canvas.height * 100}%`, width: `${slot.rect.width / canvas.canvas.width * 100}%`, height: `${slot.rect.height / canvas.canvas.height * 100}%`, backgroundImage: icon ? `url(${JSON.stringify(icon)})` : undefined, backgroundPosition: "center", backgroundRepeat: "no-repeat", backgroundSize: "contain" }} title={slot.slotKey} type="button" onClick={onSelect}>
+    {first?.unresolved ? <span className="grid h-full w-full place-items-center text-lg font-black text-black/60">?</span> : null}
     {count > 1 ? <span className="absolute -right-2 -top-2 z-20 rounded-full bg-black px-1.5 py-0.5 text-[9px] font-black leading-none text-white">+{count - 1}</span> : null}
   </button>;
 }
@@ -425,7 +439,9 @@ function recipeMutation(draft: RecipeRecord, template: RecipeTemplateRecord, ver
       return [slotKey, {
         definition: binding.definition,
         candidates: binding.candidates.map((candidate) => ({
-          resourcePublicId: candidate.resource.publicId,
+          ...(candidate.resource.unresolved
+            ? { rawResourceId: candidate.resource.rawIdentifier || candidate.resource.id, kindCode: candidate.resource.kind || "minecraft.item" }
+            : { resourcePublicId: candidate.resource.publicId }),
           amount: candidate.amount,
           ...(output && candidate.probability !== undefined ? { probability: candidate.probability } : {}),
           ...(output ? { byproduct: candidate.byproduct === true } : {}),
@@ -473,7 +489,6 @@ function hasRecipeLocalizedContent(fields: RecipeLocalizedFields) {
 function validateRecipe(
   draft: RecipeRecord,
   template: RecipeTemplateRecord | undefined,
-  definitionText: string,
   versions: LocalizationVersion<RecipeLocalizedFields>[],
   defaultLocale: Locale,
   labels: RecipeEditorLabels,
@@ -484,17 +499,13 @@ function validateRecipe(
   if (!draft.recipeTypePublicId) errors.push(`${labels.recipeType}: ${labels.required}`);
   if (!draft.templatePublicId || !template) errors.push(`${labels.template}: ${labels.required}`);
   if (!draft.canonicalSourceId.trim()) errors.push(`${labels.canonicalSourceId}: ${labels.required}`);
-  try {
-    const definition = JSON.parse(definitionText);
-    if (!definition || typeof definition !== "object" || Array.isArray(definition)) errors.push(labels.invalidDefinition);
-  } catch {
-    errors.push(labels.invalidDefinition);
-  }
   if (!template) return [...new Set(errors)];
-  if (!template.slots.some((slot) => slot.role === "output")) errors.push(labels.missingOutput);
+  const outputCandidates = template.slots
+    .filter((slot) => slot.role === "output")
+    .flatMap((slot) => draft.bindings[slot.slotKey]?.candidates ?? []);
+  if (!outputCandidates.length) errors.push(labels.missingOutput);
   for (const slot of template.slots) {
     const candidates = draft.bindings[slot.slotKey]?.candidates ?? [];
-    if (!candidates.length && slot.definition?.optional !== true) errors.push(`${labels.missingRequiredSlot}: ${slot.slotKey}`);
     for (const candidate of candidates) {
       if (!candidate.resource.publicId) errors.push(`${slot.slotKey}: ${labels.required}`);
       if (!Number.isFinite(candidate.amount) || candidate.amount <= 0) errors.push(`${slot.slotKey}: ${labels.invalidAmount}`);
@@ -529,10 +540,6 @@ function probabilityFromPercent(value: string) {
   if (!value.trim()) return undefined;
   const percent = Number(value);
   return Number.isFinite(percent) ? percent / 100 : Number.NaN;
-}
-
-function prettyJSON(value: Record<string, unknown>) {
-  return JSON.stringify(value, null, 2);
 }
 
 function round(value: number) {

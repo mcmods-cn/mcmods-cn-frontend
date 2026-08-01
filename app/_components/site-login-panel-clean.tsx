@@ -5,8 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { AuthResult, AuthUser, canAccessAdmin, cookieSessionToken, saveAuth } from "../_lib/auth";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
-import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
-import { useTheme } from "./theme-provider";
+import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 
 const reservedUsernames = new Set(["admin", "administrator", "root", "system", "mcmods"]);
 const usernamePattern = /^[\p{Script=Han}A-Za-z0-9_]+$/u;
@@ -21,8 +20,7 @@ const uiLanguages = supportedLocales.map((language) => language.code);
 export function SiteLoginPanelClean() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { t, locale, setLocale } = useI18n();
-  const { toggleTheme } = useTheme();
+  const { t } = useI18n();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [loginMethod, setLoginMethod] = useState<"password" | "emailCode">("password");
   const [account, setAccount] = useState("");
@@ -88,6 +86,7 @@ export function SiteLoginPanelClean() {
               body: JSON.stringify({
                 username,
                 email,
+                code: emailCode,
                 password,
                 displayName,
                 country,
@@ -115,7 +114,7 @@ export function SiteLoginPanelClean() {
     try {
       await apiRequest<{ sent: boolean; expiresInSeconds: number }>("/api/v1/auth/email-code", {
         method: "POST",
-        body: JSON.stringify({ email, purpose: "login" }),
+        body: JSON.stringify({ email, purpose: mode === "register" ? "register" : "login" }),
       });
       setMessage(t("login.emailCodeSent"));
     } catch (error) {
@@ -140,18 +139,10 @@ export function SiteLoginPanelClean() {
         </section>
 
         <section className="surface rounded-lg p-6 shadow-sm">
-          <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="mb-6">
             <div>
               <h2 className="text-2xl font-bold">{mode === "login" ? t("common.login") : t("common.register")}</h2>
               <p className="mt-1 text-sm text-[var(--muted)]">{t("login.accountPlaceholder")}</p>
-            </div>
-            <div className="flex gap-2">
-              <select className="field w-auto py-2" value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
-                {supportedLocales.map((item) => (
-                  <option key={item.code} value={item.code}>{item.label}</option>
-                ))}
-              </select>
-              <button className="button-secondary focus-ring" type="button" onClick={toggleTheme}>{t("common.toggleTheme")}</button>
             </div>
           </div>
 
@@ -186,6 +177,13 @@ export function SiteLoginPanelClean() {
               <>
                 <Field label={t("login.username")} value={username} onChange={setUsername} required />
                 <Field label={t("login.email")} value={email} onChange={setEmail} type="email" required />
+                <label className="block text-sm font-semibold">
+                  {t("login.code")}
+                  <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                    <input className="field" value={emailCode} onChange={(event) => setEmailCode(event.target.value)} inputMode="numeric" pattern="[0-9]{6}" required />
+                    <button className="button-secondary focus-ring" disabled={sendingCode} type="button" onClick={requestEmailCode}>{sendingCode ? t("login.sendingCode") : t("login.sendCode")}</button>
+                  </div>
+                </label>
                 <Field label={t("login.displayName")} value={displayName} onChange={setDisplayName} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label={t("login.country")} value={country} onChange={setCountry} />

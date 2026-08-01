@@ -14,30 +14,41 @@ import {
   loadModContentSections,
   loadModContentTemplates,
   modContentResourceAssetURL,
+	type ModContentEntryField,
+  type ModContentEntryType,
   type ModContentLocalization,
   type ModContentSection,
+  type ModContentTemplate,
   updateModContentResource,
 } from "../_lib/mod-content-api";
-import { modExportAssetURL } from "../_lib/mod-export-api";
+import { getModExportEntryDetail, minecraftLocale, modExportAssetURL } from "../_lib/mod-export-api";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { supportedLocales, type Locale, useI18n } from "../_lib/i18n-provider";
 import { ContentLanguageSwitcher, contentLanguageTabId } from "./editor/content-language-switcher";
 import { EditorShell } from "./editor/editor-shell";
+import { ResourcePickerDialog, type ResourcePageLoader } from "./editor/resource-picker-dialog";
 import { ToolsPlayground } from "./tools-playground";
+import type { CatalogResourceRef } from "../_lib/editor-types";
+import { loadGlobalTags } from "../_lib/global-catalog-api";
+import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
 
 type EditorMode = "create" | "edit";
-type LocalizedFields = { name: string; summary: string; contentMarkdown: string };
+type LocalizedFields = { name: string; contentMarkdown: string };
 type EditorLocalization = LocalizationVersion<LocalizedFields>;
-type DefinitionFieldKind = "number" | "text" | "boolean" | "list";
+type DefinitionFieldKind = "number" | "text" | "boolean" | "list" | "reference-list";
 type DefinitionPath = readonly string[];
 type DefinitionField = {
+  label?: string;
   labelKey: string;
   kind: DefinitionFieldKind;
   paths: readonly DefinitionPath[];
+  referenceKind?: "enchantment" | "tag";
 };
 type DefinitionGroup = {
+  description?: string;
   descriptionKey: string;
   fields: DefinitionField[];
+  title?: string;
   titleKey: string;
 };
 
@@ -64,15 +75,18 @@ export function ModContentResourceEditor({
   const [defaultLocale, setDefaultLocale] = useState<string>(initialLocale);
   const localizationPanelId = useId();
   const [localizations, setLocalizations] = useState<EditorLocalization[]>([emptyLocalization(initialLocale)]);
-  const [kindCodes, setKindCodes] = useState<string[]>([]);
   const [kindCode, setKindCode] = useState("");
+  const [template, setTemplate] = useState<ModContentTemplate>();
+  const [entryTypeCode, setEntryTypeCode] = useState("default");
   const [canonicalId, setCanonicalId] = useState("");
   const [definition, setDefinition] = useState<Record<string, unknown>>({});
+  const [importedDefinition, setImportedDefinition] = useState<Record<string, unknown>>({});
   const [activeVersionId, setActiveVersionId] = useState(versionId);
   const [rootSection, setRootSection] = useState<ModContentSection>();
   const [categories, setCategories] = useState<ModContentSection[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState(sectionId);
   const [publishedRevisionId, setPublishedRevisionId] = useState<string>();
+  const [iconSmallFilePublicId, setIconSmallFilePublicId] = useState("");
   const [iconFilePublicId, setIconFilePublicId] = useState("");
   const [renderFilePublicId, setRenderFilePublicId] = useState("");
   const [iconPreview, setIconPreview] = useState("");
@@ -80,6 +94,7 @@ export function ModContentResourceEditor({
   const [importedIconPreview, setImportedIconPreview] = useState("");
   const [importedRenderPreview, setImportedRenderPreview] = useState("");
   const [uploadingAsset, setUploadingAsset] = useState<"icon" | "render" | "">("");
+  const [cropRequest, setCropRequest] = useState<{ file: File }>();
   const [uploadingMarkdownAsset, setUploadingMarkdownAsset] = useState(false);
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(true);
@@ -138,22 +153,41 @@ export function ModContentResourceEditor({
           || "",
         );
 
-        const template = templates.find((item) => item.publicId === resolvedRoot?.templatePublicId);
-        const suggestedKinds = Array.isArray(template?.definition.resourceKinds)
-          ? template.definition.resourceKinds.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+        const resolvedTemplate = templates.find((item) => item.publicId === resolvedRoot?.templatePublicId);
+        setTemplate(resolvedTemplate);
+        const suggestedKinds = Array.isArray(resolvedTemplate?.definition.resourceKinds)
+          ? resolvedTemplate.definition.resourceKinds.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
           : [];
-        setKindCodes(suggestedKinds);
-
         if (resource && resourceDetail && resourceVersion) {
+          let sourceDefinition: Record<string, unknown> = {};
+          if (resourceVersion.revisionId) {
+            try {
+              const imported = await getModExportEntryDetail(
+                resourceVersion.revisionId,
+                resourceVersion.registry || registryForKind(resource.kindCode),
+                resource.publicId,
+                resource.canonicalId,
+                minecraftLocale(initialLocale),
+                requestToken,
+              );
+              sourceDefinition = cloneRecord(imported.data);
+            } catch {
+              // A manual resource can remain editable even if its historical import package is unavailable.
+            }
+          }
+          if (cancelled) return;
           setKindCode(resource.kindCode);
+          setEntryTypeCode(resourceDetail.entryTypeCode || inferredEntryTypeCode(resolvedTemplate?.definition.entryTypes, resource.kindCode));
           setCanonicalId(resource.canonicalId);
           setDefinition(cloneRecord(resourceDetail.definition));
+          setImportedDefinition(sourceDefinition);
           setDefaultLocale(normalizeContentLanguage(resourceDetail.defaultLocale) || initialLocale);
           setSelectedLocale(bestLocalizationLocale(resourceDetail.localizations, initialLocale, resourceDetail.defaultLocale));
           setLocalizations(resourceDetail.localizations.length
             ? resourceDetail.localizations.map(editorLocalization)
             : [emptyLocalization(asEditableLocale(resourceDetail.defaultLocale, initialLocale))]);
           setPublishedRevisionId(resourceDetail.publishedRevisionId);
+          setIconSmallFilePublicId(resourceDetail.iconSmallFilePublicId || "");
           const manualIconId = resourceDetail.iconFilePublicId || resourceVersion.iconFileId || "";
           const manualRenderId = resourceDetail.renderFilePublicId || resourceVersion.renderFileId || "";
           const importedIcon = resourceVersion.revisionId && resourceVersion.iconPath
@@ -173,10 +207,13 @@ export function ModContentResourceEditor({
             ? modContentResourceAssetURL(resourceId, resourceVersion.publicId, "render")
             : importedRender);
         } else {
-          setKindCode(suggestedKinds[0] || "");
+          const initialKind = suggestedKinds[0] || "";
+          setKindCode(initialKind);
+          setEntryTypeCode(inferredEntryTypeCode(resolvedTemplate?.definition.entryTypes, initialKind));
           setDefaultLocale(initialLocale);
           setSelectedLocale(initialLocale);
           setLocalizations([emptyLocalization(initialLocale)]);
+          setImportedDefinition({});
         }
       } catch (cause) {
         if (!cancelled) setError(errorText(cause));
@@ -195,16 +232,33 @@ export function ModContentResourceEditor({
   }, [renderPreview]);
 
   const fields = localizationFields(localizations, selectedLocale);
-  const definitionGroups = useMemo(() => groupsForKind(kindCode, definition), [definition, kindCode]);
+  const entryTypes = useMemo(
+    () => compatibleEntryTypes(template?.definition.entryTypes, kindCode),
+    [kindCode, template],
+  );
+  const selectedEntryType = entryTypes.find((item) => item.code === entryTypeCode)
+    || entryTypes[0];
+  const effectiveEntryTypeCode = selectedEntryType?.code || entryTypeCode;
+  const effectiveDefinition = useMemo(
+    () => mergeDefinitions(importedDefinition, definition),
+    [definition, importedDefinition],
+  );
+  const templateKindCodes = template?.definition.resourceKinds || [];
+  const definitionGroups = useMemo(
+    () => selectedEntryType
+      ? groupsForEntryType(selectedEntryType, locale)
+      : [],
+    [locale, selectedEntryType],
+  );
   const handleDefinitionChange = useCallback((value: Record<string, unknown>) => {
-    setDefinition(value);
+    setDefinition(definitionOverrides(importedDefinition, value));
     setDefinitionJSONError("");
     setInvalidDefinitionFields(new Set());
-  }, []);
+  }, [importedDefinition]);
   const handleStructuredDefinitionChange = useCallback((value: Record<string, unknown>) => {
-    setDefinition(value);
+    setDefinition(definitionOverrides(importedDefinition, value));
     setDefinitionJSONError("");
-  }, []);
+  }, [importedDefinition]);
   const handleDefinitionValidity = useCallback((valid: boolean) => {
     setDefinitionJSONError(valid ? "" : t("modContent.sectionActions.invalidJson"));
   }, [t]);
@@ -225,6 +279,7 @@ export function ModContentResourceEditor({
   const canSubmit = Boolean(
     token
     && kindCode.trim()
+    && effectiveEntryTypeCode.trim()
     && canonicalId.trim()
     && activeVersionId
     && selectedSectionId
@@ -247,8 +302,8 @@ export function ModContentResourceEditor({
     setLocalizations((current) => findLocalization(current, next) ? current : [...current, emptyLocalization(next)]);
   }
 
-  async function uploadAsset(assetKind: "icon" | "render", file: File) {
-    if (!token || uploadingAsset || busy) return;
+  function requestAssetUpload(assetKind: "icon" | "render", file: File) {
+    if (uploadingAsset || busy) return;
     if (!file.type.startsWith("image/")) {
       setError(t("resourceEditor.imageOnly"));
       return;
@@ -257,23 +312,56 @@ export function ModContentResourceEditor({
       setError(t("resourceEditor.imageTooLarge"));
       return;
     }
-    setUploadingAsset(assetKind);
     setError("");
+    if (assetKind === "render") {
+      if (file.type !== "image/png") {
+        setError(t("resourceEditor.renderPNGOnly"));
+        return;
+      }
+      void uploadRenderAsset(file);
+      return;
+    }
+    setCropRequest({ file });
+  }
+
+  async function uploadCroppedIcon(output: SquareCropOutput) {
+    if (!token || uploadingAsset || busy) return;
+    setUploadingAsset("icon");
+    setError("");
+    try {
+      const icon32 = output.files.get(32);
+      const icon128 = output.files.get(128);
+      if (!icon32 || !icon128) throw new Error(t("resourceEditor.cropFailed"));
+      const [smallUploaded, uploaded] = await Promise.all([
+        uploadUserFileToOSS(icon32, token, `mod_resource:${siteId}:${kindCode.trim() || "resource"}:icon_32`),
+        uploadUserFileToOSS(icon128, token, `mod_resource:${siteId}:${kindCode.trim() || "resource"}:icon_128`),
+      ]);
+      setIconSmallFilePublicId(smallUploaded.id);
+      setIconFilePublicId(uploaded.id);
+      setIconPreview(output.previewUrl);
+    } catch (cause) {
+      URL.revokeObjectURL(output.previewUrl);
+      setError(errorText(cause));
+    } finally {
+      setUploadingAsset("");
+    }
+  }
+
+  async function uploadRenderAsset(file: File) {
+    if (!token || uploadingAsset || busy) return;
+    setUploadingAsset("render");
+    setError("");
+    const previewURL = URL.createObjectURL(file);
     try {
       const uploaded = await uploadUserFileToOSS(
         file,
         token,
-        `mod_resource:${siteId}:${kindCode.trim() || "resource"}:${assetKind}`,
+        `mod_resource:${siteId}:${kindCode.trim() || "resource"}:render`,
       );
-      const preview = URL.createObjectURL(file);
-      if (assetKind === "icon") {
-        setIconFilePublicId(uploaded.id);
-        setIconPreview(preview);
-      } else {
-        setRenderFilePublicId(uploaded.id);
-        setRenderPreview(preview);
-      }
+      setRenderFilePublicId(uploaded.id);
+      setRenderPreview(previewURL);
     } catch (cause) {
+      URL.revokeObjectURL(previewURL);
       setError(errorText(cause));
     } finally {
       setUploadingAsset("");
@@ -294,8 +382,10 @@ export function ModContentResourceEditor({
         canonicalId: canonicalId.trim(),
         versionPublicId: activeVersionId,
         ...(selectedSectionId ? { sectionPublicId: selectedSectionId } : {}),
+        entryTypeCode: effectiveEntryTypeCode,
         defaultLocale,
         definition,
+        iconSmallFilePublicId,
         iconFilePublicId,
         renderFilePublicId,
         localizations: localizationPayload(localizations),
@@ -376,12 +466,25 @@ export function ModContentResourceEditor({
   >
     <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
       <h2 className="text-xl font-black">{t("catalogEditor.invariantFields")}</h2>
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid gap-4">
         <label className="grid gap-2 font-bold">
-          <span>{t("resourceEditor.kind")}</span>
-          {mode === "create" && kindCodes.length
-            ? <select className="field font-mono" value={kindCode} onChange={(event) => { setKindCode(event.target.value); setInvalidDefinitionFields(new Set()); }}>{kindCodes.map((item) => <option key={item} value={item}>{item}</option>)}</select>
-            : <input className="field font-mono" disabled={mode === "edit"} placeholder="minecraft.item" value={kindCode} onChange={(event) => { setKindCode(event.target.value); setInvalidDefinitionFields(new Set()); }} />}
+          <span>{t("resourceEditor.entryType")}</span>
+          <select className="field" value={selectedEntryType?.code || entryTypeCode} onChange={(event) => {
+            const nextCode = event.target.value;
+            const nextType = entryTypes.find((item) => item.code === nextCode);
+            const requiredKind = nextType?.kindCodes?.[0];
+            setEntryTypeCode(nextCode);
+            if (requiredKind && !nextType?.kindCodes?.includes(kindCode)) setKindCode(requiredKind);
+            setInvalidDefinitionFields(new Set());
+          }}>
+            {entryTypes.map((item) => <option key={item.code} value={item.code}>{localizedSchemaName(item.names, locale, item.code)}</option>)}
+          </select>
+          <small className="font-normal text-[var(--muted)]">{t("resourceEditor.identityKind")}: {localizedResourceKind(kindCode, locale)}</small>
+          {mode === "create" && !selectedEntryType?.kindCodes?.length && templateKindCodes.length > 1
+            ? <select aria-label={t("resourceEditor.identityKind")} className="field" value={kindCode} onChange={(event) => setKindCode(event.target.value)}>
+              {templateKindCodes.map((item) => <option key={item} value={item}>{localizedResourceKind(item, locale)}</option>)}
+            </select>
+            : null}
         </label>
         <label className="grid gap-2 font-bold">
           <span>{t("modContent.sectionActions.resourceId")}</span>
@@ -412,10 +515,6 @@ export function ModContentResourceEditor({
           <span>{t("modContent.sectionActions.name")}</span>
           <input className="field" value={fields.name} onChange={(event) => updateLocalization({ name: event.target.value })} />
         </label>
-        <label className="grid gap-2 font-bold">
-          <span>{t("modContent.sectionActions.summary")}</span>
-          <textarea className="field min-h-24" value={fields.summary} onChange={(event) => updateLocalization({ summary: event.target.value })} />
-        </label>
       </div>
       <div className="mt-5">
         <ToolsPlayground
@@ -438,6 +537,7 @@ export function ModContentResourceEditor({
       uploading={uploadingAsset}
       onClear={(assetKind) => {
         if (assetKind === "icon") {
+          setIconSmallFilePublicId("");
           setIconFilePublicId("");
           setIconPreview(importedIconPreview);
         } else {
@@ -445,21 +545,32 @@ export function ModContentResourceEditor({
           setRenderPreview(importedRenderPreview);
         }
       }}
-      onUpload={uploadAsset}
+      onUpload={requestAssetUpload}
     />
 
     {definitionGroups.map((group) => <DefinitionGroupEditor
-      definition={definition}
+      definition={effectiveDefinition}
       group={group}
       key={group.titleKey}
+      token={token}
       onChange={handleStructuredDefinitionChange}
       onValidityChange={handleDefinitionFieldValidity}
     />)}
 
     <DefinitionJSONEditor
-      definition={definition}
+      definition={effectiveDefinition}
       onChange={handleDefinitionChange}
       onValidityChange={handleDefinitionValidity}
+    />
+    <SquareImageCropDialog
+      file={cropRequest?.file}
+      minimumSize={128}
+      outputSizes={[32, 128]}
+      onCancel={() => setCropRequest(undefined)}
+      onConfirm={(output) => {
+        setCropRequest(undefined);
+        void uploadCroppedIcon(output);
+      }}
     />
   </EditorShell>;
 }
@@ -544,7 +655,7 @@ function AssetUploadCard({
         <label className={`button-secondary focus-ring cursor-pointer ${disabled ? "pointer-events-none opacity-60" : ""}`}>
           <span>{uploading ? t("resourceEditor.uploading") : t("resourceEditor.upload")}</span>
           <input
-            accept="image/png,image/webp,image/jpeg"
+            accept={kind === "render" ? "image/png" : "image/png,image/webp,image/jpeg"}
             className="sr-only"
             disabled={disabled}
             type="file"
@@ -564,24 +675,27 @@ function AssetUploadCard({
 function DefinitionGroupEditor({
   definition,
   group,
+  token,
   onChange,
   onValidityChange,
 }: {
   definition: Record<string, unknown>;
   group: DefinitionGroup;
+  token: string;
   onChange: (value: Record<string, unknown>) => void;
   onValidityChange: (fieldId: string, valid: boolean) => void;
 }) {
   const { t } = useI18n();
   return <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
-    <h2 className="text-xl font-black">{t(group.titleKey)}</h2>
-    <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t(group.descriptionKey)}</p>
+    <h2 className="text-xl font-black">{group.title || t(group.titleKey)}</h2>
+    {group.description || group.descriptionKey ? <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{group.description || t(group.descriptionKey)}</p> : null}
     <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {group.fields.map((field) => <DefinitionFieldEditor
         definition={definition}
         field={field}
         fieldId={`${group.titleKey}:${field.labelKey}`}
         key={`${group.titleKey}:${field.labelKey}`}
+        token={token}
         onChange={onChange}
         onValidityChange={onValidityChange}
       />)}
@@ -638,12 +752,14 @@ function DefinitionFieldEditor({
   definition,
   field,
   fieldId,
+  token,
   onChange,
   onValidityChange,
 }: {
   definition: Record<string, unknown>;
   field: DefinitionField;
   fieldId: string;
+  token: string;
   onChange: (value: Record<string, unknown>) => void;
   onValidityChange: (fieldId: string, valid: boolean) => void;
 }) {
@@ -654,12 +770,23 @@ function DefinitionFieldEditor({
     ? Array.isArray(value) ? value.join(", ") : typeof value === "string" ? value : ""
     : value === undefined || value === null ? "" : String(value);
   const [draftState, setDraftState] = useState({ external: text, value: text });
+  if (field.kind === "reference-list" && field.referenceKind) {
+    return <ReferenceListFieldEditor
+      definition={definition}
+      field={field}
+      path={path}
+      token={token}
+      values={Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []}
+      onChange={onChange}
+      onValidityChange={() => onValidityChange(fieldId, true)}
+    />;
+  }
   const draft = draftState.external === text ? draftState.value : text;
   const numberInvalid = field.kind === "number" && draft.trim() !== "" && !Number.isFinite(Number(draft));
   if (field.kind === "boolean") {
     const normalized = typeof value === "boolean" ? String(value) : "";
     return <label className="grid gap-2 text-sm font-bold">
-      <span>{t(field.labelKey)}</span>
+      <span>{field.label || t(field.labelKey)}</span>
       <select className="field" value={normalized} onChange={(event) => {
         onValidityChange(fieldId, true);
         onChange(setDefinitionValue(definition, path, event.target.value === "" ? undefined : event.target.value === "true"));
@@ -671,7 +798,7 @@ function DefinitionFieldEditor({
     </label>;
   }
   return <label className="grid gap-2 text-sm font-bold">
-    <span>{t(field.labelKey)}</span>
+    <span>{field.label || t(field.labelKey)}</span>
     <input
       aria-invalid={numberInvalid}
       className="field"
@@ -711,6 +838,106 @@ function DefinitionFieldEditor({
     />
     {numberInvalid ? <small className="font-medium text-[var(--red)]">{t("resourceEditor.invalidNumber")}</small> : null}
   </label>;
+}
+
+function ReferenceListFieldEditor({
+  definition,
+  field,
+  path,
+  token,
+  values,
+  onChange,
+  onValidityChange,
+}: {
+  definition: Record<string, unknown>;
+  field: DefinitionField;
+  path: DefinitionPath;
+  token: string;
+  values: string[];
+  onChange: (value: Record<string, unknown>) => void;
+  onValidityChange: () => void;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const tagPicker = field.referenceKind === "tag";
+  const kind = tagPicker ? "tag" : "minecraft.enchantment";
+  const pickerValue = values.map((identifier): CatalogResourceRef => ({
+    publicId: `unresolved:${kind}:${identifier.toLowerCase()}`,
+    id: identifier,
+    registry: tagPicker ? "minecraft:item" : namespaceFromIdentifier(identifier),
+    kind,
+    names: {},
+    unresolved: true,
+    rawIdentifier: identifier,
+  }));
+  const label = field.label || t(field.labelKey);
+
+  function confirm(resources: CatalogResourceRef[]) {
+    const identifiers = [...new Set(resources.map((resource) => resource.rawIdentifier || resource.id).map((item) => item.trim()).filter(Boolean))];
+    onValidityChange();
+    onChange(setDefinitionValue(definition, path, identifiers.length ? identifiers : undefined));
+    setOpen(false);
+  }
+
+  return <div className="grid gap-2 text-sm font-bold">
+    <span>{label}</span>
+    <button className="field focus-ring flex min-h-11 items-center justify-between gap-3 text-left" type="button" onClick={() => setOpen(true)}>
+      <span className="truncate">{values.length ? values.join(", ") : t("resourceEditor.unset")}</span>
+      <span className="shrink-0 text-[var(--accent)]">{t("common.select")}</span>
+    </button>
+    <ResourcePickerDialog
+      allowUnresolved
+      initialKind={tagPicker ? "" : "minecraft.enchantment"}
+      loadPage={tagPicker ? loadTagPickerPage : undefined}
+      multiple
+      open={open}
+      token={token}
+      unresolvedKind={kind}
+      unresolvedRegistry={tagPicker ? "minecraft:item" : "minecraft"}
+      value={pickerValue}
+      labels={{
+        title: label,
+        description: t(tagPicker ? "resourceEditor.referencePicker.tagDescription" : "resourceEditor.referencePicker.enchantmentDescription"),
+        searchPlaceholder: t("common.search"),
+        empty: t("resourceEditor.referencePicker.empty"),
+        selected: t("resourceEditor.referencePicker.selected"),
+        notFound: t(tagPicker ? "resourceEditor.referencePicker.tagNotFound" : "resourceEditor.referencePicker.enchantmentNotFound"),
+        manualPrompt: t(tagPicker ? "resourceEditor.referencePicker.tagPrompt" : "resourceEditor.referencePicker.enchantmentPrompt"),
+        manualPlaceholder: tagPicker ? "minecraft:tag_name" : "namespace:enchantment_id",
+        insert: t("resourceEditor.referencePicker.insert"),
+      }}
+      onClose={() => setOpen(false)}
+      onConfirm={confirm}
+    />
+  </div>;
+}
+
+const loadTagPickerPage: ResourcePageLoader = async (options, token) => {
+  const query = new URLSearchParams({
+    limit: String(options.limit),
+    offset: String(options.offset),
+  });
+  if (options.query) query.set("q", options.query);
+  const page = await loadGlobalTags(query, token);
+  return {
+    total: page.total,
+    limit: page.limit,
+    offset: page.offset,
+    items: page.items.map((tag): CatalogResourceRef => ({
+      publicId: tag.publicId,
+      id: tag.tagId,
+      registry: tag.registry,
+      kind: "tag",
+      names: tag.name ? { "zh-CN": tag.name } : {},
+      resolvedName: tag.name,
+      iconUrl: tag.previews[0]?.iconUrl,
+    })),
+  };
+};
+
+function namespaceFromIdentifier(identifier: string) {
+  const separator = identifier.indexOf(":");
+  return separator > 0 ? identifier.slice(0, separator) : "";
 }
 
 function EditorAside({
@@ -762,62 +989,83 @@ function EditorGate({ text, login = false }: { text: string; login?: boolean }) 
   </main>;
 }
 
-function groupsForKind(kindCode: string, definition: Record<string, unknown>): DefinitionGroup[] {
-  const normalized = kindCode.toLowerCase();
-  const groups: DefinitionGroup[] = [];
-  if (normalized.includes("block") || hasAnyDefinitionPath(definition, blockFields.flatMap((field) => field.paths))) {
-    groups.push({ titleKey: "resourceEditor.physicalTitle", descriptionKey: "resourceEditor.physicalDescription", fields: blockFields });
-  }
-  if (normalized.includes("item") || normalized.includes("tool") || hasAnyDefinitionPath(definition, itemFields.flatMap((field) => field.paths))) {
-    groups.push({ titleKey: "resourceEditor.toolTitle", descriptionKey: "resourceEditor.toolDescription", fields: itemFields });
-  }
-  if (normalized.includes("fluid") || normalized.includes("gas") || normalized.includes("chemical") || hasAnyDefinitionPath(definition, fluidFields.flatMap((field) => field.paths))) {
-    groups.push({ titleKey: normalized.includes("fluid") ? "resourceEditor.fluidTitle" : "resourceEditor.chemicalTitle", descriptionKey: normalized.includes("fluid") ? "resourceEditor.fluidDescription" : "resourceEditor.chemicalDescription", fields: fluidFields });
-  }
-  if (normalized.includes("entity") || hasAnyDefinitionPath(definition, entityFields.flatMap((field) => field.paths))) {
-    groups.push({ titleKey: "mods.exportImport.entry.entityProperties.title", descriptionKey: "resourceEditor.physicalDescription", fields: entityFields });
-  }
-  return groups;
+function compatibleEntryTypes(entryTypes: ModContentEntryType[] | undefined, kindCode: string) {
+  const values = Array.isArray(entryTypes) && entryTypes.length
+    ? entryTypes
+    : [{ code: "default", names: { "en-US": "Default", "zh-CN": "默认", "zh-TW": "預設" }, groups: [] }];
+  return values.filter((item) => !item.kindCodes?.length || item.kindCodes.some((kind) => kind.toLowerCase() === kindCode.toLowerCase()));
 }
 
-const blockFields: DefinitionField[] = [
-  { labelKey: "resourceEditor.hardness", kind: "number", paths: [["hardness"], ["physical", "hardness"]] },
-  { labelKey: "resourceEditor.explosionResistance", kind: "number", paths: [["explosion_resistance"], ["blast_resistance"], ["physical", "blastResistance"]] },
-  { labelKey: "resourceEditor.friction", kind: "number", paths: [["friction"], ["physical", "friction"]] },
-  { labelKey: "resourceEditor.speedFactor", kind: "number", paths: [["speed_factor"], ["physical", "speedFactor"]] },
-  { labelKey: "resourceEditor.jumpFactor", kind: "number", paths: [["jump_factor"], ["physical", "jumpFactor"]] },
-  { labelKey: "resourceEditor.lightLevel", kind: "number", paths: [["light_emission"], ["light_level"], ["physical", "lightLevel"]] },
-  { labelKey: "resourceEditor.requiresCorrectTool", kind: "boolean", paths: [["requires_correct_tool"], ["physical", "requiresCorrectTool"]] },
-  { labelKey: "mods.exportImport.entry.blockProperties.preferredTools", kind: "list", paths: [["preferred_tools"], ["physical", "preferredTools"]] },
-];
+function inferredEntryTypeCode(entryTypes: ModContentEntryType[] | undefined, kindCode: string) {
+  const compatible = compatibleEntryTypes(entryTypes, kindCode);
+  const explicit = compatible.find((item) => item.code !== "default" && item.kindCodes?.some((kind) => kind.toLowerCase() === kindCode.toLowerCase()));
+  const specific = compatible.filter((item) => item.code !== "default");
+  return explicit?.code
+    || (specific.length === 1 ? specific[0].code : "")
+    || compatible.find((item) => item.code === "default")?.code
+    || compatible[0]?.code
+    || "default";
+}
 
-const itemFields: DefinitionField[] = [
-  { labelKey: "mods.exportImport.entry.toolProperties.maxDamage", kind: "number", paths: [["max_damage"], ["durability", "max_damage"], ["tool", "durability"]] },
-  { labelKey: "mods.exportImport.entry.toolProperties.maxStackSize", kind: "number", paths: [["max_stack_size"], ["stack_size"]] },
-  { labelKey: "resourceEditor.miningSpeed", kind: "number", paths: [["tool", "tier", "mining_speed"], ["tool", "mining_speed"], ["mining_speed"]] },
-  { labelKey: "resourceEditor.attackDamage", kind: "number", paths: [["combat", "attack_damage"], ["tool", "attack_damage"], ["attack_damage"]] },
-  { labelKey: "resourceEditor.attackSpeed", kind: "number", paths: [["combat", "attack_speed"], ["tool", "attack_speed"], ["attack_speed"]] },
-  { labelKey: "resourceEditor.enchantability", kind: "number", paths: [["enchanting", "enchantment_value"], ["tool", "tier", "enchantment_value"], ["enchantment_value"]] },
-  { labelKey: "resourceEditor.harvestLevel", kind: "number", paths: [["tool", "tier", "mining_level"], ["tool", "mining_level"], ["required_mining_level"]] },
-  { labelKey: "resourceEditor.repairTag", kind: "text", paths: [["tool", "repair_tag"], ["repair_tag"]] },
-];
+function groupsForEntryType(entryType: ModContentEntryType, locale: string): DefinitionGroup[] {
+  return entryType.groups.map((group) => ({
+    title: localizedSchemaName(group.names, locale, group.code),
+    titleKey: `entry-type:${entryType.code}:${group.code}`,
+    description: localizedSchemaName(group.descriptions || {}, locale, ""),
+    descriptionKey: "",
+    fields: group.fields.filter(isEditablePrimitiveEntryField).map((field) => ({
+      label: localizedSchemaName(field.names, locale, field.code),
+      labelKey: `entry-field:${entryType.code}:${group.code}:${field.code}`,
+      kind: field.type,
+	  // Database documents use stable field codes. paths are importer aliases.
+	  paths: [[field.code]],
+      referenceKind: field.referenceKind,
+    })),
+  }));
+}
 
-const fluidFields: DefinitionField[] = [
-  { labelKey: "resourceEditor.density", kind: "number", paths: [["density"], ["fluid", "density"], ["chemical", "density"]] },
-  { labelKey: "resourceEditor.temperature", kind: "number", paths: [["temperature"], ["fluid", "temperature"], ["chemical", "temperature"]] },
-  { labelKey: "resourceEditor.viscosity", kind: "number", paths: [["viscosity"], ["fluid", "viscosity"], ["chemical", "viscosity"]] },
-  { labelKey: "resourceEditor.luminosity", kind: "number", paths: [["luminosity"], ["fluid", "luminosity"], ["chemical", "luminosity"]] },
-  { labelKey: "resourceEditor.gaseous", kind: "boolean", paths: [["gaseous"], ["chemical", "gaseous"]] },
-];
+function isEditablePrimitiveEntryField(field: ModContentEntryField): field is ModContentEntryField & { type: DefinitionFieldKind } {
+  return field.editable !== false && field.type !== "json";
+}
 
-const entityFields: DefinitionField[] = [
-  { labelKey: "mods.exportImport.entry.entityProperties.maxHealth", kind: "number", paths: [["max_health"], ["attributes", "max_health"]] },
-  { labelKey: "mods.exportImport.entry.entityProperties.armorValue", kind: "number", paths: [["armor_value"], ["attributes", "armor"]] },
-  { labelKey: "mods.exportImport.entry.entityProperties.width", kind: "number", paths: [["width"], ["dimensions", "width"]] },
-  { labelKey: "mods.exportImport.entry.entityProperties.height", kind: "number", paths: [["height"], ["dimensions", "height"]] },
-  { labelKey: "mods.exportImport.entry.entityProperties.eyeHeight", kind: "number", paths: [["eye_height"], ["dimensions", "eye_height"]] },
-  { labelKey: "mods.exportImport.entry.entityProperties.fireImmune", kind: "boolean", paths: [["fire_immune"], ["properties", "fire_immune"]] },
-];
+function registryForKind(kindCode: string) {
+  const normalized = kindCode.toLowerCase();
+  if (normalized.includes("block")) return "blocks";
+  if (normalized.includes("entity")) return "entity_types";
+  if (normalized.includes("enchantment")) return "enchantments";
+  if (normalized.includes("mob_effect") || normalized.includes("effect")) return "mob_effects";
+  if (normalized.includes("potion")) return "potions";
+  if (normalized.includes("fluid")) return "fluids";
+  return "items";
+}
+
+function localizedSchemaName(names: Record<string, string>, locale: string, fallback: string) {
+  const normalized = normalizeContentLanguage(locale);
+  return names[locale]
+    || names[normalized]
+    || names[normalized === "zh-CN" ? "zh-TW" : normalized === "zh-TW" ? "zh-CN" : ""]
+    || names["en-US"]
+    || Object.values(names).find(Boolean)
+    || fallback;
+}
+
+function localizedResourceKind(kindCode: string, locale: string) {
+  const chineseTraditional = normalizeContentLanguage(locale) === "zh-TW";
+  const labels: Record<string, [string, string, string]> = {
+    "minecraft.block": ["Block resource", "方块资源", "方塊資源"],
+    "minecraft.item": ["Item resource", "物品资源", "物品資源"],
+    "minecraft.fluid": ["Fluid resource", "流体资源", "流體資源"],
+    "minecraft.entity_type": ["Entity resource", "生物资源", "生物資源"],
+    "minecraft.enchantment": ["Enchantment resource", "附魔资源", "附魔資源"],
+    "minecraft.mob_effect": ["Potion-effect resource", "药水效果资源", "藥水效果資源"],
+    "minecraft.potion": ["Potion resource", "药水资源", "藥水資源"],
+    "mod.skill": ["Skill resource", "技能资源", "技能資源"],
+  };
+  const label = labels[kindCode];
+  if (!label) return kindCode;
+  if (normalizeContentLanguage(locale).startsWith("zh")) return label[chineseTraditional ? 2 : 1];
+  return label[0];
+}
 
 function editorLocalization(value: ModContentLocalization & { provenance?: string }): EditorLocalization {
   const provenance = value.provenance === "ai" || value.provenance === "human_corrected" || value.provenance === "import"
@@ -825,7 +1073,7 @@ function editorLocalization(value: ModContentLocalization & { provenance?: strin
     : "human";
   return {
     locale: normalizeContentLanguage(value.locale),
-    fields: { name: value.name, summary: value.summary, contentMarkdown: value.contentMarkdown },
+    fields: { name: value.name, contentMarkdown: value.contentMarkdown },
     provenance,
     reviewStatus: "approved",
     editable: true,
@@ -833,7 +1081,7 @@ function editorLocalization(value: ModContentLocalization & { provenance?: strin
 }
 
 function emptyLocalization(locale: Locale): EditorLocalization {
-  return { locale, fields: { name: "", summary: "", contentMarkdown: "" }, provenance: "human", reviewStatus: "draft", editable: true };
+  return { locale, fields: { name: "", contentMarkdown: "" }, provenance: "human", reviewStatus: "draft", editable: true };
 }
 
 function findLocalization(values: EditorLocalization[], locale: string) {
@@ -842,7 +1090,7 @@ function findLocalization(values: EditorLocalization[], locale: string) {
 }
 
 function localizationFields(values: EditorLocalization[], locale: string): LocalizedFields {
-  return findLocalization(values, locale)?.fields || { name: "", summary: "", contentMarkdown: "" };
+  return findLocalization(values, locale)?.fields || { name: "", contentMarkdown: "" };
 }
 
 function upsertLocalization(values: EditorLocalization[], locale: Locale, patch: Partial<LocalizedFields>) {
@@ -860,11 +1108,11 @@ function upsertLocalization(values: EditorLocalization[], locale: Locale, patch:
 
 function localizationPayload(values: EditorLocalization[]): ModContentLocalization[] {
   return values
-    .filter((item) => item.fields.name.trim() || item.fields.summary.trim() || item.fields.contentMarkdown.trim())
+    .filter((item) => item.fields.name.trim() || item.fields.contentMarkdown.trim())
     .map((item) => ({
       locale: normalizeContentLanguage(item.locale),
       name: item.fields.name.trim(),
-      summary: item.fields.summary.trim(),
+      summary: "",
       contentMarkdown: item.fields.contentMarkdown,
     }));
 }
@@ -961,8 +1209,56 @@ function cloneRecord(value: unknown): Record<string, unknown> {
   return structuredClone(value as Record<string, unknown>);
 }
 
-function hasAnyDefinitionPath(source: Record<string, unknown>, paths: DefinitionPath[]) {
-  return paths.some((path) => valueAtPath(source, path) !== undefined);
+function mergeDefinitions(base: Record<string, unknown>, overrides: Record<string, unknown>) {
+  const result = cloneRecord(base);
+  for (const [key, value] of Object.entries(overrides)) {
+    const current = result[key];
+    result[key] = isRecord(current) && isRecord(value)
+      ? mergeDefinitions(current, value)
+      : structuredClone(value);
+  }
+  return result;
+}
+
+function definitionOverrides(base: Record<string, unknown>, effective: Record<string, unknown>) {
+  const difference = definitionDifference(base, effective);
+  return isRecord(difference) ? difference : {};
+}
+
+const unchangedDefinition = Symbol("unchanged-definition");
+
+function definitionDifference(base: unknown, effective: unknown): unknown | typeof unchangedDefinition {
+  if (isRecord(base) && isRecord(effective)) {
+    const result: Record<string, unknown> = {};
+    for (const key of new Set([...Object.keys(base), ...Object.keys(effective)])) {
+      if (!(key in effective)) {
+        result[key] = null;
+        continue;
+      }
+      const difference = definitionDifference(base[key], effective[key]);
+      if (difference !== unchangedDefinition) result[key] = difference;
+    }
+    return Object.keys(result).length ? result : unchangedDefinition;
+  }
+  return definitionsEqual(base, effective) ? unchangedDefinition : structuredClone(effective);
+}
+
+function definitionsEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((value, index) => definitionsEqual(value, right[index]));
+  }
+  if (isRecord(left) && isRecord(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    return leftKeys.length === rightKeys.length
+      && leftKeys.every((key) => key in right && definitionsEqual(left[key], right[key]));
+  }
+  return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function uniqueList(value: string) {

@@ -2,6 +2,7 @@
 const zhTW = {
   ...zhCN,
   common: { ...zhCN.common, home: "首頁", login: "登入", register: "註冊", logout: "登出", admin: "後台", save: "儲存", delete: "刪除", language: "語言" },
+  nav: { ...zhCN.nav, plugins: "插件", skins: "皮膚" },
   home: { ...zhCN.home, title: "資源導覽" },
   skins: { ...zhCN.skins, title: "造型庫", subtitle: "瀏覽、收藏並套用社群皮膚與披風，也可透過第三方啟動器登入玩家檔案。", upload: "上傳造型", kindSkin: "皮膚", kindCape: "披風", playerProfiles: "玩家檔案", wardrobe: "我的衣櫃", launcherLogin: "第三方啟動器登入", saveProfile: "儲存檔案", deleteProfile: "刪除玩家檔案", visibilityPublic: "公開", visibilityUnlisted: "不公開列出", visibilityPrivate: "僅自己可見", copyAddress: "複製", copied: "已複製" },
   assetEditor: { ...zhCN.assetEditor, back: "返回詳情", skinTitle: "編輯皮膚", blueprintTitle: "編輯藍圖", submit: "提交編輯", name: "名稱", introduction: "介紹", tags: "標籤", visibility: "可見性", visibilityPublic: "公開", visibilityUnlisted: "不列出", visibilityPrivate: "私密", armModel: "手臂模型", modelClassic: "經典", modelSlim: "纖細", reason: "修改說明", loginRequired: "請先登入後再編輯。", submitted: "已提交；需要審核的語言版本會在審核通過後發佈。", saveFailed: "儲存失敗。", loadFailed: "讀取編輯資料失敗。", defaultReason: "編輯本地化內容" },
@@ -14,8 +15,8 @@ const zhTW = {
     search: "搜尋資源", searchPlaceholder: "本地化名稱或資源 ID", allKinds: "全部類型", allRegistries: "全部命名空間", empty: "找不到符合條件的資源。", globalResource: "全域資源",
     create: "新增資源", edit: "編輯資源", back: "返回資源目錄", description: "維護資源的固定識別、多語言內容、私有 OSS 圖片與結構化遊戲屬性。每次提交都會接入審核與使用者行為記錄。",
     validationRequired: "請填寫資源類型、規範 ID，並在預設內容語言中填寫本地化名稱。", archiveConfirm: "確定封存此資源嗎？刪除修改審核通過後，它將從公開目錄中隱藏。", imageOnly: "圖示或渲染預覽只能選擇圖片檔案。", uploadFailed: "圖片上傳失敗，請重試。",
-    kind: "資源類型", ownerMod: "所屬模組站內 ID", ownerModPlaceholder: "選填，例如 create", assetsTitle: "資源圖片", assetsDescription: "瀏覽器會將圖片直接上傳到私有 OSS，儲存的檔案 ID 將與本次資源修訂一起進入審核。",
-    icon: "圖示", render: "渲染圖", iconEmpty: "尚未上傳圖示", renderEmpty: "尚未上傳渲染圖", upload: "上傳圖片", uploading: "正在上傳…", assetRecords: "已綁定檔案記錄", iconFileId: "圖示檔案 ID", renderFileId: "渲染圖檔案 ID",
+    kind: "資源類型", entryType: "資料分類", identityKind: "底層資源類型", ownerMod: "所屬模組站內 ID", ownerModPlaceholder: "選填，例如 create", assetsTitle: "資源圖片", assetsDescription: "圖示繼續使用正方形遮罩裁切，並產生支援透明背景的 32×32 與 128×128 PNG。渲染圖不裁切、不限制比例和最小尺寸；僅當最長邊超過 1024 像素時等比例縮小至 1024 像素，再存入私有 OSS。",
+    icon: "圖示", render: "渲染圖", iconEmpty: "尚未上傳圖示", renderEmpty: "尚未上傳渲染圖", renderPNGOnly: "渲染圖必須使用 PNG 格式。", upload: "上傳圖片", uploading: "正在上傳…", cropTitle: "裁切正方形圖片", cropDescription: "拖曳亮起的正方形區域選擇保留內容；半透明區域不會出現在最終圖片中。", cropHint: "原圖寬高均不得低於 {size}px。最終檔案統一儲存為支援透明背景的 PNG。", cropTooSmall: "原圖寬和高均不得低於 {size}px。", cropInvalid: "無法讀取這張圖片，請選擇有效的圖片檔案。", cropFailed: "圖片裁切或 PNG 處理失敗，請重試。", cropConfirm: "確認裁切並上傳", processing: "正在處理…", assetRecords: "已綁定檔案記錄", iconFileId: "圖示檔案 ID", renderFileId: "渲染圖檔案 ID",
     physicalTitle: "方塊與物理屬性", physicalDescription: "可人工編輯方塊及其他世界資源的物理行為。", hardness: "硬度", explosionResistance: "爆炸抗性", friction: "摩擦係數", speedFactor: "移動速度係數", jumpFactor: "跳躍係數", lightLevel: "亮度等級", requiresCorrectTool: "需要正確工具", randomTicks: "接收隨機刻", replaceable: "可被替換", air: "視為空氣",
     toolTitle: "工具屬性", toolDescription: "可編輯挖掘、戰鬥、耐久、等級、修復材料與附魔屬性。", toolType: "工具類型", tier: "工具等級", repairTag: "修復材料 Tag", durability: "耐久度", miningSpeed: "挖掘速度", attackDamage: "攻擊傷害", attackSpeed: "攻擊速度", enchantability: "附魔能力", harvestLevel: "挖掘等級",
     renderTitle: "渲染屬性", renderDescription: "獨立於上傳的預覽圖，維護渲染器、模型與變換參數。", renderMode: "渲染模式", unset: "未設定", model: "模型", modelResourceId: "模型資源 ID", renderer: "渲染器 ID", scale: "縮放", rotation: "旋轉（X/Y/Z）", translation: "平移（X/Y/Z）",

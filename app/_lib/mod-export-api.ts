@@ -48,24 +48,12 @@ export type ModExportRevision = {
   createdAt: string;
 };
 
-export type ModExportRegistryEntry = {
-  entityId: string;
-  publicId: string;
-  id: string;
-  registry: string;
-  namespace: string;
-  path: string;
-  translationKey: string;
-  iconPath: string;
-  previewPath: string;
-  names: Record<string, string>;
-  data: Record<string, unknown>;
-};
-
 export type ModExportEntryDetail = {
   entityId: string;
   publicId: string;
   data: Record<string, unknown>;
+  entryTypeCode: string;
+  definitionSchemaVersion: number;
   name: string;
   summary: string;
   contentMarkdown: string;

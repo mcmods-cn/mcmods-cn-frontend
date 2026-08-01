@@ -28,16 +28,6 @@ const definitions: ReadonlyArray<Omit<ModExportCategory, "count">> = [
 // They are implementation data, not standalone documentation categories.
 const internalRegistries = new Set(["block_entity_types", "creative_tabs", "ingredients", "menu_types", "worldgen_data"]);
 
-const legacyCategoryAliases: Readonly<Record<string, string>> = {
-  "registry:advancements": "achievements",
-  "registry:biomes": "biomes",
-  "registry:dimensions": "dimensions",
-  "registry:key_mappings": "keybinds",
-  "registry:loot_tables": "lootTables",
-  "registry:natural_generation": "naturalGeneration",
-  "registry:world_structures": "worldStructures",
-};
-
 export function modExportCategories(revision?: ModExportRevision): ModExportCategory[] {
   if (!revision) return [];
   const claimed = new Set<string>();
@@ -60,11 +50,6 @@ export function modExportCategories(revision?: ModExportRevision): ModExportCate
     }
   }
   return result;
-}
-
-export function findModExportCategory(revision: ModExportRevision | undefined, key: string) {
-  const canonicalKey = legacyCategoryAliases[key] ?? key;
-  return modExportCategories(revision).find((category) => category.key === canonicalKey);
 }
 
 export function modExportCategoryTitle(category: ModExportCategory, t: (key: string, values?: Record<string, string | number>) => string) {

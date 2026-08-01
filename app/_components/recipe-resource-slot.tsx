@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { FloatingTooltip } from "./floating-tooltip";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -33,7 +34,6 @@ export function recipeSlotPresentation(slot: UnknownRecord, alternative: Unknown
 }
 
 export function RecipeResourceVisual({
-  canvasWidth,
   fallback,
   name,
   presentation,
@@ -41,7 +41,6 @@ export function RecipeResourceVisual({
   showVisual,
   src,
 }: {
-  canvasWidth: number;
   fallback: string;
   name: string;
   presentation: RecipeSlotPresentation;
@@ -49,10 +48,8 @@ export function RecipeResourceVisual({
   showVisual: boolean;
   src: string;
 }) {
-  const { height, left, width } = presentation.style;
-  const tooltipPosition = left < 96 ? "left-0" : canvasWidth - left - width < 96 ? "right-0" : "left-1/2 -translate-x-1/2";
-  return <>
-    {showVisual ? src ? presentation.tank
+  const { height, width } = presentation.style;
+  const visual = showVisual ? src ? presentation.tank
       ? <span aria-label={name} className="block h-full w-full [image-rendering:pixelated]" role="img" style={{
         backgroundImage: `url(${JSON.stringify(src)})`,
         backgroundPosition: "left bottom",
@@ -61,12 +58,16 @@ export function RecipeResourceVisual({
       }} />
       : <Image unoptimized alt={name} className="h-full w-full object-contain [image-rendering:pixelated]" height={Math.max(1, Math.round(height))} width={Math.max(1, Math.round(width))} src={src} />
       : <span className="grid h-full w-full place-items-center text-[10px] font-black">{fallback}</span>
-      : null}
-    {resourceId ? <span className={`pointer-events-none absolute top-full z-50 mt-1 hidden min-w-28 max-w-52 whitespace-nowrap rounded border border-white/15 bg-[#171717]/95 px-2 py-1 text-left text-white shadow-lg group-hover:block group-focus-visible:block group-focus-within:block ${tooltipPosition}`} role="tooltip">
+      : null;
+  if (!resourceId) return visual;
+  return (
+    <FloatingTooltip content={<>
       <strong className="block max-w-48 truncate text-[11px] font-bold leading-4">{name || resourceId}</strong>
       <code className="block max-w-48 truncate text-[9px] leading-3 text-white/70">{resourceId}</code>
-    </span> : null}
-  </>;
+    </>}>
+      {visual}
+    </FloatingTooltip>
+  );
 }
 
 function record(value: unknown): UnknownRecord {

@@ -26,6 +26,8 @@ import {
   TaskManagementPanel,
 } from "./admin-community-panels";
 import { MinecraftVersionConfigPanel, ModReviewQueuePanel } from "./admin-mod-panels";
+import { ServerReviewQueuePanel, ServerSettingsPanel } from "./admin-server-panels";
+import { AdminUnresolvedReferences } from "./admin-unresolved-references";
 import { useTheme } from "./theme-provider";
 
 type PanelId =
@@ -45,7 +47,9 @@ type PanelId =
   | "users"
   | "reviews-content"
   | "reviews-editor"
+  | "reviews-server"
   | "review-settings"
+  | "server-settings"
   | "notifications"
   | "notification-templates"
   | "mail"
@@ -55,6 +59,7 @@ type PanelId =
   | "profile-settings"
   | "minecraft-versions"
   | "mod-import-settings"
+  | "unresolved-references"
   | "nats"
   | "oss-config"
   | "oss-files"
@@ -395,14 +400,19 @@ const adminNavGroups: Array<{
     items: [
       { id: "reviews-content", label: "", description: "" },
       { id: "reviews-editor", label: "", description: "" },
+      { id: "reviews-server", label: "", description: "" },
       { id: "creator-claims", label: "", description: "" },
       { id: "review-settings", label: "", description: "" },
+      { id: "server-settings", label: "", description: "" },
     ],
   },
   {
     id: "content",
     label: "",
-    items: [{ id: "mod-import-settings", label: "", description: "" }],
+    items: [
+      { id: "mod-import-settings", label: "", description: "" },
+      { id: "unresolved-references", label: "", description: "" },
+    ],
   },
   {
     id: "permission",
@@ -751,7 +761,6 @@ export function AdminConsolePolished() {
           }
           const message = cleanError(error) || t("admin.backendDisconnected");
           setStatus(message);
-          notifyAdminNotice(message, t("admin.noticeTitle"), "danger");
           setBackendAvailable(false);
           scheduleReconnect(attempt);
         }
@@ -955,13 +964,16 @@ export function AdminConsolePolished() {
           {activePanel === "notification-templates" ? <NotificationTemplatePanel token={auth.token} /> : null}
           {activePanel === "reviews-content" ? <ModReviewQueuePanel kind="content" token={auth.token} /> : null}
           {activePanel === "reviews-editor" ? <ModReviewQueuePanel kind="editor" token={auth.token} /> : null}
+          {activePanel === "reviews-server" ? <ServerReviewQueuePanel token={auth.token} /> : null}
           {activePanel === "review-settings" ? <ReviewSettingsPanel token={auth.token} /> : null}
+          {activePanel === "server-settings" ? <ServerSettingsPanel token={auth.token} /> : null}
           {activePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "auth" ? <AuthPanelV2 config={config} token={auth.token} /> : null}
           {activePanel === "markdown" ? <MarkdownConfigPanel initialConfig={config.markdown} token={auth.token} /> : null}
           {activePanel === "profile-settings" ? <ProfileSettingsPanel initialConfig={config.profile ?? emptyConfig.profile} token={auth.token} /> : null}
           {activePanel === "minecraft-versions" ? <MinecraftVersionConfigPanel token={auth.token} /> : null}
           {activePanel === "mod-import-settings" ? <ModImportConfigPanel token={auth.token} /> : null}
+          {activePanel === "unresolved-references" ? <AdminUnresolvedReferences token={auth.token} /> : null}
           {activePanel === "nats" ? <NATSConfigPanel token={auth.token} /> : null}
           {activePanel === "i18n" ? <TranslationManagerPanel token={auth.token} /> : null}
           {activePanel === "oss-config" ? <OSSConfigPanelV2 initialConfig={config.oss ?? emptyConfig.oss!} token={auth.token} /> : null}
@@ -4270,14 +4282,20 @@ function TranslationManagerPanel({ token }: { token: string }) {
         </div>
       </div>
 
-      <div className="max-h-[calc(100vh-18rem)] overflow-y-auto">
-        <table className="w-full min-w-[980px] text-left text-sm">
+      <div className="max-h-[calc(100vh-18rem)] overflow-auto">
+        <table className="w-full min-w-[960px] table-fixed text-left text-sm">
+          <colgroup>
+            <col className="w-64" />
+            <col />
+            <col />
+            <col className="w-28" />
+          </colgroup>
           <thead className="sticky top-0 bg-[var(--panel)] text-[var(--muted)]">
             <tr>
-              <th className="border-b border-[var(--line)] px-4 py-3">{t("admin.translationKey")}</th>
-              <th className="border-b border-[var(--line)] px-4 py-3">{t("admin.sourceText")}</th>
-              <th className="border-b border-[var(--line)] px-4 py-3">{t("admin.targetText")}</th>
-              <th className="border-b border-[var(--line)] px-4 py-3">{t("common.edit")}</th>
+              <th className="border-b border-[var(--line)] px-4 py-3 align-bottom">{t("admin.translationKey")}</th>
+              <th className="border-b border-[var(--line)] px-4 py-3 align-bottom">{t("admin.sourceText")}</th>
+              <th className="border-b border-[var(--line)] px-4 py-3 align-bottom">{t("admin.targetText")}</th>
+              <th className="whitespace-nowrap border-b border-[var(--line)] px-4 py-3 align-bottom">{t("common.edit")}</th>
             </tr>
           </thead>
           <tbody>
@@ -4287,20 +4305,20 @@ function TranslationManagerPanel({ token }: { token: string }) {
               const edited = target !== "" && target !== baseTarget;
               return (
                 <tr key={key}>
-                  <td className="border-b border-[var(--line)] px-4 py-3 font-mono text-xs">{key}</td>
-                  <td className="border-b border-[var(--line)] px-4 py-3">{getTranslation(sourceLocale, key)}</td>
-                  <td className="border-b border-[var(--line)] px-4 py-3">
+                  <td className="break-all border-b border-[var(--line)] px-4 py-4 align-top font-mono text-xs leading-5">{key}</td>
+                  <td className="whitespace-pre-wrap break-words border-b border-[var(--line)] px-4 py-4 align-top leading-6">{getTranslation(sourceLocale, key)}</td>
+                  <td className="border-b border-[var(--line)] px-4 py-4 align-top">
                     <textarea
                       key={`${targetLocale}:${key}:${target}`}
-                      className="field min-h-20"
+                      className="field min-h-24 resize-y leading-6"
                       defaultValue={target}
                       placeholder={target ? "" : t("admin.missingTranslation")}
                       onBlur={(event) => saveTranslation(key, event.currentTarget.value)}
                     />
                     {edited ? <span className="mt-1 block text-xs text-[var(--accent)]">{t("admin.editedLocally")}</span> : null}
                   </td>
-                  <td className="border-b border-[var(--line)] px-4 py-3">
-                    <button className="button-secondary focus-ring" type="button" onClick={() => resetTranslation(targetLocale, key)}>
+                  <td className="border-b border-[var(--line)] px-4 py-4 align-top">
+                    <button className="button-secondary focus-ring whitespace-nowrap" type="button" onClick={() => resetTranslation(targetLocale, key)}>
                       {t("admin.resetTranslation")}
                     </button>
                   </td>
@@ -5193,7 +5211,9 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     users: t("admin.userList"),
     "reviews-content": t("admin.reviews.contentTitle"),
     "reviews-editor": t("admin.reviews.editorTitle"),
+    "reviews-server": t("admin.serverReviews.title"),
     "review-settings": t("admin.reviewSettings.title"),
+    "server-settings": t("admin.serverSettings.title"),
     notifications: t("admin.notifications.title"),
     "notification-templates": t("admin.notificationTemplates.title"),
     mail: t("admin.mail"),
@@ -5202,6 +5222,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "profile-settings": t("admin.profileSettings.navTitle"),
     "minecraft-versions": t("admin.minecraftVersions.title"),
     "mod-import-settings": t("admin.modImport.navTitle"),
+    "unresolved-references": t("admin.unresolved.title"),
     nats: t("admin.nats.navTitle"),
     i18n: t("admin.i18n"),
     "oss-config": t("admin.panels.ossConfig"),
@@ -5264,7 +5285,9 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     users: t("admin.usersDesc"),
     "reviews-content": t("admin.reviews.contentDescription"),
     "reviews-editor": t("admin.reviews.editorDescription"),
+    "reviews-server": t("admin.serverReviews.navDescription"),
     "review-settings": t("admin.reviewSettings.navDescription"),
+    "server-settings": t("admin.serverSettings.navDescription"),
     notifications: t("admin.notifications.navDescription"),
     "notification-templates": t("admin.notificationTemplates.navDescription"),
     mail: t("admin.mailDesc"),
@@ -5273,6 +5296,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "profile-settings": t("admin.profileSettings.navDescription"),
     "minecraft-versions": t("admin.minecraftVersions.description"),
     "mod-import-settings": t("admin.modImport.navDescription"),
+    "unresolved-references": t("admin.unresolved.navDescription"),
     nats: t("admin.nats.navDescription"),
     i18n: t("admin.i18nDesc"),
     "oss-config": t("admin.nav.ossConfigDesc"),

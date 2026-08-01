@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { type WheelEvent as ReactWheelEvent, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { apiRequest } from "../_lib/api";
 import { canAccessAdmin, clearAuth, type AuthUser, useAuthSnapshot } from "../_lib/auth";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
@@ -50,14 +51,7 @@ const navItems: HeaderNavItem[] = [
   { labelKey: "nav.news", href: "/news" },
   { labelKey: "nav.discussions", href: "/discussions" },
   { labelKey: "nav.tools", href: "/tools" },
-  {
-    labelKey: "nav.servers",
-    href: "/servers",
-    children: [
-      { labelKey: "nav.serverList", href: "/servers/list" },
-      { labelKey: "nav.serverPacks", href: "/servers/packs" },
-    ],
-  },
+  { labelKey: "nav.servers", href: "/servers" },
 ];
 
 export function SiteShell({ children }: SiteShellProps) {
@@ -107,20 +101,23 @@ function SiteHeader() {
   const router = useRouter();
   const [unread, setUnread] = useState(0);
   const [backendAvailable, setBackendAvailable] = useState(true);
+  const navigationRef = useRef<HTMLElement>(null);
+  const navigationScrollTimerRef = useRef<number | null>(null);
+  const [navigationEdges, setNavigationEdges] = useState({ left: true, right: false });
 
   useEffect(() => {
     let cancelled = false;
     const checkBackend = () => {
-      void apiRequest<{ status: string }>("/health")
-        .then(() => {
-          if (!cancelled) setBackendAvailable(true);
+      void apiRequest<{ status: "ok" | "error" }>("/health", { cache: "no-store" })
+        .then((health) => {
+          if (!cancelled) setBackendAvailable(health.status === "ok");
         })
         .catch(() => {
           if (!cancelled) setBackendAvailable(false);
         });
     };
     checkBackend();
-    const timer = window.setInterval(checkBackend, 10_000);
+    const timer = window.setInterval(checkBackend, 5_000);
     window.addEventListener("online", checkBackend);
     return () => {
       cancelled = true;
@@ -149,6 +146,55 @@ function SiteHeader() {
     };
   }, [token]);
 
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    if (!navigation) return;
+    const updateEdges = () => {
+      const maximum = Math.max(0, navigation.scrollWidth - navigation.clientWidth);
+      setNavigationEdges({
+        left: navigation.scrollLeft <= 1,
+        right: navigation.scrollLeft >= maximum - 1,
+      });
+    };
+    updateEdges();
+    navigation.addEventListener("scroll", updateEdges, { passive: true });
+    const observer = new ResizeObserver(updateEdges);
+    observer.observe(navigation);
+    return () => {
+      navigation.removeEventListener("scroll", updateEdges);
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => () => {
+    if (navigationScrollTimerRef.current !== null) window.clearInterval(navigationScrollTimerRef.current);
+  }, []);
+
+  function scrollNavigation(direction: -1 | 1, smooth = true) {
+    navigationRef.current?.scrollBy({ left: direction * 240, behavior: smooth ? "smooth" : "auto" });
+  }
+
+  function stopNavigationScroll() {
+    if (navigationScrollTimerRef.current === null) return;
+    window.clearInterval(navigationScrollTimerRef.current);
+    navigationScrollTimerRef.current = null;
+  }
+
+  function startNavigationScroll(direction: -1 | 1) {
+    stopNavigationScroll();
+    scrollNavigation(direction);
+    navigationScrollTimerRef.current = window.setInterval(() => scrollNavigation(direction, false), 90);
+  }
+
+  function handleNavigationWheel(event: ReactWheelEvent<HTMLElement>) {
+    const navigation = navigationRef.current;
+    if (!navigation || navigation.scrollWidth <= navigation.clientWidth) return;
+    const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    if (!delta) return;
+    event.preventDefault();
+    navigation.scrollLeft += delta;
+  }
+
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--panel)_94%,transparent)] backdrop-blur">
       {!backendAvailable ? (
@@ -162,11 +208,29 @@ function SiteHeader() {
           <span className="hidden text-lg font-black tracking-normal sm:block">{t("common.appName")}</span>
         </Link>
 
-        <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" aria-label={t("site.mainNavigation")}>
+        <HeaderNavScrollButton
+          direction={-1}
+          disabled={navigationEdges.left}
+          label={t("site.scrollNavigationLeft")}
+          onClick={scrollNavigation}
+          onMouseEnter={startNavigationScroll}
+          onMouseLeave={stopNavigationScroll}
+          onWheel={handleNavigationWheel}
+        />
+        <nav ref={navigationRef} className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label={t("site.mainNavigation")} onWheel={handleNavigationWheel}>
           {navItems.map((item) => (
             <HeaderNavLink key={item.href} item={item} />
           ))}
         </nav>
+        <HeaderNavScrollButton
+          direction={1}
+          disabled={navigationEdges.right}
+          label={t("site.scrollNavigationRight")}
+          onClick={scrollNavigation}
+          onMouseEnter={startNavigationScroll}
+          onMouseLeave={stopNavigationScroll}
+          onWheel={handleNavigationWheel}
+        />
 
         <div className="flex shrink-0 items-center gap-2">
           <select
@@ -240,6 +304,40 @@ function SiteHeader() {
   );
 }
 
+function HeaderNavScrollButton({
+  direction,
+  disabled,
+  label,
+  onClick,
+  onMouseEnter,
+  onMouseLeave,
+  onWheel,
+}: {
+  direction: -1 | 1;
+  disabled: boolean;
+  label: string;
+  onClick: (direction: -1 | 1) => void;
+  onMouseEnter: (direction: -1 | 1) => void;
+  onMouseLeave: () => void;
+  onWheel: (event: ReactWheelEvent<HTMLElement>) => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="focus-ring grid h-9 w-7 shrink-0 place-items-center rounded-md border border-[var(--line)] bg-[var(--panel)] text-lg font-black text-[var(--muted)] disabled:cursor-default disabled:opacity-30"
+      disabled={disabled}
+      title={label}
+      type="button"
+      onClick={() => onClick(direction)}
+      onMouseEnter={() => onMouseEnter(direction)}
+      onMouseLeave={onMouseLeave}
+      onWheel={onWheel}
+    >
+      {direction < 0 ? "‹" : "›"}
+    </button>
+  );
+}
+
 function ProfileMenuLink({ href, children }: { href: string; children: React.ReactNode }) {
   return <Link className="focus-ring rounded-md px-3 py-2 text-sm font-bold hover:bg-[var(--panel-subtle)] hover:text-[var(--accent)]" href={href}>{children}</Link>;
 }
@@ -257,22 +355,107 @@ function HeaderNavLink({ item }: { item: HeaderNavItem }) {
     );
   }
 
+  return <HeaderNavMenu item={item} />;
+}
+
+function HeaderNavMenu({ item }: { item: HeaderNavItem }) {
+  const { t } = useI18n();
+  const menuId = useId();
+  const triggerRef = useRef<HTMLAnchorElement>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+
+  function cancelClose() {
+    if (closeTimerRef.current === null) return;
+    window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
+  }
+
+  function openMenu() {
+    cancelClose();
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const bounds = trigger.getBoundingClientRect();
+    const menuWidth = 208;
+    setPosition({
+      left: Math.max(8, Math.min(bounds.left, window.innerWidth - menuWidth - 8)),
+      top: bounds.bottom,
+    });
+  }
+
+  function closeMenu() {
+    cancelClose();
+    setPosition(null);
+  }
+
+  function scheduleClose() {
+    cancelClose();
+    closeTimerRef.current = window.setTimeout(() => {
+      setPosition(null);
+      closeTimerRef.current = null;
+    }, 120);
+  }
+
+  useEffect(() => {
+    if (!position) return;
+    const closeForViewportChange = () => setPosition(null);
+    window.addEventListener("resize", closeForViewportChange);
+    window.addEventListener("scroll", closeForViewportChange, true);
+    return () => {
+      window.removeEventListener("resize", closeForViewportChange);
+      window.removeEventListener("scroll", closeForViewportChange, true);
+    };
+  }, [position]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+  }, []);
+
   return (
-    <details className="group relative shrink-0">
-      <summary className="list-none whitespace-nowrap rounded-md px-3 py-2 text-sm font-bold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]">
-        {t(item.labelKey)}
-      </summary>
-      <div className="absolute left-0 top-10 z-50 grid min-w-44 gap-1 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-2 shadow-xl">
-        <Link className="rounded-md px-3 py-2 text-sm font-bold hover:bg-[var(--panel-subtle)]" href={item.href}>
+    <>
+      <span className="shrink-0" onBlur={scheduleClose} onFocus={openMenu} onMouseEnter={openMenu} onMouseLeave={scheduleClose}>
+        <Link
+          ref={triggerRef}
+          aria-controls={menuId}
+          aria-expanded={position !== null}
+          aria-haspopup="menu"
+          className="block whitespace-nowrap rounded-md px-3 py-2 text-sm font-bold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]"
+          href={item.href}
+          onClick={closeMenu}
+        >
           {t(item.labelKey)}
         </Link>
-        {item.children.map((child) => (
-          <Link key={child.href} className="rounded-md px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]" href={child.href}>
-            {t(child.labelKey)}
-          </Link>
-        ))}
-      </div>
-    </details>
+      </span>
+      {position ? createPortal(
+        <div
+          id={menuId}
+          className="fixed z-[90] w-52 pt-2"
+          role="menu"
+          style={{ left: position.left, top: position.top }}
+          onBlur={scheduleClose}
+          onFocus={cancelClose}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            closeMenu();
+            triggerRef.current?.focus();
+          }}
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
+        >
+          <div className="grid gap-1 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-2 shadow-2xl">
+            <Link className="rounded-md px-3 py-2 text-sm font-bold hover:bg-[var(--panel-subtle)]" href={item.href} role="menuitem" onClick={closeMenu}>
+              {t(item.labelKey)}
+            </Link>
+            {item.children?.map((child) => (
+              <Link key={child.href} className="rounded-md px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]" href={child.href} role="menuitem" onClick={closeMenu}>
+                {t(child.labelKey)}
+              </Link>
+            ))}
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+    </>
   );
 }
 

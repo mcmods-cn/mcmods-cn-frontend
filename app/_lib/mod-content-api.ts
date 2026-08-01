@@ -2,6 +2,32 @@ import { apiRequest, API_BASE_URL } from "./api";
 import type { CatalogResourceVersion } from "./editor-types";
 
 export type ModContentLocalization = { locale: string; name: string; summary: string; contentMarkdown: string };
+export type ModContentLocalizedNames = Record<string, string>;
+export type ModContentEntryFieldType = "number" | "text" | "boolean" | "list" | "reference-list" | "json";
+export type ModContentEntryField = {
+  code: string;
+  type: ModContentEntryFieldType;
+  names: ModContentLocalizedNames;
+  paths: string[][];
+  referenceKind?: "enchantment" | "tag";
+  editable?: boolean;
+};
+export type ModContentEntryGroup = {
+  code: string;
+  names: ModContentLocalizedNames;
+  descriptions?: ModContentLocalizedNames;
+  fields: ModContentEntryField[];
+};
+export type ModContentEntryType = {
+  code: string;
+  kindCodes?: string[];
+  names: ModContentLocalizedNames;
+  groups: ModContentEntryGroup[];
+};
+export type ModContentTemplateDefinition = Record<string, unknown> & {
+  resourceKinds?: string[];
+  entryTypes?: ModContentEntryType[];
+};
 
 export type ModContentVersion = {
   publicId: string;
@@ -22,7 +48,7 @@ export type ModContentTemplate = {
   i18nKey: string;
   defaultLocale: string;
   defaultDisplayMode: "compact" | "large";
-  definition: Record<string, unknown>;
+  definition: ModContentTemplateDefinition;
   status: string;
   publishedRevisionId?: string;
   localizations: ModContentLocalization[];
@@ -64,8 +90,11 @@ export type ModContentMutationResult = { publicId: string; revisionId: string; c
 export type ModContentResourceVersionDetail = {
   versionPublicId: string;
   sectionPublicId?: string;
+  entryTypeCode: string;
+  definitionSchemaVersion: number;
   defaultLocale: string;
   definition: Record<string, unknown>;
+  iconSmallFilePublicId?: string;
   iconFilePublicId?: string;
   renderFilePublicId?: string;
   status: string;
@@ -138,14 +167,14 @@ export function createModContentSection(siteId: string, payload: ModContentSecti
 export function archiveModContentSection(siteId: string, sectionId: string, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-sections/${encodeURIComponent(sectionId)}`, { method: "DELETE" }, token); }
 export function updateModContentLayout(siteId: string, sectionId: string, payload: ModContentLayoutPayload, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-sections/${encodeURIComponent(sectionId)}/layout`, { method: "PUT", body: JSON.stringify(payload) }, token); }
 export function loadModContentResource(siteId: string, resourceId: string, token = "") { return apiRequest<ModContentResource>(`${modPath(siteId)}/content-resources/${encodeURIComponent(resourceId)}`, {}, token); }
-export function createModContentResource(siteId: string, payload: { resourcePublicId?: string; kindCode: string; canonicalId: string; versionPublicId: string; sectionPublicId?: string; defaultLocale: string; definition: Record<string, unknown>; iconFilePublicId?: string; renderFilePublicId?: string; localizations: ModContentLocalization[]; reason: string }, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-resources`, { method: "POST", body: JSON.stringify(payload) }, token); }
-export function updateModContentResource(siteId: string, resourceId: string, payload: { resourcePublicId: string; kindCode: string; canonicalId: string; versionPublicId: string; sectionPublicId?: string; defaultLocale: string; definition: Record<string, unknown>; iconFilePublicId?: string; renderFilePublicId?: string; localizations: ModContentLocalization[]; reason: string; baseRevisionId?: string }, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-resources/${encodeURIComponent(resourceId)}`, { method: "PUT", body: JSON.stringify(payload) }, token); }
+export function createModContentResource(siteId: string, payload: { resourcePublicId?: string; kindCode: string; canonicalId: string; versionPublicId: string; sectionPublicId?: string; entryTypeCode: string; defaultLocale: string; definition: Record<string, unknown>; iconSmallFilePublicId?: string; iconFilePublicId?: string; renderFilePublicId?: string; localizations: ModContentLocalization[]; reason: string }, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-resources`, { method: "POST", body: JSON.stringify(payload) }, token); }
+export function updateModContentResource(siteId: string, resourceId: string, payload: { resourcePublicId: string; kindCode: string; canonicalId: string; versionPublicId: string; sectionPublicId?: string; entryTypeCode: string; defaultLocale: string; definition: Record<string, unknown>; iconSmallFilePublicId?: string; iconFilePublicId?: string; renderFilePublicId?: string; localizations: ModContentLocalization[]; reason: string; baseRevisionId?: string }, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-resources/${encodeURIComponent(resourceId)}`, { method: "PUT", body: JSON.stringify(payload) }, token); }
 export function archiveModContentResource(siteId: string, resourceId: string, versionId: string, token: string) {
   const parameters = new URLSearchParams({ version: versionId });
   return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-resources/${encodeURIComponent(resourceId)}?${parameters}`, { method: "DELETE" }, token);
 }
 
-export function modContentResourceAssetURL(resourceId: string, versionId: string, kind: "icon" | "render") {
+export function modContentResourceAssetURL(resourceId: string, versionId: string, kind: "icon" | "icon-small" | "render") {
   const parameters = new URLSearchParams();
   if (versionId) parameters.set("version", versionId);
   const query = parameters.size ? `?${parameters}` : "";
