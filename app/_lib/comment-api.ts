@@ -38,6 +38,15 @@ export type CommentItem = {
   descendantCount: number;
   hasMoreReplies: boolean;
   currentUserWatch?: CommentWatchState;
+  pinned: boolean;
+  pinnedAt?: string;
+  canEdit: boolean;
+  canDelete: boolean;
+  canPin: boolean;
+  canReply: boolean;
+  canReact: boolean;
+  canReport: boolean;
+  canWatch: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -47,6 +56,7 @@ export type CommentPage = {
   total: number;
   target: CommentTarget;
   nextCursor: string;
+  capabilities: { canCreate: boolean };
 };
 
 export type CommentWatchListItem = {
@@ -140,6 +150,14 @@ export function updateComment(commentId: string, body: string, token: string) {
   return apiRequest<CommentItem>(
     `/api/v1/comments/${encodeURIComponent(commentId)}`,
     { method: "PATCH", body: JSON.stringify({ body }) },
+    token,
+  );
+}
+
+export function setCommentPinned(commentId: string, pinned: boolean, token: string) {
+  return apiRequest<CommentItem>(
+    `/api/v1/comments/${encodeURIComponent(commentId)}/pin`,
+    { method: pinned ? "PUT" : "DELETE" },
     token,
   );
 }

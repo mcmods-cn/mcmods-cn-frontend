@@ -14,6 +14,7 @@ import {
   loadComments,
   loadCommentThread,
   reportComment,
+  setCommentPinned,
   setCommentReaction,
   setCommentWatch,
   updateComment,
@@ -46,6 +47,7 @@ export function CommentSection({ targetType, targetKey, className = "" }: Commen
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [canCreate, setCanCreate] = useState(false);
 
   const load = useCallback(async (cursor = "", append = false) => {
     setLoading(true);
@@ -54,6 +56,7 @@ export function CommentSection({ targetType, targetKey, className = "" }: Commen
       setItems((current) => append ? mergeComments(current, result.items) : result.items);
       setTotal(result.total);
       setNextCursor(result.nextCursor || "");
+      setCanCreate(Boolean(result.capabilities?.canCreate));
       setMessage("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("mods.comments.loadFailed"));
@@ -112,7 +115,7 @@ export function CommentSection({ targetType, targetKey, className = "" }: Commen
         </label>
       </div>
 
-      {user ? (
+      {user && canCreate ? (
         <form className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => void publish(event, body)}>
           <textarea className="field min-h-28 resize-y" maxLength={10000} required value={body} placeholder={t("mods.comments.placeholder")} onChange={(event) => setBody(event.target.value)} />
           <div className="mt-3 flex items-center justify-between gap-3">
@@ -120,16 +123,15 @@ export function CommentSection({ targetType, targetKey, className = "" }: Commen
             <button className="button-primary focus-ring" disabled={submitting} type="submit">{t("mods.comments.publish")}</button>
           </div>
         </form>
-      ) : (
+      ) : !user ? (
         <Link className="button-primary focus-ring mt-5 inline-flex" href={`/login?next=${encodeURIComponent(currentPath())}`}>{t("mods.comments.loginToComment")}</Link>
-      )}
+      ) : <p className="mt-5 text-sm font-bold text-[var(--muted)]">{t("mods.comments.noCreatePermission")}</p>}
 
       {message ? <p className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-sm font-bold">{message}</p> : null}
       <CommentTree
         items={items}
         loading={loading}
         token={token}
-        userID={user?.id}
         sort={sort}
         replyTo={replyTo}
         replyBody={replyBody}
@@ -151,7 +153,6 @@ type CommentTreeProps = {
   items: CommentItem[];
   loading: boolean;
   token: string;
-  userID?: string;
   sort: string;
   replyTo: CommentItem | null;
   replyBody: string;
@@ -266,6 +267,17 @@ function CommentTree(props: CommentTreeProps) {
     }
   }
 
+  async function pin(comment: CommentItem) {
+    if (!props.token) return;
+    try {
+      const result = await setCommentPinned(comment.id, !comment.pinned, props.token);
+      props.onItemsChange(props.items.map((item) => item.id === result.id ? result : item));
+      props.onMessage(t(result.pinned ? "mods.comments.pinned" : "mods.comments.unpinned"));
+    } catch (error) {
+      props.onMessage(error instanceof Error ? error.message : t("mods.comments.pinFailed"));
+    }
+  }
+
   async function loadChildren(comment: CommentItem) {
     try {
       const result = await loadCommentReplies(comment.id, replyCursors[comment.id], props.token || undefined);
@@ -315,13 +327,13 @@ function CommentTree(props: CommentTreeProps) {
             <CommentCard
               comment={item}
               highlighted={highlighted === item.id}
-              own={props.userID === item.author.id}
               onEdit={() => void edit(item)}
               onDelete={() => void remove(item)}
               onJumpParent={(id) => jumpTo(id)}
               onReact={(reaction) => void react(item, reaction)}
               onReply={() => props.onReply(item)}
               onReport={() => void report(item)}
+              onPin={() => void pin(item)}
               onShare={() => void copyBranch(item)}
               onToggleCollapse={hasChildren ? () => setCollapsed((current) => toggleSet(current, item.id)) : undefined}
               onWatch={() => void watch(item)}
@@ -348,26 +360,26 @@ function CommentTree(props: CommentTreeProps) {
 function CommentCard({
   comment,
   highlighted,
-  own,
   onDelete,
   onEdit,
   onJumpParent,
   onReact,
   onReply,
   onReport,
+  onPin,
   onShare,
   onToggleCollapse,
   onWatch,
 }: {
   comment: CommentItem;
   highlighted: boolean;
-  own: boolean;
   onDelete: () => void;
   onEdit: () => void;
   onJumpParent: (id: string) => void;
   onReact: (reaction: string) => void;
   onReply: () => void;
   onReport: () => void;
+  onPin: () => void;
   onShare: () => void;
   onToggleCollapse?: () => void;
   onWatch: () => void;
@@ -383,6 +395,7 @@ function CommentCard({
           <div className="flex flex-wrap items-baseline gap-x-2">
             <Link className="font-black hover:text-[var(--accent)]" href={`/user/${comment.author.id}`}>{authorName}</Link>
             {comment.author.projectRole ? <span className="rounded-md border border-[var(--accent)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t(`mods.comments.projectRoles.${comment.author.projectRole}`)}</span> : null}
+            {comment.pinned ? <span className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs font-bold text-[var(--muted)]">{t("mods.comments.pinnedBadge")}</span> : null}
             <time className="text-xs text-[var(--muted)]">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time>
           </div>
           {comment.parent ? <button className="mt-2 block max-w-full truncate rounded border-l-2 border-[var(--accent)] bg-[var(--panel-subtle)] px-3 py-2 text-left text-xs text-[var(--muted)] hover:text-[var(--accent)]" type="button" onClick={() => onJumpParent(comment.parent!.id)}>@{comment.parent.authorName} · {comment.parent.deleted ? t("mods.comments.deleted") : comment.parent.bodySummary}</button> : null}
@@ -390,15 +403,17 @@ function CommentCard({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {reactionOptions.map(([reaction, emoji]) => {
               const count = comment.reactions[reaction] || 0;
-              return count ? <button key={reaction} className={`focus-ring rounded-full border px-2.5 py-1 text-xs ${comment.userReactions.includes(reaction) ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`} type="button" onClick={() => onReact(reaction)}>{emoji} {count}</button> : null;
+              return count ? <button key={reaction} className={`focus-ring rounded-full border px-2.5 py-1 text-xs ${comment.userReactions.includes(reaction) ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`} disabled={!comment.canReact} type="button" onClick={() => onReact(reaction)}>{emoji} {count}</button> : null;
             })}
-            {!comment.deleted ? <div className="relative"><button className="focus-ring grid h-8 w-8 place-items-center rounded-full border border-[var(--line)]" title={t("mods.comments.addReaction")} type="button" onClick={() => setPickerOpen((current) => !current)}>☺</button>{pickerOpen ? <div className="absolute bottom-full left-0 z-30 mb-2 flex gap-1 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-2 shadow-xl">{reactionOptions.map(([reaction, emoji]) => <button className="focus-ring grid h-9 w-9 place-items-center rounded-md text-lg hover:bg-[var(--panel-subtle)]" key={reaction} type="button" onClick={() => { setPickerOpen(false); onReact(reaction); }}>{emoji}</button>)}</div> : null}</div> : null}
-            {!comment.deleted ? <button className="text-xs font-bold text-[var(--accent)] hover:underline" type="button" onClick={onReply}>{t("mods.comments.reply")}</button> : null}
-            <button className={`text-xs font-bold hover:underline ${comment.currentUserWatch?.active ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={onWatch}>{t(comment.currentUserWatch?.active ? "mods.comments.watchedButton" : "mods.comments.watchButton")}</button>
+            {comment.canReact ? <div className="relative"><button className="focus-ring grid h-8 w-8 place-items-center rounded-full border border-[var(--line)]" title={t("mods.comments.addReaction")} type="button" onClick={() => setPickerOpen((current) => !current)}>☺</button>{pickerOpen ? <div className="absolute bottom-full left-0 z-30 mb-2 flex gap-1 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-2 shadow-xl">{reactionOptions.map(([reaction, emoji]) => <button className="focus-ring grid h-9 w-9 place-items-center rounded-md text-lg hover:bg-[var(--panel-subtle)]" key={reaction} type="button" onClick={() => { setPickerOpen(false); onReact(reaction); }}>{emoji}</button>)}</div> : null}</div> : null}
+            {comment.canReply ? <button className="text-xs font-bold text-[var(--accent)] hover:underline" type="button" onClick={onReply}>{t("mods.comments.reply")}</button> : null}
+            {comment.canWatch ? <button className={`text-xs font-bold hover:underline ${comment.currentUserWatch?.active ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={onWatch}>{t(comment.currentUserWatch?.active ? "mods.comments.watchedButton" : "mods.comments.watchButton")}</button> : null}
             {onToggleCollapse ? <button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onToggleCollapse}>{t("mods.comments.collapseBranch")}</button> : null}
             <button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onShare}>{t("mods.comments.shareBranch")}</button>
-            {own && !comment.deleted ? <><button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onEdit}>{t("common.edit")}</button><button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onDelete}>{t("common.delete")}</button></> : null}
-            {!own && !comment.deleted ? <button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onReport}>{t("mods.comments.report")}</button> : null}
+            {comment.canPin ? <button className="text-xs font-bold text-[var(--accent)] hover:underline" type="button" onClick={onPin}>{t(comment.pinned ? "mods.comments.unpin" : "mods.comments.pin")}</button> : null}
+            {comment.canEdit ? <button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onEdit}>{t("common.edit")}</button> : null}
+            {comment.canDelete ? <button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onDelete}>{t("common.delete")}</button> : null}
+            {comment.canReport ? <button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onReport}>{t("mods.comments.report")}</button> : null}
           </div>
         </div>
       </div>
@@ -408,7 +423,7 @@ function CommentCard({
 
 export function CommentThread({ commentId }: { commentId: string }) {
   const { t } = useI18n();
-  const { ready, token, user } = useAuthSnapshot();
+  const { ready, token } = useAuthSnapshot();
   const [items, setItems] = useState<CommentItem[]>([]);
   const [target, setTarget] = useState<CommentTarget | null>(null);
   const [error, setError] = useState("");
@@ -426,7 +441,7 @@ export function CommentThread({ commentId }: { commentId: string }) {
   return <main className="min-h-screen bg-[var(--background)] px-4 py-8 text-[var(--foreground)]"><section className="mx-auto max-w-5xl">
     {target ? <><Link className="font-bold text-[var(--accent)] hover:underline" href={target.url}>← {target.title}</Link><h1 className="mt-4 text-3xl font-black">{t("mods.comments.branchTitle")}</h1></> : null}
     {error ? <p className="surface mt-5 p-5">{error}</p> : null}
-    {items.length ? <CommentTree items={items} loading={false} token={token} userID={user?.id} sort="oldest" replyTo={null} replyBody="" submitting={false} onItemsChange={setItems} onMessage={setError} onReply={() => setError(t("mods.comments.replyOnOriginal"))} onReplyBodyChange={() => undefined} onReplyCancel={() => undefined} onReplySubmit={() => undefined} /> : !error ? <p className="mt-5 text-[var(--muted)]">{t("common.loading")}</p> : null}
+    {items.length ? <CommentTree items={items} loading={false} token={token} sort="oldest" replyTo={null} replyBody="" submitting={false} onItemsChange={setItems} onMessage={setError} onReply={() => setError(t("mods.comments.replyOnOriginal"))} onReplyBodyChange={() => undefined} onReplyCancel={() => undefined} onReplySubmit={() => undefined} /> : !error ? <p className="mt-5 text-[var(--muted)]">{t("common.loading")}</p> : null}
   </section></main>;
 }
 
@@ -442,10 +457,21 @@ function buildTree(items: CommentItem[], sort: string): TreeNode[] {
   }
   const chronological = (left: TreeNode, right: TreeNode) => new Date(left.item.createdAt).getTime() - new Date(right.item.createdAt).getTime();
   for (const node of nodes.values()) node.children.sort(chronological);
-  if (sort === "oldest") roots.sort(chronological);
-  else if (sort === "hot") roots.sort((left, right) => score(right.item) - score(left.item));
-  else if (sort === "replies") roots.sort((left, right) => right.item.descendantCount - left.item.descendantCount);
-  else roots.sort((left, right) => chronological(right, left));
+  const selectedOrder = sort === "oldest"
+    ? chronological
+    : sort === "hot"
+      ? (left: TreeNode, right: TreeNode) => score(right.item) - score(left.item)
+      : sort === "replies"
+        ? (left: TreeNode, right: TreeNode) => right.item.descendantCount - left.item.descendantCount
+        : (left: TreeNode, right: TreeNode) => chronological(right, left);
+  roots.sort((left, right) => {
+    if (left.item.pinned !== right.item.pinned) return left.item.pinned ? -1 : 1;
+    if (left.item.pinned && right.item.pinned) {
+      const difference = new Date(right.item.pinnedAt || 0).getTime() - new Date(left.item.pinnedAt || 0).getTime();
+      if (difference) return difference;
+    }
+    return selectedOrder(left, right);
+  });
   return roots;
 }
 

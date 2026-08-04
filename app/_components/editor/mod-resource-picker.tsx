@@ -17,6 +17,7 @@ type ModResourcePickerDialogProps = {
   value: readonly CatalogResourceRef[];
   multiple?: boolean;
   excludeSiteId?: string;
+  allowUnresolved?: boolean;
   labels?: ResourcePickerLabels;
   onClose: () => void;
   onConfirm: (resources: CatalogResourceRef[]) => void;
@@ -38,6 +39,7 @@ export function ModResourcePickerDialog({
   value,
   multiple = true,
   excludeSiteId = "",
+  allowUnresolved = true,
   labels,
   onClose,
   onConfirm,
@@ -81,7 +83,7 @@ export function ModResourcePickerDialog({
 
   return (
     <ResourcePickerDialog
-      allowUnresolved
+      allowUnresolved={allowUnresolved}
       loadPage={loadModPage}
       multiple={multiple}
       open={open}

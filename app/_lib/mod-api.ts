@@ -15,12 +15,11 @@ export type BackendModAuthor = BackendCreatorIdentity & {
   members?: BackendCreatorIdentity[];
 };
 export type BackendModRelationship = {
-  type: "dependency" | "extension" | "integration";
+  type: "dependency" | "integration" | "conflict";
   relatedModId?: string;
   relatedModSiteId?: string;
   relatedModName: string;
   relatedModIdentifier?: string;
-  notes: string;
 };
 
 export type BackendModRelationshipGroup = {

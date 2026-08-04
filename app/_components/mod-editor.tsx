@@ -44,13 +44,13 @@ import type { CatalogResourceRef } from "../_lib/editor-types";
 type ModDraft = Omit<CreateModPayload, "searchKeywords"> & { searchKeywords: string };
 
 const linkTypeGroups = [
-  { key: "sites", types: ["official", "curseforge", "modrinth", "klpbbs", "minebbs", "redstoneRelay", "mcbbsMemorial", "mcbbsArchive", "sourceforge", "minecraftForum", "planetMinecraft", "mcpedl", "spigotmc", "wiki"] },
-  { key: "code", types: ["github", "gitlab", "gitee", "gitea", "gitpod", "gitcode", "bitbucket", "maven", "crowdin", "mastodon"] },
+  { key: "sites", types: ["official", "curseforge", "modrinth", "mcmod", "klpbbs", "minebbs", "redstoneRelay", "mcbbsMemorial", "mcbbsArchive", "sourceforge", "minecraftForum", "planetMinecraft", "mcpedl", "spigotmc", "wiki"] },
+  { key: "code", types: ["github", "gitlab", "gitee", "gitea", "gitpod", "gitcode", "bitbucket", "maven", "crowdin", "mastodon", "issue"] },
   { key: "drives", types: ["baiduPan", "aliyunDrive", "quarkDrive", "weiyun", "lanzou", "chinaMobileCloud", "tianyiCloud", "cowTransfer", "googleDrive", "oneDrive", "dropbox", "mediaFire"] },
   { key: "community", types: ["bilibili", "weibo", "tieba", "zhihu", "bcy", "ftb", "patreon", "buyMeACoffee", "kofi", "aifadian", "kook", "discord", "twitter", "youtube", "reddit", "other"] },
 ] as const;
 
-const emptyRelationship = (): BackendModRelationship => ({ type: "dependency", relatedModName: "", notes: "" });
+const emptyRelationship = (): BackendModRelationship => ({ type: "dependency", relatedModName: "" });
 const emptyRelationshipGroup = (): BackendModRelationshipGroup => ({ label: "", loader: "", minecraftVersions: [], modVersion: "", direction: "outgoing", relationships: [emptyRelationship()] });
 const emptyDraft = (): ModDraft => ({
   siteId: "",
@@ -415,7 +415,7 @@ function ModIdentifierEditor({ values, config, optionCodes, onChange }: { values
   const update = (index: number, value: BackendModIdentifier) => onChange(rows.map((item, itemIndex) => itemIndex === index ? value : item));
   return <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-black">{t("mods.submission.modIds.title")}</h3><p className="mt-1 text-xs text-[var(--muted)]">{t("mods.submission.modIds.hint")}</p></div><button className="button-secondary focus-ring" type="button" onClick={() => onChange([...rows, { identifier: "", primary: false, minecraftVersionMin: "", minecraftVersionMax: "", minecraftVersions: [] }])}>{t("mods.submission.modIds.add")}</button></div>
-    <div className="mt-3 grid gap-3">{rows.map((item, index) => <div className="grid gap-2 rounded-md border border-[var(--line)] bg-[var(--panel)] p-3 md:grid-cols-[minmax(180px,1fr)_minmax(240px,1.4fr)_auto_auto] md:items-end" key={`${item.identifier}:${index}`}>
+    <div className="mt-3 grid gap-3">{rows.map((item, index) => <div className="grid gap-2 rounded-md border border-[var(--line)] bg-[var(--panel)] p-3 md:grid-cols-[minmax(180px,1fr)_minmax(240px,1.4fr)_auto_auto] md:items-end" key={index}>
       <Field label={t("mods.submission.modIds.identifier")}><input className="field font-mono" maxLength={128} pattern="[A-Za-z0-9][A-Za-z0-9_.-]*" required={item.primary} value={item.identifier} onChange={(event) => update(index, { ...item, identifier: event.target.value })} /></Field>
       <Field label={t("mods.submission.modIds.minecraftVersions")}><MinecraftVersionPicker config={config} emptyLabelKey="mods.submission.modIds.allSupportedVersions" optionCodes={optionCodes} values={item.minecraftVersions ?? []} onChange={(minecraftVersions) => update(index, { ...item, minecraftVersions })} /></Field>
       <label className="flex h-11 items-center gap-2 text-sm font-bold"><input checked={item.primary} name="primary-mod-id" type="radio" onChange={() => onChange(rows.map((row, rowIndex) => ({ ...row, primary: rowIndex === index })))} />{t("mods.submission.modIds.primary")}</label>
@@ -467,8 +467,8 @@ function RelationshipGroupEditor({ groups, config, compatibilities, currentSiteI
     const group = groups[pickerTarget.groupIndex];
     const previous = group.relationships[pickerTarget.relationshipIndex];
     const inserted = resources.map((resource): BackendModRelationship => resource.unresolved
-      ? { type: previous.type, relatedModName: "", relatedModIdentifier: resource.rawIdentifier || resource.id, notes: previous.notes }
-      : { type: previous.type, relatedModId: resource.publicId, relatedModName: localizedModPickerName(resource, locale), notes: previous.notes });
+      ? { type: previous.type, relatedModName: "", relatedModIdentifier: resource.rawIdentifier || resource.id }
+      : { type: previous.type, relatedModId: resource.publicId, relatedModName: localizedModPickerName(resource, locale) });
     const relationships = [...group.relationships];
     relationships.splice(pickerTarget.relationshipIndex, 1, ...inserted);
     onChange(replaceAt(groups, pickerTarget.groupIndex, { ...group, relationships }));
@@ -477,6 +477,7 @@ function RelationshipGroupEditor({ groups, config, compatibilities, currentSiteI
 
   return <div className="grid gap-4">{groups.map((group, groupIndex) => {
     const allowedVersions = relationshipVersionOptions(group.loader, compatibilities, config);
+    const relationshipLabelNamespace = group.direction === "incoming" ? "incomingRelationshipTypes" : "relationshipTypes";
     return <section key={groupIndex} className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
       <div className="flex items-center justify-between gap-3"><h4 className="font-black">{t("mods.submission.relationshipCondition", { number: groupIndex + 1 })}</h4><button className="button-secondary focus-ring" type="button" onClick={() => onChange(groups.filter((_, index) => index !== groupIndex))}>{t("common.delete")}</button></div>
       <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
@@ -485,10 +486,11 @@ function RelationshipGroupEditor({ groups, config, compatibilities, currentSiteI
         <MinecraftVersionPicker config={config} emptyLabelKey="mods.submission.allSupportedMinecraftVersions" optionCodes={allowedVersions} values={group.minecraftVersions} onChange={(minecraftVersions) => onChange(replaceAt(groups, groupIndex, { ...group, minecraftVersions }))} />
         <input className="field" value={group.modVersion} placeholder={t("mods.submission.placeholders.modVersion")} onChange={(event) => onChange(replaceAt(groups, groupIndex, { ...group, modVersion: event.target.value }))} />
       </div>
-      <div className="mt-4 grid gap-2">{group.relationships.map((relationship, relationshipIndex) => <div key={relationshipIndex} className="flex items-start gap-2"><div className="grid flex-1 gap-2 md:grid-cols-[180px_1fr_1fr]"><select className="field" value={relationship.type} onChange={(event) => updateRelationship(groups, groupIndex, relationshipIndex, { ...relationship, type: event.target.value as BackendModRelationship["type"] }, onChange)}>{(["dependency", "extension", "integration"] as const).map((type) => <option key={type} value={type}>{t(`mods.submission.relationshipTypes.${type}`)}</option>)}</select><button className="field focus-ring flex items-center gap-2 text-left" type="button" onClick={() => setPickerTarget({ groupIndex, relationshipIndex })}><span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] font-black">{relationship.relatedModIdentifier ? "?" : "M"}</span><span className="truncate">{relationship.relatedModName || relationship.relatedModIdentifier || t("mods.submission.placeholders.selectRelatedMod")}</span></button><input className="field" value={relationship.notes} placeholder={t("mods.submission.placeholders.relationshipNotes")} onChange={(event) => updateRelationship(groups, groupIndex, relationshipIndex, { ...relationship, notes: event.target.value }, onChange)} /></div><button className="button-secondary focus-ring shrink-0" type="button" onClick={() => onChange(replaceAt(groups, groupIndex, { ...group, relationships: group.relationships.filter((_, index) => index !== relationshipIndex) }))}>{t("common.delete")}</button></div>)}<button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => onChange(replaceAt(groups, groupIndex, { ...group, relationships: [...group.relationships, emptyRelationship()] }))}>+ {t("mods.submission.actions.addRelationship")}</button></div>
+      <div className="mt-4 grid gap-2">{group.relationships.map((relationship, relationshipIndex) => <div key={relationshipIndex} className="flex items-start gap-2"><div className="grid flex-1 gap-2 md:grid-cols-[180px_1fr]"><select className="field" value={relationship.type} onChange={(event) => updateRelationship(groups, groupIndex, relationshipIndex, { ...relationship, type: event.target.value as BackendModRelationship["type"] }, onChange)}>{(["dependency", "integration", "conflict"] as const).map((type) => <option key={type} value={type}>{t(`mods.submission.${relationshipLabelNamespace}.${type}`)}</option>)}</select><button className="field focus-ring flex items-center gap-2 text-left" type="button" onClick={() => setPickerTarget({ groupIndex, relationshipIndex })}><span className="grid h-7 w-7 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] font-black">{relationship.relatedModIdentifier ? "?" : "M"}</span><span className="truncate">{relationship.relatedModName || relationship.relatedModIdentifier || t("mods.submission.placeholders.selectRelatedMod")}</span></button></div><button className="button-secondary focus-ring shrink-0" type="button" onClick={() => onChange(replaceAt(groups, groupIndex, { ...group, relationships: group.relationships.filter((_, index) => index !== relationshipIndex) }))}>{t("common.delete")}</button></div>)}<button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => onChange(replaceAt(groups, groupIndex, { ...group, relationships: [...group.relationships, emptyRelationship()] }))}>+ {t("mods.submission.actions.addRelationship")}</button></div>
     </section>;
   })}<button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => onChange([...groups, emptyRelationshipGroup()])}>+ {t("mods.submission.actions.addCondition")}</button>
     <ModResourcePickerDialog
+      allowUnresolved={pickerTarget ? groups[pickerTarget.groupIndex]?.direction !== "incoming" : true}
       excludeSiteId={currentSiteId}
       multiple
       open={Boolean(pickerTarget)}
