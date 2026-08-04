@@ -26,28 +26,6 @@ export type ModExportJob = {
   updatedAt: string;
 };
 
-export type ModExportRevision = {
-  id: string;
-  revisionNo: number;
-  status: string;
-  minecraftVersion: string;
-  loader: string;
-  exporterVersion: string;
-  sourceKind: string;
-  namespace: string;
-  targetVersionPublicId: string;
-  isActive: boolean;
-  registryCounts: Record<string, number>;
-  documentCounts: Record<string, number>;
-  assetCount: number;
-  structureCount: number;
-  advancementCount: number;
-  keyMappingCount: number;
-  recipeCount: number;
-  tagCount: number;
-  createdAt: string;
-};
-
 export type ModExportEntryDetail = {
   entityId: string;
   publicId: string;

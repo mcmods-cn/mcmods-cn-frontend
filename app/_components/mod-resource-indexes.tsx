@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { advancementConnectedGroups } from "../_lib/advancement-graph";
+import { clusterSimilarResources } from "../_lib/similar-resource-groups";
 import { useRotatingValue } from "./rotating-resource";
 
 export type ResourceIndexEntry = {
@@ -17,6 +18,7 @@ export type ResourceIndexEntry = {
   x?: number;
   y?: number;
   frame?: string;
+  similarGroupId?: string;
 };
 
 export type CompactResourceGroup = {
@@ -36,7 +38,9 @@ export function CompactResourceIndex({ groups, openInNewTab = false }: { groups:
         {group.label}
       </h2>
       <div className="flex flex-wrap content-start gap-x-3 gap-y-2 p-4">
-        {group.entries.map((entry) => <CompactResourceLink entry={entry} key={entry.key} openInNewTab={openInNewTab} />)}
+        {clusterSimilarResources(group.entries, (entry) => entry.similarGroupId).map((entries) => entries.length > 1
+          ? <div className="flex flex-wrap gap-1 rounded-lg border-2 border-[var(--accent)] bg-[var(--accent-soft)] p-1" key={`similar-${entries[0].similarGroupId}`} role="group">{entries.map((entry) => <CompactResourceLink entry={entry} key={entry.key} openInNewTab={openInNewTab} />)}</div>
+          : <CompactResourceLink entry={entries[0]} key={entries[0].key} openInNewTab={openInNewTab} />)}
       </div>
     </section>)}
   </div>;

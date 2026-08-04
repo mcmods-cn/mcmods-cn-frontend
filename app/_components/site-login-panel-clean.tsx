@@ -6,17 +6,17 @@ import { FormEvent, useEffect, useState } from "react";
 import { AuthResult, AuthUser, canAccessAdmin, cookieSessionToken, saveAuth } from "../_lib/auth";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
+import { normalizeInternalPath } from "../_lib/navigation";
+import { MinecraftLanguagePicker } from "./minecraft-language-picker";
+import { TimezonePicker } from "./timezone-picker";
 
 const reservedUsernames = new Set(["admin", "administrator", "root", "system", "mcmods"]);
-const usernamePattern = /^[\p{Script=Han}A-Za-z0-9_]+$/u;
 const thirdPartyProviders = [
   { key: "wechat", label: "WeChat" },
   { key: "qq", label: "QQ" },
   { key: "google", label: "Google" },
   { key: "github", label: "GitHub" },
 ];
-const uiLanguages = supportedLocales.map((language) => language.code);
-
 export function SiteLoginPanelClean() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -29,7 +29,6 @@ export function SiteLoginPanelClean() {
   const [emailCode, setEmailCode] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [displayName, setDisplayName] = useState("");
   const [country, setCountry] = useState("CN");
   const [timezone, setTimezone] = useState("Asia/Shanghai");
   const [preferredContentLanguage, setPreferredContentLanguage] = useState("zh-CN");
@@ -37,7 +36,7 @@ export function SiteLoginPanelClean() {
   const [loading, setLoading] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [message, setMessage] = useState("");
-  const nextPath = safeNextPath(searchParams.get("next"));
+  const nextPath = normalizeInternalPath(searchParams.get("next"));
 
   useEffect(() => {
     if (searchParams.get("oauth") !== "success") return;
@@ -88,7 +87,6 @@ export function SiteLoginPanelClean() {
                 email,
                 code: emailCode,
                 password,
-                displayName,
                 country,
                 timezone,
                 preferredContentLanguage,
@@ -175,7 +173,7 @@ export function SiteLoginPanelClean() {
               </>
             ) : (
               <>
-                <Field label={t("login.username")} value={username} onChange={setUsername} required />
+                <Field label={t("login.username")} maxLength={32} value={username} onChange={setUsername} required />
                 <Field label={t("login.email")} value={email} onChange={setEmail} type="email" required />
                 <label className="block text-sm font-semibold">
                   {t("login.code")}
@@ -184,13 +182,23 @@ export function SiteLoginPanelClean() {
                     <button className="button-secondary focus-ring" disabled={sendingCode} type="button" onClick={requestEmailCode}>{sendingCode ? t("login.sendingCode") : t("login.sendCode")}</button>
                   </div>
                 </label>
-                <Field label={t("login.displayName")} value={displayName} onChange={setDisplayName} />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Field label={t("login.country")} value={country} onChange={setCountry} />
-                  <Field label={t("login.timezone")} value={timezone} onChange={setTimezone} />
+                  <label className="block text-sm font-semibold">
+                    {t("login.timezone")}
+                    <TimezonePicker className="mt-2" title={t("timezonePicker.registrationTitle")} value={timezone} onChange={setTimezone} />
+                  </label>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <LanguageSelect label={t("login.primaryLanguage")} value={preferredContentLanguage} onChange={setPreferredContentLanguage} />
+                  <label className="grid gap-2 text-sm font-semibold">
+                    <span>{t("login.primaryLanguage")}</span>
+                    <MinecraftLanguagePicker
+                      multiple={false}
+                      title={t("contentLanguage.selectPrimary")}
+                      values={preferredContentLanguage ? [preferredContentLanguage] : []}
+                      onChange={(values) => setPreferredContentLanguage(values[0] ?? "")}
+                    />
+                  </label>
                   <LanguageSelect label={t("login.secondaryLanguage")} value={preferredUILanguage} onChange={setPreferredUILanguage} />
                 </div>
               </>
@@ -226,11 +234,11 @@ export function SiteLoginPanelClean() {
   );
 }
 
-function Field({ label, value, onChange, placeholder, type = "text", required = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean }) {
+function Field({ label, value, onChange, placeholder, type = "text", required = false, maxLength }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean; maxLength?: number }) {
   return (
     <label className="block text-sm font-semibold">
       {label}
-      <input className="field mt-2" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} type={type} required={required} />
+      <input className="field mt-2" maxLength={maxLength} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} type={type} required={required} />
     </label>
   );
 }
@@ -240,7 +248,7 @@ function LanguageSelect({ label, value, onChange }: { label: string; value: stri
     <label className="block text-sm font-semibold">
       {label}
       <select className="field mt-2" value={value} onChange={(event) => onChange(event.target.value)}>
-        {uiLanguages.map((language) => <option key={language} value={language}>{language}</option>)}
+        {supportedLocales.map((language) => <option key={language.code} value={language.code}>{language.label}</option>)}
       </select>
     </label>
   );
@@ -248,9 +256,8 @@ function LanguageSelect({ label, value, onChange }: { label: string; value: stri
 
 function validateUsername(username: string, t: (key: string) => string) {
   const value = username.trim();
-  if (value.length < 3 || value.length > 24) return t("login.usernameLength");
-  if (/^\d+$/.test(value)) return t("login.usernameNumeric");
-  if (!usernamePattern.test(value)) return t("login.usernamePattern");
+  if ([...value].length < 1 || [...value].length > 32) return t("login.usernameLength");
+  if (value !== username || /[\p{C}\s]/u.test(value)) return t("login.usernamePattern");
   if (reservedUsernames.has(value.toLowerCase())) return t("login.usernameReserved");
   return "";
 }
@@ -262,17 +269,6 @@ function PasswordStrength({ password }: { password: string }) {
   const label = score >= 4 ? t("login.strengthStrong") : score >= 3 ? t("login.strengthMedium") : t("login.strengthWeak");
   const color = score >= 4 ? "text-[var(--accent)]" : score >= 3 ? "text-[var(--warning)]" : "text-[var(--red)]";
   return <span className={`mt-2 block text-xs font-semibold ${color}`}>{t("login.passwordStrength", { level: label })}</span>;
-}
-
-function safeNextPath(value: string | null) {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return "";
-  try {
-    const parsed = new URL(value, "https://mcmods.local");
-    if (parsed.origin !== "https://mcmods.local") return "";
-    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-  } catch {
-    return "";
-  }
 }
 
 function destinationAfterLogin(nextPath: string, user: AuthResult["user"]) {

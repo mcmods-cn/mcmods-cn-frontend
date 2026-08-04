@@ -4,20 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { localizedCatalogResourceName } from "../../_lib/content-language";
 import { loadCatalogResources } from "../../_lib/editor-api";
-import type { CatalogResourcePage, CatalogResourceRef } from "../../_lib/editor-types";
+import type { CatalogResourcePage, CatalogResourceRef, ResourcePageLoader } from "../../_lib/editor-types";
 import { useI18n } from "../../_lib/i18n-provider";
+import { namespaceFromIdentifier } from "../../_lib/catalog-resource-identifiers";
 import { CatalogResourceIcon, CatalogResourceIdentity, type SelectedResourceListLabels } from "./selected-resource-list";
 
-export type ResourceFilterOption = { value: string; label: string };
-export type ResourcePageLoaderOptions = {
-  query: string;
-  locale: string;
-  kind: string;
-  registry: string;
-  limit: number;
-  offset: number;
-};
-export type ResourcePageLoader = (options: ResourcePageLoaderOptions, token: string, signal: AbortSignal) => Promise<CatalogResourcePage>;
+type ResourceFilterOption = { value: string; label: string };
 
 export type ResourcePickerLabels = SelectedResourceListLabels & Partial<{
   title: string;
@@ -72,7 +64,7 @@ function OpenResourcePickerDialog({
   unresolvedRegistry = initialRegistry || registryOptions[0]?.value || "",
   allowUnresolved = false,
   labels = {},
-  loadPage = defaultResourcePageLoader,
+  loadPage = loadCatalogResources,
   validateUnresolved = defaultIdentifierValidator,
   onClose,
   onConfirm,
@@ -108,6 +100,7 @@ function OpenResourcePickerDialog({
       .then((next) => {
         if (cancelled) return;
         setResult(next);
+        setSelected((current) => resolveSelectedResources(current, next.items));
         setError("");
       })
       .catch((reason: unknown) => {
@@ -120,6 +113,23 @@ function OpenResourcePickerDialog({
       controller.abort();
     };
   }, [kind, loadPage, locale, manualMode, page, registry, submittedQuery, token]);
+
+  useEffect(() => {
+    const pending = value.filter(needsResourceHydration);
+    if (!pending.length) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    void hydrateSelectedResources(pending, loadPage, locale, token, controller.signal).then((resolved) => {
+      if (cancelled || !resolved.length) return;
+      setSelected((current) => resolveSelectedResources(current, resolved));
+    }).catch((reason: unknown) => {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) return;
+    });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [loadPage, locale, token, value]);
 
   const pages = Math.max(1, Math.ceil(result.total / pageSize));
   const selectedItems = useMemo(() => [...selected.values()], [selected]);
@@ -157,7 +167,7 @@ function OpenResourcePickerDialog({
         next.set(publicId, {
           publicId,
           id: identifier,
-          registry: unresolvedRegistry || namespaceOf(identifier),
+          registry: unresolvedRegistry || namespaceFromIdentifier(identifier),
           kind: unresolvedKind,
           names: {},
           unresolved: true,
@@ -289,17 +299,60 @@ function SelectedIconStrip({
   </div>;
 }
 
-function defaultResourcePageLoader(options: ResourcePageLoaderOptions, token: string, signal: AbortSignal) {
-  return loadCatalogResources(options, token, signal);
-}
-
 function unresolvedPublicID(kind: string, identifier: string) {
   return `unresolved:${kind.toLowerCase()}:${identifier.toLowerCase()}`;
 }
 
-function namespaceOf(identifier: string) {
-  const separator = identifier.indexOf(":");
-  return separator > 0 ? identifier.slice(0, separator) : "";
+function needsResourceHydration(resource: CatalogResourceRef) {
+  return resource.unresolved || (!resource.resolvedName && Object.values(resource.names).every((name) => !name.trim()));
+}
+
+async function hydrateSelectedResources(
+  resources: readonly CatalogResourceRef[],
+  loadPage: ResourcePageLoader,
+  locale: string,
+  token: string,
+  signal: AbortSignal,
+) {
+  const resolved: CatalogResourceRef[] = [];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < resources.length) {
+      const resource = resources[cursor++];
+      const identifier = resource.rawIdentifier || resource.id || resource.publicId;
+      const page = await loadPage({
+        query: identifier,
+        locale,
+        kind: resource.kind === "resource" ? "" : resource.kind,
+        registry: resource.registry,
+        limit: 40,
+        offset: 0,
+      }, token, signal);
+      const match = page.items.find((candidate) => resourceMatches(candidate, resource));
+      if (match) resolved.push(match);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(6, resources.length) }, () => worker()));
+  return resolved;
+}
+
+function resolveSelectedResources(current: Map<string, CatalogResourceRef>, candidates: readonly CatalogResourceRef[]) {
+  let next: Map<string, CatalogResourceRef> | undefined;
+  for (const [key, selectedResource] of current) {
+    if (!needsResourceHydration(selectedResource)) continue;
+    const match = candidates.find((candidate) => resourceMatches(candidate, selectedResource));
+    if (!match) continue;
+    next ??= new Map(current);
+    next.delete(key);
+    next.set(match.publicId, match);
+  }
+  return next ?? current;
+}
+
+function resourceMatches(candidate: CatalogResourceRef, selectedResource: CatalogResourceRef) {
+  if (candidate.publicId.toLowerCase() === selectedResource.publicId.toLowerCase()) return true;
+  const identifier = (selectedResource.rawIdentifier || selectedResource.id).trim().toLowerCase();
+  return identifier !== "" && candidate.id.trim().toLowerCase() === identifier;
 }
 
 function defaultIdentifierValidator(identifier: string) {

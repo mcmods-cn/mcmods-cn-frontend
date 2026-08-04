@@ -15,11 +15,30 @@ type ModContentReviewItem = {
   modName: string;
   userId?: string;
   username: string;
-  displayName: string;
   title: string;
   summary: string;
   createdAt: string;
   reviewUrl: string;
+};
+
+type CommentReportStatus = "pending" | "resolved" | "dismissed";
+
+type AdminCommentReport = {
+  id: string;
+  commentId: string;
+  commentBody: string;
+  commentStatus: string;
+  commentUrl: string;
+  authorId: string;
+  authorName: string;
+  reporterId: string;
+  reporterName: string;
+  reason: string;
+  detail: string;
+  status: CommentReportStatus;
+  resolutionNote: string;
+  createdAt: string;
+  resolvedAt?: string;
 };
 
 function versionSourceName(sourceUrl: string) {
@@ -187,5 +206,89 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "develo
     }
   }
 
-  return <section><p className="text-sm text-[var(--muted)]">{t(`admin.reviews.${kind}Description`)}</p>{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}<div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t(`admin.reviews.applicationKinds.${item.kind}`); const summary = content ? item.summary : item.proof; const name = item.displayName || item.username; const historyHref = content && item.source === "blueprint" ? `/blueprints/${item.modSiteId}` : content && item.modSiteId ? `/mods/${item.modSiteId}/history` : ""; return <article key={`${content ? item.source : item.kind}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-black">{item.modName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p></div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && item.source === "blueprint" ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div></section>;
+return <section><p className="text-sm text-[var(--muted)]">{t(`admin.reviews.${kind}Description`)}</p>{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}<div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t(`admin.reviews.applicationKinds.${item.kind}`); const summary = content ? item.summary : item.proof; const name = item.username; const historyHref = content && item.source === "blueprint" ? `/blueprints/${item.modSiteId}` : content && item.modSiteId ? `/mods/${item.modSiteId}/history` : ""; return <article key={`${content ? item.source : item.kind}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-black">{item.modName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p></div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && item.source === "blueprint" ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div></section>;
+}
+
+export function CommentReportReviewPanel({ token }: { token: string }) {
+  const { locale, t } = useI18n();
+  const [status, setStatus] = useState<CommentReportStatus>("pending");
+  const [items, setItems] = useState<AdminCommentReport[]>([]);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [message, setMessage] = useState("");
+  const [busyID, setBusyID] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      const result = await apiRequest<{ items: AdminCommentReport[] }>(
+        `/api/v1/admin/comment-reports?status=${encodeURIComponent(status)}`,
+        {},
+        token,
+      );
+      setItems(result.items);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("admin.reviews.commentReportsLoadFailed"));
+    }
+  }, [status, t, token]);
+
+  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+
+  async function review(item: AdminCommentReport, action: "hide" | "dismiss") {
+    setBusyID(item.id);
+    try {
+      await apiRequest(
+        `/api/v1/admin/comment-reports/${encodeURIComponent(item.id)}`,
+        { method: "PATCH", body: JSON.stringify({ action, note: notes[item.id] ?? "" }) },
+        token,
+      );
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("admin.reviews.commentReportsReviewFailed"));
+    } finally {
+      setBusyID("");
+    }
+  }
+
+  return <section>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <p className="text-sm text-[var(--muted)]">{t("admin.reviews.commentReportsDescription")}</p>
+      <select className="field w-auto min-w-40" value={status} onChange={(event) => setStatus(event.target.value as CommentReportStatus)}>
+        <option value="pending">{t("admin.reviews.reportStatuses.pending")}</option>
+        <option value="resolved">{t("admin.reviews.reportStatuses.resolved")}</option>
+        <option value="dismissed">{t("admin.reviews.reportStatuses.dismissed")}</option>
+      </select>
+    </div>
+    {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
+    <div className="mt-5 grid gap-4">
+      {items.map((item) => <article key={item.id} className="surface p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-black">{t("admin.reviews.reportBy", { reporter: item.reporterName })}</h3>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}
+            </p>
+          </div>
+          <Link className="button-secondary focus-ring" href={item.commentUrl} target="_blank">{t("admin.reviews.openComment")}</Link>
+        </div>
+        <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
+          <p className="text-xs font-bold text-[var(--muted)]">
+            {t("admin.reviews.commentAuthor")}: <Link className="text-[var(--accent)] hover:underline" href={`/user/${encodeURIComponent(item.authorId)}`}>{item.authorName}</Link>
+          </p>
+          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.commentBody}</p>
+        </div>
+        <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+          <div><dt className="font-bold text-[var(--muted)]">{t("admin.reviews.reportReason")}</dt><dd className="mt-1 break-words">{item.reason}</dd></div>
+          <div><dt className="font-bold text-[var(--muted)]">{t("admin.reviews.reportDetail")}</dt><dd className="mt-1 whitespace-pre-wrap break-words">{item.detail || t("admin.reviews.noDescription")}</dd></div>
+        </dl>
+        {item.status === "pending" ? <>
+          <textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} />
+          <div className="mt-3 flex flex-wrap justify-end gap-2">
+            <button className="button-secondary focus-ring" disabled={busyID === item.id} type="button" onClick={() => void review(item, "dismiss")}>{t("admin.reviews.dismissReport")}</button>
+            <button className="button-primary focus-ring" disabled={busyID === item.id} type="button" onClick={() => void review(item, "hide")}>{t("admin.reviews.hideComment")}</button>
+          </div>
+        </> : item.resolutionNote ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm"><strong>{t("admin.reviews.resolutionNote")}:</strong> {item.resolutionNote}</p> : null}
+      </article>)}
+      {items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.commentReportsEmpty")}</div> : null}
+    </div>
+  </section>;
 }

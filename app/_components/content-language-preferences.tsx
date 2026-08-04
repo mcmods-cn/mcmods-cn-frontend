@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { loadContentLanguageSettings, saveContentLanguageSettings } from "../_lib/content-language-api";
 import { useI18n } from "../_lib/i18n-provider";
+import { MinecraftLanguagePicker } from "./minecraft-language-picker";
 
 export function ContentLanguagePreferences({ token }: { token: string }) {
   const { t } = useI18n();
@@ -15,6 +16,10 @@ export function ContentLanguagePreferences({ token }: { token: string }) {
   const primaryIsEditable = useMemo(
     () => editableLocales.some((locale) => locale.toLowerCase() === primary.trim().replaceAll("_", "-").toLowerCase()),
     [editableLocales, primary],
+  );
+  const secondaryIsEditable = useMemo(
+    () => editableLocales.some((locale) => locale.toLowerCase() === secondary.trim().replaceAll("_", "-").toLowerCase()),
+    [editableLocales, secondary],
   );
 
   useEffect(() => {
@@ -38,6 +43,10 @@ export function ContentLanguagePreferences({ token }: { token: string }) {
   async function save() {
     if (!primary.trim() || !secondary.trim()) {
       setMessage(t("contentLanguage.required"));
+      return;
+    }
+    if (!secondaryIsEditable) {
+      setMessage(t("contentLanguage.unsupportedSecondary"));
       return;
     }
     setSaving(true);
@@ -65,34 +74,30 @@ export function ContentLanguagePreferences({ token }: { token: string }) {
         {t(primaryIsEditable ? "contentLanguage.editablePrimary" : "contentLanguage.translationOnlyPrimary")}
       </span> : null}
     </div>
-    <datalist id="editable-content-locales">
-      {editableLocales.map((locale) => <option key={locale} value={locale} />)}
-    </datalist>
     <div className="mt-4 grid gap-4 md:grid-cols-2">
-      <label className="grid gap-2 text-sm font-semibold">
+      <div className="grid gap-2 text-sm font-semibold">
         <span>{t("contentLanguage.primary")}</span>
-        <input
-          className="field font-mono"
+        <MinecraftLanguagePicker
           disabled={loading || saving}
-          list="editable-content-locales"
-          placeholder="zh-CN"
-          value={primary}
-          onChange={(event) => setPrimary(event.target.value)}
+          multiple={false}
+          title={t("contentLanguage.selectPrimary")}
+          values={primary ? [primary] : []}
+          onChange={(values) => setPrimary(values[0] ?? "")}
         />
         <small className="font-normal text-[var(--muted)]">{t("contentLanguage.primaryHint")}</small>
-      </label>
-      <label className="grid gap-2 text-sm font-semibold">
+      </div>
+      <div className="grid gap-2 text-sm font-semibold">
         <span>{t("contentLanguage.secondary")}</span>
-        <input
-          className="field font-mono"
+        <MinecraftLanguagePicker
           disabled={loading || saving}
-          list="editable-content-locales"
-          placeholder="en-US"
-          value={secondary}
-          onChange={(event) => setSecondary(event.target.value)}
+          multiple={false}
+          optionCodes={editableLocales}
+          title={t("contentLanguage.selectSecondary")}
+          values={secondary ? [secondary] : []}
+          onChange={(values) => setSecondary(values[0] ?? "")}
         />
         <small className="font-normal text-[var(--muted)]">{t("contentLanguage.secondaryHint")}</small>
-      </label>
+      </div>
     </div>
     <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
       <p className="text-xs text-[var(--muted)]">{t("contentLanguage.chineseFallbackHint")}</p>

@@ -21,13 +21,12 @@ function subscribeToRotationClock(intervalMilliseconds: number, listener: () => 
     };
     rotationClocks.set(intervalMilliseconds, clock);
   }
-  const activeClock = clock;
-  activeClock.listeners.add(listener);
+  clock.listeners.add(listener);
   return () => {
-    activeClock.listeners.delete(listener);
-    if (activeClock.listeners.size) return;
-    window.clearInterval(activeClock.timer);
-    if (rotationClocks.get(intervalMilliseconds) === activeClock) {
+    clock.listeners.delete(listener);
+    if (clock.listeners.size) return;
+    window.clearInterval(clock.timer);
+    if (rotationClocks.get(intervalMilliseconds) === clock) {
       rotationClocks.delete(intervalMilliseconds);
     }
   };

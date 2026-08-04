@@ -33,6 +33,11 @@ export type CreatorMember = {
   title: string;
 };
 
+export type CreatorLocalization = {
+  locale: string;
+  contentMarkdown: string;
+};
+
 type CreatorWork = {
   uniqueId: string;
   siteId: string;
@@ -45,6 +50,8 @@ type CreatorWork = {
 export type CreatorDetail = {
   creator: CreatorSummary;
   descriptionMarkdown: string;
+  defaultLocale?: string;
+  localizations?: CreatorLocalization[];
   links: CreatorLink[];
   collaborators: CreatorSummary[];
   members: CreatorMember[];
@@ -53,7 +60,6 @@ export type CreatorDetail = {
     id: string;
     publicId: string;
     username: string;
-    displayName: string;
     avatarUrl: string;
   } | null;
   canEdit: boolean;
@@ -65,11 +71,18 @@ export type CreatorSnapshot = {
   kind: CreatorKind;
   name: string;
   descriptionMarkdown: string;
+  defaultLocale: string;
+  localizations: CreatorLocalization[];
   avatarUrl: string;
   avatarFileId?: string;
   links: CreatorLink[];
-  collaboratorIds: string[];
   members: Array<{ creatorId: string; roleId: string; title: string }>;
+};
+
+export type CreatorClaimAttachment = {
+  id: string;
+  name: string;
+  sizeBytes: number;
 };
 
 export type CreatorClaim = {
@@ -79,8 +92,8 @@ export type CreatorClaim = {
   name: string;
   userId: string;
   username: string;
-  displayName: string;
   proofMarkdown: string;
+  attachments: CreatorClaimAttachment[];
   status: "pending" | "approved" | "rejected";
   createdAt: string;
 };

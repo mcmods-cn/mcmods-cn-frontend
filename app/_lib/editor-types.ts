@@ -4,6 +4,12 @@ export type TranslationProvenance = "original" | "import" | "human" | "ai" | "hu
 
 export type ReviewStatus = "draft" | "pending" | "approved" | "rejected";
 
+export type LocalizedContentFields = {
+  name: string;
+  summary: string;
+  contentMarkdown: string;
+};
+
 export type LocalizationVersion<TFields = Record<string, string>> = {
   locale: ContentLanguageTag;
   fields: TFields;
@@ -101,6 +107,21 @@ export type CatalogResourcePage = {
   offset: number;
 };
 
+type ResourcePageLoaderOptions = {
+  query: string;
+  locale: string;
+  kind: string;
+  registry: string;
+  limit: number;
+  offset: number;
+};
+
+export type ResourcePageLoader = (
+  options: ResourcePageLoaderOptions,
+  token: string,
+  signal: AbortSignal,
+) => Promise<CatalogResourcePage>;
+
 export type CatalogResourceQuery = {
   query?: string;
   locale?: ContentLanguageTag;
@@ -137,6 +158,7 @@ type ResolvedContentTranslationState = {
 export type ResolvedContentDocument<TFields = Record<string, string>> = {
   publicId: string;
   entityType: string;
+  canonicalPath: string;
   requestedLocale: ContentLanguageTag;
   resolvedLocale: ContentLanguageTag;
   defaultLocale: ContentLanguageTag;

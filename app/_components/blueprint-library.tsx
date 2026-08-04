@@ -64,7 +64,7 @@ export function BlueprintLibrary() {
               <p className="mt-3 line-clamp-3 flex-1 text-sm leading-6 text-[var(--muted)]">{plainText(item.description) || t("blueprints.noIntroduction")}</p>
               <BlueprintRequiredMods compact mods={item.requiredMods} />
               <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--line)] pt-4 text-sm"><div><dt className="text-[var(--muted)]">{t("blueprints.dimensions")}</dt><dd className="mt-1 font-bold">{item.size.join(" × ")}</dd></div><div><dt className="text-[var(--muted)]">{t("blueprints.blocks")}</dt><dd className="mt-1 font-bold">{item.blockCount.toLocaleString()}</dd></div></dl>
-              <div className="mt-4 flex items-center justify-between gap-3"><span className="truncate text-sm text-[var(--muted)]">{item.uploader.displayName || item.uploader.username}</span><Link className="button-secondary focus-ring px-3 py-2 text-sm" href={`/blueprints/${item.id}`}>{t("blueprints.open")}</Link></div>
+<div className="mt-4 flex items-center justify-between gap-3"><span className="truncate text-sm text-[var(--muted)]">{item.uploader.username}</span><Link className="button-secondary focus-ring px-3 py-2 text-sm" href={`/blueprints/${item.id}`}>{t("blueprints.open")}</Link></div>
               </div>
             </article>
           ))}

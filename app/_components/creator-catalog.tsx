@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { CreatorKind, CreatorSummary, creatorHref } from "../_lib/community-api";
@@ -14,9 +13,9 @@ export function CreatorCatalog() {
   const [kind, setKind] = useState<"" | CreatorKind>("");
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<CreatorSummary[]>([]);
+  const [counts, setCounts] = useState({ author: 0, team: 0 });
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -25,10 +24,18 @@ export function CreatorCatalog() {
       const params = new URLSearchParams({ limit: "100" });
       if (kind) params.set("kind", kind);
       if (query.trim()) params.set("query", query.trim());
-      apiRequest<{ items: CreatorSummary[] }>(`/api/v1/creators?${params}`, {}, token || undefined)
+      apiRequest<{ items: CreatorSummary[]; counts?: { author: number; team: number } }>(`/api/v1/creators?${params}`, {}, token || undefined)
         .then((result) => {
           if (!cancelled) {
             setItems(result.items);
+            if (result.counts) {
+              setCounts(result.counts);
+            } else if (!kind) {
+              setCounts({
+                author: result.items.filter((item) => item.kind === "author").length,
+                team: result.items.filter((item) => item.kind === "team").length,
+              });
+            }
             setMessage("");
           }
         })
@@ -45,11 +52,6 @@ export function CreatorCatalog() {
     };
   }, [kind, query, t, token]);
 
-  const counts = useMemo(() => ({
-    author: items.filter((item) => item.kind === "author").length,
-    team: items.filter((item) => item.kind === "team").length,
-  }), [items]);
-
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <section className="border-b border-[var(--line)] bg-[var(--panel)]">
@@ -59,7 +61,7 @@ export function CreatorCatalog() {
             <h1 className="mt-2 text-3xl font-black">{t("creators.title")}</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("creators.description")}</p>
           </div>
-          {token ? <button className="button-primary focus-ring" type="button" onClick={() => setCreateOpen(true)}>+ {t("creators.create")}</button> : null}
+          {token ? <Link className="button-primary focus-ring" href="/authors/new">+ {t("creators.create")}</Link> : null}
         </div>
       </section>
 
@@ -100,77 +102,10 @@ export function CreatorCatalog() {
           ))}
         </div>
       </section>
-      {createOpen ? <CreateCreatorDialog onClose={() => setCreateOpen(false)} /> : null}
     </main>
   );
 }
 
 function FilterButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
   return <button className={`focus-ring whitespace-nowrap rounded-md px-4 py-2 text-sm font-black ${active ? "bg-[var(--accent)] text-white" : "text-[var(--muted)] hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={onClick}>{children}</button>;
-}
-
-function CreateCreatorDialog({ onClose }: { onClose: () => void }) {
-  const { t } = useI18n();
-  const router = useRouter();
-  const { token } = useAuthSnapshot();
-  const [kind, setKind] = useState<CreatorKind>("author");
-  const [name, setName] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!token || !name.trim()) return;
-    setSubmitting(true);
-    try {
-      const result = await apiRequest<{ publicId: string }>(
-        "/api/v1/creators",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            kind,
-            name: name.trim(),
-            descriptionMarkdown: "",
-            avatarUrl: "",
-            links: [],
-            collaboratorIds: [],
-            members: [],
-          }),
-        },
-        token,
-      );
-      router.push(kind === "team" ? `/teams/${result.publicId}` : `/authors/${result.publicId}`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("creators.createFailed"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4" role="presentation" onMouseDown={onClose}>
-      <form className="surface w-full max-w-lg rounded-lg p-5" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}>
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xl font-black">{t("creators.create")}</h2>
-          <button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button>
-        </div>
-        <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("creators.quickCreateDescription")}</p>
-        <div className="mt-4 grid gap-3">
-          <label>
-            <span className="mb-1 block text-sm font-black">{t("creators.kind")}</span>
-            <select className="field" value={kind} onChange={(event) => setKind(event.target.value as CreatorKind)}>
-              <option value="author">{t("creators.kinds.author")}</option>
-              <option value="team">{t("creators.kinds.team")}</option>
-            </select>
-          </label>
-          <label>
-            <span className="mb-1 block text-sm font-black">{t("creators.name")}</span>
-            <input className="field" autoFocus required maxLength={160} value={name} onChange={(event) => setName(event.target.value)} />
-          </label>
-        </div>
-        {message ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{message}</p> : null}
-        <div className="mt-5 flex justify-end"><button className="button-primary focus-ring" disabled={submitting || !name.trim()} type="submit">{submitting ? t("common.loading") : t("common.create")}</button></div>
-      </form>
-    </div>
-  );
 }

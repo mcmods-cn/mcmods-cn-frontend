@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type CSSProperties, type DragEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type CSSProperties, type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
@@ -12,13 +12,16 @@ import {
   createModContentSection,
   createModContentTemplate,
   createModContentVersion,
+  loadAllModContentSectionResources,
   loadModContentSections,
   loadModContentTemplates,
   loadModContentVersions,
   type ModContentLocalization,
+  type ModContentMutationResult,
   type ModContentSection,
   type ModContentTemplate,
   type ModContentVersion,
+  updateModContentLayout,
   updateModContentVersion,
 } from "../_lib/mod-content-api";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -31,6 +34,7 @@ import {
   uploadEmbeddedIconCatalog,
   waitForCatalogImportJob,
 } from "../_lib/mod-export-api";
+import { CustomContentTemplateSettings } from "./custom-content-template-settings";
 
 type ImportSource = "" | "icon" | "exporter" | CatalogImportSource;
 type VersionDraft = { minecraftVersions: string[]; loaders: string[]; modVersion: string; reason: string };
@@ -40,8 +44,6 @@ const emptyLocalization = (locale: string): ModContentLocalization => ({ locale,
 
 export function ModContentWorkspace({ siteId, token, initialImportSource = "", initialVersionId = "", createNew = false }: { siteId: string; token: string; initialImportSource?: ImportSource; initialVersionId?: string; createNew?: boolean }) {
   const { locale, t } = useI18n();
-  const customTemplatePrefix = useId().replace(/[^a-z0-9]/gi, "").toLowerCase();
-  const customTemplateSequence = useRef(0);
   const [versions, setVersions] = useState<ModContentVersion[]>([]);
   const [templates, setTemplates] = useState<ModContentTemplate[]>([]);
   const [sections, setSections] = useState<ModContentSection[]>([]);
@@ -208,12 +210,17 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
     setBusy(true);
     setMessage("");
     try {
-      customTemplateSequence.current += 1;
+      const typeNames = Object.fromEntries(input.localizations
+        .filter((item) => item.name.trim())
+        .map((item) => [item.locale, item.name.trim()]));
       const templateResult = await createModContentTemplate(siteId, {
-        code: `custom_${customTemplatePrefix}_${customTemplateSequence.current}`,
+        code: `custom_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`,
         defaultLocale: input.defaultLocale,
         defaultDisplayMode: input.displayMode,
-        definition: {},
+        definition: {
+          resourceKinds: ["import.document"],
+          entryTypes: [{ code: "default", kindCodes: ["import.document"], names: typeNames, groups: [] }],
+        },
         localizations: input.localizations.filter((item) => item.name.trim()),
         reason: t("modContent.versionEditor.addCustomTypeReason"),
       }, token);
@@ -252,7 +259,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
         </header>
         {importBusy ? <p className="mt-4 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("modContent.catalogImport.continuesInBackground", { importer: importSourceLabel(activeImportSource) })}</p> : null}
         <div hidden={!editingVersion}><VersionForm busy={busy || importBusy} compatibilities={compatibilities} draft={versionDraft} editing minecraftConfig={minecraftConfig} usingGlobalCompatibility={usingGlobalCompatibility} onCancel={() => setEditingVersion(false)} onChange={setVersionDraft} onSave={() => void saveVersion()} /></div>
-        <div className="mt-6" hidden={editingVersion || importSource !== ""}><div className="mb-4"><h3 className="text-lg font-black">{t("modContent.versionEditor.contentTypes")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.contentTypesHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{currentSections.map((section) => <ContentTypeCard key={section.publicId} locale={locale} section={section} siteId={siteId} templates={templates} onDelete={() => void archiveSection(section)} />)}<AddContentPageCard disabled={selectedVersion.status !== "active" || importBusy} onClick={() => setTypeDialogOpen(true)} /></div></div>
+        <div className="mt-6" hidden={editingVersion || importSource !== ""}><div className="mb-4"><h3 className="text-lg font-black">{t("modContent.versionEditor.contentTypes")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.contentTypesHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{currentSections.map((section) => <ContentTypeCard busy={busy} key={section.publicId} locale={locale} section={section} siteId={siteId} templates={templates} token={token} onDelete={() => void archiveSection(section)} onDisplayModeChange={(displayMode) => void changeSectionDisplayMode(section, displayMode)} onTemplateSaved={async (result) => { setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); await reload(); }} />)}<AddContentPageCard disabled={selectedVersion.status !== "active" || importBusy} onClick={() => setTypeDialogOpen(true)} /></div></div>
         <div hidden={editingVersion || importSource !== "exporter"}><ExporterImportPanel blocked={importBusy && activeImportSource !== "exporter"} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} token={token} version={selectedVersion} /></div>
         <div hidden={editingVersion || importSource !== "icon"}><IconExportPanel blocked={importBusy && activeImportSource !== "icon"} onBusyChange={updateImportBusy} siteId={siteId} token={token} version={selectedVersion} /></div>
         {(["iconrenderer", "letmeseesee", "irr"] as CatalogImportSource[]).map((source) => <div hidden={editingVersion || importSource !== source} key={source}><EmbeddedIconImportPanel blocked={importBusy && activeImportSource !== source} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} source={source} token={token} version={selectedVersion} /></div>)}
@@ -266,6 +273,41 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
     setMessage("");
     try {
       const result = await archiveModContentSection(siteId, section.publicId, token);
+      setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
+      await reload();
+    } catch (reason) {
+      setMessage(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changeSectionDisplayMode(section: ModContentSection, displayMode: "compact" | "large") {
+    if (busy || section.templateCode === "advancement" || section.displayMode === displayMode) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const page = await loadAllModContentSectionResources(siteId, section.publicId, { locale }, token);
+      const result = await updateModContentLayout(siteId, section.publicId, {
+        versionPublicId: page.section.versionPublicId,
+        rootSectionPublicId: page.section.publicId,
+        displayMode,
+        categories: page.categories.map((category) => ({
+          publicId: category.publicId,
+          parentPublicId: category.parentPublicId,
+          defaultLocale: category.defaultLocale,
+          ordinal: category.ordinal,
+          localizations: category.localizations,
+        })),
+        resources: page.items.map((resource) => ({
+          resourcePublicId: resource.resourcePublicId,
+          sectionPublicId: resource.sectionPublicId,
+          ordinal: resource.ordinal,
+          similarGroupId: resource.similarGroupId,
+        })),
+        reason: t("modContent.versionEditor.changeDisplayModeReason"),
+        baseRevisionId: page.section.publishedRevisionId,
+      }, token);
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       await reload();
     } catch (reason) {
@@ -298,7 +340,7 @@ function ChoiceGrid({ label, options, selected, available, onToggle }: { label: 
   return <fieldset className="min-w-0"><legend className="mb-2 text-sm font-bold">{label}</legend><div className="flex flex-wrap gap-2">{options.map((option) => { const checked = selected.includes(option); const enabled = checked || available.has(option); return <button aria-pressed={checked} className={`focus-ring rounded-lg border px-3 py-2 text-sm font-bold ${checked ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--line)] bg-[var(--panel)]"} disabled:cursor-not-allowed disabled:opacity-40`} disabled={!enabled} key={option} type="button" onClick={() => onToggle(option)}>{option}</button>; })}</div></fieldset>;
 }
 
-function ContentTypeCard({ siteId, section, templates, locale, onDelete }: { siteId: string; section: ModContentSection; templates: ModContentTemplate[]; locale: string; onDelete: () => void }) {
+function ContentTypeCard({ siteId, section, templates, locale, token, busy, onDelete, onDisplayModeChange, onTemplateSaved }: { siteId: string; section: ModContentSection; templates: ModContentTemplate[]; locale: string; token: string; busy: boolean; onDelete: () => void; onDisplayModeChange: (displayMode: "compact" | "large") => void; onTemplateSaved: (result: ModContentMutationResult) => void | Promise<void> }) {
   const { t } = useI18n();
   const template = templates.find((item) => item.publicId === section.templatePublicId);
   const name = localizedName(section.localizations, locale) || localizedName(template?.localizations || [], locale) || t(`modContent.templates.${section.templateCode}`);
@@ -306,7 +348,7 @@ function ContentTypeCard({ siteId, section, templates, locale, onDelete }: { sit
   const presentationLabel = section.templateCode === "advancement"
     ? t("modContent.versionEditor.advancementTitle")
     : t(section.displayMode === "compact" ? "modContent.compact" : "modContent.large");
-  return <article className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4 transition hover:border-[var(--accent)]"><div className="flex items-start justify-between gap-3"><div><Link className="focus-ring text-lg font-black hover:text-[var(--accent)]" href={href} rel="noopener noreferrer" target="_blank">{name}</Link><p className="mt-2 text-xs font-bold text-[var(--muted)]">{presentationLabel}</p></div><button aria-label={t("common.delete")} className="focus-ring rounded px-2 py-1 text-xs font-bold text-[var(--red)] hover:bg-[var(--panel-subtle)]" type="button" onClick={onDelete}>{t("common.delete")}</button></div><Link className="focus-ring mt-5 block rounded-lg border border-dashed border-[var(--line)] p-4 text-center text-sm text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]" href={href} rel="noopener noreferrer" target="_blank">{t("modContent.versionEditor.openType", { count: section.resourceCount })}</Link></article>;
+  return <article className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4 transition hover:border-[var(--accent)]"><div className="flex items-start justify-between gap-3"><div><Link className="focus-ring text-lg font-black hover:text-[var(--accent)]" href={href} rel="noopener noreferrer" target="_blank">{name}</Link><p className="mt-2 text-xs font-bold text-[var(--muted)]">{presentationLabel}</p></div><button aria-label={t("common.delete")} className="focus-ring rounded px-2 py-1 text-xs font-bold text-[var(--red)] hover:bg-[var(--panel-subtle)]" disabled={busy} type="button" onClick={onDelete}>{t("common.delete")}</button></div>{section.templateCode !== "advancement" ? <div className="mt-4 grid grid-cols-2 gap-1 rounded-lg bg-[var(--panel-subtle)] p-1" aria-label={t("modContent.versionEditor.displayMode")}><button aria-pressed={section.displayMode === "compact"} className={`focus-ring rounded-md px-2 py-1.5 text-xs font-bold ${section.displayMode === "compact" ? "bg-[var(--panel)] text-[var(--accent)] shadow-sm" : "text-[var(--muted)]"}`} disabled={busy} type="button" onClick={() => onDisplayModeChange("compact")}>{t("modContent.compact")}</button><button aria-pressed={section.displayMode === "large"} className={`focus-ring rounded-md px-2 py-1.5 text-xs font-bold ${section.displayMode === "large" ? "bg-[var(--panel)] text-[var(--accent)] shadow-sm" : "text-[var(--muted)]"}`} disabled={busy} type="button" onClick={() => onDisplayModeChange("large")}>{t("modContent.large")}</button></div> : null}{template && !template.builtin ? <div className="mt-4"><CustomContentTemplateSettings siteId={siteId} template={template} token={token} onSaved={onTemplateSaved} /></div> : null}<Link className="focus-ring mt-5 block rounded-lg border border-dashed border-[var(--line)] p-4 text-center text-sm text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]" href={href} rel="noopener noreferrer" target="_blank">{t("modContent.versionEditor.openType", { count: section.resourceCount })}</Link></article>;
 }
 
 function AddContentPageCard({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {

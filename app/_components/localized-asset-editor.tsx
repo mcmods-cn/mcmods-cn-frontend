@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
-import { normalizeResolvedContent, type ResolvedCatalogFields } from "../_lib/editor-api";
-import type { LocalizationVersion } from "../_lib/editor-types";
+import { normalizeResolvedContent } from "../_lib/editor-api";
+import type { LocalizedContentFields, LocalizationVersion } from "../_lib/editor-types";
 import { useI18n, type Locale } from "../_lib/i18n-provider";
 import { loadSkin, type SkinModel, type SkinTexture, type SkinVisibility, updateSkin } from "../_lib/skin-api";
 import type { BlueprintDetailRecord } from "../_lib/blueprint-api";
@@ -19,7 +19,7 @@ export function LocalizedAssetEditor({ kind, publicId }: { kind: AssetKind; publ
   const { ready, token } = useAuthSnapshot();
   const [selectedLocale, setSelectedLocale] = useState<Locale>(locale);
   const [defaultLocale, setDefaultLocale] = useState<Locale>(locale);
-  const [versions, setVersions] = useState<LocalizationVersion<ResolvedCatalogFields>[]>([]);
+  const [versions, setVersions] = useState<LocalizationVersion<LocalizedContentFields>[]>([]);
   const [skin, setSkin] = useState<SkinTexture | null>(null);
   const [blueprint, setBlueprint] = useState<BlueprintDetailRecord | null>(null);
   const [tags, setTags] = useState("");
@@ -60,7 +60,7 @@ export function LocalizedAssetEditor({ kind, publicId }: { kind: AssetKind; publ
   const selected = versions.find((item) => item.locale === selectedLocale) ?? {
     locale: selectedLocale, fields: { name: "", summary: "", contentMarkdown: "" }, provenance: "human" as const, reviewStatus: "draft" as const, editable: true,
   };
-  const updateFields = (fields: Partial<ResolvedCatalogFields>) => setVersions((current) => {
+  const updateFields = (fields: Partial<LocalizedContentFields>) => setVersions((current) => {
     const next = { ...selected, fields: { ...selected.fields, ...fields } };
     return current.some((item) => item.locale === selectedLocale)
       ? current.map((item) => item.locale === selectedLocale ? next : item)

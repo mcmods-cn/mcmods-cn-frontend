@@ -13,7 +13,6 @@ import { SkinPreview2D } from "./skin-preview";
 type PublicUserProfile = {
   id: string;
   username: string;
-  displayName: string;
   status: string;
   createdAt: string;
   followers: number;
@@ -105,12 +104,12 @@ export function UserProfile({ userId }: { userId: string }) {
                 {profile.avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img alt="" className="h-full w-full object-cover" src={profile.avatarUrl} />
-                ) : (profile.displayName || profile.username).slice(0, 1).toUpperCase()}
+              ) : profile.username.slice(0, 1).toUpperCase()}
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-[var(--accent)]">{preview ? t("user.previewMode") : t("user.publicProfile")}</p>
-                <h1 className="truncate text-2xl font-black">{profile.displayName || profile.username}</h1>
-                <p className="mt-1 text-sm text-[var(--muted)]">@{profile.username} · ID {profile.id}</p>
+              <h1 className="truncate text-2xl font-black">{profile.username}</h1>
+                <p className="mt-1 text-sm text-[var(--muted)]">ID {profile.id}</p>
                 <p className="mt-2 text-sm text-[var(--muted)]">{t("user.joinedAt", { time: new Date(profile.createdAt).toLocaleDateString() })}</p>
                 {profile.signature ? <p className="mt-3 max-w-2xl whitespace-pre-wrap text-sm leading-6">{profile.signature}</p> : null}
               </div>

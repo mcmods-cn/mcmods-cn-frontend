@@ -2,16 +2,13 @@
 
 import Link from "next/link";
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "../_lib/api";
 import { normalizeContentLanguage } from "../_lib/content-language";
-import { modExportCategories, ModExportCategory, modExportCategoryTitle } from "../_lib/mod-export-catalog";
 import {
   cancelModExportJob,
   cancelModExportUpload,
   getActiveModExportJob,
   getModExportJob,
   ModExportJob,
-  ModExportRevision,
   ModExportUploadProgress,
   retryModExportJob,
   uploadModExportPackage,
@@ -38,7 +35,6 @@ type Props = {
 
 export function ModCatalogData({ siteId, token, canEdit }: Props) {
   const { locale, t } = useI18n();
-  const [revisions, setRevisions] = useState<ModExportRevision[]>([]);
   const [contentVersions, setContentVersions] = useState<ModContentVersion[]>([]);
   const [contentSections, setContentSections] = useState<ModContentSection[]>([]);
   const [contentTemplates, setContentTemplates] = useState<ModContentTemplate[]>([]);
@@ -46,15 +42,12 @@ export function ModCatalogData({ siteId, token, canEdit }: Props) {
   const [message, setMessage] = useState("");
 
   const loadCatalog = useCallback(async () => {
-    const [revisionResult, versions, sections, templates] = await Promise.all([
-      apiRequest<{ items: ModExportRevision[] }>(`/api/v1/mods/${encodeURIComponent(siteId)}/export-data`, {}, token),
+    const [versions, sections, templates] = await Promise.all([
       loadModContentVersions(siteId, token),
       loadModContentSections(siteId, token),
       loadModContentTemplates(siteId, token),
     ]);
     const catalogVersions = versions.filter((item) => item.status === "active");
-    const activeRevisions = revisionResult.items.filter((item) => item.isActive);
-    setRevisions(activeRevisions);
     setContentVersions(catalogVersions);
     setContentSections(sections);
     setContentTemplates(templates);
@@ -68,15 +61,13 @@ export function ModCatalogData({ siteId, token, canEdit }: Props) {
     return () => window.clearTimeout(timer);
   }, [loadCatalog, t]);
 
-  const selected = revisions.find((revision) => revision.targetVersionPublicId === contentVersionId);
   const selectedSections = contentSections.filter((item) => item.versionPublicId === contentVersionId);
   const categories = useMemo(
-    () => mergeCatalogCategories(modExportCategories(selected), selectedSections, contentTemplates, locale, t),
-    [contentTemplates, locale, selected, selectedSections, t],
+    () => buildCatalogCategories(selectedSections, contentTemplates, locale, t),
+    [contentTemplates, locale, selectedSections, t],
   );
 
   function openCategory(category: UnifiedCatalogCategory) {
-    if (!category.section) return;
     window.open(
       `/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(category.section.publicId)}`,
       "_blank",
@@ -84,7 +75,7 @@ export function ModCatalogData({ siteId, token, canEdit }: Props) {
     );
   }
 
-  if (!revisions.length && !contentVersions.length && !canEdit) return null;
+  if (!contentVersions.length && !canEdit) return null;
 
   return <section className="space-y-4">
     <header className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] pb-3">
@@ -109,8 +100,7 @@ type UnifiedCatalogCategory = {
   icon: string;
   tone: string;
   count: number;
-  exportCategory?: ModExportCategory;
-  section?: ModContentSection;
+  section: ModContentSection;
 };
 
 const contentTemplateCategoryMap: Record<string, string> = {
@@ -155,45 +145,26 @@ const contentCategoryAppearance: Record<string, { icon: string; tone: string }> 
   elements: { icon: "effect", tone: "text-rose-700 bg-rose-500/10" },
 };
 
-function mergeCatalogCategories(exportCategories: ModExportCategory[], sections: ModContentSection[], templates: ModContentTemplate[], locale: string, t: (key: string, values?: Record<string, string | number>) => string) {
+function buildCatalogCategories(sections: ModContentSection[], templates: ModContentTemplate[], locale: string, t: (key: string, values?: Record<string, string | number>) => string) {
   const merged = new Map<string, UnifiedCatalogCategory>();
-  for (const category of exportCategories) {
-    merged.set(category.key, {
-      key: category.key,
-      title: modExportCategoryTitle(category, t),
-      description: exportCategoryDescription(category, t),
-      icon: category.icon,
-      tone: category.tone,
-      count: category.count,
-      exportCategory: category,
-    });
-  }
   for (const section of sections) {
     if (section.parentPublicId) continue;
     const key = contentTemplateCategoryMap[section.templateCode] ?? `custom:${section.publicId}`;
     const template = templates.find((item) => item.publicId === section.templatePublicId);
     const localization = localizedSection(section, template, locale);
-    const existing = merged.get(key);
-    if (existing) {
-      // A content section is the only public index shared by manual edits and
-      // imports. Export categories only contribute imported metadata.
-      existing.count = section.resourceCount;
-      existing.section = section;
-      continue;
-    }
     const appearance = contentCategoryAppearance[key] ?? { icon: "database", tone: "text-emerald-700 bg-emerald-500/10" };
     const standardCategory = !key.startsWith("custom:");
     merged.set(key, {
       key,
-      title: standardCategory ? t(`mods.detail.dataCategories.${key}`) : localization?.name || localizedSectionName(section, template, locale, t),
-      description: standardCategory ? t(`mods.detail.dataDescriptions.${key}`) : localization?.summary || t("mods.detail.dataDescriptions.customPages"),
+      title: localization?.name || (standardCategory ? t(`mods.detail.dataCategories.${key}`) : localizedSectionName(section, template, locale, t)),
+      description: localization?.summary || (standardCategory ? t(`mods.detail.dataDescriptions.${key}`) : t("mods.detail.dataDescriptions.customPages")),
       icon: appearance.icon,
       tone: appearance.tone,
       count: section.resourceCount,
       section,
     });
   }
-  return [...merged.values()].filter((category) => category.section);
+  return [...merged.values()];
 }
 
 function localizedSectionName(section: ModContentSection, template: ModContentTemplate | undefined, locale: string, t: (key: string, values?: Record<string, string | number>) => string) {
@@ -206,17 +177,11 @@ function localizedSection(section: ModContentSection, template: ModContentTempla
   return values.find((item) => item.locale === locale) || values.find((item) => normalizeContentLanguage(item.locale) === "en-US") || values[0];
 }
 
-function exportCategoryDescription(category: ModExportCategory, t: (key: string, values?: Record<string, string | number>) => string) {
-  return category.key.startsWith("registry:")
-    ? t("mods.exportImport.registryDescription", { registry: category.registries[0] })
-    : t(`mods.detail.dataDescriptions.${category.key}`);
-}
-
 function UnifiedCategoryCard({ category, onClick }: { category: UnifiedCatalogCategory; onClick: () => void }) {
   const { t } = useI18n();
   const content = <><span className="flex items-start gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-md text-xl ${category.tone}`}><IconFont name={category.icon} fallback={category.key.slice(0, 1).toUpperCase()} /></span><span className="min-w-0"><strong className="block text-lg">{category.title}</strong><small className="mt-2 block line-clamp-2 leading-6 text-[var(--muted)]">{category.description}</small></span></span><span className="mt-4 block text-xs font-bold text-[var(--muted)]">{t("mods.detail.entries", { count: category.count })}</span></>;
   const className = "focus-ring relative min-h-36 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-left transition-transform";
-  return category.section ? <button className={`${className} hover:-translate-y-0.5 hover:border-[var(--accent)]`} type="button" onClick={onClick}>{content}</button> : <article className={className}>{content}</article>;
+  return <button className={`${className} hover:-translate-y-0.5 hover:border-[var(--accent)]`} type="button" onClick={onClick}>{content}</button>;
 }
 
 export function ModExportImportModal({ siteId, token, targetVersionId, targetVersionLabel, onClose, onImported, onBusyChange, inline = false, disabled = false }: { siteId: string; token: string; targetVersionId: string; targetVersionLabel: string; onClose?: () => void; onImported: () => Promise<void>; onBusyChange?: (busy: boolean) => void; inline?: boolean; disabled?: boolean }) {

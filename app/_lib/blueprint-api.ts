@@ -1,6 +1,5 @@
 type BlueprintUploader = {
   id: string;
-  displayName: string;
   username: string;
   avatarUrl?: string;
 };

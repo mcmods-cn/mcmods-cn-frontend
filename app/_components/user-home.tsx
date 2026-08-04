@@ -11,6 +11,7 @@ import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection,
 import { UserEconomyPanel } from "./user-economy-panel";
 import { UserPlayerProfilesPanel } from "./user-player-profiles-panel";
 import { ContentLanguagePreferences } from "./content-language-preferences";
+import { TimezonePicker } from "./timezone-picker";
 import { UserCommentWatchesPanel } from "./user-comment-watches-panel";
 
 type FileQuota = {
@@ -29,10 +30,13 @@ type QuotaItem = {
 };
 
 type ProfileSettings = {
+  publicId: string;
+  username: string;
   signature: string;
   signatureMaxBytes: number;
   avatarUrl: string;
   profileBackgroundUrl: string;
+  timezone: string;
   messageReceive: boolean;
   canUpdateAvatar: boolean;
   canUseAnimatedAvatar: boolean;
@@ -64,7 +68,9 @@ export function UserHome() {
   const [emailNotifications, setEmailNotifications] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [profile, setProfile] = useState<ProfileSettings | null>(null);
+  const [username, setUsername] = useState("");
   const [signature, setSignature] = useState("");
+  const [timezone, setTimezone] = useState("Asia/Shanghai");
   const [savingProfile, setSavingProfile] = useState(false);
   const [overview, setOverview] = useState<UserOverview | null>(null);
   const activeSection = accountSection(searchParams.get("section"));
@@ -82,7 +88,9 @@ export function UserHome() {
         if (notificationResult.status === "fulfilled") setEmailNotifications(notificationResult.value.emailEnabled);
         if (profileResult.status === "fulfilled") {
           setProfile(profileResult.value);
+          setUsername(profileResult.value.username);
           setSignature(profileResult.value.signature);
+          setTimezone(profileResult.value.timezone);
         }
         if (overviewResult.status === "fulfilled") setOverview(overviewResult.value);
       });
@@ -99,9 +107,11 @@ export function UserHome() {
       token,
     );
     setProfile(nextProfile);
+    setUsername(nextProfile.username);
     setSignature(nextProfile.signature);
+    setTimezone(nextProfile.timezone);
     if (user) {
-      saveAuth({ token, user: { ...user, avatarUrl: nextProfile.avatarUrl, signature: nextProfile.signature } });
+      saveAuth({ token, user: { ...user, username: nextProfile.username, avatarUrl: nextProfile.avatarUrl, signature: nextProfile.signature } });
     }
     return nextProfile;
   }
@@ -117,6 +127,38 @@ export function UserHome() {
     try {
       await updateProfile({ signature });
       setMessage(t("user.profileSaved"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("user.profileSaveFailed"));
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function saveUsername() {
+    const validation = validateEditableUsername(username);
+    if (validation) {
+      setMessage(t(validation));
+      return;
+    }
+    setSavingProfile(true);
+    setMessage("");
+    try {
+      await updateProfile({ username });
+      setMessage(t("user.usernameSaved"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("user.profileSaveFailed"));
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function saveTimezone() {
+    if (!profile || timezone === profile.timezone) return;
+    setSavingProfile(true);
+    setMessage("");
+    try {
+      await updateProfile({ timezone });
+      setMessage(t("user.timezoneSaved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("user.profileSaveFailed"));
     } finally {
@@ -198,7 +240,7 @@ export function UserHome() {
   }
 
   async function deleteFile(file: OSSFileRecord) {
-    if (!token) return;
+    if (!token || file.locked) return;
     const name = file.originalName || file.objectKey;
     if (!window.confirm(t("user.deleteConfirm", { name }))) return;
     setLoading(true);
@@ -265,21 +307,21 @@ export function UserHome() {
                   {profile?.avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img alt="" className="h-full w-full object-cover" src={profile.avatarUrl} />
-                  ) : (user.displayName || user.username).slice(0, 1).toUpperCase()}
+                  ) : user.username.slice(0, 1).toUpperCase()}
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-[var(--accent)]">{t("user.title")}</p>
-                  <h1 className="truncate text-2xl font-bold">{user.displayName || user.username}</h1>
-              <p className="mt-2 text-sm text-[var(--muted)]">@{user.username} · ID {user.id}</p>
+                  <h1 className="truncate text-2xl font-bold">{user.username}</h1>
+                  <p className="mt-2 text-sm text-[var(--muted)]">ID {profile?.publicId || "-"}</p>
                 </div>
               </div>
               <div className="relative z-10 mt-4 flex flex-wrap gap-2">
                 <Link className="button-secondary focus-ring" href="/tools/playground">
                   {t("user.openPlayground")}
                 </Link>
-                <Link className="button-secondary focus-ring" href={`/user/${user.id}?preview=1`}>
+                {profile?.publicId ? <Link className="button-secondary focus-ring" href={`/user/${encodeURIComponent(profile.publicId)}?preview=1`}>
                   {t("user.previewAsVisitor")}
-                </Link>
+                </Link> : <button className="button-secondary focus-ring" disabled type="button">{t("user.previewAsVisitor")}</button>}
               </div>
               <div className="relative z-10 mt-5 grid border-y border-[var(--line)] sm:grid-cols-3">
                 <AccountMetric label={t("user.myFollowing")} value={overview ? formatTokenCount(overview.following, locale) : "-"} />
@@ -303,6 +345,22 @@ export function UserHome() {
               {profile ? (
                 <div className="mt-3 grid gap-3">
                   <ContentLanguagePreferences token={token} />
+                  <div className="rounded-lg border border-[var(--line)] p-4">
+                    <p className="font-semibold">{t("user.timezone")}</p>
+                    <p className="mt-1 text-sm text-[var(--muted)]">{t("user.timezoneDescription")}</p>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-start">
+                      <TimezonePicker className="min-w-0 flex-1" disabled={savingProfile} title={t("timezonePicker.settingsTitle")} value={timezone} onChange={setTimezone} />
+                      <button className="button-primary focus-ring shrink-0" disabled={savingProfile || timezone === profile.timezone} type="button" onClick={() => void saveTimezone()}>{t("user.saveTimezone")}</button>
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-[var(--line)] p-4">
+                    <label className="font-semibold" htmlFor="profile-username">{t("user.username")}</label>
+                    <p className="mt-1 text-sm text-[var(--muted)]">{t("user.usernameDescription")}</p>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <input id="profile-username" className="field min-w-0 flex-1" maxLength={32} value={username} onChange={(event) => setUsername(event.target.value)} />
+                      <button className="button-primary focus-ring shrink-0" disabled={savingProfile || Boolean(validateEditableUsername(username)) || username === profile.username} type="button" onClick={() => void saveUsername()}>{t("user.saveUsername")}</button>
+                    </div>
+                  </div>
                   <div className="rounded-lg border border-[var(--line)] p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -392,6 +450,7 @@ export function UserHome() {
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="font-semibold">{file.originalName || file.objectKey}</span>
                               {file.converted ? <span className="rounded-md bg-[var(--panel-subtle)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t("user.convertedToWebP")}</span> : null}
+                              {file.locked ? <span className="rounded-md bg-[var(--warning-soft)] px-2 py-0.5 text-xs font-bold text-[var(--warning)]">{t("user.reviewFileLocked")}</span> : null}
                             </div>
                             {file.converted ? <div className="mt-1 text-xs text-[var(--muted)]">{t("user.sourceFile")}: {file.sourceOriginalName}</div> : null}
                             <div className="max-w-xl truncate font-mono text-xs text-[var(--muted)]">{file.objectKey}</div>
@@ -410,7 +469,7 @@ export function UserHome() {
                             <button className="button-secondary focus-ring" type="button" onClick={() => void downloadFile(file)}>
                               {t("user.download")}
                             </button>
-                            <button className="button-secondary focus-ring ml-2 border-[var(--red)] text-[var(--red)]" type="button" onClick={() => void deleteFile(file)}>
+                            <button className="button-secondary focus-ring ml-2 border-[var(--red)] text-[var(--red)]" disabled={file.locked} title={file.locked ? t("user.reviewFileLocked") : undefined} type="button" onClick={() => void deleteFile(file)}>
                               {t("common.delete")}
                             </button>
                           </td>
@@ -566,6 +625,13 @@ function formatTokenCount(value: number, locale: string) {
 
 function utf8Bytes(value: string) {
   return new TextEncoder().encode(value).length;
+}
+
+function validateEditableUsername(username: string) {
+  const value = username.trim();
+  if ([...value].length < 1 || [...value].length > 32) return "login.usernameLength";
+  if (value !== username || /[\p{C}\s]/u.test(value)) return "login.usernamePattern";
+  return "";
 }
 
 async function isAPNG(file: File) {

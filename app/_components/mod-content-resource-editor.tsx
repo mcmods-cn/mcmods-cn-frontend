@@ -6,6 +6,11 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage, toEditableContentLanguage } from "../_lib/content-language";
+import {
+  catalogRegistryForKind,
+  namespaceFromIdentifier,
+  normalizeCatalogResourceKind,
+} from "../_lib/catalog-resource-identifiers";
 import type { LocalizationVersion } from "../_lib/editor-types";
 import {
   archiveModContentResource,
@@ -21,26 +26,28 @@ import {
   type ModContentTemplate,
   updateModContentResource,
 } from "../_lib/mod-content-api";
-import { getModExportEntryDetail, minecraftLocale, modExportAssetURL } from "../_lib/mod-export-api";
+import { modExportAssetURL } from "../_lib/mod-export-api";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { supportedLocales, type Locale, useI18n } from "../_lib/i18n-provider";
 import { ContentLanguageSwitcher, contentLanguageTabId } from "./editor/content-language-switcher";
 import { EditorShell } from "./editor/editor-shell";
-import { ResourcePickerDialog, type ResourcePageLoader } from "./editor/resource-picker-dialog";
+import { ResourcePickerDialog } from "./editor/resource-picker-dialog";
+import { LootTableVisualEditor } from "./editor/loot-table-visual-editor";
 import { ToolsPlayground } from "./tools-playground";
 import type { CatalogResourceRef } from "../_lib/editor-types";
-import { loadGlobalTags } from "../_lib/global-catalog-api";
+import { loadTagPickerPage } from "../_lib/resource-picker-loaders";
 import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
 
 type EditorMode = "create" | "edit";
 type LocalizedFields = { name: string; contentMarkdown: string };
 type EditorLocalization = LocalizationVersion<LocalizedFields>;
-type DefinitionFieldKind = "number" | "text" | "boolean" | "list" | "reference" | "reference-list";
+type DefinitionFieldKind = "number" | "range" | "text" | "boolean" | "list" | "json" | "reference" | "reference-list";
 type DefinitionPath = readonly string[];
 type DefinitionField = {
   label?: string;
   labelKey: string;
   kind: DefinitionFieldKind;
+  format?: ModContentEntryField["format"];
   paths: readonly DefinitionPath[];
   referenceKind?: string;
   referenceRegistry?: string;
@@ -81,7 +88,7 @@ export function ModContentResourceEditor({
   const [entryTypeCode, setEntryTypeCode] = useState("default");
   const [canonicalId, setCanonicalId] = useState("");
   const [definition, setDefinition] = useState<Record<string, unknown>>({});
-  const [importedDefinition, setImportedDefinition] = useState<Record<string, unknown>>({});
+  const [baselineDefinition, setBaselineDefinition] = useState<Record<string, unknown>>({});
   const [activeVersionId, setActiveVersionId] = useState(versionId);
   const [rootSection, setRootSection] = useState<ModContentSection>();
   const [categories, setCategories] = useState<ModContentSection[]>([]);
@@ -155,33 +162,20 @@ export function ModContentResourceEditor({
         );
 
         const resolvedTemplate = templates.find((item) => item.publicId === resolvedRoot?.templatePublicId);
-        setTemplate(resolvedTemplate);
-        const suggestedKinds = Array.isArray(resolvedTemplate?.definition.resourceKinds)
-          ? resolvedTemplate.definition.resourceKinds.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+        const effectiveTemplate = resolvedTemplate
+          ? { ...resolvedTemplate, definition: resolvedRoot?.definition || resolvedTemplate.definition }
+          : undefined;
+        setTemplate(effectiveTemplate);
+        const suggestedKinds = Array.isArray(effectiveTemplate?.definition.resourceKinds)
+          ? effectiveTemplate.definition.resourceKinds.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
           : [];
         if (resource && resourceDetail && resourceVersion) {
-          let sourceDefinition: Record<string, unknown> = {};
-          if (resourceVersion.revisionId) {
-            try {
-              const imported = await getModExportEntryDetail(
-                resourceVersion.revisionId,
-                resourceVersion.registry || registryForKind(resource.kindCode),
-                resource.publicId,
-                resource.canonicalId,
-                minecraftLocale(initialLocale),
-                requestToken,
-              );
-              sourceDefinition = cloneRecord(imported.data);
-            } catch {
-              // A manual resource can remain editable even if its historical import package is unavailable.
-            }
-          }
-          if (cancelled) return;
+          const storedDefinition = cloneRecord(resourceDetail.definition);
           setKindCode(resource.kindCode);
-          setEntryTypeCode(resourceDetail.entryTypeCode || inferredEntryTypeCode(resolvedTemplate?.definition.entryTypes, resource.kindCode));
+          setEntryTypeCode(resourceDetail.entryTypeCode || inferredEntryTypeCode(effectiveTemplate?.definition.entryTypes, resource.kindCode));
           setCanonicalId(resource.canonicalId);
-          setDefinition(cloneRecord(resourceDetail.definition));
-          setImportedDefinition(sourceDefinition);
+          setDefinition({});
+          setBaselineDefinition(storedDefinition);
           setDefaultLocale(normalizeContentLanguage(resourceDetail.defaultLocale) || initialLocale);
           setSelectedLocale(bestLocalizationLocale(resourceDetail.localizations, initialLocale, resourceDetail.defaultLocale));
           setLocalizations(resourceDetail.localizations.length
@@ -210,11 +204,11 @@ export function ModContentResourceEditor({
         } else {
           const initialKind = suggestedKinds[0] || "";
           setKindCode(initialKind);
-          setEntryTypeCode(inferredEntryTypeCode(resolvedTemplate?.definition.entryTypes, initialKind));
+          setEntryTypeCode(inferredEntryTypeCode(effectiveTemplate?.definition.entryTypes, initialKind));
           setDefaultLocale(initialLocale);
           setSelectedLocale(initialLocale);
           setLocalizations([emptyLocalization(initialLocale)]);
-          setImportedDefinition({});
+          setBaselineDefinition({});
         }
       } catch (cause) {
         if (!cancelled) setError(errorText(cause));
@@ -241,8 +235,8 @@ export function ModContentResourceEditor({
     || entryTypes[0];
   const effectiveEntryTypeCode = selectedEntryType?.code || entryTypeCode;
   const effectiveDefinition = useMemo(
-    () => mergeDefinitions(importedDefinition, definition),
-    [definition, importedDefinition],
+    () => mergeDefinitions(baselineDefinition, definition),
+    [baselineDefinition, definition],
   );
   const templateKindCodes = template?.definition.resourceKinds || [];
   const definitionGroups = useMemo(
@@ -252,14 +246,14 @@ export function ModContentResourceEditor({
     [locale, selectedEntryType],
   );
   const handleDefinitionChange = useCallback((value: Record<string, unknown>) => {
-    setDefinition(definitionOverrides(importedDefinition, value));
+    setDefinition(definitionOverrides(baselineDefinition, value));
     setDefinitionJSONError("");
     setInvalidDefinitionFields(new Set());
-  }, [importedDefinition]);
+  }, [baselineDefinition]);
   const handleStructuredDefinitionChange = useCallback((value: Record<string, unknown>) => {
-    setDefinition(definitionOverrides(importedDefinition, value));
+    setDefinition(definitionOverrides(baselineDefinition, value));
     setDefinitionJSONError("");
-  }, [importedDefinition]);
+  }, [baselineDefinition]);
   const handleDefinitionValidity = useCallback((valid: boolean) => {
     setDefinitionJSONError(valid ? "" : t("modContent.sectionActions.invalidJson"));
   }, [t]);
@@ -271,6 +265,9 @@ export function ModContentResourceEditor({
       return next;
     });
   }, []);
+  const handleLootTableValidity = useCallback((valid: boolean) => {
+    handleDefinitionFieldValidity("loot-table-visual-editor", valid);
+  }, [handleDefinitionFieldValidity]);
   const backHref = rootSection
     ? `/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(rootSection.publicId)}`
     : `/mods/${encodeURIComponent(siteId)}`;
@@ -472,6 +469,11 @@ export function ModContentResourceEditor({
           <span>{t("resourceEditor.entryType")}</span>
           <select className="field" value={selectedEntryType?.code || entryTypeCode} onChange={(event) => {
             const nextCode = event.target.value;
+            const nextType = entryTypes.find((item) => item.code === nextCode);
+            if (selectedEntryType && nextType) {
+              const migrated = migrateEntryTypeDefinition(effectiveDefinition, selectedEntryType, nextType);
+              setDefinition(definitionOverrides(baselineDefinition, migrated));
+            }
             setEntryTypeCode(nextCode);
             setInvalidDefinitionFields(new Set());
           }}>
@@ -479,7 +481,10 @@ export function ModContentResourceEditor({
           </select>
           <small className="font-normal text-[var(--muted)]">{t("resourceEditor.identityKind")}: {localizedResourceKind(kindCode, locale)}</small>
           {mode === "create" && templateKindCodes.length > 1
-            ? <select aria-label={t("resourceEditor.identityKind")} className="field" value={kindCode} onChange={(event) => setKindCode(event.target.value)}>
+            ? <select aria-label={t("resourceEditor.identityKind")} className="field" value={kindCode} onChange={(event) => {
+              setKindCode(event.target.value);
+              setDefinitionJSONError("");
+            }}>
               {templateKindCodes.map((item) => <option key={item} value={item}>{localizedResourceKind(item, locale)}</option>)}
             </select>
             : null}
@@ -546,6 +551,13 @@ export function ModContentResourceEditor({
       onUpload={requestAssetUpload}
     />
 
+    {kindCode === "minecraft.loot_table" ? <LootTableVisualEditor
+      definition={effectiveDefinition}
+      token={token}
+      onChange={handleStructuredDefinitionChange}
+      onValidityChange={handleLootTableValidity}
+    /> : null}
+
     {definitionGroups.map((group) => <DefinitionGroupEditor
       definition={effectiveDefinition}
       group={group}
@@ -555,11 +567,11 @@ export function ModContentResourceEditor({
       onValidityChange={handleDefinitionFieldValidity}
     />)}
 
-    <DefinitionJSONEditor
+    {kindCode !== "minecraft.loot_table" ? <DefinitionJSONEditor
       definition={effectiveDefinition}
       onChange={handleDefinitionChange}
       onValidityChange={handleDefinitionValidity}
-    />
+    /> : null}
     <SquareImageCropDialog
       file={cropRequest?.file}
       minimumSize={128}
@@ -766,7 +778,9 @@ function DefinitionFieldEditor({
   const path = existingDefinitionPath(definition, field.paths) || field.paths[0];
   const text = field.kind === "list"
     ? Array.isArray(value) ? value.join(", ") : typeof value === "string" ? value : ""
-    : value === undefined || value === null ? "" : String(value);
+    : field.kind === "json"
+      ? value === undefined || value === null ? "" : JSON.stringify(value, null, 2) || ""
+      : value === undefined || value === null ? "" : String(value);
   const [draftState, setDraftState] = useState({ external: text, value: text });
   if ((field.kind === "reference" || field.kind === "reference-list") && field.referenceKind) {
     return <ReferenceListFieldEditor
@@ -781,8 +795,30 @@ function DefinitionFieldEditor({
       onValidityChange={() => onValidityChange(fieldId, true)}
     />;
   }
+  if (field.kind === "range") {
+    const values = Array.isArray(value) ? value : [];
+    return <RangeFieldEditor
+      label={field.label || t(field.labelKey)}
+      maximum={typeof values[1] === "number" ? values[1] : undefined}
+      minimum={typeof values[0] === "number" ? values[0] : undefined}
+      onChange={(minimum, maximum, valid) => {
+        onValidityChange(fieldId, valid);
+        if (!valid) return;
+        onChange(setDefinitionValue(definition, path, minimum === undefined || maximum === undefined ? undefined : [minimum, maximum]));
+      }}
+    />;
+  }
   const draft = draftState.external === text ? draftState.value : text;
-  const numberInvalid = field.kind === "number" && draft.trim() !== "" && !Number.isFinite(Number(draft));
+  const integerNumber = field.format === "integer" || field.format === "health" || field.format === "armor";
+  const numberInvalid = field.kind === "number" && draft.trim() !== "" && (!Number.isFinite(Number(draft)) || (integerNumber && !Number.isInteger(Number(draft))));
+  let jsonInvalid = false;
+  if (field.kind === "json" && draft.trim() !== "") {
+    try {
+      JSON.parse(draft);
+    } catch {
+      jsonInvalid = true;
+    }
+  }
   if (field.kind === "boolean") {
     const normalized = typeof value === "boolean" ? String(value) : "";
     return <label className="grid gap-2 text-sm font-bold">
@@ -797,12 +833,44 @@ function DefinitionFieldEditor({
       </select>
     </label>;
   }
+  if (field.kind === "json") {
+    return <label className="grid gap-2 text-sm font-bold md:col-span-2 xl:col-span-3">
+      <span>{field.label || t(field.labelKey)}</span>
+      <textarea
+        aria-invalid={jsonInvalid}
+        className="field min-h-40 font-mono text-xs"
+        value={draft}
+        onChange={(event) => {
+          const next = event.target.value;
+          const trimmed = next.trim();
+          if (!trimmed) {
+            setDraftState({ external: "", value: next });
+            onValidityChange(fieldId, true);
+            onChange(setDefinitionValue(definition, path, undefined));
+            return;
+          }
+          try {
+            const parsed: unknown = JSON.parse(trimmed);
+            const external = JSON.stringify(parsed, null, 2) || "";
+            setDraftState({ external, value: next });
+            onValidityChange(fieldId, true);
+            onChange(setDefinitionValue(definition, path, parsed));
+          } catch {
+            setDraftState({ external: text, value: next });
+            onValidityChange(fieldId, false);
+          }
+        }}
+      />
+      {jsonInvalid ? <small className="font-medium text-[var(--red)]">{t("resourceEditor.invalidJsonValue")}</small> : null}
+    </label>;
+  }
   return <label className="grid gap-2 text-sm font-bold">
     <span>{field.label || t(field.labelKey)}</span>
     <input
       aria-invalid={numberInvalid}
       className="field"
       inputMode={field.kind === "number" ? "decimal" : undefined}
+      step={field.kind === "number" && integerNumber ? 1 : undefined}
       type="text"
       value={draft}
       onChange={(event) => {
@@ -816,7 +884,7 @@ function DefinitionFieldEditor({
             return;
           }
           const parsed = Number(trimmed);
-          if (!Number.isFinite(parsed)) {
+          if (!Number.isFinite(parsed) || (integerNumber && !Number.isInteger(parsed))) {
             setDraftState({ external: text, value: next });
             onValidityChange(fieldId, false);
             return;
@@ -836,8 +904,39 @@ function DefinitionFieldEditor({
         if (event.key === "Enter") event.preventDefault();
       }}
     />
+    {field.kind === "number" && (field.format === "health" || field.format === "armor") && Number.isFinite(Number(draft)) ? <NumericIconPreview format={field.format} value={Number(draft)} /> : null}
     {numberInvalid ? <small className="font-medium text-[var(--red)]">{t("resourceEditor.invalidNumber")}</small> : null}
   </label>;
+}
+
+function RangeFieldEditor({ label, minimum, maximum, onChange }: { label: string; minimum?: number; maximum?: number; onChange: (minimum: number | undefined, maximum: number | undefined, valid: boolean) => void }) {
+  const [draft, setDraft] = useState({ minimum: minimum === undefined ? "" : String(minimum), maximum: maximum === undefined ? "" : String(maximum) });
+  function update(next: { minimum: string; maximum: string }) {
+    setDraft(next);
+    const parsedMinimum = next.minimum.trim() === "" ? undefined : Number(next.minimum);
+    const parsedMaximum = next.maximum.trim() === "" ? undefined : Number(next.maximum);
+    const valid = (parsedMinimum === undefined && parsedMaximum === undefined)
+      || (typeof parsedMinimum === "number" && Number.isFinite(parsedMinimum)
+        && typeof parsedMaximum === "number" && Number.isFinite(parsedMaximum)
+        && parsedMinimum <= parsedMaximum);
+    onChange(parsedMinimum, parsedMaximum, valid);
+  }
+  return <fieldset className="grid gap-2 text-sm font-bold md:col-span-2">
+    <legend>{label}</legend>
+    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+      <input aria-label={`${label} minimum`} className="field" inputMode="decimal" type="number" value={draft.minimum} onChange={(event) => update({ ...draft, minimum: event.target.value })} />
+      <span aria-hidden="true">–</span>
+      <input aria-label={`${label} maximum`} className="field" inputMode="decimal" type="number" value={draft.maximum} onChange={(event) => update({ ...draft, maximum: event.target.value })} />
+    </div>
+  </fieldset>;
+}
+
+function NumericIconPreview({ format, value }: { format: "health" | "armor"; value: number }) {
+  const normalized = Math.max(0, Math.trunc(value));
+  const fullCount = Math.floor(normalized / 2);
+  const half = normalized % 2 === 1;
+  if (fullCount > 10) return <span className="flex items-center gap-1 text-xs font-medium text-[var(--muted)]"><Image unoptimized alt="" height={16} src={`/mc-icons/icon-${format}-full.svg`} width={16} /> × {normalized / 2}</span>;
+  return <span className="flex flex-wrap gap-0.5">{Array.from({ length: fullCount }, (_, index) => <Image unoptimized alt="" height={16} key={index} src={`/mc-icons/icon-${format}-full.svg`} width={16} />)}{half ? <Image unoptimized alt="" height={16} src={`/mc-icons/icon-${format}-half.svg`} width={16} /> : null}</span>;
 }
 
 function ReferenceListFieldEditor({
@@ -860,8 +959,8 @@ function ReferenceListFieldEditor({
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const tagPicker = field.referenceKind === "tag";
-  const kind = normalizedReferenceKind(field.referenceKind || "resource");
-  const registry = field.referenceRegistry || (tagPicker ? "minecraft:item" : registryForKind(kind));
+  const kind = normalizeCatalogResourceKind(field.referenceKind || "resource");
+  const registry = field.referenceRegistry || (tagPicker ? "minecraft:item" : catalogRegistryForKind(kind) || "items");
   const pickerValue = values.map((identifier): CatalogResourceRef => ({
     publicId: `unresolved:${kind}:${identifier.toLowerCase()}`,
     id: identifier,
@@ -913,35 +1012,6 @@ function ReferenceListFieldEditor({
       onConfirm={confirm}
     />
   </div>;
-}
-
-const loadTagPickerPage: ResourcePageLoader = async (options, token) => {
-  const query = new URLSearchParams({
-    limit: String(options.limit),
-    offset: String(options.offset),
-  });
-  if (options.query) query.set("q", options.query);
-  if (options.registry) query.set("registry", options.registry);
-  const page = await loadGlobalTags(query, token);
-  return {
-    total: page.total,
-    limit: page.limit,
-    offset: page.offset,
-    items: page.items.map((tag): CatalogResourceRef => ({
-      publicId: tag.publicId,
-      id: tag.tagId,
-      registry: tag.registry,
-      kind: "tag",
-      names: tag.name ? { "zh-CN": tag.name } : {},
-      resolvedName: tag.name,
-      iconUrl: tag.previews[0]?.iconUrl,
-    })),
-  };
-};
-
-function namespaceFromIdentifier(identifier: string) {
-  const separator = identifier.indexOf(":");
-  return separator > 0 ? identifier.slice(0, separator) : "";
 }
 
 function EditorAside({
@@ -1011,6 +1081,27 @@ function inferredEntryTypeCode(entryTypes: ModContentEntryType[] | undefined, ki
     || "default";
 }
 
+function migrateEntryTypeDefinition(
+  source: Record<string, unknown>,
+  currentType: ModContentEntryType,
+  nextType: ModContentEntryType,
+) {
+  const currentFields = new Map(currentType.groups.flatMap((group) => group.fields).map((field) => [field.code, field]));
+  const result: Record<string, unknown> = {};
+  for (const nextField of nextType.groups.flatMap((group) => group.fields)) {
+    const currentField = currentFields.get(nextField.code);
+    if (!currentField || entryFieldStorageSignature(currentField) !== entryFieldStorageSignature(nextField)) continue;
+    if (Object.prototype.hasOwnProperty.call(source, nextField.code) && source[nextField.code] !== null && source[nextField.code] !== undefined) {
+      result[nextField.code] = structuredClone(source[nextField.code]);
+    }
+  }
+  return result;
+}
+
+function entryFieldStorageSignature(field: ModContentEntryField) {
+  return [field.type, field.referenceKind || "", field.referenceRegistry || ""].join("\u0000");
+}
+
 function groupsForEntryType(entryType: ModContentEntryType, locale: string): DefinitionGroup[] {
   return entryType.groups.map((group) => ({
     title: localizedSchemaName(group.names, locale, group.code),
@@ -1021,6 +1112,7 @@ function groupsForEntryType(entryType: ModContentEntryType, locale: string): Def
       label: localizedSchemaName(field.names, locale, field.code),
       labelKey: `entry-field:${entryType.code}:${group.code}:${field.code}`,
       kind: field.type,
+	  format: field.format,
 	  // Database documents use stable field codes. paths are importer aliases.
 	  paths: [[field.code]],
       referenceKind: field.referenceKind,
@@ -1029,33 +1121,8 @@ function groupsForEntryType(entryType: ModContentEntryType, locale: string): Def
   }));
 }
 
-function normalizedReferenceKind(value: string) {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "enchantment") return "minecraft.enchantment";
-  if (normalized === "item") return "minecraft.item";
-  if (normalized === "block") return "minecraft.block";
-  if (normalized === "entity" || normalized === "entity_type") return "minecraft.entity_type";
-  return normalized;
-}
-
 function isEditablePrimitiveEntryField(field: ModContentEntryField): field is ModContentEntryField & { type: DefinitionFieldKind } {
-  return field.editable !== false && field.type !== "json";
-}
-
-function registryForKind(kindCode: string) {
-  const normalized = kindCode.toLowerCase();
-  if (normalized.includes("block")) return "blocks";
-  if (normalized.includes("entity")) return "entity_types";
-  if (normalized.includes("enchantment")) return "enchantments";
-  if (normalized.includes("mob_effect") || normalized.includes("effect")) return "mob_effects";
-  if (normalized.includes("potion")) return "potions";
-  if (normalized.includes("fluid")) return "fluids";
-  if (normalized.includes("biome")) return "biomes";
-  if (normalized.includes("dimension")) return "dimensions";
-  if (normalized.includes("loot_table")) return "loot_tables";
-  if (normalized.includes("structure")) return "world_structures";
-  if (normalized.includes("natural_generation")) return "natural_generation";
-  return "items";
+  return field.editable !== false;
 }
 
 function localizedSchemaName(names: Record<string, string>, locale: string, fallback: string) {

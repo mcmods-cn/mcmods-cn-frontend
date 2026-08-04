@@ -11,7 +11,6 @@ import es from "../_locales/es";
 import ru from "../_locales/ru";
 
 export type Locale = "zh-CN" | "zh-TW" | "en-US" | "ja-JP" | "fr-FR" | "de-DE" | "es-ES" | "ru-RU";
-type LocaleMessages = TranslationValue;
 export type TranslationValue = string | { [key: string]: TranslationValue };
 
 const defaultLocale: Locale = "zh-CN";
@@ -26,7 +25,7 @@ export const supportedLocales: Array<{ code: Locale; label: string }> = [
   { code: "ru-RU", label: "Русский" },
 ];
 
-const dictionaries: Record<Locale, LocaleMessages> = {
+const dictionaries: Record<Locale, TranslationValue> = {
   "zh-CN": zhCN,
   "zh-TW": zhTW,
   "en-US": en,

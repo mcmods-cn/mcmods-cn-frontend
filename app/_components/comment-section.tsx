@@ -329,7 +329,7 @@ function CommentTree(props: CommentTreeProps) {
             {item.hasMoreReplies ? <button className="mt-2 text-sm font-bold text-[var(--accent)] hover:underline" type="button" onClick={() => void loadChildren(item)}>{t("mods.comments.loadReplies", { count: item.childCount })}</button> : null}
             {props.replyTo?.id === item.id ? (
               <form className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => props.onReplySubmit(event, item)}>
-                <p className="mb-2 text-sm font-bold text-[var(--muted)]">{t("mods.comments.replyingTo", { name: item.author.displayName || item.author.username })}</p>
+<p className="mb-2 text-sm font-bold text-[var(--muted)]">{t("mods.comments.replyingTo", { name: item.author.username })}</p>
                 <textarea className="field min-h-24 resize-y" maxLength={10000} required value={props.replyBody} onChange={(event) => props.onReplyBodyChange(event.target.value)} />
                 <p className="mt-2 text-xs text-[var(--muted)]">{t("mods.comments.cyHint")}</p>
                 <div className="mt-2 flex justify-end gap-2">
@@ -374,7 +374,7 @@ function CommentCard({
 }) {
   const { locale, t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
-  const authorName = comment.author.displayName || comment.author.username;
+  const authorName = comment.author.username;
   return (
     <article className={`rounded-lg border bg-[var(--panel)] p-4 transition ${highlighted ? "border-[var(--accent)] ring-2 ring-[var(--accent-soft)]" : "border-[var(--line)]"}`}>
       <div className="flex gap-3">
@@ -398,7 +398,7 @@ function CommentCard({
             {onToggleCollapse ? <button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onToggleCollapse}>{t("mods.comments.collapseBranch")}</button> : null}
             <button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onShare}>{t("mods.comments.shareBranch")}</button>
             {own && !comment.deleted ? <><button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onEdit}>{t("common.edit")}</button><button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onDelete}>{t("common.delete")}</button></> : null}
-            {!own ? <button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onReport}>{t("mods.comments.report")}</button> : null}
+            {!own && !comment.deleted ? <button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onReport}>{t("mods.comments.report")}</button> : null}
           </div>
         </div>
       </div>

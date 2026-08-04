@@ -4,7 +4,7 @@
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
-import { formatBytes, markdownForUploadedFile, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
+import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
 import {
   CreateServerRequest,
   DetectedServerMod,
@@ -27,7 +27,9 @@ import {
   unresolvedModResource,
   validModIdentifier,
 } from "./editor/mod-resource-picker";
+import { MinecraftLanguagePicker } from "./minecraft-language-picker";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
+import { ToolsPlayground } from "./tools-playground";
 
 type Props = {
   token: string;
@@ -43,9 +45,8 @@ const fallbackSettings: ServerCatalogSettings = {
   nameMaxLength: 80,
   summaryMaxLength: 240,
   historyDays: 90,
+  reviewRequired: true,
 };
-
-const languageOptions = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "ru-RU", "de-DE", "fr-FR"];
 
 type Draft = Omit<CreateServerRequest, "address" | "mods" | "proofFileIds">;
 
@@ -83,12 +84,21 @@ export function ServerSubmissionWizard({
   const [proofFiles, setProofFiles] = useState<OSSFileRecord[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const bodyFileRef = useRef<HTMLInputElement | null>(null);
   const proofFileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    loadServerSettings().then(setSettings).catch(() => undefined);
-  }, []);
+    let cancelled = false;
+    loadServerSettings(token).then((next) => {
+      if (cancelled) return;
+      setSettings(next);
+      if (!editing && next.reviewRequired === false) {
+        setStep((current) => current === 3 ? 2 : current);
+      }
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [editing, token]);
+
+  const reviewRequired = !editing && settings.reviewRequired !== false;
 
   const proofTotal = useMemo(
     () => proofFiles.reduce((sum, file) => sum + Math.max(file.sizeBytes, file.sourceSizeBytes ?? 0), 0),
@@ -117,15 +127,6 @@ export function ServerSubmissionWizard({
     }
   }
 
-  function toggleLanguage(language: string) {
-    setDraft((current) => ({
-      ...current,
-      languages: current.languages.includes(language)
-        ? current.languages.filter((item) => item !== language)
-        : [...current.languages, language],
-    }));
-  }
-
   function addLink() {
     setDraft((current) => ({
       ...current,
@@ -145,27 +146,6 @@ export function ServerSubmissionWizard({
       ...current,
       links: current.links.filter((_, itemIndex) => itemIndex !== index),
     }));
-  }
-
-  async function uploadBodyFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const uploaded = await uploadUserFileToOSS(file, token, "server-content");
-      const url = uploaded.accessUrl || uploaded.url;
-      if (!url) throw new Error(t("servers.wizard.uploadNoUrl"));
-      setDraft((current) => ({
-        ...current,
-        bodyMarkdown: `${current.bodyMarkdown}${current.bodyMarkdown ? "\n\n" : ""}${markdownForUploadedFile(file, url)}`,
-      }));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("servers.wizard.uploadFailed"));
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function uploadProofFiles(event: ChangeEvent<HTMLInputElement>) {
@@ -220,14 +200,12 @@ export function ServerSubmissionWizard({
 
   async function submit() {
     if (!editing && !probe) return;
-    if (editing) {
-      const validationError = validateStepTwo();
-      if (validationError) {
-        setMessage(validationError);
-        return;
-      }
+    const validationError = validateStepTwo();
+    if (validationError) {
+      setMessage(validationError);
+      return;
     }
-    if (!editing && (!draft.proofText.trim() || !proofFiles.length)) {
+    if (reviewRequired && (!draft.proofText.trim() || !proofFiles.length)) {
       setMessage(t("servers.wizard.proofRequired"));
       return;
     }
@@ -256,8 +234,8 @@ export function ServerSubmissionWizard({
       const result = await submitServer({
         address: address.trim(),
         ...metadata,
-        proofText: draft.proofText.trim(),
-        proofFileIds: proofFiles.map((file) => file.id),
+        proofText: reviewRequired ? draft.proofText.trim() : "",
+        proofFileIds: reviewRequired ? proofFiles.map((file) => file.id) : [],
       }, token);
       onSubmitted(result.id, result.published);
     } catch (error) {
@@ -285,8 +263,8 @@ export function ServerSubmissionWizard({
               {t(presentation === "page" ? "common.cancel" : "common.close")}
             </button>
           </div>
-          {!editing ? <ol className="mt-4 grid grid-cols-3 gap-2" aria-label={t("servers.wizard.progress")}>
-            {[1, 2, 3].map((value) => (
+          {!editing ? <ol className={`mt-4 grid gap-2 ${reviewRequired ? "grid-cols-3" : "grid-cols-2"}`} aria-label={t("servers.wizard.progress")}>
+            {(reviewRequired ? [1, 2, 3] : [1, 2]).map((value) => (
               <li key={value} className={`rounded-md px-3 py-2 text-center text-xs font-black sm:text-sm ${step === value ? "bg-[var(--accent)] text-white" : step > value ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-subtle)] text-[var(--muted)]"}`}>
                 {t(`servers.wizard.step${value}`)}
               </li>
@@ -336,14 +314,12 @@ export function ServerSubmissionWizard({
                   <MinecraftVersionPicker className="w-full" values={draft.minecraftVersions} onChange={(minecraftVersions) => setDraft({ ...draft, minecraftVersions })} />
                 </Field>
                 <Field label={t("servers.wizard.languages")}>
-                  <div className="flex min-h-11 flex-wrap gap-2 rounded-md border border-[var(--line)] p-2">
-                    {languageOptions.map((language) => (
-                      <label key={language} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm font-bold">
-                        <input checked={draft.languages.includes(language)} className="accent-[var(--accent)]" type="checkbox" onChange={() => toggleLanguage(language)} />
-                        {language}
-                      </label>
-                    ))}
-                  </div>
+                  <MinecraftLanguagePicker
+                    maxSelections={16}
+                    title={t("servers.wizard.selectLanguages")}
+                    values={draft.languages}
+                    onChange={(languages) => setDraft({ ...draft, languages })}
+                  />
                 </Field>
               </div>
 
@@ -393,17 +369,19 @@ export function ServerSubmissionWizard({
               </section>
 
               <Field label={t("servers.wizard.body")}>
-                <textarea className="field min-h-60 w-full resize-y font-mono text-sm" value={draft.bodyMarkdown} onChange={(event) => setDraft({ ...draft, bodyMarkdown: event.target.value })} />
-                <div className="mt-2 flex items-center justify-between gap-3">
-                  <p className="text-xs text-[var(--muted)]">{t("servers.wizard.bodyUploadHint")}</p>
-                  <input ref={bodyFileRef} className="hidden" type="file" onChange={(event) => void uploadBodyFile(event)} />
-                  <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => bodyFileRef.current?.click()}>{t("servers.wizard.uploadIntoBody")}</button>
-                </div>
+                <ToolsPlayground
+                  embedded
+                  editorTitle={t("servers.wizard.body")}
+                  uploadSource="server-content"
+                  value={draft.bodyMarkdown}
+                  onBusyChange={setBusy}
+                  onChange={(bodyMarkdown) => setDraft((current) => ({ ...current, bodyMarkdown }))}
+                />
               </Field>
             </div>
           ) : null}
 
-          {step === 3 ? (
+          {step === 3 && reviewRequired ? (
             <div className="mx-auto grid max-w-3xl gap-6">
               <div className="rounded-lg border border-[var(--warning)] bg-[var(--warning-soft)] p-4 text-sm leading-6">
                 {t("servers.wizard.proofHint", { count: settings.maxProofFiles, size: formatBytes(settings.maxProofTotalBytes) })}
@@ -440,7 +418,8 @@ export function ServerSubmissionWizard({
 
         <footer className="flex items-center justify-between gap-3 border-t border-[var(--line)] px-4 py-4 sm:px-6">
           <button className="button-secondary focus-ring" disabled={busy || step === 1 || editing} type="button" onClick={() => { setMessage(""); setStep((current) => Math.max(1, current - 1)); }}>{t("common.previous")}</button>
-          {step === 2 && !editing ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={goToProof}>{t("common.next")}</button> : null}
+          {step === 2 && !editing && reviewRequired ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={goToProof}>{t("common.next")}</button> : null}
+          {step === 2 && !editing && !reviewRequired ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.submitting") : t("servers.wizard.submit")}</button> : null}
           {step === 2 && editing ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.saving") : t("servers.wizard.save")}</button> : null}
           {step === 3 ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.submitting") : t("servers.wizard.submit")}</button> : null}
           {step === 1 ? <span /> : null}

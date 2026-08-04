@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
@@ -14,6 +16,7 @@ import {
   computeFileSHA256,
   formatBytes,
   putFileToOSS,
+  uploadUserFileToOSS,
   type OSSDirectUploadTicket,
 } from "../_lib/oss-upload";
 import {
@@ -25,13 +28,16 @@ import {
   ShopManagementPanel,
   TaskManagementPanel,
 } from "./admin-community-panels";
-import { MinecraftVersionConfigPanel, ModReviewQueuePanel } from "./admin-mod-panels";
+import { CommentReportReviewPanel, MinecraftVersionConfigPanel, ModReviewQueuePanel } from "./admin-mod-panels";
 import { ServerReviewQueuePanel, ServerSettingsPanel } from "./admin-server-panels";
 import { AdminUnresolvedReferences } from "./admin-unresolved-references";
+import { AdminContentAttributePanel } from "./admin-content-attribute-panel";
 import { useTheme } from "./theme-provider";
+import { useSiteBrand } from "./site-brand-provider";
 
 type PanelId =
   | "overview"
+  | "general-settings"
   | "roles"
   | "user-roles"
   | "permission-list"
@@ -48,6 +54,7 @@ type PanelId =
   | "reviews-content"
   | "reviews-editor"
   | "reviews-server"
+  | "reviews-comments"
   | "review-settings"
   | "server-settings"
   | "notifications"
@@ -59,6 +66,7 @@ type PanelId =
   | "profile-settings"
   | "minecraft-versions"
   | "mod-import-settings"
+  | "resource-attributes"
   | "unresolved-references"
   | "nats"
   | "oss-config"
@@ -84,10 +92,8 @@ type User = {
   id: string;
   username: string;
   email: string;
-  displayName: string;
   status: string;
-  roles: string[];
-  permissions: string[];
+  roleCodes: string[];
   createdAt?: string;
   lastLoginAt?: string;
 };
@@ -132,6 +138,7 @@ type MailConfig = {
 };
 
 type AdminConfig = {
+  general: { siteName: string; logoUrl: string };
   auth: Record<string, string | number | boolean | string[]>;
   oauth: OAuthConfig;
   mail: MailConfig;
@@ -381,7 +388,7 @@ type UserPermissionDetails = {
   roles: string[];
   groupPermissions: string[];
   directPermissions: UserPermissionEntry[];
-  effectivePermissions: string[];
+  effectivePermissionRules: Array<{ code: string; allow: boolean; priority: number; source?: string }>;
 };
 
 const adminNavGroups: Array<{
@@ -401,6 +408,7 @@ const adminNavGroups: Array<{
       { id: "reviews-content", label: "", description: "" },
       { id: "reviews-editor", label: "", description: "" },
       { id: "reviews-server", label: "", description: "" },
+      { id: "reviews-comments", label: "", description: "" },
       { id: "creator-claims", label: "", description: "" },
       { id: "review-settings", label: "", description: "" },
       { id: "server-settings", label: "", description: "" },
@@ -410,6 +418,7 @@ const adminNavGroups: Array<{
     id: "content",
     label: "",
     items: [
+      { id: "resource-attributes", label: "", description: "" },
       { id: "mod-import-settings", label: "", description: "" },
       { id: "unresolved-references", label: "", description: "" },
     ],
@@ -505,6 +514,7 @@ const adminNavGroups: Array<{
     id: "system",
     label: "",
     items: [
+      { id: "general-settings", label: "", description: "" },
       { id: "mail", label: "", description: "" },
       { id: "auth", label: "", description: "" },
       { id: "markdown", label: "", description: "" },
@@ -518,6 +528,7 @@ const adminNavGroups: Array<{
 const emptyDashboard: DashboardData = { cards: [] };
 
 const emptyConfig: AdminConfig = {
+  general: { siteName: "Mcmods-cn", logoUrl: "" },
   auth: {
     allowRegistration: true,
     emailPasswordLogin: true,
@@ -646,8 +657,10 @@ export function AdminConsolePolished() {
   const router = useRouter();
   const { toggleTheme } = useTheme();
   const { t } = useI18n();
+  const brand = useSiteBrand();
   const auth = useAuthSnapshot();
   const [activePanel, setActivePanel] = useState<PanelId>("roles");
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [expanded, setExpanded] = useState([
     "workbench",
     "content",
@@ -842,27 +855,26 @@ export function AdminConsolePolished() {
     );
   }
 
-  const displayStatus = status;
-
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[292px_1fr]">
-        <aside className="border-r border-[var(--line)] bg-[var(--panel)]">
-          <div className="sticky top-0 flex h-screen flex-col">
-            <div className="border-b border-[var(--line)] p-4">
-              <Link className="flex items-center gap-3" href="/">
-                <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">M</span>
+        <aside className="sticky top-0 z-40 border-b border-[var(--line)] bg-[var(--panel)] lg:static lg:z-auto lg:border-b-0 lg:border-r">
+          <div className="flex max-h-[80vh] flex-col lg:sticky lg:top-0 lg:h-screen lg:max-h-none">
+            <div className="flex items-center gap-3 border-b border-[var(--line)] p-3 lg:block lg:p-4">
+              <Link className="flex min-w-0 flex-1 items-center gap-3" href="/">
+                {brand.logoUrl ? <img alt="" className="h-10 w-10 rounded-lg object-contain" src={brand.logoUrl} /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">M</span>}
                 <span>
-                  <span className="block text-sm font-semibold text-[var(--muted)]">Mcmods-cn</span>
+                  <span className="block text-sm font-semibold text-[var(--muted)]">{brand.siteName}</span>
                   <span className="block text-xl font-bold">{t("admin.title")}</span>
                 </span>
               </Link>
-              <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm text-[var(--muted)]">
-                {displayStatus}
+              <button aria-expanded={mobileNavigationOpen} aria-label={t("admin.navigation")} className="button-secondary focus-ring shrink-0 px-3 py-2 lg:hidden" type="button" onClick={() => setMobileNavigationOpen((value) => !value)}>{mobileNavigationOpen ? "×" : "☰"}</button>
+              <div className="mt-4 hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm text-[var(--muted)] lg:block">
+                {status}
               </div>
             </div>
 
-            <nav className="min-h-0 flex-1 overflow-y-auto p-3">
+            <nav className={`${mobileNavigationOpen ? "block" : "hidden"} min-h-0 flex-1 overflow-y-auto p-3 lg:block`}>
               {adminNavGroups.map((group) => {
                 const open = expanded.includes(group.id);
                 return (
@@ -888,7 +900,7 @@ export function AdminConsolePolished() {
                                 : "text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]"
                             }`}
                             type="button"
-                            onClick={() => setActivePanel(item.id)}
+                            onClick={() => { setActivePanel(item.id); setMobileNavigationOpen(false); }}
                           >
                             <span className="block text-sm font-semibold">{panelTitleV2(item.id, t)}</span>
                             <span className="mt-0.5 block text-xs opacity-80">{adminNavItemDescription(item.id, item.description, t)}</span>
@@ -901,7 +913,7 @@ export function AdminConsolePolished() {
               })}
             </nav>
 
-            <div className="border-t border-[var(--line)] p-3">
+            <div className={`${mobileNavigationOpen ? "block" : "hidden"} border-t border-[var(--line)] p-3 lg:block`}>
               <button className="button-secondary focus-ring w-full" type="button" onClick={toggleTheme}>
                 {t("common.toggleTheme")}
               </button>
@@ -926,12 +938,13 @@ export function AdminConsolePolished() {
             </div>
             {auth.user ? (
               <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm">
-                {auth.user.displayName || auth.user.username} / {auth.user.roles.join(", ") || t("admin.ungrouped")}
+                {auth.user.username} / {auth.user.roleCodes.join(", ") || t("admin.ungrouped")}
               </div>
             ) : null}
           </div>
 
           {activePanel === "overview" ? <OverviewPanel dashboard={dashboard} config={config} /> : null}
+          {activePanel === "general-settings" ? <GeneralSettingsPanel initialConfig={config.general ?? emptyConfig.general} token={auth.token} /> : null}
           {activePanel === "roles" ? (
             <PermissionGroupEditor catalog={catalog} token={auth.token} refreshCatalog={refreshCatalog} />
           ) : null}
@@ -965,6 +978,7 @@ export function AdminConsolePolished() {
           {activePanel === "reviews-content" ? <ModReviewQueuePanel kind="content" token={auth.token} /> : null}
           {activePanel === "reviews-editor" ? <ModReviewQueuePanel kind="editor" token={auth.token} /> : null}
           {activePanel === "reviews-server" ? <ServerReviewQueuePanel token={auth.token} /> : null}
+          {activePanel === "reviews-comments" ? <CommentReportReviewPanel token={auth.token} /> : null}
           {activePanel === "review-settings" ? <ReviewSettingsPanel token={auth.token} /> : null}
           {activePanel === "server-settings" ? <ServerSettingsPanel token={auth.token} /> : null}
           {activePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
@@ -972,6 +986,7 @@ export function AdminConsolePolished() {
           {activePanel === "markdown" ? <MarkdownConfigPanel initialConfig={config.markdown} token={auth.token} /> : null}
           {activePanel === "profile-settings" ? <ProfileSettingsPanel initialConfig={config.profile ?? emptyConfig.profile} token={auth.token} /> : null}
           {activePanel === "minecraft-versions" ? <MinecraftVersionConfigPanel token={auth.token} /> : null}
+          {activePanel === "resource-attributes" ? <AdminContentAttributePanel token={auth.token} /> : null}
           {activePanel === "mod-import-settings" ? <ModImportConfigPanel token={auth.token} /> : null}
           {activePanel === "unresolved-references" ? <AdminUnresolvedReferences token={auth.token} /> : null}
           {activePanel === "nats" ? <NATSConfigPanel token={auth.token} /> : null}
@@ -2187,7 +2202,7 @@ function UserRolePanel({
   const roleNameMap = new Map(catalog.roles.map((role) => [role.code, role.name || role.code]));
   const assignedRoleCodes = Array.from(
     new Set([
-      ...(selectedUser?.roles ?? []),
+      ...(selectedUser?.roleCodes ?? []),
       ...draft.filter((permission) => permission.code.startsWith("group.")).map((permission) => permission.code.slice("group.".length)),
     ]),
   ).filter(Boolean);
@@ -2224,8 +2239,8 @@ function UserRolePanel({
                 setMessage("");
               }}
             >
-              <span className="block font-bold">{user.displayName || user.username}</span>
-              <span className="mt-1 block text-sm text-[var(--muted)]">#{user.id} / {user.username}</span>
+              <span className="block font-bold">{user.username}</span>
+              <span className="mt-1 block text-sm text-[var(--muted)]">ID {user.id}</span>
             </button>
           ))}
         </div>
@@ -2295,7 +2310,7 @@ function UserRolePanel({
           </UserPermissionNodeEditor>
           {details ? (
             <div className="border-t border-[var(--line)] p-4 text-sm text-[var(--muted)]">
-              {t("admin.effectivePermissions", { count: details.effectivePermissions.length })}
+              {t("admin.effectivePermissions", { count: details.effectivePermissionRules.length })}
             </div>
           ) : null}
         </>
@@ -3289,7 +3304,7 @@ function RoleTracksPanel({
             <h4 className="font-bold">{t("admin.roleTracks.quickAdjust")}</h4>
             <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.roleTracks.quickAdjustDescription")}</p>
             <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
-              <select className="field" value={selectedUser} onChange={(event) => setSelectedUser(event.target.value)}><option value="">{t("admin.roleTracks.selectUser")}</option>{users.map((item) => <option key={item.id} value={item.id}>{item.displayName || item.username} (UID {item.id})</option>)}</select>
+              <select className="field" value={selectedUser} onChange={(event) => setSelectedUser(event.target.value)}><option value="">{t("admin.roleTracks.selectUser")}</option>{users.map((item) => <option key={item.id} value={item.id}>{item.username} (UID {item.id})</option>)}</select>
               <select className="field" value={selectedTrack} onChange={(event) => setSelectedTrack(event.target.value)}><option value="">{t("admin.roleTracks.selectTrack")}</option>{tracks.map((track) => <option key={track.code} value={track.code}>{track.name}</option>)}</select>
               <button className="button-primary focus-ring" disabled={saving || !selectedUser || !selectedTrack} type="button" onClick={() => void moveUser("upgrade")}>{t("admin.roleTracks.upgrade")}</button>
               <button className="button-secondary focus-ring" disabled={saving || !selectedUser || !selectedTrack} type="button" onClick={() => void moveUser("downgrade")}>{t("admin.roleTracks.downgrade")}</button>
@@ -3299,6 +3314,55 @@ function RoleTracksPanel({
       </section>
     </PanelShell>
   );
+}
+
+function GeneralSettingsPanel({ initialConfig, token }: { initialConfig: { siteName: string; logoUrl: string }; token: string }) {
+  const { t } = useI18n();
+  const [siteName, setSiteName] = useState(initialConfig.siteName || "Mcmods-cn");
+  const [logoUrl, setLogoUrl] = useState(initialConfig.logoUrl || "");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function uploadLogo(file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setMessage(t("admin.generalSettings.imageOnly"));
+      return;
+    }
+    setUploading(true);
+    setMessage("");
+    try {
+      const uploaded = await uploadUserFileToOSS(file, token, "site-logo");
+      const url = uploaded.accessUrl || uploaded.url || "";
+      if (!url) throw new Error(t("tools.playground.uploadMissingUrl"));
+      setLogoUrl(url);
+    } catch (error) {
+      setMessage(cleanError(error));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function save() {
+    if (!siteName.trim() || saving || uploading) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      await apiRequest("/api/v1/admin/config/general", {
+        method: "PUT",
+        body: JSON.stringify({ siteName: siteName.trim(), logoUrl }),
+      }, token);
+      window.dispatchEvent(new Event("mcmods-site-brand-change"));
+      setMessage(t("admin.generalSettings.saved"));
+    } catch (error) {
+      setMessage(cleanError(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <PanelShell title={t("admin.generalSettings.title")}><div className="grid gap-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><label className="text-sm font-semibold">{t("admin.generalSettings.siteName")}<input className="field mt-2" maxLength={80} value={siteName} onChange={(event) => setSiteName(event.target.value)} /></label><section><h3 className="text-sm font-semibold">{t("admin.generalSettings.siteLogo")}</h3><div className="mt-3 flex flex-wrap items-center gap-4">{logoUrl ? <img alt="" className="h-20 w-20 rounded-lg border border-[var(--line)] object-contain" src={logoUrl} /> : <span className="grid h-20 w-20 place-items-center rounded-lg bg-[var(--accent)] text-2xl font-black text-white">M</span>}<div className="flex flex-wrap gap-2"><label className="button-secondary focus-ring cursor-pointer"><span>{uploading ? t("tools.playground.uploading") : t("admin.generalSettings.uploadLogo")}</span><input className="hidden" disabled={uploading} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadLogo(file); }} /></label>{logoUrl ? <button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => setLogoUrl("")}>{t("admin.generalSettings.removeLogo")}</button> : null}</div></div></section>{message ? <p className="text-sm font-bold text-[var(--muted)]">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={!siteName.trim() || saving || uploading} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></div></div></PanelShell>;
 }
 
 function ProfileSettingsPanel({ initialConfig, token }: { initialConfig: { signatureMaxBytes: number }; token: string }) {
@@ -3664,7 +3728,6 @@ function UsersPanelV2({
       username: String(form.get("username") ?? "").trim(),
       email: String(form.get("email") ?? "").trim(),
       password: String(form.get("password") ?? ""),
-      displayName: String(form.get("displayName") ?? "").trim(),
       status: String(form.get("status") ?? "active"),
       roles,
     };
@@ -3706,11 +3769,7 @@ function UsersPanelV2({
             <input className="field mt-2" minLength={8} name="password" required type="password" />
           </label>
         </div>
-        <div className="grid gap-3 lg:grid-cols-[1fr_180px_1fr]">
-          <label className="text-sm font-semibold">
-            {t("admin.displayName")}
-            <input className="field mt-2" name="displayName" />
-          </label>
+        <div className="grid gap-3 lg:grid-cols-[180px_1fr]">
           <label className="text-sm font-semibold">
             {t("admin.status")}
             <select className="field mt-2" defaultValue="active" name="status">
@@ -3778,13 +3837,13 @@ function UsersPanelV2({
                       type="button"
                       onClick={() => void openUserDetails(user.id)}
                     >
-                      {user.displayName || user.username}
+                      {user.username}
                     </button>
                   </td>
                   <td className="border-b border-[var(--line)] py-3">{user.email}</td>
                   <td className="border-b border-[var(--line)] py-3">{formatDateTime(user.createdAt)}</td>
                   <td className="border-b border-[var(--line)] py-3">{user.status}</td>
-                  <td className="border-b border-[var(--line)] py-3">{user.roles.join(", ") || "member"}</td>
+                  <td className="border-b border-[var(--line)] py-3">{user.roleCodes.join(", ") || "member"}</td>
                 </tr>
               ))}
             </tbody>
@@ -3861,8 +3920,8 @@ function AdminUserDetailsDialog({
         <header className="flex items-start justify-between gap-4 border-b border-[var(--line)] px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-[var(--muted)]">UID {user.id}</p>
-            <h2 id="admin-user-details-title" className="text-xl font-bold">{user.displayName || user.username}</h2>
-            <p className="mt-1 text-sm text-[var(--muted)]">@{user.username} · {user.email}</p>
+            <h2 id="admin-user-details-title" className="text-xl font-bold">{user.username}</h2>
+            <p className="mt-1 text-sm text-[var(--muted)]">{user.email}</p>
           </div>
           <button className="focus-ring grid h-10 w-10 place-items-center rounded-md text-xl hover:bg-[var(--panel-subtle)]" title={t("common.close")} type="button" onClick={onClose}>
             ×
@@ -3901,7 +3960,7 @@ function AdminUserDetailsDialog({
           <section className="border-t border-[var(--line)] px-5 py-5">
             <h3 className="font-bold">{t("admin.roleList")}</h3>
             <div className="mt-3 flex flex-wrap gap-2">
-              {user.roles.length > 0 ? user.roles.map((role) => (
+              {user.roleCodes.length > 0 ? user.roleCodes.map((role) => (
                 <span key={role} className="rounded-md bg-[var(--panel-subtle)] px-2.5 py-1 font-mono text-xs">{role}</span>
               )) : <span className="text-sm text-[var(--muted)]">{t("admin.noRoleAssigned")}</span>}
             </div>
@@ -4109,6 +4168,7 @@ function TemplateTranslationEditor({ label, value, onChange }: { label: string; 
 type ReviewSettings = {
   blueprintCreate: boolean;
   blueprintEdit: boolean;
+  serverCreate: boolean;
   modCreate: boolean;
   modEdit: boolean;
   authorCreate: boolean;
@@ -4147,6 +4207,7 @@ function ReviewSettingsPanel({ token }: { token: string }) {
   const options: Array<{ key: keyof ReviewSettings; title: string; description: string }> = [
     { key: "blueprintCreate", title: t("admin.reviewSettings.blueprintCreate"), description: t("admin.reviewSettings.blueprintCreateDescription") },
     { key: "blueprintEdit", title: t("admin.reviewSettings.blueprintEdit"), description: t("admin.reviewSettings.blueprintEditDescription") },
+    { key: "serverCreate", title: t("admin.reviewSettings.serverCreate"), description: t("admin.reviewSettings.serverCreateDescription") },
     { key: "modCreate", title: t("admin.reviewSettings.modCreate"), description: t("admin.reviewSettings.modCreateDescription") },
     { key: "modEdit", title: t("admin.reviewSettings.modEdit"), description: t("admin.reviewSettings.modEditDescription") },
     { key: "authorCreate", title: t("admin.reviewSettings.authorCreate"), description: t("admin.reviewSettings.authorCreateDescription") },
@@ -4158,6 +4219,10 @@ function ReviewSettingsPanel({ token }: { token: string }) {
     { key: "modContentSectionCreate", title: t("admin.reviewSettings.modContentSectionCreate"), description: t("admin.reviewSettings.modContentSectionCreateDescription") },
   ];
   return <section className="space-y-4"><header className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-black">{t("admin.reviewSettings.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.reviewSettings.description")}</p></div><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></header><div className="surface divide-y divide-[var(--line)] rounded-lg px-5">{options.map((option) => <label className="flex items-center justify-between gap-5 py-5" key={option.key}><span><span className="block font-black">{option.title}</span><span className="mt-1 block text-sm text-[var(--muted)]">{option.description}</span></span><input checked={settings[option.key]} type="checkbox" onChange={(event) => setSettings((current) => current ? { ...current, [option.key]: event.target.checked } : current)} /></label>)}</div></section>;
+}
+
+function isResourceDataPageTranslationKey(key: string) {
+  return key.startsWith("mods.detail.dataCategories.") || key.startsWith("mods.detail.dataDescriptions.");
 }
 
 function TranslationManagerPanel({ token }: { token: string }) {
@@ -4179,6 +4244,7 @@ function TranslationManagerPanel({ token }: { token: string }) {
   const [aiCompleting, setAICompleting] = useState(false);
 
   const visibleKeys = translationKeys.filter((key) => {
+    if (isResourceDataPageTranslationKey(key)) return false;
     const keyword = query.trim().toLowerCase();
     const targetOwn = getOwnTranslation(targetLocale, key);
     if (missingOnly && targetOwn.trim() !== "") return false;
@@ -5020,11 +5086,6 @@ function orderedLogKeys(rows: LogRow[]) {
     "target_username",
     "username",
     "uploader_username",
-    "actor_display_name",
-    "operator_display_name",
-    "target_display_name",
-    "display_name",
-    "uploader_display_name",
     "actor_id",
     "operator_id",
     "target_user_id",
@@ -5196,6 +5257,7 @@ function AdminNoticeDialog({ notice, onClose }: { notice: AdminNotice | null; on
 function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, string | number>) => string) {
   const titles: Record<PanelId, string> = {
     overview: t("admin.overview"),
+    "general-settings": t("admin.generalSettings.title"),
     roles: t("admin.roles"),
     "user-roles": t("admin.userRoles"),
     "permission-list": t("admin.permissionList"),
@@ -5212,6 +5274,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "reviews-content": t("admin.reviews.contentTitle"),
     "reviews-editor": t("admin.reviews.editorTitle"),
     "reviews-server": t("admin.serverReviews.title"),
+    "reviews-comments": t("admin.reviews.commentReportsTitle"),
     "review-settings": t("admin.reviewSettings.title"),
     "server-settings": t("admin.serverSettings.title"),
     notifications: t("admin.notifications.title"),
@@ -5221,6 +5284,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     markdown: t("admin.markdown.navTitle"),
     "profile-settings": t("admin.profileSettings.navTitle"),
     "minecraft-versions": t("admin.minecraftVersions.title"),
+    "resource-attributes": t("admin.resourceAttributes.title"),
     "mod-import-settings": t("admin.modImport.navTitle"),
     "unresolved-references": t("admin.unresolved.title"),
     nats: t("admin.nats.navTitle"),
@@ -5270,6 +5334,7 @@ function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, 
 function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: string, params?: Record<string, string | number>) => string) {
   const descriptions: Partial<Record<PanelId, string>> = {
     overview: t("admin.overviewDesc"),
+    "general-settings": t("admin.generalSettings.description"),
     roles: t("admin.rolesDesc"),
     "user-roles": t("admin.userRolesDesc"),
     "permission-list": t("admin.permissionListDesc"),
@@ -5286,6 +5351,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "reviews-content": t("admin.reviews.contentDescription"),
     "reviews-editor": t("admin.reviews.editorDescription"),
     "reviews-server": t("admin.serverReviews.navDescription"),
+    "reviews-comments": t("admin.reviews.commentReportsDescription"),
     "review-settings": t("admin.reviewSettings.navDescription"),
     "server-settings": t("admin.serverSettings.navDescription"),
     notifications: t("admin.notifications.navDescription"),
@@ -5295,6 +5361,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     markdown: t("admin.markdown.navDesc"),
     "profile-settings": t("admin.profileSettings.navDescription"),
     "minecraft-versions": t("admin.minecraftVersions.description"),
+    "resource-attributes": t("admin.resourceAttributes.navDescription"),
     "mod-import-settings": t("admin.modImport.navDescription"),
     "unresolved-references": t("admin.unresolved.navDescription"),
     nats: t("admin.nats.navDescription"),

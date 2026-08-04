@@ -4,8 +4,20 @@ import Image from "next/image";
 import Link from "next/link";
 import { useAuthSnapshot } from "../_lib/auth";
 import { localizedCatalogResourceName } from "../_lib/content-language";
+import {
+  formatLootNumber,
+  lootEntryIdentity,
+  lootEntryItemID,
+  lootEntryQuantity,
+  lootEntryReferenceID,
+  lootEntryTagID,
+  lootTableItemIDs,
+  lootTablePools,
+  lootTableReferenceIDs,
+} from "../_lib/loot-table-model";
 import { minecraftLocale, modExportAssetURL } from "../_lib/mod-export-api";
 import { useI18n } from "../_lib/i18n-provider";
+import type { ModContentEntryField, ModContentEntryType } from "../_lib/mod-content-api";
 import { RecipeResourceVisual, recipeSlotPresentation } from "./recipe-resource-slot";
 import {
   recipeIngredientMergeKey,
@@ -17,18 +29,16 @@ import { useRotatingValue } from "./rotating-resource";
 
 export function ModResourceProperties({
   data,
+  entryType,
   registry,
 }: {
   data: Record<string, unknown>;
+  entryType?: ModContentEntryType;
   registry: string;
 }) {
   const { locale, t } = useI18n();
-  const durability = record(data.durability);
-  const tool = record(data.tool);
-  const tier = record(tool.tier);
-  const combat = record(data.combat);
-  const enchanting = record(data.enchanting);
-  const attributeModifiers = arrayRecords(data.attribute_modifiers);
+  if (entryType) return <SchemaResourceProperties data={data} entryType={entryType} locale={locale} />;
+  const attributeModifiers = arrayRecords(data.attributeModifiers);
   const placement = record(data.placement);
   const isNaturalGeneration = registry === "natural_generation";
   const isWorldStructure = registry === "world_structures";
@@ -36,128 +46,126 @@ export function ModResourceProperties({
   const isBiome = registry === "biomes";
   const isBlock = registry === "blocks";
   const isEntity = registry === "entity_types";
-  const isEnchantment = registry === "enchantments" || [data.minimum_level, data.maximum_level, data.supported_items_tag].some(hasValue);
-  const isMobEffect = registry === "mob_effects" || [data.color_rgb, data.effect_attribute_modifiers].some(hasValue);
-  const isFluid = registry === "fluids" || (registry === "ingredients" && data.ingredient_kind === "fluid") || [data.bucket_item_id, data.fluid_tags].some(hasValue);
-  const isAdvancement = registry === "advancements" || [data.parent, data.children, data.criteria, data.requirements].some(hasValue);
-  const isKeyMapping = registry === "key_mappings" || [data.default_key, data.category_translation_key].some(hasValue);
+  const isEnchantment = registry === "enchantments" || [data.minimumLevel, data.maximumLevel, data.supportedItemsTag].some(hasValue);
+  const isMobEffect = registry === "mob_effects" || [data.colorRGB, data.effectAttributeModifiers].some(hasValue);
+  const isFluid = registry === "fluids" || (registry === "ingredients" && data.ingredientKind === "fluid") || [data.bucketItemId, data.fluidTags].some(hasValue);
+  const isAdvancement = registry === "advancements" || [data.parentId, data.childrenIds, data.criteria, data.requirements].some(hasValue);
+  const isKeyMapping = registry === "key_mappings" || [data.defaultKey, data.categoryTranslationKey].some(hasValue);
   const hasBlockProperties = isBlock || [
-    data.hardness, data.explosion_resistance, data.requires_correct_tool, data.block_tags,
-    data.friction, data.light_emission, data.loot_table,
+    data.hardness, data.explosionResistance, data.requiresCorrectTool, data.blockTags,
+    data.friction, data.lightLevel, data.lootTable,
   ].some(hasValue);
   const hasItemProperties = registry === "items"
-    || Object.keys(tool).length > 0
-    || Object.keys(combat).length > 0
-    || Object.keys(enchanting).length > 0
+    || [data.durability, data.tierId, data.attackDamageModifier, data.enchantable].some(hasValue)
     || attributeModifiers.length > 0
-    || Array.isArray(data.item_types);
+    || Array.isArray(data.itemTypes);
   const blockRows: PropertyRow[] = hasBlockProperties ? [
-    property("hardness", data.hardness), property("explosionResistance", data.explosion_resistance),
-    property("requiresCorrectTool", data.requires_correct_tool), property("preferredTools", data.preferred_tools),
-    property("requiredTier", data.required_tier), property("requiredMiningLevel", data.required_mining_level),
-    tagProperty("miningTags", data.mining_tags, "minecraft:block"), tagProperty("tierTags", data.tier_tags, "minecraft:block"),
-    tagProperty("blockTags", data.block_tags, "minecraft:block"), property("friction", data.friction),
-    property("speedFactor", data.speed_factor), property("jumpFactor", data.jump_factor),
-    property("lightEmission", data.light_emission), property("solid", data.solid), property("liquid", data.liquid),
-    property("occlusion", data.can_occlude ?? data.occlusion), property("blocksMotion", data.blocks_motion),
-    property("renderShape", data.render_shape), property("hasBlockEntity", data.has_block_entity),
-    property("randomlyTicking", data.randomly_ticking), property("pistonReaction", data.piston_reaction),
-    lootProperty("lootTable", data.loot_table, data.resourceSources),
+    property("hardness", data.hardness), property("explosionResistance", data.explosionResistance),
+    property("requiresCorrectTool", data.requiresCorrectTool), property("preferredTools", data.preferredTools),
+    property("requiredTier", data.requiredTier), property("requiredMiningLevel", data.miningLevel),
+    tagProperty("miningTags", data.miningTags, "minecraft:block"), tagProperty("tierTags", data.tierTags, "minecraft:block"),
+    tagProperty("blockTags", data.blockTags, "minecraft:block"), property("friction", data.friction),
+    property("speedFactor", data.speedFactor), property("jumpFactor", data.jumpFactor),
+    property("lightEmission", data.lightLevel), property("solid", data.solid), property("liquid", data.liquid),
+    property("occlusion", data.canOcclude ?? data.occlusion), property("blocksMotion", data.blocksMotion),
+    property("renderShape", data.renderShape), property("hasBlockEntity", data.hasBlockEntity),
+    property("randomlyTicking", data.randomlyTicking), property("pistonReaction", data.pistonReaction),
+    lootProperty("lootTable", data.lootTable, data.resourceSources),
   ].filter(hasPropertyValue) : [];
   const toolRows: PropertyRow[] = hasItemProperties ? [
-    property("damageable", durability.damageable ?? data.damageable), property("maxDamage", data.max_damage ?? durability.max_damage),
-    property("maxStackSize", data.max_stack_size), property("primaryType", data.primary_type), property("itemTypes", data.item_types),
-    property("tierId", tier.id), property("miningLevel", tier.mining_level ?? tool.mining_level), property("tierDurability", tier.durability),
-    property("miningSpeed", tier.mining_speed ?? tool.mining_speed), property("attackDamageBonus", tier.attack_damage_bonus ?? tool.attack_damage),
-    property("enchantmentValue", tier.enchantment_value ?? data.enchantment_value), resourceProperty("repairItems", tier.repair_items ?? data.repair_items, data.resourceSources),
-    tagProperty("repairTag", data.repair_tag, "minecraft:item"),
-    tagProperty("incorrectBlocksForDrops", tier.incorrect_blocks_for_drops ?? data.incorrect_blocks_for_drops, "minecraft:block"),
-    property("attackDamage", combat.attack_damage), property("attackSpeed", combat.attack_speed),
-    property("attackDamageModifier", combat.attack_damage_modifier), property("attackSpeedModifier", combat.attack_speed_modifier),
-    property("enchantable", enchanting.enchantable), property("enchantingPower", enchanting.enchantment_value),
-    resourceProperty("compatibleEnchantments", enchanting.compatible_enchantments, data.resourceSources), tagProperty("itemTags", data.item_tags, "minecraft:item"),
+    property("damageable", data.damageable), property("maxDamage", data.durability),
+    property("maxStackSize", data.maxStackSize), property("primaryType", data.primaryType), property("itemTypes", data.itemTypes),
+    property("tierId", data.tierId), property("miningLevel", data.miningLevel), property("tierDurability", data.tierDurability),
+    property("miningSpeed", data.miningSpeed), property("attackDamageBonus", data.attackDamageBonus),
+    property("enchantmentValue", data.enchantmentValue), resourceProperty("repairItems", data.repairItems, data.resourceSources),
+    tagProperty("repairTag", data.repairTag, "minecraft:item"),
+    tagProperty("incorrectBlocksForDrops", data.incorrectBlocksForDrops, "minecraft:block"),
+    property("attackDamage", data.attackDamage), property("attackSpeed", data.attackSpeed),
+    property("attackDamageModifier", data.attackDamageModifier), property("attackSpeedModifier", data.attackSpeedModifier),
+    property("enchantable", data.enchantable), property("enchantingPower", data.enchantability),
+    resourceProperty("compatibleEnchantments", data.compatibleEnchantments, data.resourceSources), tagProperty("itemTags", data.itemTags, "minecraft:item"),
   ].filter(hasPropertyValue) : [];
   const entityRows: PropertyRow[] = isEntity ? [
-    property("maxHealth", data.max_health), property("armorValue", data.armor_value),
-    property("width", data.width), property("height", data.height), property("eyeHeight", data.eye_height),
-    property("maxAirSupply", data.max_air_supply), property("category", data.category), property("mobType", data.mob_type),
+    property("maxHealth", data.maxHealth), property("armorValue", data.armorValue),
+    property("width", data.width), property("height", data.height), property("eyeHeight", data.eyeHeight),
+    property("maxAirSupply", data.maxAirSupply), property("category", data.category), property("mobType", data.mobType),
     property("living", data.living), property("mob", data.mob), property("animal", data.animal), property("hostile", data.hostile),
-    property("tamable", data.tamable), property("ageable", data.ageable), property("waterAnimal", data.water_animal),
-    property("fireImmune", data.fire_immune), property("canSummon", data.can_summon), property("canSerialize", data.can_serialize),
-    property("trackingRange", data.client_tracking_range), property("updateInterval", data.update_interval),
-    property("runtimePropertiesAvailable", data.runtime_properties_available), property("spawnEggCount", data.spawn_egg_count),
-    lootProperty("defaultLootTable", data.default_loot_table, data.resourceSources),
-    resourceProperty("spawnEggs", data.spawn_eggs, data.resourceSources), resourceProperty("breedingMaterials", data.breeding_materials ?? data.breed_items, data.resourceSources),
-    property("defaultEquipment", data.default_equipment),
+    property("tamable", data.tamable), property("ageable", data.ageable), property("waterAnimal", data.waterAnimal),
+    property("fireImmune", data.fireImmune), property("canSummon", data.canSummon), property("canSerialize", data.canSerialize),
+    property("trackingRange", data.trackingRange), property("updateInterval", data.updateInterval),
+    property("runtimePropertiesAvailable", data.runtimePropertiesAvailable), property("spawnEggCount", data.spawnEggCount),
+    lootProperty("defaultLootTable", data.defaultLootTable, data.resourceSources),
+    resourceProperty("spawnEggs", data.spawnEggs, data.resourceSources), resourceProperty("breedingMaterials", data.breedingMaterials, data.resourceSources),
+    property("defaultEquipment", data.defaultEquipment),
   ].filter(hasPropertyValue) : [];
   const naturalRows: PropertyRow[] = isNaturalGeneration ? [
-    property("entryKind", data.entry_kind), property("category", data.category),
-    property("featureType", data.feature_type ?? data.carver_type), itemProperty("outputs", arrayRecords(data.outputs).map((output) => output.block_id).filter(Boolean)),
-    itemProperty("targets", data.targets), property("size", data.size), property("discardChance", data.discard_chance_on_air_exposure),
+    property("entryKind", data.entryKind), property("category", data.category),
+    property("featureType", data.featureType ?? data.carverType), itemProperty("outputs", arrayRecords(data.outputs).map((output) => output.block_id).filter(Boolean)),
+    itemProperty("targets", data.targets), property("size", data.size),
     property("count", placement.count), property("distribution", placement.distribution), property("minY", placement.min_y), property("maxY", placement.max_y),
-    property("probability", data.probability), itemProperty("generationSteps", data.generation_steps), itemProperty("biomeSelectors", data.biome_selectors),
-    resourceProperty("resolvedBiomes", data.resolved_biome_ids, data.resourceSources), resourceProperty("dimensions", data.dimension_ids, data.resourceSources), property("dimensionResolution", data.dimension_resolution),
-    property("normalizationStatus", data.normalization_status),
+    property("probability", data.probability), itemProperty("generationSteps", data.generationSteps), itemProperty("biomeSelectors", data.biomeSelectors),
+    resourceProperty("resolvedBiomes", data.resolvedBiomeIds, data.resourceSources), resourceProperty("dimensions", data.dimensionIds, data.resourceSources),
+    property("normalizationStatus", data.normalizationStatus),
   ].filter(hasPropertyValue) : [];
   const structureRows: PropertyRow[] = isWorldStructure ? [
-    property("structureType", data.structure_type), tagProperty("biomeTag", data.biome_tag, "minecraft:worldgen/biome"),
-    resourceProperty("biomes", data.biome_ids, data.resourceSources),
-    property("generationStep", data.generation_step), property("terrainAdaptation", data.terrain_adaptation),
-    property("startPool", data.start_pool), property("jigsawSize", data.jigsaw_size), property("startHeight", data.start_height),
-    property("maxDistance", data.max_distance_from_center), itemProperty("structureSets", data.structure_set_ids), property("definitionSource", data.definition_source),
+    property("structureType", data.structureType), tagProperty("biomeTag", data.biomeTag, "minecraft:worldgen/biome"),
+    resourceProperty("biomes", data.biomeIds, data.resourceSources),
+    property("generationStep", data.generationStep), property("terrainAdaptation", data.terrainAdaptation),
+    property("startPool", data.startPool), property("jigsawSize", data.jigsawSize), property("startHeight", data.startHeight),
+    property("maxDistance", data.maxDistanceFromCenter), itemProperty("structureSets", data.structureSetIds), property("definitionSource", data.definitionSource),
   ].filter(hasPropertyValue) : [];
   const dimensionRows: PropertyRow[] = isDimension ? [
-    property("dimensionType", data.dimension_type), property("generatorType", data.generator_type),
-    property("generatorSettings", data.generator_settings), property("biomeSource", data.biome_source),
-    resourceProperty("biomes", data.biome_ids, data.resourceSources), property("ambientLight", data.ambient_light),
-    property("coordinateScale", data.coordinate_scale), property("minimumY", data.minimum_y), property("height", data.height),
-    property("logicalHeight", data.logical_height), property("natural", data.natural), property("ultrawarm", data.ultrawarm),
-    property("hasSkylight", data.has_skylight), property("hasCeiling", data.has_ceiling), property("bedWorks", data.bed_works),
-    property("respawnAnchorWorks", data.respawn_anchor_works), property("hasRaids", data.has_raids),
-    tagProperty("infiniburnTag", data.infiniburn_tag, "minecraft:block"),
+    property("dimensionType", data.dimensionType), property("generatorType", data.generatorType),
+    property("generatorSettings", data.generatorSettings), property("biomeSource", data.biomeSource),
+    resourceProperty("biomes", data.biomeIds, data.resourceSources), property("ambientLight", data.ambientLight),
+    property("coordinateScale", data.coordinateScale), property("minimumY", data.minimumY), property("height", data.height),
+    property("logicalHeight", data.logicalHeight), property("natural", data.natural), property("ultrawarm", data.ultrawarm),
+    property("hasSkylight", data.hasSkylight), property("hasCeiling", data.hasCeiling), property("bedWorks", data.bedWorks),
+    property("respawnAnchorWorks", data.respawnAnchorWorks), property("hasRaids", data.hasRaids),
+    tagProperty("infiniburnTag", data.infiniburnTag, "minecraft:block"),
   ].filter(hasPropertyValue) : [];
   const biomeRows: PropertyRow[] = isBiome ? [
-    property("hasPrecipitation", data.has_precipitation), property("temperature", data.temperature), property("downfall", data.downfall),
-    property("creatureSpawnProbability", data.creature_spawn_probability), property("effects", data.effects), property("spawnData", data.spawn_data),
-    resourceProperty("spawnedEntities", data.spawned_entity_ids, data.resourceSources),
-    resourceProperty("naturalGeneration", data.feature_ids, data.resourceSources),
-    resourceProperty("carvers", data.carver_ids, data.resourceSources),
-    resourceProperty("dimensions", data.dimension_ids, data.resourceSources),
+    property("hasPrecipitation", data.hasPrecipitation), property("temperature", data.temperature), property("downfall", data.downfall),
+    property("creatureSpawnProbability", data.creatureSpawnProbability), property("effects", data.effects), property("spawnData", data.spawnData),
+    resourceProperty("spawnedEntities", data.spawnedEntityIds, data.resourceSources),
+    resourceProperty("naturalGeneration", data.featureIds, data.resourceSources),
+    resourceProperty("carvers", data.carverIds, data.resourceSources),
+    resourceProperty("dimensions", data.dimensionIds, data.resourceSources),
   ].filter(hasPropertyValue) : [];
   const enchantmentRows: PropertyRow[] = isEnchantment ? [
-    property("minimumLevel", data.minimum_level), property("maximumLevel", data.maximum_level), property("rarity", data.rarity),
-    property("rarityWeight", data.rarity_weight), property("anvilCost", data.anvil_cost), property("treasureOnly", data.treasure_only),
+    property("minimumLevel", data.minimumLevel), property("maximumLevel", data.maximumLevel), property("rarity", data.rarity),
+    property("rarityWeight", data.rarityWeight), property("anvilCost", data.anvilCost), property("treasureOnly", data.treasureOnly),
     property("curse", data.curse), property("tradeable", data.tradeable), property("discoverable", data.discoverable), property("slots", data.slots),
-    tagProperty("supportedItemsTag", data.supported_items_tag, "minecraft:item"),
-    resourceProperty("supportedItems", data.supported_items, data.resourceSources),
-    resourceProperty("exclusiveWith", data.exclusive_with, data.resourceSources),
-    property("costs", data.costs), property("effectComponentCount", data.effect_component_count),
+    tagProperty("supportedItemsTag", data.supportedItemsTag, "minecraft:item"),
+    resourceProperty("supportedItems", data.supportedItems, data.resourceSources),
+    resourceProperty("exclusiveWith", data.exclusiveWith, data.resourceSources),
+    property("costs", data.costs), property("effectComponentCount", data.effectComponentCount),
   ].filter(hasPropertyValue) : [];
   const mobEffectRows: PropertyRow[] = isMobEffect ? [
-    property("category", data.category), property("colorRGB", data.color_rgb), property("beneficial", data.beneficial),
-    property("instant", data.instant), property("attributeModifiers", data.effect_attribute_modifiers),
+    property("category", data.category), property("colorRGB", data.colorRGB), property("beneficial", data.beneficial),
+    property("instant", data.instant), property("attributeModifiers", data.effectAttributeModifiers),
   ].filter(hasPropertyValue) : [];
   const fluidRows: PropertyRow[] = isFluid ? [
-    property("ingredientKind", data.ingredient_kind), property("source", data.source), property("amount", data.amount),
-    resourceProperty("bucketItem", data.bucket_item_id, data.resourceSources), tagProperty("fluidTags", data.fluid_tags, "minecraft:fluid"),
+    property("ingredientKind", data.ingredientKind), property("source", data.source), property("amount", data.amount),
+    resourceProperty("bucketItem", data.bucketItemId, data.resourceSources), tagProperty("fluidTags", data.fluidTags, "minecraft:fluid"),
     property("density", data.density), property("temperature", data.temperature), property("viscosity", data.viscosity),
     property("luminosity", data.luminosity), property("gaseous", data.gaseous),
   ].filter(hasPropertyValue) : [];
   const advancementDisplay = record(data.display);
   const advancementRows: PropertyRow[] = isAdvancement ? [
-    resourceProperty("parent", data.parent, data.resourceSources), resourceProperty("children", data.children, data.resourceSources),
+    resourceProperty("parent", data.parentId, data.resourceSources), resourceProperty("children", data.childrenIds, data.resourceSources),
     property("description", localizedRecordValue(advancementDisplay.description_names, minecraftLocale(locale))),
-    resourceProperty("icon", data.icon_item_id ?? record(advancementDisplay.icon).item, data.resourceSources), property("frame", advancementDisplay.frame),
+    resourceProperty("icon", data.iconItemId ?? record(advancementDisplay.icon).item, data.resourceSources), property("frame", advancementDisplay.frame),
     property("positionX", advancementDisplay.x), property("positionY", advancementDisplay.y), property("hidden", advancementDisplay.hidden),
     property("showToast", advancementDisplay.show_toast), property("announceChat", advancementDisplay.announce_chat), property("background", advancementDisplay.background),
-    property("criteria", data.criteria), property("requirements", data.requirements), property("maximumCriteriaRequired", data.max_criteria_required),
-    property("rewards", data.rewards), property("sendsTelemetryEvent", data.sends_telemetry_event),
+    property("criteria", data.criteria), property("requirements", data.requirements), property("maximumCriteriaRequired", data.maximumCriteriaRequired),
+    property("rewards", data.rewards), property("sendsTelemetryEvent", data.sendsTelemetryEvent),
   ].filter(hasPropertyValue) : [];
   const keyMappingRows: PropertyRow[] = isKeyMapping ? [
-    property("sourceModId", data.source_mod_id), property("sourceDetection", data.source_detection),
-    property("category", localizedRecordValue(data.category_names, minecraftLocale(locale)) || data.category_translation_key),
-    property("categoryTranslationKey", data.category_translation_key), property("defaultKey", data.default_key), property("boundKey", data.bound_key),
-    property("defaultBinding", data.is_default), property("unbound", data.is_unbound),
+    property("sourceModId", data.sourceModId), property("sourceDetection", data.sourceDetection),
+    property("category", localizedRecordValue(data.categoryNames, minecraftLocale(locale)) || data.categoryTranslationKey),
+    property("categoryTranslationKey", data.categoryTranslationKey), property("defaultKey", data.defaultKey), property("boundKey", data.boundKey),
+    property("defaultBinding", data.defaultBinding), property("unbound", data.unbound),
   ].filter(hasPropertyValue) : [];
 
   if (!blockRows.length
@@ -196,12 +204,69 @@ export function ModResourceProperties({
 
 type PropertyRow = {
   key: string;
+  label?: string;
   value: unknown;
-  kind?: "tag" | "loot" | "item" | "resource";
+  kind?: "tag" | "loot" | "item" | "resource" | "health" | "armor" | "range";
   registry?: string;
   href?: string;
   resourceSources?: unknown;
 };
+
+function SchemaResourceProperties({ data, entryType, locale }: { data: Record<string, unknown>; entryType: ModContentEntryType; locale: string }) {
+  const groups = entryType.groups.map((group) => ({
+    code: group.code,
+    title: schemaLocalizedName(group.names, locale, schemaLocalizedName(entryType.names, locale, entryType.code)),
+    rows: group.fields.map((field) => schemaPropertyRow(field, data, locale)).filter(hasPropertyValue),
+  })).filter((group) => group.rows.length);
+  if (!groups.length) return null;
+  return <div className="mt-4 space-y-4">{groups.map((group) => <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]" key={group.code}>
+    <h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{group.title}</h2>
+    <dl className="divide-y divide-[var(--line)]">{group.rows.map((row) => <div className="px-4 py-3" key={row.key}>
+      <dt className="text-xs font-bold text-[var(--muted)]">{row.label || row.key}</dt>
+      <dd className="mt-1 break-words text-sm font-semibold"><PropertyValue row={row} /></dd>
+    </div>)}</dl>
+  </section>)}</div>;
+}
+
+function schemaPropertyRow(field: ModContentEntryField, data: Record<string, unknown>, locale: string): PropertyRow {
+  const row: PropertyRow = {
+    key: field.code,
+    label: schemaLocalizedName(field.names, locale, field.code),
+    value: data[field.code],
+  };
+  if (field.format === "health" || field.format === "armor" || field.format === "range") row.kind = field.format;
+  if (field.type === "reference" || field.type === "reference-list") {
+    if (field.referenceKind === "tag" || field.format === "tag") {
+      row.kind = "tag";
+      row.registry = field.referenceRegistry || "minecraft:item";
+    } else {
+      row.kind = "resource";
+      row.resourceSources = data.resourceSources;
+    }
+  }
+  return row;
+}
+
+function schemaLocalizedName(names: Record<string, string>, locale: string, fallback: string) {
+  const normalized = locale.replaceAll("_", "-");
+  const language = normalized.split("-")[0].toLowerCase();
+  return names[locale]
+    || names[normalized]
+    || Object.entries(names).find(([key]) => key.toLowerCase().split("-")[0] === language)?.[1]
+    || names["zh-CN"]
+    || names["en-US"]
+    || Object.values(names).find(Boolean)
+    || fallback;
+}
+
+function SchemaNumericIcons({ kind, value }: { kind: "health" | "armor"; value: number }) {
+  const normalized = Math.max(0, Math.trunc(value));
+  const fullCount = Math.floor(normalized / 2);
+  const hasHalf = normalized % 2 === 1;
+  const source = (variant: "full" | "half") => `/mc-icons/icon-${kind}-${variant}.svg`;
+  if (fullCount > 10) return <span className="inline-flex items-center gap-1" title={String(value)}><Image unoptimized alt="" height={18} src={source("full")} width={18} /><span>× {normalized / 2}</span></span>;
+  return <span className="inline-flex flex-wrap gap-0.5" title={String(value)}>{Array.from({ length: fullCount }, (_, index) => <Image unoptimized alt="" height={18} key={index} src={source("full")} width={18} />)}{hasHalf ? <Image unoptimized alt="" height={18} src={source("half")} width={18} /> : null}</span>;
+}
 
 function property(key: string, value: unknown): PropertyRow {
   return { key, value };
@@ -249,7 +314,7 @@ function PropertyGroup({
   return <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
     <h2 className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 font-black">{title}</h2>
     <dl className="divide-y divide-[var(--line)]">{rows.map((row) => <div className="px-4 py-3" key={row.key}>
-      <dt className="text-xs font-bold text-[var(--muted)]">{t(`mods.exportImport.entry.${namespace}.${row.key}`)}</dt>
+      <dt className="text-xs font-bold text-[var(--muted)]">{row.label || t(`mods.exportImport.entry.${namespace}.${row.key}`)}</dt>
       <dd className="mt-1 break-words text-sm font-semibold"><PropertyValue row={row} /></dd>
     </div>)}</dl>
   </section>;
@@ -282,6 +347,12 @@ function PropertyValue({ row }: { row: PropertyRow }) {
   if (row.kind === "item" && Array.isArray(row.value)) {
     return <span className="flex flex-wrap gap-1">{row.value.map(String).map((value) => <code className="rounded bg-[var(--panel-subtle)] px-2 py-1 text-xs" key={value}>{value}</code>)}</span>;
   }
+  if ((row.kind === "health" || row.kind === "armor") && typeof row.value === "number") {
+    return <SchemaNumericIcons kind={row.kind} value={row.value} />;
+  }
+  if (row.kind === "range" && Array.isArray(row.value) && row.value.length === 2) {
+    return <>{String(row.value[0])} – {String(row.value[1])}</>;
+  }
   return <>{formatExportProperty(row.value, t)}</>;
 }
 
@@ -299,20 +370,18 @@ function AttributeSlot({ slot }: { slot: Record<string, unknown> }) {
 export function ModLootTableView({ data }: { data: Record<string, unknown> }) {
   const { locale, t } = useI18n();
   const definition = record(data.definition);
-  const normalizedPools = arrayRecords(data.pools);
-  const definitionPools = arrayRecords(definition.pools);
-  const pools = normalizedPools.length ? normalizedPools : definitionPools;
+  const pools = lootTablePools(data);
   const sources = record(data.resourceSources);
   const category = lootCategory(data);
   const possibleItemIDs = uniqueStrings([
-    ...stringArray(data.possible_item_ids),
-    ...lootEntryItemIDs(pools),
+    ...stringArray(data.possibleItemIds),
+    ...lootTableItemIDs(pools),
   ]);
   const referencedLootTables = uniqueStrings([
-    ...stringArray(data.referenced_loot_tables),
-    ...lootEntryReferenceIDs(pools),
+    ...stringArray(data.referencedLootTables),
+    ...lootTableReferenceIDs(pools),
   ]);
-  const definitionAvailable = data.definition_available === true
+  const definitionAvailable = data.definitionAvailable === true
     || Object.keys(definition).length > 0
     || pools.length > 0;
   const visibleItems = possibleItemIDs.slice(0, 24);
@@ -394,9 +463,9 @@ function LootEntryCard({
   const type = stringValue(entry.entry_type) || stringValue(entry.type);
   const kind = stringValue(entry.entry_kind);
   const rawName = stringValue(entry.name) || stringValue(entry.value);
-  const itemID = stringValue(entry.item_id) || ((kind === "item" || /(^|:)item$/.test(type)) ? rawName : "");
-  const tagID = stringValue(entry.tag_id) || ((kind === "tag" || type.includes(":tag")) ? rawName.replace(/^#/, "") : "");
-  const referenceID = stringValue(entry.loot_table_id) || ((kind.includes("loot_table") || type.includes("loot_table")) ? rawName : "");
+  const itemID = lootEntryItemID(entry);
+  const tagID = lootEntryTagID(entry);
+  const referenceID = lootEntryReferenceID(entry);
   const sourceID = itemID || referenceID;
   const source = record(sources[sourceID]);
   const href = tagID
@@ -410,6 +479,7 @@ function LootEntryCard({
   const conditions = lootRuleNames(entry.conditions ?? entry.condition_types);
   const functions = lootRuleNames(entry.functions ?? entry.function_types);
   const children = arrayRecords(entry.children);
+  const quantity = lootEntryQuantity(entry);
   const content = <div className="flex min-w-0 items-center gap-3">
     {iconURL ? <Image unoptimized alt="" className="h-12 w-12 shrink-0 object-contain [image-rendering:pixelated]" height={48} src={iconURL} width={48} /> : <span className="grid h-12 w-12 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-sm font-black text-[var(--muted)]">{tagID ? "#" : referenceID ? "↗" : type.includes("empty") ? "∅" : "?"}</span>}
     <span className="min-w-0 flex-1"><strong className="block truncate">{title}</strong><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{tagID ? `#${tagID}` : sourceID || type}</code></span>
@@ -419,7 +489,7 @@ function LootEntryCard({
     <div className="mt-2 flex flex-wrap gap-1 text-[10px] font-bold text-[var(--muted)]">
       {entry.weight !== undefined ? <span className="rounded bg-[var(--panel-subtle)] px-1.5 py-1">{t("mods.exportImport.entry.loot.weight")}: {String(entry.weight)}</span> : null}
       {entry.quality !== undefined ? <span className="rounded bg-[var(--panel-subtle)] px-1.5 py-1">{t("mods.exportImport.entry.loot.quality")}: {String(entry.quality)}</span> : null}
-      {lootEntryQuantity(entry) ? <span className="rounded bg-[var(--panel-subtle)] px-1.5 py-1">× {lootEntryQuantity(entry)}</span> : null}
+      {quantity ? <span className="rounded bg-[var(--panel-subtle)] px-1.5 py-1">× {quantity}</span> : null}
       {conditions.map((rule) => <span className="rounded bg-[var(--accent-soft)] px-1.5 py-1 text-[var(--accent)]" key={`c:${rule}`}>{t("mods.exportImport.entry.loot.condition")}: {rule}</span>)}
       {functions.map((rule) => <span className="rounded bg-[var(--panel-subtle)] px-1.5 py-1" key={`f:${rule}`}>{t("mods.exportImport.entry.loot.function")}: {rule}</span>)}
     </div>
@@ -718,47 +788,6 @@ function lootCategory(data: Record<string, unknown>) {
   return "other";
 }
 
-function lootEntryItemIDs(pools: Record<string, unknown>[]) {
-  const result: string[] = [];
-  const visit = (entries: Record<string, unknown>[]) => {
-    for (const entry of entries) {
-      const type = stringValue(entry.entry_type) || stringValue(entry.type);
-      const kind = stringValue(entry.entry_kind);
-      const name = stringValue(entry.name) || stringValue(entry.value);
-      const itemID = stringValue(entry.item_id) || ((kind === "item" || /(^|:)item$/.test(type)) ? name : "");
-      if (itemID) result.push(itemID);
-      visit(arrayRecords(entry.children));
-    }
-  };
-  for (const pool of pools) visit(arrayRecords(pool.entries));
-  return result;
-}
-
-function lootEntryReferenceIDs(pools: Record<string, unknown>[]) {
-  const result: string[] = [];
-  const visit = (entries: Record<string, unknown>[]) => {
-    for (const entry of entries) {
-      const type = stringValue(entry.entry_type) || stringValue(entry.type);
-      const kind = stringValue(entry.entry_kind);
-      const name = stringValue(entry.name) || stringValue(entry.value);
-      const referenceID = stringValue(entry.loot_table_id) || ((kind.includes("loot_table") || type.includes("loot_table")) ? name : "");
-      if (referenceID) result.push(referenceID);
-      visit(arrayRecords(entry.children));
-    }
-  };
-  for (const pool of pools) visit(arrayRecords(pool.entries));
-  return result;
-}
-
-function lootEntryIdentity(entry: Record<string, unknown>) {
-  return stringValue(entry.item_id)
-    || stringValue(entry.loot_table_id)
-    || stringValue(entry.name)
-    || stringValue(entry.value)
-    || stringValue(entry.entry_type)
-    || stringValue(entry.type);
-}
-
 function lootRuleNames(value: unknown) {
   if (!Array.isArray(value)) return [];
   return uniqueStrings(value.map((rule) => {
@@ -769,25 +798,6 @@ function lootRuleNames(value: unknown) {
       || stringValue(item.type)
       || stringValue(item.predicate);
   }));
-}
-
-function lootEntryQuantity(entry: Record<string, unknown>) {
-  if (entry.count !== undefined) return formatLootNumber(entry.count);
-  for (const item of arrayRecords(entry.functions)) {
-    const kind = stringValue(item.function) || stringValue(item.type);
-    if (kind.includes("set_count") && item.count !== undefined) return formatLootNumber(item.count);
-  }
-  return "";
-}
-
-function formatLootNumber(value: unknown): string {
-  if (typeof value === "number") return value.toLocaleString(undefined, { maximumFractionDigits: 3 });
-  if (typeof value === "string") return value;
-  const range = record(value);
-  const min = range.min ?? range.minimum;
-  const max = range.max ?? range.maximum;
-  if (min !== undefined || max !== undefined) return `${String(min ?? max)}–${String(max ?? min)}`;
-  return Object.keys(range).length ? JSON.stringify(range) : "-";
 }
 
 function formatExportProperty(

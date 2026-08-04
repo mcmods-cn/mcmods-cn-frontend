@@ -18,6 +18,17 @@ type ModRelationship = {
   notes: string;
 };
 
+export type ModCreatorIdentity = {
+  creatorId?: string;
+  kind?: "author" | "team";
+  name: string;
+  avatarUrl?: string;
+  roleId?: string;
+  role: string;
+  title?: string;
+  members?: ModCreatorIdentity[];
+};
+
 type ModRelationshipGroup = {
   label: string;
   loader: string;
@@ -52,6 +63,7 @@ export type ModCatalogEntry = {
   curseforgeProjectId?: string;
   modrinthProjectId?: string;
   authors: string[];
+  authorDetails?: ModCreatorIdentity[];
   team?: string;
   members?: ModTeamMember[];
   updatedAt: string;

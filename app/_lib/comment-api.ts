@@ -28,7 +28,6 @@ export type CommentItem = {
   author: {
     id: string;
     username: string;
-    displayName: string;
     avatarUrl: string;
     projectRole?: "owner" | "editor";
   };

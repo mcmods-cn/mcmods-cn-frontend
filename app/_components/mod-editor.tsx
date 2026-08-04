@@ -58,14 +58,11 @@ const emptyDraft = (): ModDraft => ({
   secondaryName: "",
   abbreviation: "",
   summary: "",
-  modId: "",
   modIds: [{ identifier: "", primary: true, minecraftVersionMin: "", minecraftVersionMax: "", minecraftVersions: [] }],
   defaultLocale: "zh-CN",
   localizations: [{ locale: "zh-CN", name: "", summary: "", contentMarkdown: "" }],
   environment: "bothRequired",
   primaryCategory: "utility",
-  supportedVersions: [],
-  supportedLoaders: [],
   tags: [],
   searchKeywords: "",
   authors: [],
@@ -126,7 +123,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}/editor`, {}, token)
       .then((record) => {
         if (!cancelled) {
-          setDraft(draftFromRecord(record));
+          setDraft(draftFromSource(record));
           setUniqueId(record.uniqueId);
           setBaseRevisionId(record.publishedRevisionId);
         }
@@ -169,7 +166,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           if (job.status !== "completed" || !job.result) {
             throw new Error(job.error || t("mods.submission.importFailed"));
           }
-          setDraft(draftFromPayload(job.result));
+          setDraft(draftFromSource(job.result));
           setImportProgress(100);
         } catch (error) {
           if (!cancelled) setMessage(error instanceof Error ? error.message : t("mods.submission.importFailed"));
@@ -334,7 +331,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
               </div>
             </div>
           </div>
-          <ModIdentifierEditor config={minecraftConfig} optionCodes={modSupportedVersionOptions(draft, minecraftConfig)} values={draft.modIds} onChange={(modIds) => setDraft({ ...draft, modIds, modId: modIds.find((item) => item.primary)?.identifier ?? modIds[0]?.identifier ?? "" })} />
+          <ModIdentifierEditor config={minecraftConfig} optionCodes={modSupportedVersionOptions(draft, minecraftConfig)} values={draft.modIds} onChange={(modIds) => setDraft({ ...draft, modIds })} />
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.classification")}>
@@ -354,7 +351,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         </FormSection>
 
         <FormSection title={t("mods.detail.compatibility")}>
-          <CompatibilityEditor config={minecraftConfig} value={draft.compatibilities} onChange={(compatibilities) => setDraft((current) => withCompatibilities(current, compatibilities))} />
+          <CompatibilityEditor config={minecraftConfig} value={draft.compatibilities} onChange={(compatibilities) => setDraft((current) => ({ ...current, compatibilities }))} />
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.authors")}>
@@ -552,12 +549,8 @@ function EditorState({ text, login = false, progress }: { text: string; login?: 
   return <main className="grid min-h-[65vh] place-items-center px-4 text-center"><div className="w-full max-w-md"><p className="text-lg font-black">{text}</p>{progress !== undefined ? <div className="mt-4 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} /></div> : null}{login ? <Link className="button-primary focus-ring mt-4 inline-flex" href="/login">{t("common.login")}</Link> : null}</div></main>;
 }
 
-function draftFromRecord(record: BackendModRecord): ModDraft {
-  return normalizeModDraft({ ...record, compatibilities: record.compatibilities ?? [], searchKeywords: record.searchKeywords.join("\n") });
-}
-
-function draftFromPayload(payload: CreateModPayload): ModDraft {
-  return normalizeModDraft({ ...payload, compatibilities: payload.compatibilities ?? [], searchKeywords: payload.searchKeywords.join("\n") });
+function draftFromSource(source: BackendModRecord | CreateModPayload): ModDraft {
+  return normalizeModDraft({ ...source, compatibilities: source.compatibilities ?? [], searchKeywords: source.searchKeywords.join("\n") });
 }
 
 function payloadFromDraft(draft: ModDraft): CreateModPayload {
@@ -567,14 +560,11 @@ function payloadFromDraft(draft: ModDraft): CreateModPayload {
     secondaryName: draft.secondaryName,
     abbreviation: draft.abbreviation,
     summary: draft.summary,
-    modId: draft.modId,
     modIds: draft.modIds,
     defaultLocale: draft.defaultLocale,
     localizations: draft.localizations.filter((item) => item.name.trim() || item.summary.trim() || item.contentMarkdown.trim()),
     environment: draft.environment,
     primaryCategory: draft.primaryCategory,
-    supportedVersions: draft.supportedVersions,
-    supportedLoaders: draft.supportedLoaders,
     compatibilities: draft.compatibilities,
     officialStatus: draft.officialStatus,
     sourceStatus: draft.sourceStatus,
@@ -605,7 +595,7 @@ function normalizeModDraft(draft: ModDraft): ModDraft {
     summary: item.summary || draft.summary,
     contentMarkdown: item.contentMarkdown || draft.bodyMarkdown,
   } : item);
-  const modIds = (draft.modIds?.length ? draft.modIds : draft.modId ? [{ identifier: draft.modId, primary: true, minecraftVersionMin: "", minecraftVersionMax: "", minecraftVersions: [] }] : [{ identifier: "", primary: true, minecraftVersionMin: "", minecraftVersionMax: "", minecraftVersions: [] }]).map((item) => ({ ...item, minecraftVersions: item.minecraftVersions ?? [] }));
+  const modIds = (draft.modIds?.length ? draft.modIds : [{ identifier: "", primary: true, minecraftVersionMin: "", minecraftVersionMax: "", minecraftVersions: [] }]).map((item) => ({ ...item, minecraftVersions: item.minecraftVersions ?? [] }));
   return { ...draft, defaultLocale, localizations, modIds, links: (draft.links ?? []).map((link) => ({ ...link, note: link.note ?? "" })), githubProjectPath: draft.githubProjectPath ?? githubProjectPathFromLinks(draft.links ?? []), galleryImages: draft.galleryImages ?? [] };
 }
 
@@ -655,15 +645,6 @@ function toggleArray(values: string[], value: string) {
 
 function replaceAt<T>(values: T[], index: number, value: T) {
   return values.map((item, itemIndex) => itemIndex === index ? value : item);
-}
-
-function withCompatibilities(draft: ModDraft, compatibilities: BackendModCompatibility[]): ModDraft {
-  return {
-    ...draft,
-    compatibilities,
-    supportedLoaders: [...new Set(compatibilities.map((item) => item.loader))],
-    supportedVersions: [...new Set(compatibilities.flatMap((item) => item.versions))],
-  };
 }
 
 function modSupportedVersionOptions(draft: ModDraft, config: MinecraftVersionConfig) {

@@ -7,8 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { supportedLocales, useI18n, type Locale } from "../_lib/i18n-provider";
-import type { LocalizationVersion } from "../_lib/editor-types";
-import type { ResolvedCatalogFields } from "../_lib/editor-api";
+import type { LocalizedContentFields, LocalizationVersion } from "../_lib/editor-types";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
 import { ToolsPlayground } from "./tools-playground";
@@ -25,7 +24,7 @@ export function BlueprintUpload() {
   const initialLocale = locale as Locale;
   const [selectedLocale, setSelectedLocale] = useState<Locale>(initialLocale);
   const [defaultLocale, setDefaultLocale] = useState<Locale>(initialLocale);
-  const [localizations, setLocalizations] = useState<LocalizationVersion<ResolvedCatalogFields>[]>(() => [emptyUploadLocalization(initialLocale)]);
+  const [localizations, setLocalizations] = useState<LocalizationVersion<LocalizedContentFields>[]>(() => [emptyUploadLocalization(initialLocale)]);
   const [zoom, setZoom] = useState(1);
   const [offsetX, setOffsetX] = useState(50);
   const [offsetY, setOffsetY] = useState(50);
@@ -109,18 +108,18 @@ export function BlueprintUpload() {
   </main>;
 }
 
-function emptyUploadLocalization(locale: Locale): LocalizationVersion<ResolvedCatalogFields> {
+function emptyUploadLocalization(locale: Locale): LocalizationVersion<LocalizedContentFields> {
   return { locale, fields: { name: "", summary: "", contentMarkdown: "" }, provenance: "human", reviewStatus: "draft", editable: true };
 }
 
-function ensureUploadLocalization(items: LocalizationVersion<ResolvedCatalogFields>[], locale: Locale) {
+function ensureUploadLocalization(items: LocalizationVersion<LocalizedContentFields>[], locale: Locale) {
   return items.some((item) => item.locale === locale) ? items : [...items, emptyUploadLocalization(locale)];
 }
 
 function updateUploadLocalization(
-  setter: React.Dispatch<React.SetStateAction<LocalizationVersion<ResolvedCatalogFields>[]>>,
+  setter: React.Dispatch<React.SetStateAction<LocalizationVersion<LocalizedContentFields>[]>>,
   locale: Locale,
-  patch: Partial<ResolvedCatalogFields>,
+  patch: Partial<LocalizedContentFields>,
 ) {
   setter((items) => {
     const current = items.find((item) => item.locale === locale) ?? emptyUploadLocalization(locale);

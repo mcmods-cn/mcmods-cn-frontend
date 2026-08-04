@@ -1,9 +1,23 @@
-import { normalizeUILocale, type Locale } from "./i18n-provider";
+import type { Locale } from "./i18n-provider";
 import type { CatalogResourceRef, ContentLanguageTag, LocalizationVersion } from "./editor-types";
 
 export const editableContentLanguages = ["zh-CN", "zh-TW", "en-US", "ja-JP", "fr-FR", "de-DE", "es-ES", "ru-RU"] as const satisfies readonly Locale[];
 
 const editableLanguageSet = new Set<string>(editableContentLanguages);
+
+const contentLanguageAliasesByCode: Readonly<Record<string, Locale>> = {
+  zh: "zh-CN",
+  "zh-hans": "zh-CN",
+  "zh-hans-cn": "zh-CN",
+  "zh-hans-sg": "zh-CN",
+  "zh-hant": "zh-TW",
+  en: "en-US",
+  ja: "ja-JP",
+  fr: "fr-FR",
+  de: "de-DE",
+  es: "es-ES",
+  ru: "ru-RU",
+};
 
 const minecraftLocaleAliases: Record<Locale, readonly string[]> = {
   "zh-CN": ["zh-CN", "zh_cn", "zh-Hans", "zh_hans"],
@@ -19,8 +33,8 @@ const minecraftLocaleAliases: Record<Locale, readonly string[]> = {
 export function normalizeContentLanguage(value: ContentLanguageTag | null | undefined) {
   const candidate = value?.trim().replaceAll("_", "-") ?? "";
   if (!candidate) return "";
-  const supported = normalizeUILocale(candidate);
-  if (supported) return supported;
+  const aliased = contentLanguageAliasesByCode[candidate.toLowerCase()];
+  if (aliased) return aliased;
   try {
     return Intl.getCanonicalLocales(candidate)[0] ?? candidate;
   } catch {
@@ -123,5 +137,5 @@ function contentLanguageAliases(value: ContentLanguageTag) {
 }
 
 function comparableLanguageKey(value: ContentLanguageTag) {
-  return (toEditableContentLanguage(value) ?? normalizeContentLanguage(value)).toLowerCase();
+  return normalizeContentLanguage(value).toLowerCase();
 }

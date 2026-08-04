@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
+import { normalizeInternalPath } from "../_lib/navigation";
 
 type NotificationKind = "system" | "reply_mention" | "comment_watch_reply" | "review" | "new_follower";
 
@@ -16,7 +17,8 @@ type NotificationItem = {
   body: string;
   sourceLocale: string;
   read: boolean;
-  actors: Array<{ id: string; username: string; displayName: string }>;
+  data: Record<string, unknown>;
+  actors: Array<{ id: string; username: string }>;
   createdAt: string;
   updatedAt: string;
 };
@@ -25,7 +27,6 @@ type Conversation = {
   id: string;
   partnerId: string;
   username: string;
-  displayName: string;
   lastMessage: string;
   lastAt?: string;
   unreadCount: number;
@@ -50,12 +51,14 @@ type AIBalance = {
 };
 
 type Translation = { title: string; body: string };
+type NotificationTarget = { href: string; label: string };
 
 const notificationKinds: NotificationKind[] = ["system", "reply_mention", "comment_watch_reply", "review", "new_follower"];
 
 export function MessagesCenter() {
   const { t, locale } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const targetUserID = searchParams.get("user") ?? "";
   const [mode, setMode] = useState<"notifications" | "chats">(targetUserID ? "chats" : "notifications");
@@ -160,6 +163,13 @@ export function MessagesCenter() {
     }
   }
 
+  async function openNotificationTarget(event: React.MouseEvent<HTMLAnchorElement>, item: NotificationItem, href: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    await markRead(item);
+    router.push(href);
+  }
+
   async function markAllRead() {
     if (!token || markingAllRead || unreadNotifications === 0) return;
     setMarkingAllRead(true);
@@ -260,25 +270,50 @@ export function MessagesCenter() {
               </div>
               {notifications.map((item) => {
                 const translated = translations[item.id];
+                const target = notificationTarget(item, t("messages.openRelatedContent"));
+                const title = translated?.title || item.title;
+                const body = translated?.body || item.body;
                 return (
                   <article key={item.id} className={`surface p-5 ${item.read ? "opacity-75" : "border-l-4 border-l-[var(--accent)]"}`} onClick={() => void markRead(item)}>
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h2 className="text-lg font-bold">{translated?.title || item.title}</h2>
-                        <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[var(--muted)]">{translated?.body || item.body}</p>
+                      <div className="min-w-0">
+                        <h2 className="text-lg font-bold">
+                          {target ? (
+                            <Link className="focus-ring rounded-sm hover:text-[var(--accent)] hover:underline" href={target.href} onClick={(event) => void openNotificationTarget(event, item, target.href)}>
+                              {title}
+                            </Link>
+                          ) : title}
+                        </h2>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[var(--muted)]">
+                          <NotificationBody body={body} item={item} target={target} onOpen={openNotificationTarget} />
+                        </p>
                       </div>
                       {!item.read ? <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--accent)]" /> : null}
                     </div>
                     {item.actors.length > 0 ? (
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {item.actors.slice(0, 3).map((actor) => <Link key={actor.id} className="text-xs font-semibold text-[var(--accent)]" href={`/user/${actor.id}`}>{actor.displayName || actor.username}</Link>)}
+                        {item.actors.slice(0, 3).map((actor) => {
+                          const actorHref = `/user/${encodeURIComponent(actor.id)}`;
+                          return (
+                            <Link key={actor.id} className="focus-ring rounded-sm text-xs font-semibold text-[var(--accent)] hover:underline" href={actorHref} onClick={(event) => void openNotificationTarget(event, item, actorHref)}>
+                              {actor.username}
+                            </Link>
+                          );
+                        })}
                       </div>
                     ) : null}
-                    <div className="mt-4 flex items-end justify-between gap-3 border-t border-[var(--line)] pt-3">
+                    <div className="mt-4 flex flex-wrap items-end justify-between gap-3 border-t border-[var(--line)] pt-3">
                       <time className="text-xs text-[var(--muted)]">{new Date(item.updatedAt).toLocaleString()}</time>
-                      <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={translatingID !== null || item.sourceLocale === locale} type="button" onClick={(event) => { event.stopPropagation(); void translate(item); }}>
-                        {translatingID === item.id ? t("messages.translating") : t("messages.aiTranslate")}
-                      </button>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {target ? (
+                          <Link className="button-secondary focus-ring px-3 py-2 text-sm" href={target.href} onClick={(event) => void openNotificationTarget(event, item, target.href)}>
+                            {t("messages.openRelatedContent")}
+                          </Link>
+                        ) : null}
+                        <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={translatingID !== null || item.sourceLocale === locale} type="button" onClick={(event) => { event.stopPropagation(); void translate(item); }}>
+                          {translatingID === item.id ? t("messages.translating") : t("messages.aiTranslate")}
+                        </button>
+                      </div>
                     </div>
                   </article>
                 );
@@ -293,9 +328,9 @@ export function MessagesCenter() {
               <div className="max-h-[620px] overflow-y-auto">
                 {conversations.map((item) => (
                   <button key={item.id} className={`focus-ring flex w-full items-start gap-3 border-b border-[var(--line)] p-4 text-left ${selectedConversationID === item.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setSelectedConversationID(item.id)}>
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--panel-subtle)] font-black text-[var(--accent)]">{(item.displayName || item.username).slice(0, 1)}</span>
+<span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--panel-subtle)] font-black text-[var(--accent)]">{item.username.slice(0, 1)}</span>
                     <span className="min-w-0 flex-1">
-                      <span className="flex items-center justify-between gap-2"><strong className="truncate">{item.displayName || item.username}</strong>{item.unreadCount > 0 ? <b className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">{item.unreadCount}</b> : null}</span>
+<span className="flex items-center justify-between gap-2"><strong className="truncate">{item.username}</strong>{item.unreadCount > 0 ? <b className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">{item.unreadCount}</b> : null}</span>
                       <span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.lastMessage || t("messages.noMessages")}</span>
                     </span>
                   </button>
@@ -306,7 +341,7 @@ export function MessagesCenter() {
               {selectedConversation ? (
                 <>
                   <div className="flex items-center justify-between border-b border-[var(--line)] p-4">
-                    <Link className="font-bold hover:text-[var(--accent)]" href={`/user/${selectedConversation.partnerId}`}>{selectedConversation.displayName || selectedConversation.username}</Link>
+<Link className="font-bold hover:text-[var(--accent)]" href={`/user/${selectedConversation.partnerId}`}>{selectedConversation.username}</Link>
                   </div>
                   <div className="flex-1 space-y-3 overflow-y-auto bg-[var(--background)] p-4">
                     {messages.map((item) => <MessageBubble key={item.id} item={item} own={item.senderId === user.id} />)}
@@ -323,6 +358,48 @@ export function MessagesCenter() {
       </section>
     </main>
   );
+}
+
+function NotificationBody({
+  body,
+  item,
+  target,
+  onOpen,
+}: {
+  body: string;
+  item: NotificationItem;
+  target: NotificationTarget | null;
+  onOpen: (event: React.MouseEvent<HTMLAnchorElement>, item: NotificationItem, href: string) => Promise<void>;
+}) {
+  if (!target || target.label.length === 0) return body;
+  const labelIndex = body.indexOf(target.label);
+  if (labelIndex < 0) return body;
+  return (
+    <>
+      {body.slice(0, labelIndex)}
+      <Link className="focus-ring rounded-sm font-semibold text-[var(--accent)] hover:underline" href={target.href} onClick={(event) => void onOpen(event, item, target.href)}>
+        {target.label}
+      </Link>
+      {body.slice(labelIndex + target.label.length)}
+    </>
+  );
+}
+
+function notificationTarget(item: NotificationItem, fallbackLabel: string): NotificationTarget | null {
+  const data = item.data ?? {};
+  const href = normalizeInternalPath(data.url);
+  if (!href) return null;
+  const label = notificationDataText(data, "targetLabel")
+    || notificationDataText(data, "targetTitle")
+    || fallbackLabel;
+  return { href, label };
+}
+
+function notificationDataText(data: Record<string, unknown>, key: string) {
+  const value = data[key];
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return "";
 }
 
 function ModeButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {

@@ -1,16 +1,9 @@
 import { apiRequest } from "./api";
-import type { CatalogResourceRef, CatalogResourceVersion, EditResult, LocalizationVersion, ReviewStatus } from "./editor-types";
+import type { CatalogResourceRef, CatalogResourceVersion, EditResult, LocalizedContentFields, LocalizationVersion, ReviewStatus } from "./editor-types";
 
-export type CatalogLocalizedFields = {
-  name: string;
-  summary: string;
-  contentMarkdown: string;
-};
-
-export type CatalogEditorLocalization = LocalizationVersion<CatalogLocalizedFields>;
+export type CatalogEditorLocalization = LocalizationVersion<LocalizedContentFields>;
 
 export type CatalogTagEditorDocument = {
-  entityId: string;
   publicId: string;
   registry: string;
   canonicalId: string;
@@ -22,7 +15,6 @@ export type CatalogTagEditorDocument = {
 };
 
 export type CatalogRecipeTypeEditorDocument = {
-  entityId: string;
   publicId: string;
   canonicalId: string;
   defaultLocale: string;
@@ -125,7 +117,6 @@ export async function archiveCatalogRecipeType(publicId: string, baseRevisionId:
 function normalizeTagDocument(value: unknown): CatalogTagEditorDocument {
   const source = record(value);
   return {
-    entityId: text(source.entityId),
     publicId: text(source.publicId),
     registry: text(source.registry),
     canonicalId: text(source.canonicalId) || text(source.tagId),
@@ -140,7 +131,6 @@ function normalizeTagDocument(value: unknown): CatalogTagEditorDocument {
 function normalizeRecipeTypeDocument(value: unknown): CatalogRecipeTypeEditorDocument {
   const source = record(value);
   return {
-    entityId: text(source.entityId),
     publicId: text(source.publicId),
     canonicalId: text(source.canonicalId) || text(source.recipeTypeId),
     defaultLocale: text(source.defaultLocale) || "en-US",

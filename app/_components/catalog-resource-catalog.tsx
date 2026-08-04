@@ -7,8 +7,8 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { localizedCatalogResourceName, resolveAvailableLocalization } from "../_lib/content-language";
 import { catalogResourceKindCodes, loadCatalogResourceForEditing } from "../_lib/catalog-resource-api";
-import { catalogResourceIconURL, loadCatalogResources, type ResolvedCatalogFields } from "../_lib/editor-api";
-import type { CatalogResourcePage, CatalogResourceRef, LocalizationVersion } from "../_lib/editor-types";
+import { catalogResourceIconURL, loadCatalogResources } from "../_lib/editor-api";
+import type { CatalogResourcePage, CatalogResourceRef, LocalizedContentFields, LocalizationVersion } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { ContentTranslationControl } from "./editor/content-translation-control";
@@ -28,7 +28,7 @@ function CatalogResourceDetail({ publicId }: { publicId: string }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof loadCatalogResourceForEditing>>>();
-  const [resolvedLocalization, setResolvedLocalization] = useState<LocalizationVersion<ResolvedCatalogFields>>();
+  const [resolvedLocalization, setResolvedLocalization] = useState<LocalizationVersion<LocalizedContentFields>>();
   const [error, setError] = useState("");
   useEffect(() => {
     let cancelled = false;

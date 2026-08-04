@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type WheelEvent as ReactWheelEvent, useEffect, useId, useRef, useState } from "react";
@@ -8,6 +10,7 @@ import { apiRequest } from "../_lib/api";
 import { canAccessAdmin, clearAuth, type AuthUser, useAuthSnapshot } from "../_lib/auth";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { useTheme } from "./theme-provider";
+import { useSiteBrand } from "./site-brand-provider";
 
 type SiteShellProps = {
   children: React.ReactNode;
@@ -98,6 +101,7 @@ function SiteHeader() {
   const { t, locale, setLocale } = useI18n();
   const { toggleTheme } = useTheme();
   const { token, user } = useAuthSnapshot();
+  const brand = useSiteBrand();
   const router = useRouter();
   const [unread, setUnread] = useState(0);
   const [backendAvailable, setBackendAvailable] = useState(true);
@@ -204,8 +208,8 @@ function SiteHeader() {
       ) : null}
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
         <Link className="flex shrink-0 items-center gap-3" href="/" aria-label={t("common.home")}>
-          <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-black text-white">M</span>
-          <span className="hidden text-lg font-black tracking-normal sm:block">{t("common.appName")}</span>
+          {brand.logoUrl ? <img alt="" className="h-10 w-10 rounded-lg object-contain" src={brand.logoUrl} /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-black text-white">M</span>}
+          <span className="hidden text-lg font-black tracking-normal sm:block">{brand.siteName}</span>
         </Link>
 
         <HeaderNavScrollButton
@@ -254,17 +258,16 @@ function SiteHeader() {
                 <Link
                   className="focus-ring grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-[var(--line)] bg-[var(--panel-subtle)] text-sm font-black text-[var(--accent)]"
                   href={`/user/${user.id}`}
-                  title={user.displayName || user.username}
+                    title={user.username}
                 >
                   {user.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img alt="" className="h-full w-full object-cover" src={user.avatarUrl} />
                   ) : avatarText(user)}
                 </Link>
                 <div className="invisible absolute right-0 top-full z-50 w-64 pt-2 opacity-0 transition group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
                   <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] shadow-2xl">
                     <div className="border-b border-[var(--line)] px-4 py-3">
-                      <p className="truncate font-black">{user.displayName || user.username}</p>
+                    <p className="truncate font-black">{user.username}</p>
                       <p className="truncate text-xs text-[var(--muted)]">@{user.username}</p>
                     </div>
                     <nav className="grid p-2" aria-label={t("user.accountSections")}>
@@ -460,6 +463,6 @@ function HeaderNavMenu({ item }: { item: HeaderNavItem }) {
 }
 
 function avatarText(user: AuthUser) {
-  const name = user.displayName || user.username || String(user.id);
+  const name = user.username || String(user.id);
   return name.trim().slice(0, 1).toUpperCase();
 }

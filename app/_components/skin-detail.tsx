@@ -120,7 +120,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
   if (!texture) return <StatePanel text={error || t("skins.notFound")} />;
 
   const textureURL = skinTextureURL(texture);
-  const ownerName = texture.owner?.displayName || texture.owner?.username || t("skins.anonymous");
+  const ownerName = texture.owner?.username || t("skins.anonymous");
   const selected = profiles.find((profile) => profile.publicId === selectedProfile);
   const viewerSkin = texture.kind === "skin" ? textureURL : skinTextureURL(selected?.skin);
   const viewerCape = texture.kind === "cape" ? textureURL : skinTextureURL(selected?.cape);

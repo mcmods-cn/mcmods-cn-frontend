@@ -46,9 +46,6 @@ export async function apiRequest<T>(
 }
 
 function clearExpiredAuth() {
-  for (const key of ["mcmods-token", "mcmods-admin-token", "mcmods-user", "mcmods-admin-user"]) {
-    window.localStorage.removeItem(key);
-  }
   window.dispatchEvent(new Event("mcmods-auth-expired"));
 }
 

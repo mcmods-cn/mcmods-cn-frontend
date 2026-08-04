@@ -5,11 +5,11 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
-import { useAuthSnapshot } from "../_lib/auth";
+import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
+import { formatMinecraftLanguages } from "../_lib/minecraft-languages";
 import {
-  hasClientPermission,
   ServerCatalogItem,
   ServerCatalogResponse,
   serverPrimaryTags,
@@ -29,8 +29,8 @@ import {
   ModResourceSelectionField,
   unresolvedModResource,
 } from "./editor/mod-resource-picker";
+import { MinecraftLanguagePicker } from "./minecraft-language-picker";
 
-const languages = ["zh-CN", "zh-TW", "en-US", "ja-JP", "ko-KR", "ru-RU"];
 const serverPageSizes = [20, 40, 60];
 
 export function ServerCatalog() {
@@ -48,7 +48,7 @@ export function ServerCatalog() {
   const requestedPageSize = Number(searchParams.get("size"));
   const pageSize = serverPageSizes.includes(requestedPageSize) ? requestedPageSize : serverPageSizes[0];
 
-  const canCreate = ready && hasClientPermission(user?.permissions, "server.create");
+  const canCreate = ready && hasPermission(user, "server.create");
   const activeFilterCount = useMemo(
     () => ["tag", "language", "version", "mods", "modded", "online", "whitelist", "onlineMode"].filter((key) => searchParams.has(key)).length,
     [searchParams],
@@ -313,10 +313,14 @@ function ServerFilters({
         />
       </CatalogFilterGroup>
       <CatalogFilterGroup label={t("servers.filters.language")}>
-        <select className="field w-full" value={params.get("language") ?? ""} onChange={(event) => onChange({ language: event.target.value || null })}>
-          <option value="">{t("common.all")}</option>
-          {languages.map((language) => <option key={language} value={language}>{language}</option>)}
-        </select>
+        <MinecraftLanguagePicker
+          allowEmpty
+          emptyLabel={t("common.all")}
+          multiple={false}
+          title={t("servers.filters.selectLanguage")}
+          values={params.get("language") ? [params.get("language") ?? ""] : []}
+          onChange={(values) => onChange({ language: values[0] ?? null })}
+        />
       </CatalogFilterGroup>
       <CatalogFilterGroup label={t("servers.filters.rules")}>
         <div className="grid gap-2">
@@ -360,7 +364,7 @@ function ServerCard({ server }: { server: ServerCatalogItem }) {
         <p className="mt-1 line-clamp-2 text-sm leading-6 text-[var(--muted)]">{server.shortDescription || t("servers.noSummary")}</p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-[var(--muted)]">
           <span>{t(`servers.tags.${server.primaryTag}`)}</span>
-          <span>{server.languages.join(" · ")}</span>
+          <span>{formatMinecraftLanguages(server.languages)}</span>
           <span>{server.minecraftVersions.slice(0, 3).join(" · ")}</span>
         </div>
       </div>

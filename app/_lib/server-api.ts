@@ -6,6 +6,7 @@ export type ServerCatalogSettings = {
   nameMaxLength: number;
   summaryMaxLength: number;
   historyDays: number;
+  reviewRequired?: boolean;
 };
 
 export type DetectedServerMod = {
@@ -155,8 +156,8 @@ export const serverPrimaryTags: ServerPrimaryTag[] = [
   "technology",
 ];
 
-export function loadServerSettings() {
-  return apiRequest<ServerCatalogSettings>("/api/v1/servers/settings");
+export function loadServerSettings(token?: string) {
+  return apiRequest<ServerCatalogSettings>("/api/v1/servers/settings", {}, token);
 }
 
 export function probeServer(address: string, token: string) {
@@ -181,14 +182,6 @@ export function updateServer(serverID: string, request: UpdateServerRequest, tok
     { method: "PATCH", body: JSON.stringify(request) },
     token,
   );
-}
-
-export function hasClientPermission(permissions: string[] | undefined, required: string) {
-  if (!permissions) return false;
-  return permissions.some((permission) => {
-    if (permission === "*" || permission === "admin.*" || permission === required) return true;
-    return permission.endsWith(".*") && required.startsWith(permission.slice(0, -1));
-  });
 }
 
 export function suggestedMinecraftVersionFromProbe(

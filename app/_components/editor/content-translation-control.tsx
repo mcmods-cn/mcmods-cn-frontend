@@ -1,15 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useAuthSnapshot } from "../../_lib/auth";
+import { hasPermission, useAuthSnapshot } from "../../_lib/auth";
 import { loadContentLanguageSettings } from "../../_lib/content-language-api";
 import {
   loadContentTranslationTask,
   loadResolvedContent,
   requestContentTranslation,
-  type ResolvedCatalogFields,
 } from "../../_lib/editor-api";
-import type { LocalizationVersion, ResolvedContentDocument } from "../../_lib/editor-types";
+import type { LocalizedContentFields, LocalizationVersion, ResolvedContentDocument } from "../../_lib/editor-types";
 import { useI18n } from "../../_lib/i18n-provider";
 import { LocalizationStatusBadge } from "./localization-status-badge";
 
@@ -20,12 +19,12 @@ export function ContentTranslationControl({
 }: {
   publicId: string;
   compact?: boolean;
-  onResolved?: (version: LocalizationVersion<ResolvedCatalogFields> | undefined) => void;
+  onResolved?: (version: LocalizationVersion<LocalizedContentFields> | undefined) => void;
 }) {
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const [languageSettings, setLanguageSettings] = useState<{ token: string; primaryLocale: string; secondaryLocale: string }>();
-  const [document, setDocument] = useState<ResolvedContentDocument<ResolvedCatalogFields>>();
+  const [document, setDocument] = useState<ResolvedContentDocument<LocalizedContentFields>>();
   const [pendingTaskId, setPendingTaskId] = useState<string>();
   const [requesting, setRequesting] = useState(false);
   const [pollAttempt, setPollAttempt] = useState(0);
@@ -139,7 +138,7 @@ export function ContentTranslationControl({
   const requestedEditable = useMemo(() => document?.editableLocales.some(
     (candidate) => candidate.toLowerCase() === document.requestedLocale.toLowerCase(),
   ) ?? true, [document]);
-  const canRequestTranslation = Boolean(user?.permissions.some((permission) => permission === "content.translate" || permission === "admin.*"));
+  const canRequestTranslation = hasPermission(user, "content.translate");
   if (!document && !error) return compact ? null : <p className="text-xs text-[var(--muted)]">{t("contentTranslation.loading")}</p>;
 
   const fallback = Boolean(document?.resolvedLocale && document.requestedLocale.toLowerCase() !== document.resolvedLocale.toLowerCase());

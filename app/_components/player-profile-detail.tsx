@@ -34,7 +34,7 @@ export function PlayerProfileDetail({ publicId }: { publicId: string }) {
 
   if (loading) return <ProfileState text={t("common.loading")} />;
   if (!profile) return <ProfileState text={error || t("skins.notFound")} />;
-  const ownerName = profile.owner?.displayName || profile.owner?.username || t("skins.anonymous");
+  const ownerName = profile.owner?.username || t("skins.anonymous");
   const own = Boolean(user && profile.owner?.id === user.id);
 
   return (

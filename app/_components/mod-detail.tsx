@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
-import { useAuthSnapshot } from "../_lib/auth";
+import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { BackendModApplication } from "../_lib/mod-api";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { ModCatalogEntry } from "../_lib/mod-catalog-data";
@@ -14,6 +14,7 @@ import { MarkdownRenderer } from "./markdown-renderer";
 import { ModCatalogData } from "./mod-catalog-data";
 import { ProjectDownloads } from "./project-downloads";
 import { CommentSection } from "./comment-section";
+import { CreatorIdentityAvatar, CreatorTeamMemberGroup } from "./creator-identity";
 
 type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "gallery" | "discussion" | "tutorial" | "issues";
 
@@ -26,7 +27,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
   const displayName = isChinese && mod.localizedName ? mod.localizedName : mod.name;
   const secondaryName = displayName === mod.name ? mod.localizedName : mod.name;
   const summary = mod.summary || (mod.descriptionKey ? t(mod.descriptionKey) : "");
-  const canEdit = Boolean(user && (user.id === mod.createdBy || [`project.editor.${mod.uniqueId}`, `project.owner.${mod.uniqueId}`, "project.edit"].some((required) => user.permissions.some((permission) => permissionAllows(permission, required)))));
+  const canEdit = Boolean(user && (user.id === mod.createdBy || [`project.editor.${mod.uniqueId}`, `project.owner.${mod.uniqueId}`, "project.edit"].some((required) => hasPermission(user, required))));
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -118,7 +119,24 @@ function modGalleryURL(value?: string) {
 
 function ModSidebar({ mod, locale }: { mod: ModCatalogEntry; locale: string }) {
   const { t } = useI18n();
-  return <div className="space-y-4"><SidebarSection title={t("mods.detail.projectInfo")}><DetailLine label={t("mods.detail.siteId")} value={mod.siteId} /><DetailLine label={t("mods.detail.uniqueId")} value={mod.uniqueId} /><DetailLine label={t("mods.submission.fields.modId")} value={mod.modId || t("mods.detail.notProvided")} /><DetailLine label={t("mods.submission.fields.sourceStatus")} value={t(`mods.sources.${mod.sourceStatus}`)} /><DetailLine label={t("mods.detail.license")} value={mod.license} /><DetailLine label={t("mods.card.updated")} value={formatDate(mod.updatedAt, locale)} /></SidebarSection><SidebarSection title={t("mods.detail.team")}><p className="text-sm font-bold text-[var(--muted)]">{mod.team ? t("mods.card.team") : t("mods.card.author")}</p><p className="mt-2 font-black">{mod.team ?? (mod.authors.join("、") || t("mods.detail.notProvided"))}</p></SidebarSection>{mod.links?.length ? <SidebarSection title={t("mods.detail.relatedLinks")}><div className="grid grid-cols-2 gap-2">{mod.links.map((link, index) => <a className="focus-ring min-w-0 rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-center text-sm font-bold hover:border-[var(--accent)] hover:text-[var(--accent)]" href={link.url} key={`${link.type}-${index}`} rel="noreferrer" target="_blank" title={link.note || t(`mods.submission.linkTypes.${link.type}`)}><span className="block truncate">{t(`mods.submission.linkTypes.${link.type}`)}</span></a>)}</div></SidebarSection> : null}</div>;
+  return <div className="space-y-4"><SidebarSection title={t("mods.detail.projectInfo")}><DetailLine label={t("mods.detail.siteId")} value={mod.siteId} /><DetailLine label={t("mods.detail.uniqueId")} value={mod.uniqueId} /><DetailLine label={t("mods.submission.fields.modId")} value={mod.modId || t("mods.detail.notProvided")} /><DetailLine label={t("mods.submission.fields.sourceStatus")} value={t(`mods.sources.${mod.sourceStatus}`)} /><DetailLine label={t("mods.detail.license")} value={mod.license} /><DetailLine label={t("mods.card.updated")} value={formatDate(mod.updatedAt, locale)} /></SidebarSection><SidebarSection title={t("mods.detail.team")}><ModCreatorAttributions mod={mod} /></SidebarSection>{mod.links?.length ? <SidebarSection title={t("mods.detail.relatedLinks")}><div className="grid grid-cols-2 gap-2">{mod.links.map((link, index) => <a className="focus-ring min-w-0 rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-center text-sm font-bold hover:border-[var(--accent)] hover:text-[var(--accent)]" href={link.url} key={`${link.type}-${index}`} rel="noreferrer" target="_blank" title={link.note || t(`mods.submission.linkTypes.${link.type}`)}><span className="block truncate">{t(`mods.submission.linkTypes.${link.type}`)}</span></a>)}</div></SidebarSection> : null}</div>;
+}
+
+function ModCreatorAttributions({ mod }: { mod: ModCatalogEntry }) {
+  const { t } = useI18n();
+  if (!mod.authorDetails?.length) return <p className="text-sm font-semibold text-[var(--muted)]">{mod.authors.join("、") || t("mods.detail.notProvided")}</p>;
+  return <div className="grid gap-3">
+    {mod.authorDetails.map((creator, index) => <article className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3" key={creator.creatorId || `${creator.name}:${index}`}>
+      <div className="flex min-w-0 items-center gap-3">
+        <CreatorIdentityAvatar creator={creator} />
+        <span className="min-w-0 flex-1">
+          {creator.creatorId ? <Link className="focus-ring block truncate font-black hover:text-[var(--accent)]" href={`${creator.kind === "team" ? "/teams" : "/authors"}/${creator.creatorId}`}>{creator.name}</Link> : <span className="block truncate font-black">{creator.name}</span>}
+          <span className="mt-1 block truncate text-xs text-[var(--muted)]">{t(`creators.kinds.${creator.kind || "author"}`)}{creator.role ? ` · ${creator.role}` : ""}</span>
+        </span>
+      </div>
+      {creator.kind === "team" && creator.members?.length ? <div className="mt-3"><CreatorTeamMemberGroup members={creator.members} /></div> : null}
+    </article>)}
+  </div>;
 }
 
 function ModDataTab({ mod, canEdit, token }: { mod: ModCatalogEntry; canEdit: boolean; token: string }) {
@@ -189,4 +207,3 @@ function DetailTag({ children }: { children: React.ReactNode }) { return <span c
 function StatusBadge({ children, accent = false, warning = false }: { children: React.ReactNode; accent?: boolean; warning?: boolean }) { const colors = accent ? "border-[var(--accent)] text-[var(--accent)]" : warning ? "border-[var(--warning)] text-[var(--warning)]" : "border-[var(--line)] bg-[var(--panel-subtle)]"; return <span className={`rounded-md border px-2 py-1 text-xs font-bold ${colors}`}>{children}</span>; }
 function EmptyState({ text }: { text: string }) { return <div className="grid min-h-64 place-items-center rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-6 text-center font-bold text-[var(--muted)]">{text}</div>; }
 function formatDate(value: string, locale: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date); }
-function permissionAllows(permission: string, required: string) { return permission === "*" || permission === "admin.*" || permission === required || (permission.endsWith(".*") && required.startsWith(permission.slice(0, -1))); }

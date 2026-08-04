@@ -105,7 +105,7 @@ export function SkinLibrary() {
 
 function SkinCard({ texture, locale }: { texture: SkinTexture; locale: string }) {
   const { t } = useI18n();
-  const owner = texture.owner?.displayName || texture.owner?.username || t("skins.anonymous");
+  const owner = texture.owner?.username || t("skins.anonymous");
   return (
     <article className="surface group flex min-h-80 flex-col overflow-hidden rounded-lg transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-xl">
       <Link className="focus-ring relative block h-52 bg-[var(--panel-subtle)]" href={`/skins/${texture.publicId}`}>

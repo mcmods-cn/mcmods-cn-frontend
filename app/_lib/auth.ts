@@ -3,13 +3,19 @@
 import { useEffect, useState } from "react";
 import { API_BASE_URL, isBearerAccessToken } from "./api";
 
+export type AuthPermissionRule = {
+  code: string;
+  allow: boolean;
+  priority: number;
+  source?: string;
+};
+
 export type AuthUser = {
   id: string;
   username: string;
-  displayName: string;
   email: string;
-  roles: string[];
-  permissions: string[];
+  roleCodes: string[];
+  permissionRules: AuthPermissionRule[];
   avatarUrl?: string;
   signature?: string;
 };
@@ -27,7 +33,6 @@ export type AuthSnapshot = {
 
 export const cookieSessionToken = "cookie-session";
 
-const legacyStorageKeys = ["mcmods-token", "mcmods-admin-token", "mcmods-user", "mcmods-admin-user"] as const;
 const authSyncKey = "mcmods-auth-sync";
 
 let activeToken = "";
@@ -37,22 +42,20 @@ let bootstrapRequest: Promise<AuthUser | null> | null = null;
 export function saveAuth(result: AuthResult) {
   activeToken = result.token || cookieSessionToken;
   activeUser = result.user;
-  removeLegacyStoredAuth();
   broadcastAuthChange("login");
   window.dispatchEvent(new Event("mcmods-auth-change"));
 }
 
 export function clearAuth() {
-  const token = activeToken;
+  const logoutToken = activeToken;
   activeToken = "";
   activeUser = null;
   bootstrapRequest = null;
-  removeLegacyStoredAuth();
   broadcastAuthChange("logout");
   window.dispatchEvent(new Event("mcmods-auth-change"));
 
   const headers = new Headers();
-  if (isBearerAccessToken(token)) headers.set("Authorization", `Bearer ${token}`);
+  if (isBearerAccessToken(logoutToken)) headers.set("Authorization", `Bearer ${logoutToken}`);
   void fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
     method: "POST",
     credentials: "include",
@@ -80,7 +83,6 @@ export function useAuthSnapshot(): AuthSnapshot {
       activeToken = "";
       activeUser = null;
       bootstrapRequest = null;
-      removeLegacyStoredAuth();
       publish();
     };
     const syncAcrossTabs = (event: StorageEvent) => {
@@ -127,13 +129,31 @@ export function useAuthSnapshot(): AuthSnapshot {
 }
 
 export function canAccessAdmin(user: AuthUser | null) {
+  return hasPermission(user, "admin.access");
+}
+
+export function hasPermission(user: AuthUser | null | undefined, required: string) {
   if (!user) return false;
-  return (
-    user.permissions.includes("admin.access") ||
-    user.permissions.includes("admin.*") ||
-    user.roles.includes("super_admin") ||
-    user.roles.includes("admin")
-  );
+  let selected: AuthPermissionRule | undefined;
+  let selectedSpecificity = -1;
+  for (const rule of user.permissionRules) {
+    const specificity = permissionSpecificity(rule.code, required);
+    if (specificity < 0) continue;
+    if (!selected || rule.priority > selected.priority
+      || (rule.priority === selected.priority && specificity > selectedSpecificity)
+      || (rule.priority === selected.priority && specificity === selectedSpecificity && !rule.allow && selected.allow)) {
+      selected = rule;
+      selectedSpecificity = specificity;
+    }
+  }
+  return selected?.allow === true;
+}
+
+function permissionSpecificity(rule: string, required: string) {
+  if (rule === "*" || rule === "admin.*") return 0;
+  if (rule === required) return rule.length + 10_000;
+  if (rule.endsWith(".*") && required.startsWith(rule.slice(0, -1))) return rule.length - 1;
+  return -1;
 }
 
 async function bootstrapAuth() {
@@ -156,11 +176,6 @@ async function bootstrapAuth() {
       bootstrapRequest = null;
     });
   return bootstrapRequest;
-}
-
-function removeLegacyStoredAuth() {
-  if (typeof window === "undefined") return;
-  for (const key of legacyStorageKeys) window.localStorage.removeItem(key);
 }
 
 function broadcastAuthChange(kind: "login" | "logout") {

@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAuthSnapshot } from "../_lib/auth";
+import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
-import { hasClientPermission } from "../_lib/server-api";
 import { ServerSubmissionWizard } from "./server-submission-wizard";
 
 export function ServerSubmissionPage() {
@@ -25,7 +24,7 @@ export function ServerSubmissionPage() {
   if (!user) {
     return <PageMessage message={t("servers.loginToSubmit")} />;
   }
-  if (!hasClientPermission(user.permissions, "server.create")) {
+  if (!hasPermission(user, "server.create")) {
     return <PageMessage message={t("servers.permissionRequired")} />;
   }
 

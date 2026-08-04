@@ -6,7 +6,6 @@ import {
   archiveCatalogRecipeType,
   archiveCatalogTag,
   type CatalogEditorLocalization,
-  type CatalogLocalizedFields,
   type CatalogLocalizationPayload,
   createCatalogRecipeType,
   createCatalogTag,
@@ -16,7 +15,7 @@ import {
   updateCatalogTag,
 } from "../_lib/catalog-editor-api";
 import { editableContentLanguages, findLocalizationVersion, toEditableContentLanguage } from "../_lib/content-language";
-import type { CatalogResourceRef, EditResult, ReviewStatus } from "../_lib/editor-types";
+import type { CatalogResourceRef, EditResult, LocalizedContentFields, ReviewStatus } from "../_lib/editor-types";
 import { useAuthSnapshot } from "../_lib/auth";
 import { type Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
@@ -114,7 +113,7 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
     }
   }
 
-  function updateFields(patch: Partial<CatalogLocalizedFields>) {
+  function updateFields(patch: Partial<LocalizedContentFields>) {
     const nextFields = { ...localizationFields(versions, selectedLocale), ...patch };
     const baselineFields = localizationFields(baselineVersions.current, selectedLocale);
     setVersions((current) => updateLocalization(current, selectedLocale, patch));
@@ -300,7 +299,7 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
     }
   }
 
-  function updateFields(patch: Partial<CatalogLocalizedFields>) {
+  function updateFields(patch: Partial<LocalizedContentFields>) {
     const nextFields = { ...localizationFields(versions, selectedLocale), ...patch };
     const baselineFields = localizationFields(baselineVersions.current, selectedLocale);
     setVersions((current) => updateLocalization(current, selectedLocale, patch));
@@ -401,7 +400,7 @@ function InvariantPanel({ children }: { children: React.ReactNode }) {
   </section>;
 }
 
-function LocalizedFieldsPanel({ fields, locale, onChange }: { fields: CatalogLocalizedFields; locale: Locale; onChange: (patch: Partial<CatalogLocalizedFields>) => void }) {
+function LocalizedFieldsPanel({ fields, locale, onChange }: { fields: LocalizedContentFields; locale: Locale; onChange: (patch: Partial<LocalizedContentFields>) => void }) {
   const { t } = useI18n();
   return <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -488,11 +487,11 @@ function emptyLocalization(locale: Locale): CatalogEditorLocalization {
   return { locale, fields: { name: "", summary: "", contentMarkdown: "" }, provenance: "human", reviewStatus: "draft", editable: true };
 }
 
-function localizationFields(versions: CatalogEditorLocalization[], locale: Locale): CatalogLocalizedFields {
+function localizationFields(versions: CatalogEditorLocalization[], locale: Locale): LocalizedContentFields {
   return findLocalizationVersion(versions, locale)?.fields ?? { name: "", summary: "", contentMarkdown: "" };
 }
 
-function updateLocalization(versions: CatalogEditorLocalization[], locale: Locale, patch: Partial<CatalogLocalizedFields>) {
+function updateLocalization(versions: CatalogEditorLocalization[], locale: Locale, patch: Partial<LocalizedContentFields>) {
   const current = findLocalizationVersion(versions, locale);
   const next: CatalogEditorLocalization = {
     ...(current ?? emptyLocalization(locale)),
@@ -521,7 +520,7 @@ function localizationPayload(versions: CatalogEditorLocalization[], locales: Rea
   }));
 }
 
-function sameLocalizedFields(left: CatalogLocalizedFields, right: CatalogLocalizedFields) {
+function sameLocalizedFields(left: LocalizedContentFields, right: LocalizedContentFields) {
   return left.name === right.name && left.summary === right.summary && left.contentMarkdown === right.contentMarkdown;
 }
 

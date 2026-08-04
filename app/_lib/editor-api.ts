@@ -3,17 +3,12 @@ import type {
   CatalogResourcePage,
   CatalogResourceQuery,
   ContentTranslationTask,
+  LocalizedContentFields,
   LocalizationVersion,
   ResolvedContentDocument,
   TranslationRequest,
   TranslationRequestResult,
 } from "./editor-types";
-
-export type ResolvedCatalogFields = {
-  name: string;
-  summary: string;
-  contentMarkdown: string;
-};
 
 export function loadCatalogResources(query: CatalogResourceQuery, token = "", signal?: AbortSignal) {
   const parameters = new URLSearchParams();
@@ -139,11 +134,12 @@ export function catalogResourceIconURL(value?: string) {
   }
 }
 
-export function normalizeResolvedContent(value: unknown): ResolvedContentDocument<ResolvedCatalogFields> {
+export function normalizeResolvedContent(value: unknown): ResolvedContentDocument<LocalizedContentFields> {
   const source = record(value);
   return {
     publicId: text(source.publicId),
     entityType: text(source.entityType),
+    canonicalPath: text(source.canonicalPath),
     requestedLocale: text(source.requestedLocale),
     resolvedLocale: text(source.resolvedLocale),
     defaultLocale: text(source.defaultLocale) || "en-US",
@@ -161,7 +157,7 @@ export function normalizeResolvedContent(value: unknown): ResolvedContentDocumen
   };
 }
 
-function normalizeResolvedLocalization(value: unknown): LocalizationVersion<ResolvedCatalogFields> {
+function normalizeResolvedLocalization(value: unknown): LocalizationVersion<LocalizedContentFields> {
   const source = record(value);
   const provenance = text(source.provenance);
   const reviewStatus = text(source.reviewStatus);

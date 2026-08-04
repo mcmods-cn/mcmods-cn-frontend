@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import GithubSlugger from "github-slugger";
+import Link from "next/link";
 import plantumlEncoder from "plantuml-encoder";
 import { isValidElement, ReactNode, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
@@ -15,15 +16,25 @@ import remarkMath from "remark-math";
 import { visit } from "unist-util-visit";
 import type { PluggableList } from "unified";
 import { apiRequest } from "../_lib/api";
+import { useAuthSnapshot } from "../_lib/auth";
+import type { BlueprintDetailRecord } from "../_lib/blueprint-api";
 import { DRAWIO_ORIGIN, parseDrawioMessage } from "../_lib/drawio";
+import { loadResolvedContent } from "../_lib/editor-api";
+import { loadGlobalRecipe } from "../_lib/global-catalog-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
+import { minecraftLocale } from "../_lib/mod-export-api";
+import { loadRecipe, loadRecipeTemplate } from "../_lib/recipe-editor-api";
+import { BlueprintViewer } from "./blueprint-viewer";
+import { CanonicalRecipeCard } from "./canonical-recipe-card";
+import { GlobalRecipeCard } from "./global-recipe-card";
 import { IconFont } from "./iconfont";
 
 type MarkdownRendererProps = {
   markdown: string;
   config?: Partial<MarkdownRendererConfig>;
   emptyText: string;
+  referencePath?: readonly string[];
 };
 
 type TocItem = {
@@ -92,14 +103,20 @@ const iconSyntaxPattern = /\[icon:([a-zA-Z0-9_-]+)(?:=([^\],]+))?(?:,([^\]]+))?\
 const videoSyntaxPattern = /\[(?:vedio|video):([^\]]+)]/gi;
 const geogebraSyntaxPattern = /\[GeoGebra:([^\]]+)]/gi;
 const timeSyntaxPattern = /\[time:utc[+-]\d{1,2}(?::?\d{2})?;\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}]/gi;
+const blueprintSyntaxPattern = /\[bluemap:([a-z0-9]{9})]/gi;
+const introSyntaxPattern = /\[intro:([a-z0-9]{9})]/gi;
+const recipeSyntaxPattern = /\[recipe:([a-z0-9]{9})]/gi;
 const iconMarkerStart = "\uE000MCICON_";
 const videoMarkerStart = "\uE000MCVIDEO_";
 const geogebraMarkerStart = "\uE000MCGEOGEBRA_";
 const timeMarkerStart = "\uE000MCTIME_";
+const blueprintMarkerStart = "\uE000MCBLUEPRINT_";
+const introMarkerStart = "\uE000MCINTRO_";
+const recipeMarkerStart = "\uE000MCRECIPE_";
 const customMarkerEnd = "\uE001";
 let mainlandChinaRequest: Promise<boolean> | null = null;
 
-export function MarkdownRenderer({ markdown, config, emptyText }: MarkdownRendererProps) {
+export function MarkdownRenderer({ markdown, config, emptyText, referencePath = [] }: MarkdownRendererProps) {
   const { t } = useI18n();
   const [isMainlandChina, setIsMainlandChina] = useState(true);
   const normalized = normalizeMarkdownConfig(config);
@@ -155,7 +172,7 @@ export function MarkdownRenderer({ markdown, config, emptyText }: MarkdownRender
           </ol>
         </nav>
       ) : null}
-      <MarkdownBody markdown={protectCustomSyntax(stripAbbreviationDefinitions(source))} rehypePlugins={rehypePlugins} remarkPlugins={remarkPlugins} />
+      <MarkdownBody markdown={protectCustomSyntax(stripAbbreviationDefinitions(source))} referencePath={referencePath} rehypePlugins={rehypePlugins} remarkPlugins={remarkPlugins} />
     </div>
   );
 }
@@ -164,10 +181,12 @@ function MarkdownBody({
   markdown,
   rehypePlugins,
   remarkPlugins,
+  referencePath,
 }: {
   markdown: string;
   rehypePlugins: PluggableList;
   remarkPlugins: PluggableList;
+  referencePath: readonly string[];
 }) {
   return (
     <ReactMarkdown
@@ -206,10 +225,15 @@ function MarkdownBody({
           ) : (
             <time className={className} dateTime={dateTime}>{children}</time>
           ),
-        span: ({ className, children }) =>
-          String(className ?? "").includes("markdown-geogebra-embed") ? (
-            <GeoGebraZoomEmbed>{children}</GeoGebraZoomEmbed>
-          ) : <span className={className}>{children}</span>,
+        span: ({ className, children }) => {
+          const classes = String(className ?? "");
+          const referenceId = reactNodeToText(children).trim().toLowerCase();
+          if (classes.includes("markdown-geogebra-embed")) return <GeoGebraZoomEmbed>{children}</GeoGebraZoomEmbed>;
+          if (classes.includes("markdown-blueprint-reference")) return <MarkdownBlueprintReference publicId={referenceId} />;
+          if (classes.includes("markdown-intro-reference")) return <MarkdownIntroReference publicId={referenceId} referencePath={referencePath} />;
+          if (classes.includes("markdown-recipe-reference")) return <MarkdownRecipeReference publicId={referenceId} />;
+          return <span className={className}>{children}</span>;
+        },
         code: ({ node, className, children }) => {
           const language = /language-(\S+)/.exec(className ?? "")?.[1] ?? "";
           const code = reactNodeToText(children).replace(/\n$/, "");
@@ -248,6 +272,125 @@ function MarkdownBody({
       {markdown}
     </ReactMarkdown>
   );
+}
+
+function MarkdownBlueprintReference({ publicId }: { publicId: string }) {
+  const { locale, t } = useI18n();
+  const { token } = useAuthSnapshot();
+  const [record, setRecord] = useState<BlueprintDetailRecord>();
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = new URLSearchParams({ locale: minecraftLocale(locale) });
+    apiRequest<BlueprintDetailRecord>(
+      `/api/v1/blueprints/${encodeURIComponent(publicId)}?${query}`,
+      { cache: "no-store", signal: controller.signal },
+      token || undefined,
+    ).then((value) => {
+      setRecord(value);
+      setError("");
+    }).catch((reason: unknown) => {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(markdownReferenceError(reason));
+    });
+    return () => controller.abort();
+  }, [locale, publicId, token]);
+
+  if (error) return <MarkdownReferenceError kind={t("markdown.references.blueprint")} message={error} publicId={publicId} />;
+  if (!record) return <MarkdownReferenceLoading label={t("markdown.references.blueprint")} />;
+  if (!record.renderAvailable) return <MarkdownReferenceError kind={t("markdown.references.blueprint")} message={t("markdown.references.blueprintUnavailable")} publicId={publicId} />;
+  return <div className="my-5 min-w-0"><BlueprintViewer compact detailHref={`/blueprints/${encodeURIComponent(publicId)}`} publicId={publicId} record={record} token={token} /></div>;
+}
+
+function MarkdownIntroReference({ publicId, referencePath }: { publicId: string; referencePath: readonly string[] }) {
+  const { locale, t } = useI18n();
+  const { token } = useAuthSnapshot();
+  const [content, setContent] = useState<Awaited<ReturnType<typeof loadResolvedContent>>>();
+  const [error, setError] = useState("");
+  const recursive = referencePath.includes(publicId) || referencePath.length >= 5;
+
+  useEffect(() => {
+    if (recursive) return;
+    const controller = new AbortController();
+    loadResolvedContent(publicId, locale, "en-US", token, controller.signal).then((value) => {
+      setContent(value);
+      setError("");
+    }).catch((reason: unknown) => {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(markdownReferenceError(reason));
+    });
+    return () => controller.abort();
+  }, [locale, publicId, recursive, token]);
+
+  if (recursive) return <MarkdownReferenceError kind={t("markdown.references.intro")} message={t("markdown.references.recursive")} publicId={publicId} />;
+  if (error) return <MarkdownReferenceError kind={t("markdown.references.intro")} message={error} publicId={publicId} />;
+  if (!content) return <MarkdownReferenceLoading label={t("markdown.references.intro")} />;
+  const name = content.localization?.fields.name || publicId;
+  const markdown = content.localization?.fields.contentMarkdown || "";
+  return <section className="my-5 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]"><header className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 text-sm"><strong>{t("markdown.references.source")}</strong><Link className="font-bold text-[var(--accent)] hover:underline" href={content.canonicalPath || contentReferenceHref(content.entityType, publicId)}>{name} ↗</Link></header><div className="p-4"><MarkdownRenderer emptyText={t("markdown.references.noIntroduction")} markdown={markdown} referencePath={[...referencePath, publicId]} /></div></section>;
+}
+
+function MarkdownRecipeReference({ publicId }: { publicId: string }) {
+  const { locale, t } = useI18n();
+  const { token } = useAuthSnapshot();
+  const [recipe, setRecipe] = useState<Awaited<ReturnType<typeof loadGlobalRecipe>>>();
+  const [canonicalRecipe, setCanonicalRecipe] = useState<Awaited<ReturnType<typeof loadRecipe>>>();
+  const [canonicalTemplate, setCanonicalTemplate] = useState<Awaited<ReturnType<typeof loadRecipeTemplate>>>();
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadGlobalRecipe(publicId, locale, token, controller.signal).then((value) => {
+      setRecipe(value);
+      setCanonicalRecipe(undefined);
+      setCanonicalTemplate(undefined);
+      setError("");
+    }).catch(async (reason: unknown) => {
+      if (reason instanceof DOMException && reason.name === "AbortError") return;
+      try {
+        const fallback = await loadRecipe(publicId, token, controller.signal);
+        if (!fallback?.templatePublicId) throw reason;
+        const template = await loadRecipeTemplate(fallback.templatePublicId, token, controller.signal);
+        if (!template) throw reason;
+        setRecipe(undefined);
+        setCanonicalRecipe(fallback);
+        setCanonicalTemplate(template);
+        setError("");
+      } catch (fallbackReason) {
+        if (!(fallbackReason instanceof DOMException && fallbackReason.name === "AbortError")) setError(markdownReferenceError(fallbackReason));
+      }
+    });
+    return () => controller.abort();
+  }, [locale, publicId, token]);
+
+  if (error) return <MarkdownReferenceError kind={t("markdown.references.recipe")} message={error} publicId={publicId} />;
+  if (canonicalRecipe && canonicalTemplate) return <div className="my-5 min-w-0"><CanonicalRecipeCard recipe={canonicalRecipe} template={canonicalTemplate} /></div>;
+  if (!recipe) return <MarkdownReferenceLoading label={t("markdown.references.recipe")} />;
+  return <div className="my-5 min-w-0"><GlobalRecipeCard recipe={recipe} /></div>;
+}
+
+function MarkdownReferenceLoading({ label }: { label: string }) {
+  const { t } = useI18n();
+  return <div className="my-5 rounded-lg border border-dashed border-[var(--line)] p-5 text-sm font-bold text-[var(--muted)]">{t("markdown.references.loading", { kind: label })}</div>;
+}
+
+function MarkdownReferenceError({ kind, message, publicId }: { kind: string; message: string; publicId: string }) {
+  return <div className="my-5 rounded-lg border border-[var(--red)] bg-[color-mix(in_srgb,var(--red)_6%,transparent)] p-4 text-sm text-[var(--red)]"><strong>{kind}</strong><code className="ml-2">{publicId}</code><p className="mt-2">{message}</p></div>;
+}
+
+function contentReferenceHref(entityType: string, publicId: string) {
+  switch (entityType) {
+    case "mod": return `/mods/${encodeURIComponent(publicId)}`;
+    case "blueprint": return `/blueprints/${encodeURIComponent(publicId)}`;
+    case "skin": return `/skins/${encodeURIComponent(publicId)}`;
+    case "tag": return `/mods-tag?publicId=${encodeURIComponent(publicId)}`;
+    case "recipe_type": return `/recipe-types?publicId=${encodeURIComponent(publicId)}`;
+    case "resource": return `/catalog/resources?publicId=${encodeURIComponent(publicId)}`;
+    default: return `/content/${encodeURIComponent(publicId)}`;
+  }
+}
+
+function markdownReferenceError(reason: unknown) {
+  return reason instanceof Error ? reason.message : String(reason);
 }
 
 function sourceLineAttributes(node?: SourcePositionNode) {
@@ -492,10 +635,15 @@ function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: M
     visitTree(tree, "text", (node, index, parent) => {
       if (node.type !== "text") return;
       if (!parent || typeof index !== "number") return;
-      if (["code", "pre", "annotation", "script", "style"].includes(parent.tagName ?? "")) return;
+      if (["a", "code", "pre", "annotation", "script", "style"].includes(parent.tagName ?? "")) return;
       const replacements = splitTextNode(node.value, config, abbreviations, isMainlandChina);
       if (replacements.length > 1 || replacements[0] !== node) {
         parent.children.splice(index, 1, ...replacements);
+        if (parent.tagName === "p" && replacements.some((replacement) => isMarkdownReferenceNode(replacement as Text | Element))) {
+          parent.tagName = "div";
+          const properties = (parent as Element).properties ?? {};
+          (parent as Element).properties = { ...properties, className: ["markdown-reference-line"] };
+        }
       }
     });
   };
@@ -508,6 +656,9 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
   const protectedVideoPattern = `${escapeRegExp(videoMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
   const protectedGeogebraPattern = `${escapeRegExp(geogebraMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
   const protectedTimePattern = `${escapeRegExp(timeMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
+  const protectedBlueprintPattern = `${escapeRegExp(blueprintMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
+  const protectedIntroPattern = `${escapeRegExp(introMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
+  const protectedRecipePattern = `${escapeRegExp(recipeMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
   const iconPattern = String.raw`\[icon:([a-zA-Z0-9_-]+)(?:=([^\],]+))?(?:,([^\]]+))?\]`;
   const videoPattern = String.raw`\[(?:vedio|video):([^\]]+)\]`;
   const geogebraPattern = String.raw`\[[Gg]eo[Gg]ebra:([^\]]+)\]`;
@@ -515,7 +666,7 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
   const subscriptPattern = config.subscript ? String.raw`~([^~\s][^~]*?)~` : String.raw`(?!)`;
   const abbrPattern = tokens.length > 0 ? String.raw`\b(${tokens.join("|")})\b` : String.raw`(?!)`;
   const matcher = new RegExp(
-    `${protectedIconPattern}|${protectedVideoPattern}|${protectedGeogebraPattern}|${protectedTimePattern}|${iconPattern}|${videoPattern}|${geogebraPattern}|${superscriptPattern}|${subscriptPattern}|${abbrPattern}`,
+    `${protectedIconPattern}|${protectedVideoPattern}|${protectedGeogebraPattern}|${protectedTimePattern}|${iconPattern}|${videoPattern}|${geogebraPattern}|${superscriptPattern}|${subscriptPattern}|${abbrPattern}|${protectedBlueprintPattern}|${protectedIntroPattern}|${protectedRecipePattern}`,
     "g",
   );
   let lastIndex = 0;
@@ -553,7 +704,9 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
         properties: { title: abbreviations.get(match[12]) ?? "" },
         children: [{ type: "text", value: match[12] }],
       });
-    }
+    } else if (match[13]) nodes.push(createMarkdownReferenceNode("blueprint", decodeURIComponent(match[13])));
+    else if (match[14]) nodes.push(createMarkdownReferenceNode("intro", decodeURIComponent(match[14])));
+    else if (match[15]) nodes.push(createMarkdownReferenceNode("recipe", decodeURIComponent(match[15])));
     lastIndex = matcher.lastIndex;
   }
   if (lastIndex < value.length) nodes.push({ type: "text", value: value.slice(lastIndex) });
@@ -565,7 +718,25 @@ function protectCustomSyntax(markdown: string) {
     .replace(iconSyntaxPattern, (token) => `${iconMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
     .replace(videoSyntaxPattern, (_token, payload: string) => `${videoMarkerStart}${encodeURIComponent(payload)}${customMarkerEnd}`)
     .replace(geogebraSyntaxPattern, (_token, payload: string) => `${geogebraMarkerStart}${encodeURIComponent(payload)}${customMarkerEnd}`)
-    .replace(timeSyntaxPattern, (token) => `${timeMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`);
+    .replace(timeSyntaxPattern, (token) => `${timeMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
+    .replace(blueprintSyntaxPattern, (_token, publicId: string) => `${blueprintMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`)
+    .replace(introSyntaxPattern, (_token, publicId: string) => `${introMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`)
+    .replace(recipeSyntaxPattern, (_token, publicId: string) => `${recipeMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`);
+}
+
+function createMarkdownReferenceNode(kind: "blueprint" | "intro" | "recipe", publicId: string): Element {
+  return {
+    type: "element",
+    tagName: "span",
+    properties: { className: [`markdown-${kind}-reference`] },
+    children: [{ type: "text", value: publicId.toLowerCase() }],
+  };
+}
+
+function isMarkdownReferenceNode(node: Text | Element) {
+  if (node.type !== "element") return false;
+  const classNames = Array.isArray(node.properties?.className) ? node.properties.className : [];
+  return classNames.some((value) => typeof value === "string" && /^markdown-(?:blueprint|intro|recipe)-reference$/.test(value));
 }
 
 function createTimeNode(token: string): Element | null {

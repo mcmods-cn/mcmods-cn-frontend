@@ -87,7 +87,7 @@ export function UserCommentWatchesPanel({ token }: { token: string }) {
       {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
       <div className="mt-5 grid gap-3">
         {items.map((item) => {
-          const authorName = item.comment.author.displayName || item.comment.author.username;
+    const authorName = item.comment.author.username;
           return <article className={`rounded-lg border bg-[var(--panel)] p-4 ${item.unreadCount ? "border-[var(--accent)]" : "border-[var(--line)]"}`} key={item.id}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">

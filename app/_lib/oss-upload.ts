@@ -23,6 +23,8 @@ export type OSSFileRecord = {
   accessUrl?: string;
   blueprintId?: string;
   blueprint?: { id: string; status: string; jobId?: string };
+  locked?: boolean;
+  lockReason?: "creator_claim_review" | "server_review";
 };
 
 export type OSSDirectUploadTicket = {

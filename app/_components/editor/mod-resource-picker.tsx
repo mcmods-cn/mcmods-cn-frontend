@@ -2,12 +2,11 @@
 
 import { useCallback, useState } from "react";
 import { apiRequest } from "../../_lib/api";
-import type { CatalogResourceRef } from "../../_lib/editor-types";
+import type { CatalogResourceRef, ResourcePageLoader } from "../../_lib/editor-types";
 import type { BackendModList, BackendModRecord } from "../../_lib/mod-api";
 import { useI18n } from "../../_lib/i18n-provider";
 import {
   ResourcePickerDialog,
-  type ResourcePageLoader,
   type ResourcePickerLabels,
 } from "./resource-picker-dialog";
 import { SelectedResourceList } from "./selected-resource-list";
@@ -135,10 +134,10 @@ export function ModResourceSelectionField({
   );
 }
 
-export function modRecordToPickerResource(mod: BackendModRecord): CatalogResourceRef {
+function modRecordToPickerResource(mod: BackendModRecord): CatalogResourceRef {
   return {
     publicId: mod.id,
-    id: mod.modIds.find((item) => item.primary)?.identifier || mod.modId || mod.siteId,
+    id: mod.modIds.find((item) => item.primary)?.identifier || mod.modIds[0]?.identifier || mod.siteId,
     registry: "mods",
     kind: "mod",
     names: Object.fromEntries(mod.localizations.filter((item) => item.name).map((item) => [item.locale, item.name])),

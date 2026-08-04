@@ -2,13 +2,17 @@ import { ModCatalogEntry, ModFeature } from "./mod-catalog-data";
 import type { CreatorKind } from "./community-api";
 
 type BackendModLink = { type: string; url: string; note: string };
-export type BackendModAuthor = {
+export type BackendCreatorIdentity = {
   creatorId?: string;
   kind?: CreatorKind;
   name: string;
   avatarUrl?: string;
   roleId?: string;
   role: string;
+  title?: string;
+};
+export type BackendModAuthor = BackendCreatorIdentity & {
+  members?: BackendCreatorIdentity[];
 };
 export type BackendModRelationship = {
   type: "dependency" | "extension" | "integration";
@@ -71,14 +75,11 @@ export type BackendModRecord = {
   secondaryName: string;
   abbreviation: string;
   summary: string;
-  modId: string;
   modIds: BackendModIdentifier[];
   defaultLocale: string;
   localizations: BackendModLocalization[];
   environment: ModCatalogEntry["environment"];
   primaryCategory: string;
-  supportedVersions: string[];
-  supportedLoaders: string[];
   compatibilities: BackendModCompatibility[];
   officialStatus: ModCatalogEntry["status"];
   sourceStatus: ModCatalogEntry["sourceStatus"];
@@ -147,7 +148,6 @@ export type BackendModApplication = {
   modName: string;
   userId: string;
   username: string;
-  displayName: string;
   kind: "editor" | "developer";
   proof: string;
   status: "pending" | "approved" | "rejected";
@@ -173,7 +173,7 @@ export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEn
   return {
     siteId: record.siteId,
     uniqueId: record.uniqueId,
-    modId: record.modId,
+    modId: record.modIds.find((identifier) => identifier.primary)?.identifier ?? record.modIds[0]?.identifier ?? "",
     name: record.primaryName,
     localizedName: record.secondaryName || record.primaryName,
     abbreviation: record.abbreviation || record.primaryName,
@@ -182,8 +182,8 @@ export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEn
     primaryCategory: record.primaryCategory,
     tags: record.tags,
     keywords: record.searchKeywords,
-    versions: record.supportedVersions,
-    loaders: record.supportedLoaders,
+    versions: [...new Set(record.compatibilities.flatMap((compatibility) => compatibility.versions))],
+    loaders: record.compatibilities.map((compatibility) => compatibility.loader),
     compatibilities: record.compatibilities,
     environment: record.environment,
     status: record.officialStatus,
@@ -192,6 +192,8 @@ export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEn
     curseforgeProjectId: record.curseforgeProjectId,
     modrinthProjectId: record.modrinthProjectId,
     authors: record.authors.map((author) => author.name).filter(Boolean),
+    authorDetails: record.authors,
+    team: record.authors.find((author) => author.kind === "team")?.name,
     updatedAt: record.updatedAt,
     collectedAt: record.createdAt,
     certified: false,

@@ -15,7 +15,6 @@ type LayoutSavedMessage = {
 export function ModContentSectionActions({ siteId, section, onChanged }: {
   siteId: string;
   section: ModContentSection;
-  categories: ModContentSection[];
   onChanged: () => void;
 }) {
   const { t } = useI18n();

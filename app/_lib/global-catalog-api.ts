@@ -189,7 +189,31 @@ function stringArray(value: unknown): string[] { return Array.isArray(value) ? v
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
 
 export function loadGlobalTagDetail(query: URLSearchParams, token = "") {
-  return apiRequest<GlobalTagDetail>(`/api/v1/mod-tags/detail?${query}`, {}, token);
+  return apiRequest<{
+    entityId?: string;
+    publicId?: string;
+    registry?: string;
+    tagId?: string;
+    contentMarkdown?: string;
+    contentLocale?: string;
+    publishedRevisionId?: string;
+    memberCount?: number;
+    members?: Array<Record<string, unknown>>;
+    limit?: number;
+    offset?: number;
+  }>(`/api/v1/mod-tags/detail?${query}`, {}, token).then((detail): GlobalTagDetail => ({
+    entityId: detail.entityId || "",
+    publicId: detail.publicId || "",
+    registry: detail.registry || "",
+    tagId: detail.tagId || "",
+    contentMarkdown: detail.contentMarkdown || "",
+    contentLocale: detail.contentLocale || "",
+    publishedRevisionId: detail.publishedRevisionId,
+    memberCount: detail.memberCount ?? 0,
+    members: (detail.members ?? []).map(normalizeGlobalResource).filter((member) => member.id),
+    limit: detail.limit ?? 0,
+    offset: detail.offset ?? 0,
+  }));
 }
 
 export function loadGlobalRecipeTypes(query: URLSearchParams, token = "") {
@@ -198,4 +222,13 @@ export function loadGlobalRecipeTypes(query: URLSearchParams, token = "") {
 
 export function loadGlobalRecipeTypeDetail(query: URLSearchParams, token = "") {
   return apiRequest<GlobalRecipeTypeDetail>(`/api/v1/recipe-types/detail?${query}`, {}, token);
+}
+
+export function loadGlobalRecipe(publicId: string, locale: string, token = "", signal?: AbortSignal) {
+  const query = new URLSearchParams(catalogQueryLocales(locale));
+  return apiRequest<GlobalRecipe>(
+    `/api/v1/catalog/recipes/${encodeURIComponent(publicId)}/render?${query}`,
+    { cache: "no-store", signal },
+    token || undefined,
+  );
 }

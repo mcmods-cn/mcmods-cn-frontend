@@ -7,6 +7,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
+import { formatMinecraftLanguages } from "../_lib/minecraft-languages";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { ServerDetail as ServerDetailRecord, ServerHistory, ServerHistoryPoint } from "../_lib/server-api";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -174,7 +175,7 @@ function InfoPanel({ record }: { record: ServerDetailRecord }) {
   const { t } = useI18n();
   const rows = [
     [t("servers.version"), record.minecraftVersions.join(" · ") || record.minecraftVersion || "—"],
-    [t("servers.detail.language"), record.languages.join(" · ")],
+    [t("servers.detail.language"), formatMinecraftLanguages(record.languages)],
     [t("servers.detail.category"), t(`servers.tags.${record.primaryTag}`)],
     [t("servers.detail.dedicatedClient"), t(record.dedicatedClient ? "common.yes" : "common.no")],
     [t("servers.whitelist"), t(record.hasWhitelist ? "common.yes" : "common.no")],

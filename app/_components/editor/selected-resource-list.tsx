@@ -59,8 +59,12 @@ export function CatalogResourceIdentity({
 }
 
 export function CatalogResourceIcon({ resource, className = "h-11 w-11" }: { resource: CatalogResourceRef; className?: string }) {
+  const { locale } = useI18n();
   const source = catalogResourceIconURL(resource.iconUrl);
   if (resource.unresolved) return <span className={`grid shrink-0 place-items-center rounded-md bg-[var(--panel-subtle)] text-base font-black text-[var(--muted)] ${className}`}>?</span>;
-  if (!source) return <span className={`grid shrink-0 place-items-center rounded-md bg-[var(--panel-subtle)] text-xs font-black text-[var(--muted)] ${className}`}>{resource.kind.slice(0, 2).toUpperCase() || "?"}</span>;
+  if (!source) {
+    const fallback = Array.from(localizedCatalogResourceName(resource, locale) || resource.id).slice(0, 2).join("").toLocaleUpperCase() || "··";
+    return <span className={`grid shrink-0 place-items-center rounded-md bg-[var(--panel-subtle)] text-xs font-black text-[var(--muted)] ${className}`}>{fallback}</span>;
+  }
   return <span aria-label="" className={`block shrink-0 rounded-md bg-contain bg-center bg-no-repeat [image-rendering:pixelated] ${className}`} role="img" style={{ backgroundImage: `url(${JSON.stringify(source)})` }} />;
 }

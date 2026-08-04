@@ -4,16 +4,21 @@ import Image from "next/image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { isBearerAccessToken } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { contentLanguageCandidates, normalizeContentLanguage } from "../_lib/content-language";
+import { catalogRegistryForKind } from "../_lib/catalog-resource-identifiers";
 import type { CatalogResourceVersion } from "../_lib/editor-types";
 import {
   loadModContentResource,
+  loadModContentSimilarResources,
   modContentResourceAssetURL,
   type ModContentLocalization,
+  type ModContentEntryType,
   type ModContentResource,
+  type ModContentSimilarResource,
+  type ModContentTemplateDefinition,
 } from "../_lib/mod-content-api";
 import {
   getModExportEntryDetail,
@@ -34,15 +39,29 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
   const [detail, setDetail] = useState<ModContentResource>();
+  const [similarResources, setSimilarResources] = useState<ModContentSimilarResource[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     loadModContentResource(siteId, resourceId, token)
-      .then((value) => { if (!cancelled) setDetail(value); })
+      .then((value) => { if (!cancelled) { setDetail(value); setSimilarResources([]); } })
       .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => { cancelled = true; };
   }, [resourceId, siteId, token]);
+
+  useEffect(() => {
+    if (!detail) return;
+    const requestedIndex = detail.versions.findIndex((item) => item.publicId === versionId);
+    const firstDetailedIndex = detail.versions.findIndex((item) => item.hasDetail);
+    const currentVersionId = detail.versions[requestedIndex >= 0 ? requestedIndex : Math.max(0, firstDetailedIndex)]?.publicId;
+    if (!currentVersionId) return;
+    let cancelled = false;
+    loadModContentSimilarResources(siteId, resourceId, currentVersionId, locale, token)
+      .then((result) => { if (!cancelled) setSimilarResources(result.items); })
+      .catch(() => { if (!cancelled) setSimilarResources([]); });
+    return () => { cancelled = true; };
+  }, [detail, locale, resourceId, siteId, token, versionId]);
 
   if (!detail) return <main className="grid min-h-[65vh] place-items-center p-6">{error || t("common.loading")}</main>;
 
@@ -56,17 +75,50 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><article className="mx-auto max-w-6xl">
     <header className="border-b border-[var(--line)] pb-5">
       <Link className="font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("mods.detail.back")}</Link>
-      <div className="mt-3 flex flex-wrap items-end justify-between gap-4"><div><h1 className="text-3xl font-black">{localization?.name || detail.canonicalId}</h1><code className="mt-1 block text-sm text-[var(--muted)]">{detail.canonicalId}</code></div>{token && versionDetail && current ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/edit?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("common.edit")}</Link> : null}</div>
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-4"><h1 className="text-3xl font-black">{localization?.name || detail.canonicalId}</h1>{token && versionDetail && current ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/edit?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("common.edit")}</Link> : null}</div>
       <div className="mt-4 flex gap-1 overflow-x-auto">{detail.versions.map((version, index) => {
         const href = version.detailUrl || `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}?version=${encodeURIComponent(version.publicId)}`;
         return <Link className={`focus-ring shrink-0 rounded px-2 py-1 text-xs font-black ${index === currentIndex ? "bg-[var(--accent)] text-white" : version.hasDetail ? "bg-[var(--panel-subtle)]" : "border border-[var(--red)] text-[var(--red)]"}`} href={href} key={version.publicId}>{version.label}</Link>;
       })}</div>
     </header>
-    {!current || !versionDetail ? <section className="mt-8 rounded-lg border border-dashed border-[var(--red)] bg-[var(--panel)] p-8 text-center"><h2 className="text-xl font-black">{current?.label}</h2><p className="mt-3 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionContentMissing")}</p></section> : <ResourcePresentation canonicalId={detail.canonicalId} current={current} definition={versionDetail.definition} key={current.publicId} kindCode={detail.kindCode} name={localization?.name || detail.canonicalId} resourceId={resourceId}>
+    {current && similarResources.length > 1 ? <SimilarResourceStrip currentResourceId={resourceId} locale={locale} resources={similarResources} sectionId={sectionId} siteId={siteId} versionId={current.publicId} /> : null}
+    {!current || !versionDetail ? <section className="mt-8 rounded-lg border border-dashed border-[var(--red)] bg-[var(--panel)] p-8 text-center"><h2 className="text-xl font-black">{current?.label}</h2><p className="mt-3 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionContentMissing")}</p></section> : <ResourcePresentation canonicalId={detail.canonicalId} current={current} definition={versionDetail.definition} entryTypeCode={versionDetail.entryTypeCode} key={current.publicId} kindCode={detail.kindCode} name={localization?.name || detail.canonicalId} resourceId={resourceId} schemaDefinition={versionDetail.schemaDefinition}>
       {localization?.contentMarkdown ? <div className="markdown-preview mt-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={localization.contentMarkdown} /></div> : <p className="mt-5 text-[var(--muted)]">{t("mods.exportImport.entry.noIntroduction")}</p>}
     </ResourcePresentation>}
     {current && versionDetail ? <CommentSection targetKey={`${resourceId}~${current.publicId}`} targetType="mod_resource" /> : null}
   </article></main>;
+}
+
+function SimilarResourceStrip({ siteId, sectionId, versionId, currentResourceId, resources, locale }: { siteId: string; sectionId: string; versionId: string; currentResourceId: string; resources: ModContentSimilarResource[]; locale: string }) {
+  const { t } = useI18n();
+  return <section className="mt-5 rounded-xl border-2 border-[var(--accent)] bg-[var(--accent-soft)] p-3">
+    <h2 className="text-sm font-black text-[var(--accent)]">{t("modContent.similarResources")}</h2>
+    <div className="mt-2 flex gap-2 overflow-x-auto pb-1">{resources.map((resource) => {
+      const active = resource.resourcePublicId === currentResourceId;
+      const name = similarResourceName(resource, locale) || resource.canonicalId || resource.resourcePublicId;
+      const href = `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resource.resourcePublicId)}?version=${encodeURIComponent(versionId)}&section=${encodeURIComponent(sectionId)}`;
+      const iconURL = similarResourceIconURL(resource);
+      return <Link aria-current={active ? "page" : undefined} className={`focus-ring flex min-w-40 shrink-0 items-center gap-2 rounded-lg border px-2 py-1.5 ${active ? "border-[var(--accent)] bg-[var(--panel)]" : "border-[var(--line)] bg-[var(--panel)] hover:border-[var(--accent)]"}`} href={href} key={resource.resourcePublicId} title={`${name}\n${resource.canonicalId || ""}`}>
+        {iconURL ? <Image unoptimized alt="" className="h-8 w-8 shrink-0 object-contain [image-rendering:pixelated]" height={32} src={iconURL} width={32} /> : <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-xs font-black text-[var(--muted)]">?</span>}
+        <span className="min-w-0"><strong className="block truncate text-sm">{name}</strong><code className="block truncate text-[10px] text-[var(--muted)]">{resource.canonicalId}</code></span>
+      </Link>;
+    })}</div>
+  </section>;
+}
+
+function similarResourceIconURL(resource: ModContentSimilarResource) {
+  if (resource.iconFileId) return modContentResourceAssetURL(resource.resourcePublicId, resource.versionPublicId, "icon-small");
+  return resource.revisionId && resource.iconPath ? modExportAssetURL(resource.revisionId, resource.iconPath) : "";
+}
+
+function similarResourceName(resource: ModContentSimilarResource, locale: string) {
+  const names = resource.names || {};
+  for (const candidate of contentLanguageCandidates(locale, "en-US")) {
+    const normalized = normalizeContentLanguage(candidate).toLowerCase();
+    const match = Object.entries(names).find(([key]) => normalizeContentLanguage(key).toLowerCase() === normalized);
+    if (match?.[1]) return match[1];
+  }
+  return Object.values(names).find(Boolean) || "";
 }
 
 function ResourcePresentation({
@@ -74,23 +126,27 @@ function ResourcePresentation({
   children,
   current,
   definition,
+  entryTypeCode,
   kindCode,
   name,
   resourceId,
+  schemaDefinition,
 }: {
   canonicalId: string;
   children: ReactNode;
   current: CatalogResourceVersion;
   definition: Record<string, unknown>;
+  entryTypeCode: string;
   kindCode: string;
   name: string;
   resourceId: string;
+  schemaDefinition?: ModContentTemplateDefinition;
 }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
   const [loadedDetail, setLoadedDetail] = useState<{ key: string; detail?: ModExportEntryDetail; error?: string }>();
   const [display3D, setDisplay3D] = useState(false);
-  const registry = current.registry || registryForKind(kindCode);
+  const registry = current.registry || catalogRegistryForKind(kindCode) || "";
   const revisionId = current.revisionId;
   const requestKey = `${revisionId}\u0000${registry}\u0000${resourceId}\u0000${canonicalId}\u0000${minecraftLocale(locale)}`;
   const entryDetail = loadedDetail?.key === requestKey ? loadedDetail.detail : undefined;
@@ -123,22 +179,19 @@ function ResourcePresentation({
       },
     );
   }, [modelAssetPaths, revisionId, token]);
-  const effectiveDefinition = useMemo(
-    () => presentationDefinition(mergeDefinition(objectValue(entryDetail?.data), definition)),
-    [definition, entryDetail],
-  );
-  const defaultBlockState = useMemo(() => objectValue(effectiveDefinition.default_state), [effectiveDefinition]);
+  const schemaEntryType = schemaDefinition?.entryTypes?.find((entryType) => entryType.code === entryTypeCode);
+  const defaultBlockState = useMemo(() => objectValue(definition.defaultState), [definition]);
   const canShow3D = Boolean(entryDetail?.modelAvailable && modelSource);
 
   return <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1fr)_320px]">
-    <div className="min-w-0">
+    <div className="order-2 min-w-0 lg:order-1">
       {children}
-      {registry === "loot_tables" ? <ModLootTableView data={effectiveDefinition} /> : null}
+      {registry === "loot_tables" ? <ModLootTableView data={definition} /> : null}
       {detailError ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{detailError}</p> : null}
       {entryDetail?.recipes.length ? <ModRecipeGallery title={t("mods.exportImport.entry.recipes")} recipes={entryDetail.recipes} revisionId={revisionId} /> : null}
       {entryDetail?.uses.length ? <ModRecipeGallery title={t("mods.exportImport.entry.uses")} recipes={entryDetail.uses} revisionId={revisionId} /> : null}
     </div>
-    <aside className="lg:sticky lg:top-5 lg:self-start">
+    <aside className="order-1 lg:sticky lg:top-5 lg:order-2 lg:self-start">
       {imageURL || canShow3D ? <div className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]">
         <div className="grid aspect-square place-items-center p-5">
           {display3D && modelSource
@@ -156,208 +209,38 @@ function ResourcePresentation({
         <dt className="font-bold text-[var(--muted)]">{t("resourceEditor.kind")}</dt><dd>{kindCode}</dd>
         <dt className="font-bold text-[var(--muted)]">ID</dt><dd className="break-all font-mono">{canonicalId}</dd>
       </dl>
-      <ModResourceProperties data={effectiveDefinition} registry={registry} />
+      <CollapsibleResourceProperties data={definition} entryType={schemaEntryType} registry={registry} />
     </aside>
   </div>;
-}
-
-function registryForKind(kindCode: string) {
-  const normalized = kindCode.toLowerCase();
-  if (normalized.includes("block")) return "blocks";
-  if (normalized.includes("item")) return "items";
-  if (normalized.includes("entity")) return "entity_types";
-  if (normalized.includes("fluid")) return "fluids";
-  if (normalized.includes("effect") || normalized.includes("potion")) return "mob_effects";
-  if (normalized.includes("enchantment")) return "enchantments";
-  if (normalized.includes("advancement")) return "advancements";
-  if (normalized.includes("key_mapping")) return "key_mappings";
-  if (normalized.includes("natural_generation")) return "natural_generation";
-  if (normalized.includes("world_structure") || normalized.includes("structure")) return "world_structures";
-  if (normalized.includes("dimension")) return "dimensions";
-  if (normalized.includes("biome")) return "biomes";
-  if (normalized.includes("loot_table")) return "loot_tables";
-  return "";
 }
 
 function objectValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
-function mergeDefinition(base: Record<string, unknown>, overrides: Record<string, unknown>) {
-  const result = structuredClone(base);
-  for (const [key, value] of Object.entries(overrides)) {
-    const current = result[key];
-    result[key] = Object.keys(objectValue(current)).length && Object.keys(objectValue(value)).length
-      ? mergeDefinition(objectValue(current), objectValue(value))
-      : structuredClone(value);
-  }
-  return result;
-}
+function CollapsibleResourceProperties({ data, entryType, registry }: { data: Record<string, unknown>; entryType?: ModContentEntryType; registry: string }) {
+  const { t } = useI18n();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [canCollapse, setCanCollapse] = useState(false);
 
-// API documents use stable camelCase field codes. Existing visualizers consume
-// exporter-shaped names, so expand a presentation-only compatibility view in
-// browser memory without restoring duplicate/raw fields in PostgreSQL.
-function presentationDefinition(canonical: Record<string, unknown>) {
-  const result = structuredClone(canonical);
-  const aliases: Record<string, string> = {
-    defaultState: "default_state",
-    explosionResistance: "explosion_resistance",
-    harvestLevel: "required_mining_level",
-    speedFactor: "speed_factor",
-    jumpFactor: "jump_factor",
-    lightLevel: "light_emission",
-    requiresCorrectTool: "requires_correct_tool",
-    preferredTools: "preferred_tools",
-    requiredTier: "required_tier",
-    miningTags: "mining_tags",
-    tierTags: "tier_tags",
-    blockTags: "block_tags",
-    canOcclude: "can_occlude",
-    blocksMotion: "blocks_motion",
-    renderShape: "render_shape",
-    hasBlockEntity: "has_block_entity",
-    randomlyTicking: "randomly_ticking",
-    pistonReaction: "piston_reaction",
-    lootTable: "loot_table",
-    maxStackSize: "max_stack_size",
-    primaryType: "primary_type",
-    itemTypes: "item_types",
-    compatibleEnchantments: "compatible_enchantments",
-    itemTags: "item_tags",
-    repairItems: "repair_items",
-    repairTag: "repair_tag",
-    incorrectBlocksForDrops: "incorrect_blocks_for_drops",
-    attributeModifiers: "attribute_modifiers",
-    armorToughness: "armor_toughness",
-    knockbackResistance: "knockback_resistance",
-    equipmentSlot: "equipment_slot",
-    maxHealth: "max_health",
-    armorValue: "armor_value",
-    eyeHeight: "eye_height",
-    fireImmune: "fire_immune",
-    maxAirSupply: "max_air_supply",
-    mobType: "mob_type",
-    waterAnimal: "water_animal",
-    canSummon: "can_summon",
-    canSerialize: "can_serialize",
-    trackingRange: "client_tracking_range",
-    updateInterval: "update_interval",
-    runtimePropertiesAvailable: "runtime_properties_available",
-    spawnEggCount: "spawn_egg_count",
-    defaultLootTable: "default_loot_table",
-    spawnEggs: "spawn_eggs",
-    breedingMaterials: "breeding_materials",
-    defaultEquipment: "default_equipment",
-    parentId: "parent",
-    childrenIds: "children",
-    iconItemId: "icon_item_id",
-    minimumLevel: "minimum_level",
-    maximumLevel: "maximum_level",
-    maximumCriteriaRequired: "max_criteria_required",
-    sendsTelemetryEvent: "sends_telemetry_event",
-    rarityWeight: "rarity_weight",
-    anvilCost: "anvil_cost",
-    treasureOnly: "treasure_only",
-    supportedItemsTag: "supported_items_tag",
-    supportedItems: "supported_items",
-    exclusiveWith: "exclusive_with",
-    effectComponentCount: "effect_component_count",
-    colorRGB: "color_rgb",
-    effectAttributeModifiers: "effect_attribute_modifiers",
-    ingredientKind: "ingredient_kind",
-    bucketItemId: "bucket_item_id",
-    fluidTags: "fluid_tags",
-    sourceModId: "source_mod_id",
-    sourceDetection: "source_detection",
-    categoryTranslationKey: "category_translation_key",
-    categoryNames: "category_names",
-    defaultKey: "default_key",
-    boundKey: "bound_key",
-    defaultBinding: "is_default",
-    unbound: "is_unbound",
-    definitionAvailable: "definition_available",
-    possibleItemIds: "possible_item_ids",
-    referencedLootTables: "referenced_loot_tables",
-    entryKind: "entry_kind",
-    featureType: "feature_type",
-    carverType: "carver_type",
-    generationSteps: "generation_steps",
-    biomeSelectors: "biome_selectors",
-    resolvedBiomeIds: "resolved_biome_ids",
-    dimensionIds: "dimension_ids",
-    normalizationStatus: "normalization_status",
-    catalogKind: "catalog_kind",
-    structureType: "structure_type",
-    generationStep: "generation_step",
-    terrainAdaptation: "terrain_adaptation",
-    startPool: "start_pool",
-    jigsawSize: "jigsaw_size",
-    startHeight: "start_height",
-    maxDistanceFromCenter: "max_distance_from_center",
-    structureSetIds: "structure_set_ids",
-    definitionSource: "definition_source",
-    biomeTag: "biome_tag",
-    dimensionType: "dimension_type",
-    generatorType: "generator_type",
-    generatorSettings: "generator_settings",
-    biomeSource: "biome_source",
-    biomeIds: "biome_ids",
-    ambientLight: "ambient_light",
-    coordinateScale: "coordinate_scale",
-    minimumY: "minimum_y",
-    logicalHeight: "logical_height",
-    hasSkylight: "has_skylight",
-    hasCeiling: "has_ceiling",
-    bedWorks: "bed_works",
-    respawnAnchorWorks: "respawn_anchor_works",
-    hasRaids: "has_raids",
-    infiniburnTag: "infiniburn_tag",
-    hasPrecipitation: "has_precipitation",
-    creatureSpawnProbability: "creature_spawn_probability",
-    spawnData: "spawn_data",
-    spawnedEntityIds: "spawned_entity_ids",
-    featureIds: "feature_ids",
-    carverIds: "carver_ids",
-  };
-  for (const [key, alias] of Object.entries(aliases)) {
-    if (canonical[key] !== undefined) result[alias] = structuredClone(canonical[key]);
-  }
-  if (canonical.durability !== undefined) result.max_damage = canonical.durability;
-  const tier = compactObject({
-    id: canonical.tierId,
-    mining_level: canonical.miningLevel,
-    durability: canonical.tierDurability,
-    mining_speed: canonical.miningSpeed,
-    attack_damage_bonus: canonical.attackDamageBonus,
-    enchantment_value: canonical.enchantmentValue,
-    repair_items: canonical.repairItems,
-    incorrect_blocks_for_drops: canonical.incorrectBlocksForDrops,
-  });
-  if (Object.keys(tier).length) result.tool = { tier };
-  const combat = compactObject({
-    attack_damage_modifier: canonical.attackDamageModifier,
-    attack_speed_modifier: canonical.attackSpeedModifier,
-    modifiers: canonical.combatModifiers,
-  });
-  if (Object.keys(combat).length) result.combat = combat;
-  const enchanting = compactObject({
-    enchantable: canonical.enchantable,
-    enchantment_value: canonical.enchantability,
-    compatible_enchantments: canonical.compatibleEnchantments,
-  });
-  if (Object.keys(enchanting).length) result.enchanting = enchanting;
-  const armor = compactObject({
-    defense: canonical.armorValue,
-    toughness: canonical.armorToughness,
-    knockback_resistance: canonical.knockbackResistance,
-    slot: canonical.equipmentSlot,
-  });
-  if (Object.keys(armor).length) result.armor = armor;
-  return result;
-}
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content) return;
+    const measure = () => setCanCollapse(content.scrollHeight > 448);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [data, registry]);
 
-function compactObject(value: Record<string, unknown>) {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+  return <div className="relative">
+    <div ref={contentRef} className={!expanded && canCollapse ? "max-h-[28rem] overflow-hidden lg:max-h-none lg:overflow-visible" : ""}>
+      <ModResourceProperties data={data} entryType={entryType} registry={registry} />
+    </div>
+    {!expanded && canCollapse ? <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 bottom-12 h-20 bg-gradient-to-t from-[var(--background)] to-transparent lg:hidden" /> : null}
+    {canCollapse ? <button className="button-secondary focus-ring mt-3 w-full lg:hidden" type="button" onClick={() => setExpanded((value) => !value)}>{t(expanded ? "common.collapse" : "common.expand")}</button> : null}
+  </div>;
 }
 
 function resolveVersionLocalization(values: ModContentLocalization[], locale: string, defaultLocale: string) {

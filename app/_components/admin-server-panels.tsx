@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
+import { formatMinecraftLanguages } from "../_lib/minecraft-languages";
 import { formatBytes } from "../_lib/oss-upload";
 import { ServerCatalogSettings, ServerLink, ServerMod } from "../_lib/server-api";
 
@@ -26,7 +27,6 @@ type ServerReviewItem = {
   reviewNote: string;
   submitterId: string;
   submitterUsername: string;
-  submitterName: string;
   proofFiles: Array<{ id: string; originalName: string; sizeBytes: number }>;
   links: ServerLink[];
   mods: ServerMod[];
@@ -98,7 +98,7 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
                 <h3 className="text-lg font-black">{item.name}</h3>
                 <p className="mt-1 font-mono text-sm">{item.address}</p>
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  {item.submitterName || item.submitterUsername} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}
+                  {item.submitterUsername} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}
                 </p>
               </div>
               <Link className="button-secondary focus-ring" href={`/servers/${item.id}`} target="_blank">{t("admin.serverReviews.viewPage")} ↗</Link>
@@ -106,7 +106,7 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
             <p className="mt-4 whitespace-pre-wrap text-sm leading-7">{item.shortDescription || t("servers.noSummary")}</p>
             <dl className="mt-4 grid gap-2 rounded-lg bg-[var(--panel-subtle)] p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
               <Fact label={t("servers.version")} value={item.minecraftVersions.join(" · ")} />
-              <Fact label={t("servers.detail.language")} value={item.languages.join(" · ")} />
+              <Fact label={t("servers.detail.language")} value={formatMinecraftLanguages(item.languages)} />
               <Fact label={t("servers.detail.category")} value={t(`servers.tags.${item.primaryTag}`)} />
               <Fact label={t("servers.modded")} value={t(item.modded ? "common.yes" : "common.no")} />
               <Fact label={t("servers.whitelist")} value={t(item.hasWhitelist ? "common.yes" : "common.no")} />

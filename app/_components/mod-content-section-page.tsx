@@ -8,15 +8,19 @@ import { useAuthSnapshot } from "../_lib/auth";
 import { contentLanguageCandidates, normalizeContentLanguage } from "../_lib/content-language";
 import {
   loadAllModContentSectionResources,
+  loadModContentTemplates,
   modContentResourceAssetURL,
   type ModContentSection,
   type ModContentSectionResource,
+  type ModContentTemplate,
 } from "../_lib/mod-content-api";
 import { modExportAssetURL } from "../_lib/mod-export-api";
+import { clusterSimilarResources } from "../_lib/similar-resource-groups";
 import { useI18n } from "../_lib/i18n-provider";
 import { ModContentSectionActions } from "./mod-content-section-actions";
 import { AdvancementResourceIndex, CompactResourceIndex, type CompactResourceGroup, type ResourceIndexEntry } from "./mod-resource-indexes";
 import { useRotatingValue } from "./rotating-resource";
+import { CustomContentTemplateSettings } from "./custom-content-template-settings";
 
 export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; sectionId: string }) {
   const { locale, t } = useI18n();
@@ -29,6 +33,8 @@ export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; s
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [canManage, setCanManage] = useState(false);
+  const [templates, setTemplates] = useState<ModContentTemplate[]>([]);
+  const [statusMessage, setStatusMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -37,8 +43,11 @@ export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; s
     apiRequest(`/api/v1/mods/${encodeURIComponent(siteId)}/editor`, {}, token)
       .then(() => { if (!cancelled) setCanManage(true); })
       .catch(() => { if (!cancelled) setCanManage(false); });
+    loadModContentTemplates(siteId, token)
+      .then((items) => { if (!cancelled) setTemplates(items); })
+      .catch(() => { if (!cancelled) setTemplates([]); });
     return () => { cancelled = true; };
-  }, [siteId, token]);
+  }, [refreshKey, siteId, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,20 +71,23 @@ export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; s
   );
   if (!section) return <main className="grid min-h-[65vh] place-items-center p-6">{error || t("common.loading")}</main>;
   const title = localizedSectionName(section, locale, t);
+  const customTemplate = section.templateBuiltin ? undefined : templates.find((item) => item.publicId === section.templatePublicId);
+  const addHref = `/mods/${encodeURIComponent(siteId)}/resources/new?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`;
 
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><div className="mx-auto max-w-[1500px]">
     <header className="flex flex-wrap items-end gap-4 border-b border-[var(--line)] pb-5">
       <div className="min-w-0 flex-1"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("modContent.sectionPage.back")}</Link><h1 className="mt-2 text-3xl font-black">{title}</h1><p className="mt-2 text-sm text-[var(--muted)]">{versionLabel || section.versionPublicId} · {t("modContent.sectionPage.entryCount", { count: total })}</p></div>
-      <div className="flex w-full flex-wrap gap-2 sm:w-auto"><input className="field min-w-0 flex-1 sm:w-80" type="search" value={query} placeholder={t("modContent.sectionPage.search")} onChange={(event) => setQuery(event.target.value)} />{token && canManage ? <ModContentSectionActions categories={categories} onChanged={() => setRefreshKey((value) => value + 1)} section={section} siteId={siteId} /> : null}<Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/data/edit?version=${encodeURIComponent(section.versionPublicId)}`}>{t("common.edit")}</Link></div>
+      <div className="flex w-full flex-wrap gap-2 sm:w-auto"><input className="field min-w-0 flex-1 sm:w-80" type="search" value={query} placeholder={t("modContent.sectionPage.search")} onChange={(event) => setQuery(event.target.value)} />{token && canManage ? <><ModContentSectionActions onChanged={() => setRefreshKey((value) => value + 1)} section={section} siteId={siteId} />{customTemplate ? <CustomContentTemplateSettings siteId={siteId} template={customTemplate} token={token} onSaved={(result) => { setStatusMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); if (result.reviewStatus === "approved") setRefreshKey((value) => value + 1); }} /> : null}</> : null}<Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/data/edit?version=${encodeURIComponent(section.versionPublicId)}`}>{t("common.edit")}</Link></div>
     </header>
+    {statusMessage ? <p className="mt-4 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] p-3 font-bold text-[var(--accent)]" role="status">{statusMessage}</p> : null}
     {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{error}</p> : null}
-    {!resources.length ? <div className="mt-6 rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel)] p-10 text-center text-[var(--muted)]">{query ? t("modContent.sectionPage.noMatches") : t("modContent.sectionPage.empty")}</div> : section.templateCode === "advancement"
+    {!resources.length ? <div className="mt-6 rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel)] p-10 text-center text-[var(--muted)]"><p>{query ? t("modContent.sectionPage.noMatches") : t("modContent.sectionPage.empty")}</p>{!query && token && canManage ? <Link className="button-primary focus-ring mt-5 inline-flex" href={addHref}>{t("modContent.sectionActions.add")}</Link> : null}</div> : section.templateCode === "advancement"
       ? <AdvancementResourceIndex entries={indexedResources} />
       : section.displayMode === "compact"
       ? <CompactResourceIndex groups={compactResourceGroups(section, categories, resources, indexedResources, locale, t)} />
       : categories.length
       ? <CategorizedSectionResources categories={categories} locale={locale} resources={resources} root={section} siteId={siteId} />
-      : <div className="mt-6 grid gap-px overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3">{resources.map((resource) => <SectionResourceLink key={resource.resourcePublicId} locale={locale} resource={resource} section={section} siteId={siteId} />)}</div>}
+      : <div className="mt-6 grid gap-px overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3"><SectionResourceCollection locale={locale} resources={resources} section={section} siteId={siteId} /></div>}
   </div></main>;
 }
 
@@ -134,10 +146,16 @@ function CategorizedSectionResources({ siteId, root, categories, resources, loca
       const categoryName = category.publicId === root.publicId ? "" : localizedSectionName(category, locale, t);
       return <section className="grid border-b border-[var(--line)] last:border-b-0 md:grid-cols-[180px_minmax(0,1fr)]" key={category.publicId}>
         <h2 className="self-start px-4 py-5 text-sm font-black text-[var(--muted)]" style={{ paddingInlineStart: `${16 + sectionDepth(category, root.publicId, categoryMap) * 18}px` }}>{categoryName || "—"}</h2>
-        <div className="flex flex-wrap content-start gap-2 p-3 md:border-l md:border-[var(--line)]">{entries.map((resource) => <SectionResourceLink compact key={resource.resourcePublicId} locale={locale} resource={resource} section={root} siteId={siteId} />)}</div>
+        <div className="flex flex-wrap content-start gap-2 p-3 md:border-l md:border-[var(--line)]"><SectionResourceCollection compact locale={locale} resources={entries} section={root} siteId={siteId} /></div>
       </section>;
     })}
   </div>;
+}
+
+function SectionResourceCollection({ siteId, section, resources, locale, compact = false }: { siteId: string; section: ModContentSection; resources: ModContentSectionResource[]; locale: string; compact?: boolean }) {
+  return <>{clusterSimilarResources(resources, (resource) => resource.similarGroupId).map((entries) => entries.length > 1
+    ? <div className={compact ? "flex flex-wrap gap-1 rounded-lg border-2 border-[var(--accent)] bg-[var(--accent-soft)] p-1" : "grid gap-px rounded-lg border-2 border-[var(--accent)] bg-[var(--line)] p-px"} key={`similar-${entries[0].similarGroupId}`} role="group">{entries.map((resource) => <SectionResourceLink compact={compact} key={resource.resourcePublicId} locale={locale} resource={resource} section={section} siteId={siteId} />)}</div>
+    : <SectionResourceLink compact={compact} key={entries[0].resourcePublicId} locale={locale} resource={entries[0]} section={section} siteId={siteId} />)}</>;
 }
 
 function SectionResourceLink({ siteId, section, resource, locale, compact = false }: { siteId: string; section: ModContentSection; resource: ModContentSectionResource; locale: string; compact?: boolean }) {
@@ -186,6 +204,7 @@ function sectionResourceIndexEntry(siteId: string, section: ModContentSection, r
     x: finiteNumber(display.x),
     y: finiteNumber(display.y),
     frame: typeof display.frame === "string" ? display.frame : undefined,
+    similarGroupId: resource.similarGroupId,
   };
 }
 

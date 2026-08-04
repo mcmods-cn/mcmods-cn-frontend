@@ -9,7 +9,6 @@ type SkinOwner = {
   id: string;
   publicId?: string;
   username: string;
-  displayName: string;
 };
 
 export type SkinTexture = {

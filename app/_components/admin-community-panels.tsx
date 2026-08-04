@@ -13,6 +13,8 @@ import {
   translatedRecord,
 } from "../_lib/community-api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
+import { formatBytes } from "../_lib/oss-upload";
+import { CatalogResourceIconPicker } from "./catalog-resource-icon";
 
 type RoleTrack = {
   code: string;
@@ -122,6 +124,15 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
     }
   }
 
+  async function downloadAttachment(claimId: string, fileId: string) {
+    try {
+      const result = await apiRequest<{ url: string }>(`/api/v1/admin/creator-claims/${claimId}/attachments/${fileId}/presign`, { method: "POST" }, token);
+      window.open(result.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+    }
+  }
+
   return (
     <AdminPanel
       title={t("admin.community.creatorClaims")}
@@ -144,7 +155,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
                 </p>
                 <h3 className="mt-1 text-lg font-black">{item.name}</h3>
                 <p className="mt-1 text-sm text-[var(--muted)]">
-                  {item.displayName || item.username} / @{item.username} / UID {item.userId}
+{item.username} / UID {item.userId}
                 </p>
               </div>
               <time className="text-sm text-[var(--muted)]">{formatDateTime(item.createdAt)}</time>
@@ -152,6 +163,19 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
             <div className="mt-4 rounded-lg bg-[var(--panel-subtle)] p-4 text-sm whitespace-pre-wrap">
               {item.proofMarkdown || t("admin.community.noClaimProof")}
             </div>
+            {item.attachments?.length ? (
+              <section className="mt-4">
+                <h4 className="text-sm font-black">{t("admin.community.claimAttachments")}</h4>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {item.attachments.map((attachment) => (
+                    <button className="focus-ring flex items-center justify-between gap-3 rounded-md border border-[var(--line)] p-3 text-left hover:border-[var(--accent)]" key={attachment.id} title={t("admin.community.downloadAttachment")} type="button" onClick={() => void downloadAttachment(item.id, attachment.id)}>
+                      <span className="min-w-0 truncate text-sm font-bold">{attachment.name}</span>
+                      <span className="shrink-0 text-xs text-[var(--muted)]">{formatBytes(attachment.sizeBytes)}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : null}
             <label className="mt-4 grid gap-2">
               <span className="text-sm font-bold">{t("admin.community.reviewNote")}</span>
               <textarea
@@ -637,12 +661,13 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
   async function save() {
     setSaving(true);
     try {
+      const payload = withLocalizedPersistenceFields(draft, locale);
       const path = draft.publicId
         ? `/api/v1/admin/economy/currencies/${draft.publicId}`
         : "/api/v1/admin/economy/currencies";
       const saved = await apiRequest<Currency>(
         path,
-        { method: draft.publicId ? "PUT" : "POST", body: JSON.stringify(draft) },
+        { method: draft.publicId ? "PUT" : "POST", body: JSON.stringify(payload) },
         token,
       );
       setDraft(cloneCurrency(saved));
@@ -689,17 +714,11 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
               />
             </Field>
             <Field label={t("admin.community.icon")}>
-              <input
-                className="field"
+              <CatalogResourceIconPicker
+                fallbackName={translatedRecord(draft.translations, locale, "name", draft.name || draft.code)}
+                token={token}
                 value={draft.icon}
-                onChange={(event) => setDraft({ ...draft, icon: event.target.value })}
-              />
-            </Field>
-            <Field label={t("admin.community.name")}>
-              <input
-                className="field"
-                value={draft.name}
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+                onChange={(icon) => setDraft({ ...draft, icon })}
               />
             </Field>
             <Field label={t("admin.community.status")}>
@@ -731,23 +750,14 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
               />
             </Field>
           </div>
-          <Field label={t("admin.community.description")}>
-            <textarea
-              className="field min-h-24"
-              value={draft.description}
-              onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-            />
-          </Field>
           <LocalizedFieldsEditor
-            baseName={draft.name}
-            baseDescription={draft.description}
             translations={draft.translations}
             onChange={(translations) => setDraft({ ...draft, translations })}
           />
           <div className="flex justify-end">
             <button
               className="button-primary focus-ring"
-              disabled={saving || !draft.code.trim() || !draft.name.trim()}
+              disabled={saving || !draft.code.trim() || !localizedPersistenceFields(draft.translations, locale).name}
               type="button"
               onClick={() => void save()}
             >
@@ -805,7 +815,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
     }
     setSaving(true);
     try {
-      const payload = { ...draft, config };
+      const payload = { ...withLocalizedPersistenceFields(draft, locale), config };
       const path = draft.publicId ? `/api/v1/admin/shop/items/${draft.publicId}` : "/api/v1/admin/shop/items";
       const saved = await apiRequest<ShopItem>(
         path,
@@ -872,18 +882,12 @@ export function ShopManagementPanel({ token }: { token: string }) {
                 <option value="profile_background">{t("admin.community.profileBackgroundItem")}</option>
               </select>
             </Field>
-            <Field label={t("admin.community.name")}>
-              <input
-                className="field"
-                value={draft.name}
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              />
-            </Field>
             <Field label={t("admin.community.icon")}>
-              <input
-                className="field"
+              <CatalogResourceIconPicker
+                fallbackName={translatedRecord(draft.translations, locale, "name", draft.name || draft.code)}
+                token={token}
                 value={draft.icon}
-                onChange={(event) => setDraft({ ...draft, icon: event.target.value })}
+                onChange={(icon) => setDraft({ ...draft, icon })}
               />
             </Field>
             <Field label={t("admin.community.priceCurrency")}>
@@ -933,16 +937,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
               </select>
             </Field>
           </div>
-          <Field label={t("admin.community.description")}>
-            <textarea
-              className="field min-h-24"
-              value={draft.description}
-              onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-            />
-          </Field>
           <LocalizedFieldsEditor
-            baseName={draft.name}
-            baseDescription={draft.description}
             translations={draft.translations}
             onChange={(translations) => setDraft({ ...draft, translations })}
           />
@@ -957,7 +952,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
           <div className="flex justify-end">
             <button
               className="button-primary focus-ring"
-              disabled={saving || !draft.code.trim() || !draft.name.trim()}
+              disabled={saving || !draft.code.trim() || !localizedPersistenceFields(draft.translations, locale).name}
               type="button"
               onClick={() => void save()}
             >
@@ -1100,10 +1095,11 @@ export function TaskManagementPanel({ token }: { token: string }) {
   async function save() {
     setSaving(true);
     try {
+      const payload = withLocalizedPersistenceFields(draft, locale);
       const path = draft.publicId ? `/api/v1/admin/tasks/${draft.publicId}` : "/api/v1/admin/tasks";
       const saved = await apiRequest<TaskDefinition>(
         path,
-        { method: draft.publicId ? "PUT" : "POST", body: JSON.stringify(draft) },
+        { method: draft.publicId ? "PUT" : "POST", body: JSON.stringify(payload) },
         token,
       );
       setDraft(cloneTask(saved));
@@ -1117,7 +1113,8 @@ export function TaskManagementPanel({ token }: { token: string }) {
   }
 
   async function remove() {
-    if (!draft.publicId || !window.confirm(t("admin.community.deleteTaskConfirm", { name: draft.name }))) return;
+    const taskName = translatedRecord(draft.translations, locale, "name", draft.code);
+    if (!draft.publicId || !window.confirm(t("admin.community.deleteTaskConfirm", { name: taskName }))) return;
     setSaving(true);
     try {
       await apiRequest(`/api/v1/admin/tasks/${draft.publicId}`, { method: "DELETE" }, token);
@@ -1169,18 +1166,12 @@ export function TaskManagementPanel({ token }: { token: string }) {
                 onChange={(event) => setDraft({ ...draft, code: event.target.value })}
               />
             </Field>
-            <Field label={t("admin.community.name")}>
-              <input
-                className="field"
-                value={draft.name}
-                onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-              />
-            </Field>
             <Field label={t("admin.community.icon")}>
-              <input
-                className="field"
+              <CatalogResourceIconPicker
+                fallbackName={translatedRecord(draft.translations, locale, "name", draft.name || draft.code)}
+                token={token}
                 value={draft.icon}
-                onChange={(event) => setDraft({ ...draft, icon: event.target.value })}
+                onChange={(icon) => setDraft({ ...draft, icon })}
               />
             </Field>
             <Field label={t("admin.community.refreshPeriod")}>
@@ -1209,16 +1200,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
               </select>
             </Field>
           </div>
-          <Field label={t("admin.community.description")}>
-            <textarea
-              className="field min-h-24"
-              value={draft.description}
-              onChange={(event) => setDraft({ ...draft, description: event.target.value })}
-            />
-          </Field>
           <LocalizedFieldsEditor
-            baseName={draft.name}
-            baseDescription={draft.description}
             translations={draft.translations}
             onChange={(translations) => setDraft({ ...draft, translations })}
           />
@@ -1402,7 +1384,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
             ) : null}
             <button
               className="button-primary focus-ring"
-              disabled={saving || !draft.code.trim() || !draft.name.trim()}
+              disabled={saving || !draft.code.trim() || !localizedPersistenceFields(draft.translations, locale).name}
               type="button"
               onClick={() => void save()}
             >
@@ -1487,20 +1469,16 @@ function SelectionList({
 }
 
 function LocalizedFieldsEditor({
-  baseName,
-  baseDescription,
   translations,
   onChange,
 }: {
-  baseName: string;
-  baseDescription: string;
   translations: Record<string, unknown>;
   onChange: (translations: Record<string, unknown>) => void;
 }) {
   const { locale, t } = useI18n();
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
   const [targetLocale, setTargetLocale] = useState<Locale>(() => (locale === "zh-CN" ? "en-US" : locale));
-  const source = referenceTranslationFields(translations, sourceLocale, baseName, baseDescription);
+  const source = translationFields(translations, sourceLocale);
   const target = translationFields(translations, targetLocale);
 
   return (
@@ -1567,19 +1545,6 @@ function LocalizedFieldsEditor({
   );
 }
 
-function referenceTranslationFields(
-  translations: Record<string, unknown>,
-  locale: Locale,
-  baseName: string,
-  baseDescription: string,
-): TranslationFields {
-  const exact = translationFields(translations, locale);
-  if (exact.name || exact.description) return exact;
-  const baseText = `${baseName} ${baseDescription}`.trim();
-  if (!baseText || inferTranslationLocale(baseText) !== locale) return emptyTranslation;
-  return { name: baseName, description: baseDescription };
-}
-
 function inferTranslationLocale(text: string): Locale {
   if (/[\u3040-\u30ff]/.test(text)) return "ja-JP";
   if (/[\u3400-\u9fff]/.test(text)) return "zh-CN";
@@ -1602,6 +1567,24 @@ function setTranslationFields(
   value: TranslationFields,
 ): Record<string, unknown> {
   return { ...translations, [locale]: value };
+}
+
+function localizedPersistenceFields(translations: Record<string, unknown>, preferredLocale: Locale): TranslationFields {
+  const localeOrder = [preferredLocale, "zh-CN", "en-US", ...supportedLocales.map((item) => item.code)];
+  for (const locale of new Set(localeOrder)) {
+    const fields = translationFields(translations, locale as Locale);
+    if (fields.name.trim()) {
+      return { name: fields.name.trim(), description: fields.description.trim() };
+    }
+  }
+  return emptyTranslation;
+}
+
+function withLocalizedPersistenceFields<
+  T extends { name: string; description: string; translations: Record<string, unknown> },
+>(value: T, preferredLocale: Locale): T {
+  // The API and database still require scalar fields; the multilingual record is the editor's sole source of truth.
+  return { ...value, ...localizedPersistenceFields(value.translations, preferredLocale) };
 }
 
 function useInitialLoad(load: () => Promise<void>) {
@@ -1698,6 +1681,7 @@ const activityActions = [
 const activityObjectTypes = [
   "recipe",
   "mod",
+  "resource",
   "blueprint",
   "plugin",
   "author",

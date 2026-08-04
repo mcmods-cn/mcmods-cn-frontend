@@ -96,6 +96,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const blueprintInputRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
   const previewPositionFrameRef = useRef<number | null>(null);
   const drawioFrameRef = useRef<HTMLIFrameElement | null>(null);
@@ -246,9 +247,9 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   }, []);
 
   useEffect(() => {
-    const session = drawioSession;
-    if (!session || !session.open) return;
-    const activeSession = session;
+    if (!drawioSession?.open) return;
+    // Capture the validated session for the asynchronous message handler.
+    const activeSession = drawioSession;
 
     function receiveMessage(event: MessageEvent<unknown>) {
       if (event.origin !== DRAWIO_ORIGIN) return;
@@ -434,14 +435,13 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   }
 
   function insertMediaSyntax(values: Record<MediaField, string>) {
-    const session = mediaInsertSession;
-    if (!session) return;
-    const snippet = session.preset.fields.reduce(
+    if (!mediaInsertSession) return;
+    const snippet = mediaInsertSession.preset.fields.reduce(
       (result, field) => result.replace(`{{${field}}}`, values[field].trim()),
-      session.preset.template,
+      mediaInsertSession.preset.template,
     );
-    const nextMarkdown = markdown.slice(0, session.start) + snippet + markdown.slice(session.end);
-    const cursor = session.start + snippet.length;
+    const nextMarkdown = markdown.slice(0, mediaInsertSession.start) + snippet + markdown.slice(mediaInsertSession.end);
+    const cursor = mediaInsertSession.start + snippet.length;
     setMediaInsertSession(null);
     replaceSelection(nextMarkdown, cursor, cursor);
   }
@@ -463,9 +463,15 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
         const marker = placeholders[index];
         try {
           const record = await uploadUserFileToOSS(file, token, uploadSource);
-          const url = record.accessUrl || record.url || "";
-          if (!url) throw new Error(t("tools.playground.uploadMissingUrl"));
-          replaceMarkdownSnippet(marker, markdownForUploadedFile(file, url));
+          if (isBlueprintFile(file)) {
+            const publicId = record.blueprintId || record.blueprint?.id;
+            if (!publicId) throw new Error(t("tools.playground.blueprintMissingId"));
+            replaceMarkdownSnippet(marker, `[Bluemap:${publicId}]`);
+          } else {
+            const url = record.accessUrl || record.url || "";
+            if (!url) throw new Error(t("tools.playground.uploadMissingUrl"));
+            replaceMarkdownSnippet(marker, markdownForUploadedFile(file, url));
+          }
         } catch (error) {
           failed += 1;
           replaceMarkdownSnippet(marker, `<!-- Upload failed "${safeUploadCommentName(file.name)}": ${cleanPlaygroundError(error, t("tools.playground.operationFailed"))} -->`);
@@ -585,6 +591,18 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
               onInsertDrawio={openDrawioEditor}
               onInsertIcon={insertIconSyntax}
               onInsertMedia={openMediaDialog}
+              onUploadBlueprint={() => blueprintInputRef.current?.click()}
+            />
+            <input
+              ref={blueprintInputRef}
+              className="hidden"
+              type="file"
+              accept=".nbt,.schem,.schematic,.litematic"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                void uploadFiles(files);
+              }}
             />
             {activeDrawioFence ? (
               <div className="flex items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-2 text-sm">
@@ -673,6 +691,7 @@ function MarkdownToolbar({
   onInsertDrawio,
   onInsertIcon,
   onInsertMedia,
+  onUploadBlueprint,
 }: {
   message: string;
   onCommand: (command: MarkdownCommand) => void;
@@ -680,6 +699,7 @@ function MarkdownToolbar({
   onInsertDrawio: () => void;
   onInsertIcon: (template: string) => void;
   onInsertMedia: (preset: MediaPreset) => void;
+  onUploadBlueprint: () => void;
 }) {
   const { t } = useI18n();
   const buttons: Array<{ command: MarkdownCommand; label: string; title: string }> = [
@@ -723,6 +743,7 @@ function MarkdownToolbar({
         <IconSyntaxSelect onInsertIcon={onInsertIcon} />
         <MediaSyntaxSelect onInsertMedia={onInsertMedia} />
         <ToolbarButton label="IO" title={t("tools.playground.toolbarDrawio")} onClick={onInsertDrawio} />
+        <ToolbarButton label="BL" title={t("tools.playground.toolbarBlueprint")} onClick={onUploadBlueprint} />
         {message ? <span className="px-3 text-xs font-semibold text-white/85">{message}</span> : null}
       </div>
     </div>
@@ -907,6 +928,10 @@ function MediaInsertModal({
     </div>,
     document.body,
   );
+}
+
+function isBlueprintFile(file: File) {
+  return /\.(?:nbt|schem|schematic|litematic)$/i.test(file.name);
 }
 
 function DrawioModal({

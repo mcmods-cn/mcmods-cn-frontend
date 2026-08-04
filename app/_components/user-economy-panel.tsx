@@ -10,6 +10,7 @@ import {
   translatedRecord,
 } from "../_lib/community-api";
 import { useI18n } from "../_lib/i18n-provider";
+import { CatalogResourceIconValue } from "./catalog-resource-icon";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
 
@@ -285,9 +286,12 @@ export function UserEconomyPanel({
             return (
               <article className="rounded-lg border border-[var(--line)] p-4" key={task.publicId}>
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h4 className="font-black">{localizedName(task, locale)}</h4>
-                    <p className="mt-1 text-sm text-[var(--muted)]">{localizedDescription(task, locale)}</p>
+                  <div className="flex min-w-0 items-start gap-3">
+                    <ItemIcon icon={task.icon} name={localizedName(task, locale)} />
+                    <div className="min-w-0">
+                      <h4 className="font-black">{localizedName(task, locale)}</h4>
+                      <p className="mt-1 text-sm text-[var(--muted)]">{localizedDescription(task, locale)}</p>
+                    </div>
                   </div>
                   <span className="rounded-md bg-[var(--panel-subtle)] px-2 py-1 text-xs font-bold">
                     {t(`user.taskPeriods.${task.refreshPeriod}`)}
@@ -374,7 +378,7 @@ function Metric({ label, value, icon }: { label: string; value: string; icon?: s
   return (
     <div className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
       <div className="flex items-center gap-2 text-sm font-bold text-[var(--muted)]">
-        {icon ? <span aria-hidden="true">{icon}</span> : null}
+        {icon ? <CatalogResourceIconValue className="h-6 w-6" fallbackName={label} value={icon} /> : null}
         <span>{label}</span>
       </div>
       <div className="mt-2 text-2xl font-black">{value}</div>
@@ -383,15 +387,7 @@ function Metric({ label, value, icon }: { label: string; value: string; icon?: s
 }
 
 function ItemIcon({ icon, name }: { icon: string; name: string }) {
-  if (/^https?:\/\//i.test(icon)) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img alt="" className="h-12 w-12 rounded-lg border border-[var(--line)] object-cover" src={icon} />;
-  }
-  return (
-    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-lg bg-[var(--panel-subtle)] text-2xl font-black">
-      {icon || name.slice(0, 1).toUpperCase()}
-    </div>
-  );
+  return <CatalogResourceIconValue className="h-12 w-12" fallbackName={name} value={icon} />;
 }
 
 function EmptyState({ children }: { children: ReactNode }) {
