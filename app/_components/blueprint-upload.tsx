@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { supportedLocales, useI18n, type Locale } from "../_lib/i18n-provider";
@@ -12,6 +12,8 @@ import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
 import { ToolsPlayground } from "./tools-playground";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
+import { AspectImageCropDialog } from "./aspect-image-crop-dialog";
+import { FileDropZone } from "./file-drop-zone";
 
 const blueprintAccept = ".nbt,.schem,.schematic,.litematic";
 
@@ -21,23 +23,27 @@ export function BlueprintUpload() {
   const { ready, token, user } = useAuthSnapshot();
   const [blueprint, setBlueprint] = useState<File>();
   const [cover, setCover] = useState<File>();
+	const [coverCropFile, setCoverCropFile] = useState<File>();
+	const [coverPreview, setCoverPreview] = useState("");
   const initialLocale = locale as Locale;
   const [selectedLocale, setSelectedLocale] = useState<Locale>(initialLocale);
   const [defaultLocale, setDefaultLocale] = useState<Locale>(initialLocale);
   const [localizations, setLocalizations] = useState<LocalizationVersion<LocalizedContentFields>[]>(() => [emptyUploadLocalization(initialLocale)]);
-  const [zoom, setZoom] = useState(1);
-  const [offsetX, setOffsetX] = useState(50);
-  const [offsetY, setOffsetY] = useState(50);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const coverURL = useMemo(() => cover ? URL.createObjectURL(cover) : "", [cover]);
   const selected = localizations.find((item) => item.locale === selectedLocale) ?? emptyUploadLocalization(selectedLocale);
   const defaultVersion = localizations.find((item) => item.locale === defaultLocale) ?? emptyUploadLocalization(defaultLocale);
 
-  useEffect(() => () => { if (coverURL) URL.revokeObjectURL(coverURL); }, [coverURL]);
+  useEffect(() => () => { if (coverPreview) URL.revokeObjectURL(coverPreview); }, [coverPreview]);
   useEffect(() => {
     if (ready && !user) router.replace("/login?next=/blueprints/upload");
   }, [ready, router, user]);
+
+  function selectBlueprint(file?: File) {
+    if (!file) return;
+    setBlueprint(file);
+    if (!selected.fields.name) updateUploadLocalization(setLocalizations, selectedLocale, { name: file.name.replace(/\.[^.]+$/, "") });
+  }
 
   async function submit() {
     if (!blueprint || !token || !defaultVersion.fields.name.trim()) return;
@@ -49,8 +55,7 @@ export function BlueprintUpload() {
       if (!publicId) throw new Error(t("blueprints.uploadFailed"));
       setProgress(55);
       if (cover) {
-        const coverFile = await cropCoverToWebP(cover, zoom, offsetX, offsetY);
-        await uploadUserFileToOSS(coverFile, token, `blueprint_cover:${publicId}`);
+        await uploadUserFileToOSS(cover, token, `blueprint_cover:${publicId}`);
       }
       setProgress(82);
       await apiRequest(`/api/v1/blueprints/${encodeURIComponent(publicId)}`, {
@@ -85,17 +90,16 @@ export function BlueprintUpload() {
         <label className="block font-black">{t("mods.submission.defaultLocale")}<select className="field mt-2" value={defaultLocale} onChange={(event) => { const next = event.target.value as Locale; setDefaultLocale(next); setLocalizations((items) => ensureUploadLocalization(items, next)); }}>
           {supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
         </select></label>
-        <label className="block"><span className="mb-2 block font-black">{t("blueprints.uploadPage.file")}</span><input className="field" type="file" accept={blueprintAccept} onChange={(event) => { const file = event.target.files?.[0]; setBlueprint(file); if (file && !selected.fields.name) updateUploadLocalization(setLocalizations, selectedLocale, { name: file.name.replace(/\.[^.]+$/, "") }); }} /></label>
+        <div><span className="mb-2 block font-black">{t("blueprints.uploadPage.file")}</span><FileDropZone accept={blueprintAccept} className="min-h-44 p-6" disabled={uploading} hint={t("blueprints.dropFileHint")} title={blueprint?.name || t("blueprints.dropFile")} onFiles={(files) => selectBlueprint(files[0])} /></div>
         <label className="block"><span className="mb-2 block font-black">{t("blueprints.uploadPage.name")} ({selectedLocale})</span><input className="field" maxLength={120} value={selected.fields.name} onChange={(event) => updateUploadLocalization(setLocalizations, selectedLocale, { name: event.target.value })} /></label>
         <section className="surface rounded-lg border border-[var(--line)] p-5">
           <h2 className="font-black">{t("blueprints.uploadPage.cover")}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{t("blueprints.uploadPage.coverHint")}</p>
           <div className="mt-4 grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(260px,360px)] md:items-start">
             <div>
-              <input className="field" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setCover(event.target.files?.[0])} />
-              {cover ? <div className="mt-4 grid gap-3"><Range label={t("blueprints.uploadPage.zoom")} min={1} max={3} step={0.05} value={zoom} onChange={setZoom} /><Range label={t("blueprints.uploadPage.horizontal")} min={0} max={100} value={offsetX} onChange={setOffsetX} /><Range label={t("blueprints.uploadPage.vertical")} min={0} max={100} value={offsetY} onChange={setOffsetY} /></div> : null}
+              <input className="field" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setCoverCropFile(event.target.files?.[0])} />
             </div>
-            <div className="relative aspect-[121/75] overflow-hidden rounded-md bg-[var(--panel-subtle)]">{coverURL ? <Image unoptimized fill alt="" className="object-cover" sizes="360px" src={coverURL} style={{ objectPosition: `${offsetX}% ${offsetY}%`, transform: `scale(${zoom})` }} /> : <div className="grid h-full place-items-center text-sm text-[var(--muted)]">121 : 75</div>}</div>
+            <div className="relative aspect-[121/75] overflow-hidden rounded-md bg-[var(--panel-subtle)]">{coverPreview ? <Image unoptimized fill alt="" className="object-cover" src={coverPreview} /> : <div className="grid h-full place-items-center text-sm text-[var(--muted)]">121 : 75</div>}</div>
           </div>
         </section>
         <section><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("blueprints.introduction")} ({selectedLocale})</h2><span className="text-sm text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded editorTitle={t("blueprints.introduction")} value={selected.fields.contentMarkdown} onChange={(contentMarkdown) => updateUploadLocalization(setLocalizations, selectedLocale, { contentMarkdown })} /></section>
@@ -105,13 +109,14 @@ export function BlueprintUpload() {
         </div>
       </div>
     </div>
+    <AspectImageCropDialog aspectHeight={75} aspectWidth={121} file={coverCropFile} minimumHeight={75} minimumWidth={121}
+      outputs={[{ key: "cover", width: 1210, height: 750, type: "image/webp", quality: 0.86 }]}
+      onCancel={() => setCoverCropFile(undefined)} onConfirm={(output) => { setCoverCropFile(undefined); setCover(output.files.get("cover")); setCoverPreview(output.previewUrl); }} />
   </main>;
 }
-
 function emptyUploadLocalization(locale: Locale): LocalizationVersion<LocalizedContentFields> {
   return { locale, fields: { name: "", summary: "", contentMarkdown: "" }, provenance: "human", reviewStatus: "draft", editable: true };
 }
-
 function ensureUploadLocalization(items: LocalizationVersion<LocalizedContentFields>[], locale: Locale) {
   return items.some((item) => item.locale === locale) ? items : [...items, emptyUploadLocalization(locale)];
 }
@@ -126,28 +131,4 @@ function updateUploadLocalization(
     const next = { ...current, fields: { ...current.fields, ...patch }, reviewStatus: "draft" as const };
     return items.some((item) => item.locale === locale) ? items.map((item) => item.locale === locale ? next : item) : [...items, next];
   });
-}
-
-function Range({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void }) {
-  return <label className="grid grid-cols-[90px_1fr_44px] items-center gap-2 text-sm"><span>{label}</span><input type="range" min={min} max={max} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} /><span className="text-right tabular-nums">{Math.round(value * 100) / 100}</span></label>;
-}
-
-async function cropCoverToWebP(file: File, zoom: number, offsetX: number, offsetY: number) {
-  const bitmap = await createImageBitmap(file);
-  const width = 1210;
-  const height = 750;
-  const scale = Math.max(width / bitmap.width, height / bitmap.height) * Math.max(1, zoom);
-  const sourceWidth = width / scale;
-  const sourceHeight = height / scale;
-  const maxX = Math.max(0, bitmap.width - sourceWidth);
-  const maxY = Math.max(0, bitmap.height - sourceHeight);
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Canvas is unavailable");
-  context.drawImage(bitmap, maxX * offsetX / 100, maxY * offsetY / 100, sourceWidth, sourceHeight, 0, 0, width, height);
-  bitmap.close();
-  const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("WebP conversion failed")), "image/webp", 0.86));
-  return new File([blob], "cover.webp", { type: "image/webp" });
 }

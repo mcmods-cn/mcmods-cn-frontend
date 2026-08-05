@@ -47,7 +47,7 @@ zhTW.mods = { ...zhTW.mods, detail: { ...zhTW.mods.detail, downloads: {
   minecraftVersion: "Minecraft 版本", all: "全部", loader: "載入器", allLoaders: "全部載入器", source: "下載來源", allSources: "全部下載來源", externalSources: "第三方下載來源",
   noFiles: "沒有符合目前篩選條件的可下載檔案。", loadFailed: "讀取專案檔案失敗。", downloadFailed: "準備下載失敗。", downloadCount: "下載 {count} 次", updated: "更新於 {date}", preparing: "正在準備…", download: "下載",
   deleteConfirm: "確定要從站內下載清單刪除 {name} 嗎？", deleteFailed: "刪除專案檔案失敗。", providerUnavailable: "{source} 暫時無法使用。",
-  uploadTitle: "上傳站內 JAR 檔案", uploadDescription: "為 {project} 上傳可信任的 JAR 檔案。此操作需要該專案專屬的下載檔案上傳權限。", jarFile: "JAR 檔案", displayName: "顯示名稱", versionName: "Mod 版本", gameVersions: "Minecraft 版本", loaders: "載入器", releaseChannel: "發布通道",
-  channels: { release: "正式版", beta: "測試版", alpha: "預覽版" }, jarOnly: "請選擇 .jar 檔案。", metadataRequired: "必須填寫 Mod 版本、Minecraft 版本與載入器。", upload: "上傳檔案", uploading: "正在上傳…", uploaded: "站內檔案已發布。", uploadFailed: "上傳站內檔案失敗。",
+  uploadTitle: "上傳站內發布檔案", uploadDescription: "為 {project} 上傳可信任的發布檔案。此操作需要該專案專屬的下載檔案上傳權限。", projectFile: "發布檔案（{formats}）", displayName: "顯示名稱", versionName: "專案版本", gameVersions: "Minecraft 版本", loaders: "載入器", releaseChannel: "發布通道",
+  channels: { release: "正式版", beta: "測試版", alpha: "預覽版" }, unsupportedFileFormat: "請選擇支援的檔案：{formats}。", metadataRequired: "必須填寫專案版本、Minecraft 版本與載入器。", upload: "上傳檔案", uploading: "正在上傳…", uploaded: "站內檔案已發布。", uploadFailed: "上傳站內檔案失敗。",
 } } };
 export default zhTW;

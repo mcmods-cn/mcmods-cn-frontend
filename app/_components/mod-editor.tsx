@@ -40,6 +40,10 @@ import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
 import { ModResourcePickerDialog } from "./editor/mod-resource-picker";
 import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
 import type { CatalogResourceRef } from "../_lib/editor-types";
+import { FileDropZone } from "./file-drop-zone";
+import { ReviewLockGate } from "./review-edit-lock";
+import { useAutoDraft } from "../_lib/use-auto-draft";
+import { DraftAutosaveStatus } from "./draft-autosave-status";
 
 type ModDraft = Omit<CreateModPayload, "searchKeywords"> & { searchKeywords: string };
 
@@ -108,6 +112,20 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     reviewStatus: "approved" as const,
     editable: true,
   }));
+  const autoDraft = useAutoDraft({
+    draftKey: `mod:${siteId || "new"}`,
+    editUrl: siteId ? `/mods/${encodeURIComponent(siteId)}/edit` : "/mods/new",
+    enabled: ready && Boolean(token) && !loading,
+    kind: "mod",
+    title: draft.primaryName.trim() || t(siteId ? "mods.submission.editTitle" : "mods.submission.manualTitle"),
+    token,
+    value: { draft, changeReason },
+    onRestore: (payload) => {
+      setDraft(payload.draft);
+      setChangeReason(payload.changeReason);
+      setSelectedLocale((payload.draft.defaultLocale || locale) as Locale);
+    },
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -198,9 +216,11 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           { method: "POST", body: JSON.stringify({ snapshot, changeReason, baseRevisionId }) },
           token,
         );
+        await autoDraft.clearDraft().catch(() => undefined);
         router.push(`/mods/${revision.status === "approved" ? snapshot.siteId : siteId}/history`);
       } else {
         const created = await apiRequest<BackendModRecord>("/api/v1/mods", { method: "POST", body: JSON.stringify(snapshot) }, token);
+        await autoDraft.clearDraft().catch(() => undefined);
         router.push(`/mods/${created.siteId}`);
       }
     } catch (error) {
@@ -210,8 +230,8 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     }
   }
 
-  async function uploadGalleryImages(files: FileList | null) {
-    if (!files?.length || !token) return;
+  async function uploadGalleryImages(files: File[]) {
+    if (!files.length || !token) return;
     const images = [...files].filter((file) => file.type.startsWith("image/")).slice(0, Math.max(0, 32 - draft.galleryImages.length));
     if (!images.length) return;
     setGalleryUploading(true);
@@ -258,7 +278,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   }
   if (!token) return <EditorState text={t("mods.submission.loginRequired")} login />;
 
-  return (
+  const editor = (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}>
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5">
@@ -268,7 +288,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.submission.reviewNotice")}</p>
             {importMethod !== "manual" ? <p className="mt-2 text-sm font-bold text-[var(--accent)]">{t("mods.submission.importPrepared", { source: importMethod, url: importURL })}</p> : null}
           </div>
-          <button className="button-primary focus-ring" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button>
+          <div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
         </header>
 
         <div className="mb-6 grid gap-3 lg:grid-cols-[1fr_260px]">
@@ -379,10 +399,15 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         </section>
 
         <FormSection title={t("mods.submission.sections.gallery")} description={t("mods.submission.sections.galleryHint")}>
-          <label className="button-secondary focus-ring inline-flex cursor-pointer">
-            {galleryUploading ? t("mods.submission.actions.uploadingGallery") : t("mods.submission.actions.uploadGallery")}
-            <input className="sr-only" accept="image/png,image/jpeg,image/webp,image/gif,image/apng" disabled={galleryUploading} multiple type="file" onChange={(event) => { void uploadGalleryImages(event.currentTarget.files); event.currentTarget.value = ""; }} />
-          </label>
+          <FileDropZone
+            accept="image/png,image/jpeg,image/webp,image/gif,image/apng"
+            className="min-h-36 p-5"
+            disabled={galleryUploading}
+            hint={t("mods.submission.hints.galleryDrop")}
+            multiple
+            title={galleryUploading ? t("mods.submission.actions.uploadingGallery") : t("mods.submission.actions.uploadGallery")}
+            onFiles={(files) => void uploadGalleryImages(files)}
+          />
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {draft.galleryImages.map((image, index) => <figure className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]" key={`${image.publicId ?? "new"}-${image.fileId}`}>
             {image.url ? <Image unoptimized alt={image.name || `Gallery ${index + 1}`} className="aspect-video w-full object-cover" height={360} src={apiAssetURL(image.url)} width={640} /> : <div className="grid aspect-video place-items-center text-sm text-[var(--muted)]">{image.name}</div>}
@@ -407,6 +432,9 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
       </form>
     </main>
   );
+  return siteId && uniqueId
+    ? <ReviewLockGate entityType="mod" publicId={uniqueId} returnHref={`/mods/${siteId}`}>{editor}</ReviewLockGate>
+    : editor;
 }
 
 function ModIdentifierEditor({ values, config, optionCodes, onChange }: { values: BackendModIdentifier[]; config: MinecraftVersionConfig; optionCodes: string[]; onChange: (values: BackendModIdentifier[]) => void }) {
@@ -424,7 +452,7 @@ function ModIdentifierEditor({ values, config, optionCodes, onChange }: { values
   </div>;
 }
 
-function ModLinkEditor({ links, onChange }: { links: BackendModRecord["links"]; onChange: (links: BackendModRecord["links"]) => void }) {
+export function ModLinkEditor({ links, onChange }: { links: BackendModRecord["links"]; onChange: (links: BackendModRecord["links"]) => void }) {
   const { t } = useI18n();
   return <div className="grid gap-3">
     {!links.length ? <p className="rounded-lg border border-dashed border-[var(--line)] p-5 text-center text-sm font-semibold text-[var(--muted)]">{t("mods.submission.noLinks")}</p> : null}
@@ -440,7 +468,7 @@ function ModLinkEditor({ links, onChange }: { links: BackendModRecord["links"]; 
   </div>;
 }
 
-function CompatibilityEditor({ config, value, onChange }: { config: MinecraftVersionConfig; value: BackendModCompatibility[]; onChange: (value: BackendModCompatibility[]) => void }) {
+export function CompatibilityEditor({ config, value, onChange }: { config: MinecraftVersionConfig; value: BackendModCompatibility[]; onChange: (value: BackendModCompatibility[]) => void }) {
   const { t } = useI18n();
   const selectedLoaders = new Set(value.map((item) => item.loader));
   function toggleLoader(loader: string) {
@@ -720,7 +748,7 @@ function validGitHubProjectPath(value: string) {
   return /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,98}[A-Za-z0-9])?\/[A-Za-z0-9._-]{1,100}$/.test(value);
 }
 
-function fallbackMinecraftConfig(): MinecraftVersionConfig {
+export function fallbackMinecraftConfig(): MinecraftVersionConfig {
   const versions = [...new Set([...commonVersions])];
   return {
     versions: versions.map((code) => ({ code, type: "release" as const })),

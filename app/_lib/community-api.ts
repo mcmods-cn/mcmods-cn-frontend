@@ -33,6 +33,12 @@ export type CreatorMember = {
   title: string;
 };
 
+export type CreatorTeamMembership = {
+  team: CreatorSummary;
+  role: Pick<CreatorRole, "id" | "code" | "name">;
+  title: string;
+};
+
 export type CreatorLocalization = {
   locale: string;
   contentMarkdown: string;
@@ -55,6 +61,7 @@ export type CreatorDetail = {
   links: CreatorLink[];
   collaborators: CreatorSummary[];
   members: CreatorMember[];
+  teams: CreatorTeamMembership[];
   works: CreatorWork[];
   claimedUser: {
     id: string;
@@ -77,6 +84,24 @@ export type CreatorSnapshot = {
   avatarFileId?: string;
   links: CreatorLink[];
   members: Array<{ creatorId: string; roleId: string; title: string }>;
+};
+
+export type CreatorImportResult = {
+  kind: CreatorKind;
+  name: string;
+  avatarUrl: string;
+  avatarFileId?: string;
+  links: CreatorLink[];
+  members: Array<{
+    creatorId: string;
+    kind: "author";
+    name: string;
+    avatarUrl: string;
+    roleId: string;
+    role: string;
+    title: string;
+  }>;
+  createdMembers: number;
 };
 
 export type CreatorClaimAttachment = {

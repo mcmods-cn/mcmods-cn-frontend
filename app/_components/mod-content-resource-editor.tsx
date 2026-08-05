@@ -28,6 +28,7 @@ import {
 } from "../_lib/mod-content-api";
 import { modExportAssetURL } from "../_lib/mod-export-api";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
+import { useAutoDraft } from "../_lib/use-auto-draft";
 import { supportedLocales, type Locale, useI18n } from "../_lib/i18n-provider";
 import { ContentLanguageSwitcher, contentLanguageTabId } from "./editor/content-language-switcher";
 import { EditorShell } from "./editor/editor-shell";
@@ -37,6 +38,7 @@ import { ToolsPlayground } from "./tools-playground";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { loadTagPickerPage } from "../_lib/resource-picker-loaders";
 import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
+import { DraftAutosaveStatus } from "./draft-autosave-status";
 
 type EditorMode = "create" | "edit";
 type LocalizedFields = { name: string; contentMarkdown: string };
@@ -58,6 +60,20 @@ type DefinitionGroup = {
   fields: DefinitionField[];
   title?: string;
   titleKey: string;
+};
+type ModResourceAutoDraft = {
+  activeVersionId: string;
+  canonicalId: string;
+  defaultLocale: string;
+  definition: Record<string, unknown>;
+  entryTypeCode: string;
+  iconFilePublicId: string;
+  iconSmallFilePublicId: string;
+  kindCode: string;
+  localizations: EditorLocalization[];
+  reason: string;
+  renderFilePublicId: string;
+  selectedSectionId: string;
 };
 
 export function ModContentResourceEditor({
@@ -274,6 +290,35 @@ export function ModContentResourceEditor({
   const detailHref = resourceId
     ? `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}?version=${encodeURIComponent(activeVersionId)}&section=${encodeURIComponent(rootSection?.publicId || sectionId)}`
     : backHref;
+  const draftValue: ModResourceAutoDraft = {
+    activeVersionId, canonicalId, defaultLocale, definition, entryTypeCode,
+    iconFilePublicId, iconSmallFilePublicId, kindCode, localizations, reason,
+    renderFilePublicId, selectedSectionId,
+  };
+  const autoDraft = useAutoDraft({
+    draftKey: `mod-resource:${siteId}:${mode}:${resourceId || `${versionId}:${sectionId}`}`,
+    editUrl: resourceEditorEditURL(mode, siteId, resourceId, activeVersionId, selectedSectionId),
+    enabled: ready && Boolean(token) && !loading && !missingCreateTarget,
+    kind: "mod_resource",
+    title: fields.name.trim() || canonicalId.trim() || t(mode === "create" ? "modContent.sectionActions.addTitle" : "modContent.resourceEdit.title"),
+    token,
+    value: draftValue,
+    onRestore: (payload) => {
+      setActiveVersionId(payload.activeVersionId);
+      setCanonicalId(payload.canonicalId);
+      setDefaultLocale(payload.defaultLocale);
+      setDefinition(payload.definition);
+      setEntryTypeCode(payload.entryTypeCode);
+      setIconFilePublicId(payload.iconFilePublicId);
+      setIconSmallFilePublicId(payload.iconSmallFilePublicId);
+      setKindCode(payload.kindCode);
+      setLocalizations(payload.localizations);
+      setReason(payload.reason);
+      setRenderFilePublicId(payload.renderFilePublicId);
+      setSelectedSectionId(payload.selectedSectionId);
+      setSelectedLocale(asEditableLocale(payload.defaultLocale, initialLocale));
+    },
+  });
   const canSubmit = Boolean(
     token
     && kindCode.trim()
@@ -396,6 +441,7 @@ export function ModContentResourceEditor({
           resourcePublicId: resourceId,
           baseRevisionId: publishedRevisionId,
         }, token);
+      await autoDraft.clearDraft().catch(() => undefined);
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       if (result.reviewStatus === "pending") setSubmittedPending(true);
       if (result.reviewStatus === "approved") {
@@ -418,6 +464,7 @@ export function ModContentResourceEditor({
     setMessage("");
     try {
       const result = await archiveModContentResource(siteId, resourceId, activeVersionId, token);
+      await autoDraft.clearDraft().catch(() => undefined);
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       if (result.reviewStatus === "pending") setSubmittedPending(true);
       else {
@@ -454,6 +501,7 @@ export function ModContentResourceEditor({
     languageSwitcher={<ContentLanguageSwitcher disabled={busy || deleting || Boolean(uploadingAsset) || uploadingMarkdownAsset} panelId={localizationPanelId} value={selectedLocale} versions={localizations} onChange={setSelectedLocale} />}
     mode={mode}
     statusMessage={<>
+      <DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} />
       {error ? <p className="rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{error}</p> : null}
       {definitionJSONError ? <p className="rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{definitionJSONError}</p> : null}
       {message ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 font-bold">{message}</p> : null}
@@ -1349,6 +1397,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function uniqueList(value: string) {
   return [...new Set(value.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean))];
+}
+
+function resourceEditorEditURL(mode: EditorMode, siteId: string, resourceId: string, versionId: string, sectionId: string) {
+  const path = mode === "edit"
+    ? `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/edit`
+    : `/mods/${encodeURIComponent(siteId)}/resources/new`;
+  const query = new URLSearchParams();
+  if (versionId) query.set("version", versionId);
+  if (sectionId) query.set("section", sectionId);
+  return query.size ? `${path}?${query}` : path;
 }
 
 function errorText(reason: unknown) {

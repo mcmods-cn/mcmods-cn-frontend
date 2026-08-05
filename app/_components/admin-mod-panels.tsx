@@ -10,7 +10,7 @@ import { formatBytes } from "../_lib/oss-upload";
 
 type ModContentReviewItem = {
   id: string;
-  source: "revision" | "entry" | "catalog" | "blueprint" | "export";
+  source: "revision" | "entry" | "catalog" | "blueprint" | "creator" | "tutorial" | "issue" | "news" | "discussion" | "modpack" | "plugin" | "map" | "resource_pack" | "shader_pack" | "datapack" | "addon" | "export";
   modSiteId: string;
   modName: string;
   userId?: string;
@@ -206,7 +206,26 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "develo
     }
   }
 
-return <section><p className="text-sm text-[var(--muted)]">{t(`admin.reviews.${kind}Description`)}</p>{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}<div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t(`admin.reviews.applicationKinds.${item.kind}`); const summary = content ? item.summary : item.proof; const name = item.username; const historyHref = content && item.source === "blueprint" ? `/blueprints/${item.modSiteId}` : content && item.modSiteId ? `/mods/${item.modSiteId}/history` : ""; return <article key={`${content ? item.source : item.kind}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-black">{item.modName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p></div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && item.source === "blueprint" ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div></section>;
+return <section><p className="text-sm text-[var(--muted)]">{t(`admin.reviews.${kind}Description`)}</p>{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}<div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t(`admin.reviews.applicationKinds.${item.kind}`); const summary = content ? item.summary : item.proof; const name = item.username; const historyHref = content ? contentReviewHistoryHref(item) : ""; return <article key={`${content ? item.source : item.kind}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-black">{item.modName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p></div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && item.source === "blueprint" ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div></section>;
+}
+
+function contentReviewHistoryHref(item: ModContentReviewItem) {
+  if (!item.modSiteId) return "";
+  switch (item.source) {
+    case "blueprint": return `/blueprints/${item.modSiteId}`;
+    case "tutorial": return `/tutorials/${item.modSiteId}`;
+    case "issue": return `/issues/${item.modSiteId}`;
+    case "news": return `/news/${item.modSiteId}`;
+    case "discussion": return `/discussions/${item.modSiteId}`;
+    case "modpack": return `/modpacks/${item.modSiteId}/history`;
+    case "plugin": return `/plugins/${item.modSiteId}/history`;
+    case "map": return `/maps/${item.modSiteId}/history`;
+    case "resource_pack": return `/resource-packs/${item.modSiteId}/history`;
+    case "shader_pack": return `/shaders/${item.modSiteId}/history`;
+    case "datapack": return `/datapacks/${item.modSiteId}/history`;
+    case "addon": return `/addons/${item.modSiteId}/history`;
+    default: return `/mods/${item.modSiteId}/history`;
+  }
 }
 
 export function CommentReportReviewPanel({ token }: { token: string }) {

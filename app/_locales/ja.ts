@@ -41,7 +41,7 @@ ja.mods = { ...ja.mods, detail: { ...ja.mods.detail, downloads: {
   minecraftVersion: "Minecraft バージョン", all: "すべて", loader: "ローダー", allLoaders: "すべてのローダー", source: "ダウンロード元", allSources: "すべての配布元", externalSources: "外部配布元",
   noFiles: "現在の条件に一致するファイルはありません。", loadFailed: "プロジェクトファイルを読み込めませんでした。", downloadFailed: "ダウンロードを準備できませんでした。", downloadCount: "{count} 回ダウンロード", updated: "{date} 更新", preparing: "準備中…", download: "ダウンロード",
   deleteConfirm: "サイト内のダウンロード一覧から {name} を削除しますか？", deleteFailed: "プロジェクトファイルを削除できませんでした。", providerUnavailable: "{source} は一時的に利用できません。",
-  uploadTitle: "サイト内 JAR をアップロード", uploadDescription: "{project} の信頼できる JAR をアップロードします。この操作にはプロジェクト固有のアップロード権限が必要です。", jarFile: "JAR ファイル", displayName: "表示名", versionName: "Mod バージョン", gameVersions: "Minecraft バージョン", loaders: "ローダー", releaseChannel: "リリース区分",
-  channels: { release: "リリース", beta: "ベータ", alpha: "アルファ" }, jarOnly: ".jar ファイルを選択してください。", metadataRequired: "Mod バージョン、Minecraft バージョン、ローダーは必須です。", upload: "ファイルをアップロード", uploading: "アップロード中…", uploaded: "サイト内ファイルを公開しました。", uploadFailed: "サイト内ファイルをアップロードできませんでした。",
+  uploadTitle: "サイト内リリースファイルをアップロード", uploadDescription: "{project} の信頼できるリリースファイルをアップロードします。この操作にはプロジェクト固有のアップロード権限が必要です。", projectFile: "リリースファイル（{formats}）", displayName: "表示名", versionName: "プロジェクトバージョン", gameVersions: "Minecraft バージョン", loaders: "ローダー", releaseChannel: "リリース区分",
+  channels: { release: "リリース", beta: "ベータ", alpha: "アルファ" }, unsupportedFileFormat: "対応するファイルを選択してください：{formats}。", metadataRequired: "プロジェクトバージョン、Minecraft バージョン、ローダーは必須です。", upload: "ファイルをアップロード", uploading: "アップロード中…", uploaded: "サイト内ファイルを公開しました。", uploadFailed: "サイト内ファイルをアップロードできませんでした。",
 } } };
 export default ja;

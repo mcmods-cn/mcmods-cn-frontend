@@ -28,7 +28,7 @@ export function ServerDetail({ serverId }: { serverId: string }) {
   const [history, setHistory] = useState<ServerHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [editOpen, setEditOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(() => searchParams.has("draft"));
   const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {

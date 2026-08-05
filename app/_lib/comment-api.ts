@@ -1,6 +1,6 @@
 import { apiRequest } from "./api";
 
-export type CommentTargetType = "mod" | "mod_resource" | "blueprint" | "skin" | "creator" | "player_profile" | "tag" | "recipe_type";
+export type CommentTargetType = "mod" | "modpack" | "plugin" | "map" | "resource_pack" | "shader_pack" | "datapack" | "addon" | "mod_resource" | "blueprint" | "skin" | "creator" | "player_profile" | "tag" | "recipe_type" | "community_post";
 
 export type CommentTarget = {
   type: CommentTargetType;

@@ -32,6 +32,7 @@ import { IndexedHttpAssetSource } from "@/lib/mcmods-exporter/renderer";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { CommentSection } from "./comment-section";
 import { ModLootTableView, ModRecipeGallery, ModResourceProperties } from "./mod-resource-components";
+import { RelatedCommunityPosts } from "./community-post-catalog";
 
 const BlockModelCanvas = dynamic(() => import("@/components/mcmods-exporter/BlockModelCanvas").then((module) => module.BlockModelCanvas), { ssr: false });
 
@@ -75,7 +76,7 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><article className="mx-auto max-w-6xl">
     <header className="border-b border-[var(--line)] pb-5">
       <Link className="font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("mods.detail.back")}</Link>
-      <div className="mt-3 flex flex-wrap items-end justify-between gap-4"><h1 className="text-3xl font-black">{localization?.name || detail.canonicalId}</h1>{token && versionDetail && current ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/edit?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("common.edit")}</Link> : null}</div>
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-4"><h1 className="text-3xl font-black">{localization?.name || detail.canonicalId}</h1>{current ? <div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/history?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("contentHistory.title")}</Link>{token && versionDetail ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/edit?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("common.edit")}</Link> : null}</div> : null}</div>
       <div className="mt-4 flex gap-1 overflow-x-auto">{detail.versions.map((version, index) => {
         const href = version.detailUrl || `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}?version=${encodeURIComponent(version.publicId)}`;
         return <Link className={`focus-ring shrink-0 rounded px-2 py-1 text-xs font-black ${index === currentIndex ? "bg-[var(--accent)] text-white" : version.hasDetail ? "bg-[var(--panel-subtle)]" : "border border-[var(--red)] text-[var(--red)]"}`} href={href} key={version.publicId}>{version.label}</Link>;
@@ -83,6 +84,7 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
     </header>
     {current && similarResources.length > 1 ? <SimilarResourceStrip currentResourceId={resourceId} locale={locale} resources={similarResources} sectionId={sectionId} siteId={siteId} versionId={current.publicId} /> : null}
     {!current || !versionDetail ? <section className="mt-8 rounded-lg border border-dashed border-[var(--red)] bg-[var(--panel)] p-8 text-center"><h2 className="text-xl font-black">{current?.label}</h2><p className="mt-3 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionContentMissing")}</p></section> : <ResourcePresentation canonicalId={detail.canonicalId} current={current} definition={versionDetail.definition} entryTypeCode={versionDetail.entryTypeCode} key={current.publicId} kindCode={detail.kindCode} name={localization?.name || detail.canonicalId} resourceId={resourceId} schemaDefinition={versionDetail.schemaDefinition}>
+      <RelatedCommunityPosts compact resourceId={resourceId} />
       {localization?.contentMarkdown ? <div className="markdown-preview mt-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={localization.contentMarkdown} /></div> : <p className="mt-5 text-[var(--muted)]">{t("mods.exportImport.entry.noIntroduction")}</p>}
     </ResourcePresentation>}
     {current && versionDetail ? <CommentSection targetKey={`${resourceId}~${current.publicId}`} targetType="mod_resource" /> : null}

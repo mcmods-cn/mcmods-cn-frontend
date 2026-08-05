@@ -15,8 +15,10 @@ import { ModCatalogData } from "./mod-catalog-data";
 import { ProjectDownloads } from "./project-downloads";
 import { CommentSection } from "./comment-section";
 import { CreatorIdentityAvatar, CreatorTeamMemberGroup } from "./creator-identity";
+import { RelatedCommunityPosts } from "./community-post-catalog";
+import { ReviewAwareEditAction } from "./review-edit-lock";
 
-type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "gallery" | "discussion" | "tutorial" | "issues";
+type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
 export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
   const { locale, t } = useI18n();
@@ -35,7 +37,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
         <div className="mx-auto max-w-[1440px] px-4 py-7 lg:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link className="text-sm font-bold text-[var(--accent)] hover:underline" href="/mods">{t("mods.detail.back")}</Link>
-            <div className="flex w-full flex-wrap gap-2 sm:w-auto"><Link className="button-secondary focus-ring" href={`/mods/${mod.siteId}/history`}>{t("mods.detail.history")}</Link>{!canEdit ? user ? <><button className="button-secondary focus-ring" type="button" onClick={() => setApplicationKind("editor")}>{t("mods.applications.applyEditor")}</button><button className="button-secondary focus-ring" type="button" onClick={() => setApplicationKind("developer")}>{t("mods.applications.iAmDeveloper")}</button></> : <><Link className="button-secondary focus-ring" href={`/login?next=/mods/${mod.siteId}`}>{t("mods.applications.applyEditor")}</Link><Link className="button-secondary focus-ring" href={`/login?next=/mods/${mod.siteId}`}>{t("mods.applications.iAmDeveloper")}</Link></> : null}{canEdit ? <Link className="button-primary focus-ring" href={`/mods/${mod.siteId}/edit`}>{t("mods.detail.edit")}</Link> : null}</div>
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto"><Link className="button-secondary focus-ring" href={`/mods/${mod.siteId}/history`}>{t("mods.detail.history")}</Link>{!canEdit ? user ? <><button className="button-secondary focus-ring" type="button" onClick={() => setApplicationKind("editor")}>{t("mods.applications.applyEditor")}</button><button className="button-secondary focus-ring" type="button" onClick={() => setApplicationKind("developer")}>{t("mods.applications.iAmDeveloper")}</button></> : <><Link className="button-secondary focus-ring" href={`/login?next=/mods/${mod.siteId}`}>{t("mods.applications.applyEditor")}</Link><Link className="button-secondary focus-ring" href={`/login?next=/mods/${mod.siteId}`}>{t("mods.applications.iAmDeveloper")}</Link></> : null}<ReviewAwareEditAction canEdit={canEdit} editHref={`/mods/${mod.siteId}/edit`} entityType="mod" publicId={mod.uniqueId} /></div>
           </div>
           <div className="mt-5 flex flex-col gap-5 sm:flex-row">
             <ModIcon icon={mod.icon} name={displayName} alt={t("mods.card.iconAlt", { name: displayName })} />
@@ -63,7 +65,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
         <div className="mt-5 lg:hidden"><ModSidebar mod={mod} locale={locale} /></div>
 
         <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("mods.detail.sections")}>
-          {(["introduction", "relationships", "data", "downloads", "gallery", "discussion", "tutorial", "issues"] as DetailTab[]).map((item) => <button key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setTab(item)}><strong className="block whitespace-nowrap">{t(`mods.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}
+          {(["introduction", "relationships", "data", "downloads", "gallery", "discussion", "tutorial", "issues", "news"] as DetailTab[]).map((item) => <button key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setTab(item)}><strong className="block whitespace-nowrap">{t(`mods.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}
         </nav>
 
         <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -72,10 +74,11 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
             {tab === "relationships" ? <ModRelationshipsTab mod={mod} /> : null}
             {tab === "downloads" ? <ProjectDownloads projectType="mod" projectId={mod.uniqueId} projectName={displayName} token={token} suggestedVersions={mod.versions} suggestedLoaders={mod.loaders} /> : null}
             {tab === "introduction" ? <ModIntroductionTab mod={mod} /> : null}
-            {tab === "gallery" ? <ModGallery images={mod.galleryImages ?? []} emptyText={t("mods.detail.emptyGallery")} /> : null}
-            {tab === "discussion" ? <EmptyState text={t("mods.detail.bountyDiscussionReserved")} /> : null}
-            {tab === "tutorial" ? <EmptyState text={t("mods.detail.emptyTutorial")} /> : null}
-            {tab === "issues" ? <EmptyState text={t("mods.detail.emptyIssues")} /> : null}
+            {tab === "gallery" ? <ProjectGallery images={mod.galleryImages ?? []} emptyText={t("mods.detail.emptyGallery")} /> : null}
+            {tab === "discussion" ? <RelatedCommunityPosts kind="discussion" modId={mod.uniqueId} /> : null}
+            {tab === "tutorial" ? <RelatedCommunityPosts kind="tutorial" modId={mod.uniqueId} /> : null}
+            {tab === "issues" ? <RelatedCommunityPosts kind="issue" modId={mod.uniqueId} /> : null}
+            {tab === "news" ? <RelatedCommunityPosts kind="news" modId={mod.uniqueId} /> : null}
           </div>
           <aside className="hidden space-y-4 lg:sticky lg:top-20 lg:block lg:h-fit"><ModSidebar mod={mod} locale={locale} /></aside>
         </div>
@@ -86,7 +89,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
   );
 }
 
-function ModGallery({ images, emptyText }: { images: NonNullable<ModCatalogEntry["galleryImages"]>; emptyText: string }) {
+export function ProjectGallery({ images, emptyText }: { images: NonNullable<ModCatalogEntry["galleryImages"]>; emptyText: string }) {
   const { t } = useI18n();
   const [selected, setSelected] = useState<(typeof images)[number] | null>(null);
   useEffect(() => {

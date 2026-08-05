@@ -30,6 +30,8 @@ import {
 import { MinecraftLanguagePicker } from "./minecraft-language-picker";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { ToolsPlayground } from "./tools-playground";
+import { useAutoDraft } from "../_lib/use-auto-draft";
+import { DraftAutosaveStatus } from "./draft-autosave-status";
 
 type Props = {
   token: string;
@@ -85,6 +87,24 @@ export function ServerSubmissionWizard({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const proofFileRef = useRef<HTMLInputElement | null>(null);
+
+  const autoDraft = useAutoDraft({
+    token,
+    draftKey: `server:${initialServer?.id || "new"}`,
+    kind: "server",
+    title: draft.name.trim() || address.trim() || t(editing ? "servers.wizard.editTitle" : "servers.wizard.title"),
+    editUrl: initialServer ? `/servers/${initialServer.id}` : "/servers/new",
+    enabled: true,
+    value: { step, address, probe, draft, selectedMods, proofFiles },
+    onRestore: (restored) => {
+      setStep(restored.step);
+      setAddress(restored.address);
+      setProbe(restored.probe);
+      setDraft(restored.draft);
+      setSelectedMods(restored.selectedMods);
+      setProofFiles(restored.proofFiles);
+    },
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -228,6 +248,7 @@ export function ServerSubmissionWizard({
       };
       if (initialServer) {
         await updateServer(initialServer.id, metadata, token);
+        await autoDraft.clearDraft();
         onSubmitted(initialServer.id, initialServer.reviewStatus === "approved");
         return;
       }
@@ -237,6 +258,7 @@ export function ServerSubmissionWizard({
         proofText: reviewRequired ? draft.proofText.trim() : "",
         proofFileIds: reviewRequired ? proofFiles.map((file) => file.id) : [],
       }, token);
+      await autoDraft.clearDraft();
       onSubmitted(result.id, result.published);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t(editing ? "servers.wizard.updateFailed" : "servers.wizard.submitFailed"));
@@ -258,6 +280,7 @@ export function ServerSubmissionWizard({
             <div>
               <h2 className="text-xl font-black" id="server-submission-title">{t(editing ? "servers.wizard.editTitle" : "servers.wizard.title")}</h2>
               <p className="mt-1 text-sm text-[var(--muted)]">{t(editing ? "servers.wizard.editHint" : `servers.wizard.step${step}Hint`)}</p>
+              <DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} />
             </div>
             <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={onClose}>
               {t(presentation === "page" ? "common.cancel" : "common.close")}

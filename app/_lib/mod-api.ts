@@ -127,6 +127,7 @@ export type BackendModRevision = {
   snapshot: CreateModPayload;
   changeReason: string;
   submittedBy?: string;
+  submittedByName: string;
   reviewedBy?: string;
   reviewNote: string;
   createdAt: string;

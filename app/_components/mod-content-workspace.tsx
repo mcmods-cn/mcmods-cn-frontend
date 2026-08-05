@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type CSSProperties, type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
@@ -35,6 +35,7 @@ import {
   waitForCatalogImportJob,
 } from "../_lib/mod-export-api";
 import { CustomContentTemplateSettings } from "./custom-content-template-settings";
+import { FileDropZone } from "./file-drop-zone";
 
 type ImportSource = "" | "icon" | "exporter" | CatalogImportSource;
 type VersionDraft = { minecraftVersions: string[]; loaders: string[]; modVersion: string; reason: string };
@@ -417,81 +418,6 @@ function ExporterImportPanel({ siteId, token, version, blocked, onImported, onBu
   return <ModExportImportModal disabled={blocked || version.status !== "active"} inline onBusyChange={notifyBusy} onImported={async () => { await onImported(); }} siteId={siteId} targetVersionId={version.publicId} targetVersionLabel={version.label} token={token} />;
 }
 
-function ImportFileDropZone({
-  accept,
-  disabled,
-  hint,
-  multiple = false,
-  onFiles,
-  title,
-}: {
-  accept: string;
-  disabled: boolean;
-  hint: string;
-  multiple?: boolean;
-  onFiles: (files: File[]) => void;
-  title: string;
-}) {
-  const [dragDepth, setDragDepth] = useState(0);
-  const dragging = dragDepth > 0;
-
-  function containsFiles(event: DragEvent<HTMLLabelElement>) {
-    return Array.from(event.dataTransfer.types).includes("Files");
-  }
-
-  function handleDragEnter(event: DragEvent<HTMLLabelElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!disabled && containsFiles(event)) setDragDepth((current) => current + 1);
-  }
-
-  function handleDragOver(event: DragEvent<HTMLLabelElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    event.dataTransfer.dropEffect = disabled ? "none" : "copy";
-  }
-
-  function handleDragLeave(event: DragEvent<HTMLLabelElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragDepth((current) => Math.max(0, current - 1));
-  }
-
-  function handleDrop(event: DragEvent<HTMLLabelElement>) {
-    event.preventDefault();
-    event.stopPropagation();
-    setDragDepth(0);
-    if (disabled) return;
-    const files = Array.from(event.dataTransfer.files);
-    if (files.length) onFiles(multiple ? files : files.slice(0, 1));
-  }
-
-  return (
-    <label
-      aria-disabled={disabled}
-      className={`mt-5 grid min-h-56 place-items-center rounded-xl border border-dashed p-8 text-center transition-colors focus-within:ring-2 focus-within:ring-[var(--accent)] ${disabled ? "cursor-not-allowed border-[var(--line)] bg-[var(--panel-subtle)] opacity-60" : dragging ? "cursor-copy border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "cursor-pointer border-[var(--line)] bg-[var(--panel-subtle)] hover:border-[var(--accent)]"}`}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDragOver={handleDragOver}
-      onDrop={handleDrop}
-    >
-      <input
-        accept={accept}
-        className="sr-only"
-        disabled={disabled}
-        multiple={multiple}
-        type="file"
-        onChange={(event) => {
-          const files = Array.from(event.currentTarget.files || []);
-          if (files.length) onFiles(multiple ? files : files.slice(0, 1));
-          event.currentTarget.value = "";
-        }}
-      />
-      <span><strong className="text-lg">{title}</strong><small className="mt-2 block text-[var(--muted)]">{hint}</small></span>
-    </label>
-  );
-}
-
 function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; blocked: boolean; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
@@ -520,8 +446,9 @@ function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { si
       setBusy(false);
     }
   }
-  return <section className="mt-6"><h3 className="text-lg font-black">{t("modContent.iconImport.title")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.iconImport.description")}</p><ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} /><ImportFileDropZone
+  return <section className="mt-6"><h3 className="text-lg font-black">{t("modContent.iconImport.title")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.iconImport.description")}</p><ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} /><FileDropZone
     accept=".zip,application/zip"
+    className="mt-5 min-h-56 p-8"
     disabled={busy || blocked || version.status !== "active"}
     hint={t("modContent.iconImport.hint")}
     title={busy ? t("modContent.iconImport.uploading") : t("modContent.iconImport.choose")}
@@ -602,8 +529,9 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
     <h3 className="text-lg font-black">{t("modContent.catalogImport.title", { importer: importerName })}</h3>
     <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.catalogImport.description", { importer: importerName, version: version.label })}</p>
     <ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} />
-    <ImportFileDropZone
+    <FileDropZone
       accept=".json,application/json,application/x-ndjson"
+      className="mt-5 min-h-56 p-8"
       disabled={busy || blocked || version.status !== "active"}
       hint={t(hintKey, { importer: importerName })}
       multiple={supportsMultipleFiles}

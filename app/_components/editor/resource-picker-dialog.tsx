@@ -60,8 +60,8 @@ function OpenResourcePickerDialog({
   registryOptions = [],
   initialKind = "",
   initialRegistry = "",
-  unresolvedKind = initialKind || kindOptions[0]?.value || "resource",
-  unresolvedRegistry = initialRegistry || registryOptions[0]?.value || "",
+  unresolvedKind = "",
+  unresolvedRegistry = "",
   allowUnresolved = false,
   labels = {},
   loadPage = loadCatalogResources,
@@ -160,15 +160,17 @@ function OpenResourcePickerDialog({
   function returnFromManualMode() {
     if (invalidManual) return;
     const identifiers = [...new Set(manualInputs.map((item) => item.trim()).filter(Boolean))];
+    const manualKind = unresolvedKind || kind || initialKind || kindOptions[0]?.value || "resource";
+    const manualRegistry = unresolvedRegistry || registry || initialRegistry || registryOptions[0]?.value || "";
     setSelected((current) => {
       const next = multiple ? new Map(current) : new Map<string, CatalogResourceRef>();
       for (const identifier of identifiers) {
-        const publicId = unresolvedPublicID(unresolvedKind, identifier);
+        const publicId = unresolvedPublicID(manualKind, identifier);
         next.set(publicId, {
           publicId,
           id: identifier,
-          registry: unresolvedRegistry || namespaceFromIdentifier(identifier),
-          kind: unresolvedKind,
+          registry: manualRegistry || namespaceFromIdentifier(identifier),
+          kind: manualKind,
           names: {},
           unresolved: true,
           rawIdentifier: identifier,

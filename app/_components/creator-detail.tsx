@@ -18,6 +18,7 @@ import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upl
 import { notifySite } from "../_lib/site-notice";
 import { CommentSection } from "./comment-section";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { ReviewAwareEditAction } from "./review-edit-lock";
 
 const claimMaximumFiles = 5;
 const claimMaximumBytes = 10 << 20;
@@ -80,7 +81,7 @@ export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId:
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              {record.canEdit ? <Link className="button-primary focus-ring" href={`${creatorHref(creator)}/edit`}>{t("common.edit")}</Link> : null}
+              <ReviewAwareEditAction canEdit={record.canEdit} editHref={`${creatorHref(creator)}/edit`} entityType="creator" publicId={creator.publicId} />
               {record.canClaim ? <button className="button-secondary focus-ring" type="button" onClick={() => setClaimOpen(true)}>{t("creators.claim")}</button> : null}
               {!user && !record.claimedUser ? <Link className="button-secondary focus-ring" href={`/login?next=${encodeURIComponent(creatorHref(creator))}`}>{t("common.login")}</Link> : null}
             </div>
@@ -92,6 +93,7 @@ export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId:
         <div className="min-w-0 space-y-7">
           <DetailSection title={t("creators.introduction")}><MarkdownRenderer emptyText={t("creators.noIntroduction")} markdown={descriptionMarkdown} /></DetailSection>
           {creator.kind === "team" ? <DetailSection title={t("creators.members")}>{record.members.length ? <div className="grid gap-3 sm:grid-cols-2">{record.members.map((member) => <Link className="focus-ring flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={`/authors/${member.creatorId}`} key={`${member.creatorId}:${member.role.id}`}><CreatorAvatar creator={member} /><span className="min-w-0 flex-1"><span className="block truncate font-black">{member.name}</span><span className="mt-1 block truncate text-sm text-[var(--muted)]">{member.title || roleDisplayName(member.role, roles, locale)}</span></span></Link>)}</div> : <EmptyLine>{t("creators.noMembers")}</EmptyLine>}</DetailSection> : null}
+          {creator.kind === "author" ? <DetailSection title={t("creators.teams")}>{record.teams?.length ? <div className="grid gap-3 sm:grid-cols-2">{record.teams.map((membership) => <Link className="focus-ring flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={creatorHref(membership.team)} key={`${membership.team.publicId}:${membership.role.id}`}><CreatorAvatar creator={membership.team} /><span className="min-w-0 flex-1"><span className="block truncate font-black">{membership.team.name}</span><span className="mt-1 block truncate text-sm text-[var(--muted)]">{membership.title || roleDisplayName(membership.role, roles, locale)}</span></span></Link>)}</div> : <EmptyLine>{t("creators.noTeams")}</EmptyLine>}</DetailSection> : null}
           <DetailSection title={t("creators.works")}>{record.works.length ? <div className="grid gap-3 sm:grid-cols-2">{record.works.map((work) => <Link className="focus-ring flex min-w-0 gap-4 rounded-lg border border-[var(--line)] p-4 transition hover:-translate-y-0.5 hover:border-[var(--accent)]" href={`/mods/${work.siteId}`} key={work.uniqueId}><span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--panel-subtle)] font-black text-[var(--muted)]">{work.iconUrl ? <img alt="" className="h-full w-full object-cover" src={work.iconUrl} /> : "MOD"}</span><span className="min-w-0"><span className="block truncate font-black text-[var(--accent)]">{work.secondaryName || work.primaryName}</span>{work.secondaryName ? <span className="mt-0.5 block truncate text-xs text-[var(--muted)]">{work.primaryName}</span> : null}<span className="mt-2 line-clamp-2 text-sm leading-6 text-[var(--muted)]">{work.summary}</span></span></Link>)}</div> : <EmptyLine>{t("creators.noWorks")}</EmptyLine>}</DetailSection>
         </div>
 

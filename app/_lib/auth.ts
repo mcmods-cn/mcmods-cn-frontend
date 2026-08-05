@@ -41,7 +41,7 @@ let bootstrapRequest: Promise<AuthUser | null> | null = null;
 
 export function saveAuth(result: AuthResult) {
   activeToken = result.token || cookieSessionToken;
-  activeUser = result.user;
+  activeUser = normalizeAuthUser(result.user);
   broadcastAuthChange("login");
   window.dispatchEvent(new Event("mcmods-auth-change"));
 }
@@ -136,7 +136,7 @@ export function hasPermission(user: AuthUser | null | undefined, required: strin
   if (!user) return false;
   let selected: AuthPermissionRule | undefined;
   let selectedSpecificity = -1;
-  for (const rule of user.permissionRules) {
+  for (const rule of user.permissionRules ?? []) {
     const specificity = permissionSpecificity(rule.code, required);
     if (specificity < 0) continue;
     if (!selected || rule.priority > selected.priority
@@ -168,7 +168,7 @@ async function bootstrapAuth() {
       const envelope = (await response.json()) as { data?: AuthUser };
       if (!envelope.data) return null;
       activeToken = cookieSessionToken;
-      activeUser = envelope.data;
+      activeUser = normalizeAuthUser(envelope.data);
       return activeUser;
     })
     .catch(() => null)
@@ -176,6 +176,14 @@ async function bootstrapAuth() {
       bootstrapRequest = null;
     });
   return bootstrapRequest;
+}
+
+function normalizeAuthUser(user: AuthUser): AuthUser {
+  return {
+    ...user,
+    roleCodes: Array.isArray(user.roleCodes) ? user.roleCodes : [],
+    permissionRules: Array.isArray(user.permissionRules) ? user.permissionRules : [],
+  };
 }
 
 function broadcastAuthChange(kind: "login" | "logout") {

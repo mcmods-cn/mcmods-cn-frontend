@@ -201,6 +201,11 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
   onCreated: () => Promise<void>;
 }) {
   const { t } = useI18n();
+
+  const fileRule = projectFileRule(projectType);
+  const acceptedExtensions = fileRule.extensions;
+  const acceptedFileTypes = fileRule.accept;
+  const acceptedFormats = acceptedExtensions.join(" / ");
   const [file, setFile] = useState<File>();
   const [displayName, setDisplayName] = useState("");
   const [versionName, setVersionName] = useState("");
@@ -213,13 +218,13 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!file || !file.name.toLowerCase().endsWith(".jar")) {
-      setMessage(t("mods.detail.downloads.jarOnly"));
+    if (!file || !acceptedExtensions.some((extension) => file.name.toLowerCase().endsWith(extension))) {
+      setMessage(t("mods.detail.downloads.unsupportedFileFormat", { formats: acceptedFormats }));
       return;
     }
     const parsedVersions = splitValues(gameVersions);
     const parsedLoaders = splitValues(loaderValues);
-    if (!versionName.trim() || !parsedVersions.length || !parsedLoaders.length) {
+    if (!versionName.trim() || !parsedVersions.length || fileRule.requiresLoader && !parsedLoaders.length) {
       setMessage(t("mods.detail.downloads.metadataRequired"));
       return;
     }
@@ -255,11 +260,11 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
     <form className="border-t border-[var(--line)] p-5" onSubmit={submit}>
       <p className="text-sm leading-6 text-[var(--muted)]">{t("mods.detail.downloads.uploadDescription", { project: projectName })}</p>
       <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <label className="text-sm font-black sm:col-span-2">{t("mods.detail.downloads.jarFile")}<input className="field mt-2" type="file" accept=".jar,application/java-archive" required onChange={(event) => { const next = event.target.files?.[0]; setFile(next); if (next && !displayName) setDisplayName(next.name.replace(/\.jar$/i, "")); }} /></label>
+        <label className="text-sm font-black sm:col-span-2">{t("mods.detail.downloads.projectFile", { formats: acceptedFormats })}<input className="field mt-2" type="file" accept={acceptedFileTypes} required onChange={(event) => { const next = event.target.files?.[0]; setFile(next); if (next && !displayName) setDisplayName(next.name.replace(/\.(?:jar|mrpack|zip)$/i, "")); }} /></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.displayName")}<input className="field mt-2" maxLength={200} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.versionName")}<input className="field mt-2" maxLength={120} required value={versionName} placeholder="1.0.0" onChange={(event) => setVersionName(event.target.value)} /></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.gameVersions")}<input className="field mt-2" required value={gameVersions} list={`project-file-versions-${projectId}`} placeholder="1.21.1, 1.20.1" onChange={(event) => setGameVersions(event.target.value)} /><datalist id={`project-file-versions-${projectId}`}>{versions.map((item) => <option key={item} value={item} />)}</datalist></label>
-        <label className="text-sm font-black">{t("mods.detail.downloads.loaders")}<input className="field mt-2" required value={loaderValues} list={`project-file-loaders-${projectId}`} placeholder="NeoForge, Forge" onChange={(event) => setLoaderValues(event.target.value)} /><datalist id={`project-file-loaders-${projectId}`}>{loaders.map((item) => <option key={item} value={item} />)}</datalist></label>
+        <label className="text-sm font-black">{t("mods.detail.downloads.loaders")}<input className="field mt-2" required={fileRule.requiresLoader} value={loaderValues} list={`project-file-loaders-${projectId}`} placeholder={fileRule.requiresLoader ? "NeoForge, Forge" : t("mods.detail.notProvided")} onChange={(event) => setLoaderValues(event.target.value)} /><datalist id={`project-file-loaders-${projectId}`}>{loaders.map((item) => <option key={item} value={item} />)}</datalist></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.releaseChannel")}<select className="field mt-2" value={channel} onChange={(event) => setChannel(event.target.value as ProjectReleaseChannel)}>{(["release", "beta", "alpha"] as const).map((item) => <option key={item} value={item}>{t(`mods.detail.downloads.channels.${item}`)}</option>)}</select></label>
       </div>
       {uploading ? <div className="mt-5"><div className="flex justify-between text-sm font-bold"><span>{t("mods.detail.downloads.uploading")}</span><span>{progress}%</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div></div> : null}
@@ -312,6 +317,22 @@ function uniqueOptions(...lists: string[][]) {
 
 function splitValues(value: string) {
   return Array.from(new Set(value.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean)));
+}
+
+function projectFileRule(projectType: string) {
+  switch (projectType) {
+    case "modpack":
+      return { extensions: [".mrpack", ".zip"], accept: ".mrpack,.zip,application/zip", requiresLoader: true };
+    case "map":
+    case "resource_pack":
+    case "shader_pack":
+    case "datapack":
+      return { extensions: [".zip"], accept: ".zip,application/zip", requiresLoader: false };
+    case "addon":
+      return { extensions: [".jar", ".zip"], accept: ".jar,.zip,application/java-archive,application/zip", requiresLoader: true };
+    default:
+      return { extensions: [".jar"], accept: ".jar,application/java-archive", requiresLoader: true };
+  }
 }
 
 function formatProjectFileDate(value: string, locale: string) {

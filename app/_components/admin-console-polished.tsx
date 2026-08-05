@@ -938,7 +938,7 @@ export function AdminConsolePolished() {
             </div>
             {auth.user ? (
               <div className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm">
-                {auth.user.username} / {auth.user.roleCodes.join(", ") || t("admin.ungrouped")}
+                {auth.user.username} / {(auth.user.roleCodes ?? []).join(", ") || t("admin.ungrouped")}
               </div>
             ) : null}
           </div>
@@ -3843,7 +3843,7 @@ function UsersPanelV2({
                   <td className="border-b border-[var(--line)] py-3">{user.email}</td>
                   <td className="border-b border-[var(--line)] py-3">{formatDateTime(user.createdAt)}</td>
                   <td className="border-b border-[var(--line)] py-3">{user.status}</td>
-                  <td className="border-b border-[var(--line)] py-3">{user.roleCodes.join(", ") || "member"}</td>
+                  <td className="border-b border-[var(--line)] py-3">{(user.roleCodes ?? []).join(", ") || "member"}</td>
                 </tr>
               ))}
             </tbody>
@@ -3960,7 +3960,7 @@ function AdminUserDetailsDialog({
           <section className="border-t border-[var(--line)] px-5 py-5">
             <h3 className="font-bold">{t("admin.roleList")}</h3>
             <div className="mt-3 flex flex-wrap gap-2">
-              {user.roleCodes.length > 0 ? user.roleCodes.map((role) => (
+              {(user.roleCodes ?? []).length > 0 ? (user.roleCodes ?? []).map((role) => (
                 <span key={role} className="rounded-md bg-[var(--panel-subtle)] px-2.5 py-1 font-mono text-xs">{role}</span>
               )) : <span className="text-sm text-[var(--muted)]">{t("admin.noRoleAssigned")}</span>}
             </div>
@@ -4169,8 +4169,30 @@ type ReviewSettings = {
   blueprintCreate: boolean;
   blueprintEdit: boolean;
   serverCreate: boolean;
+  tutorialCreate: boolean;
+  tutorialEdit: boolean;
+  issueCreate: boolean;
+  issueEdit: boolean;
+  newsCreate: boolean;
+  newsEdit: boolean;
+  discussionCreate: boolean;
+  discussionEdit: boolean;
   modCreate: boolean;
   modEdit: boolean;
+  modpackCreate: boolean;
+  modpackEdit: boolean;
+  pluginCreate: boolean;
+  pluginEdit: boolean;
+  mapCreate: boolean;
+  mapEdit: boolean;
+  resourcePackCreate: boolean;
+  resourcePackEdit: boolean;
+  shaderPackCreate: boolean;
+  shaderPackEdit: boolean;
+  datapackCreate: boolean;
+  datapackEdit: boolean;
+  addonCreate: boolean;
+  addonEdit: boolean;
   authorCreate: boolean;
   authorEdit: boolean;
   authorClaim: boolean;
@@ -4208,8 +4230,30 @@ function ReviewSettingsPanel({ token }: { token: string }) {
     { key: "blueprintCreate", title: t("admin.reviewSettings.blueprintCreate"), description: t("admin.reviewSettings.blueprintCreateDescription") },
     { key: "blueprintEdit", title: t("admin.reviewSettings.blueprintEdit"), description: t("admin.reviewSettings.blueprintEditDescription") },
     { key: "serverCreate", title: t("admin.reviewSettings.serverCreate"), description: t("admin.reviewSettings.serverCreateDescription") },
+    { key: "tutorialCreate", title: t("admin.reviewSettings.tutorialCreate"), description: t("admin.reviewSettings.tutorialCreateDescription") },
+    { key: "tutorialEdit", title: t("admin.reviewSettings.tutorialEdit"), description: t("admin.reviewSettings.tutorialEditDescription") },
+    { key: "issueCreate", title: t("admin.reviewSettings.issueCreate"), description: t("admin.reviewSettings.issueCreateDescription") },
+    { key: "issueEdit", title: t("admin.reviewSettings.issueEdit"), description: t("admin.reviewSettings.issueEditDescription") },
+    { key: "newsCreate", title: t("admin.reviewSettings.newsCreate"), description: t("admin.reviewSettings.newsCreateDescription") },
+    { key: "newsEdit", title: t("admin.reviewSettings.newsEdit"), description: t("admin.reviewSettings.newsEditDescription") },
+    { key: "discussionCreate", title: t("admin.reviewSettings.discussionCreate"), description: t("admin.reviewSettings.discussionCreateDescription") },
+    { key: "discussionEdit", title: t("admin.reviewSettings.discussionEdit"), description: t("admin.reviewSettings.discussionEditDescription") },
     { key: "modCreate", title: t("admin.reviewSettings.modCreate"), description: t("admin.reviewSettings.modCreateDescription") },
     { key: "modEdit", title: t("admin.reviewSettings.modEdit"), description: t("admin.reviewSettings.modEditDescription") },
+    { key: "modpackCreate", title: t("admin.reviewSettings.modpackCreate"), description: t("admin.reviewSettings.modpackCreateDescription") },
+    { key: "modpackEdit", title: t("admin.reviewSettings.modpackEdit"), description: t("admin.reviewSettings.modpackEditDescription") },
+    { key: "pluginCreate", title: t("admin.reviewSettings.pluginCreate"), description: t("admin.reviewSettings.pluginCreateDescription") },
+    { key: "pluginEdit", title: t("admin.reviewSettings.pluginEdit"), description: t("admin.reviewSettings.pluginEditDescription") },
+    { key: "mapCreate", title: t("admin.reviewSettings.mapCreate"), description: t("admin.reviewSettings.mapCreateDescription") },
+    { key: "mapEdit", title: t("admin.reviewSettings.mapEdit"), description: t("admin.reviewSettings.mapEditDescription") },
+    { key: "resourcePackCreate", title: t("admin.reviewSettings.resourcePackCreate"), description: t("admin.reviewSettings.resourcePackCreateDescription") },
+    { key: "resourcePackEdit", title: t("admin.reviewSettings.resourcePackEdit"), description: t("admin.reviewSettings.resourcePackEditDescription") },
+    { key: "shaderPackCreate", title: t("admin.reviewSettings.shaderPackCreate"), description: t("admin.reviewSettings.shaderPackCreateDescription") },
+    { key: "shaderPackEdit", title: t("admin.reviewSettings.shaderPackEdit"), description: t("admin.reviewSettings.shaderPackEditDescription") },
+    { key: "datapackCreate", title: t("admin.reviewSettings.datapackCreate"), description: t("admin.reviewSettings.datapackCreateDescription") },
+    { key: "datapackEdit", title: t("admin.reviewSettings.datapackEdit"), description: t("admin.reviewSettings.datapackEditDescription") },
+    { key: "addonCreate", title: t("admin.reviewSettings.addonCreate"), description: t("admin.reviewSettings.addonCreateDescription") },
+    { key: "addonEdit", title: t("admin.reviewSettings.addonEdit"), description: t("admin.reviewSettings.addonEditDescription") },
     { key: "authorCreate", title: t("admin.reviewSettings.authorCreate"), description: t("admin.reviewSettings.authorCreateDescription") },
     { key: "authorEdit", title: t("admin.reviewSettings.authorEdit"), description: t("admin.reviewSettings.authorEditDescription") },
     { key: "authorClaim", title: t("admin.reviewSettings.authorClaim"), description: t("admin.reviewSettings.authorClaimDescription") },

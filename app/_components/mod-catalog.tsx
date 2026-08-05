@@ -7,6 +7,7 @@ import { FormEvent, KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useSt
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { BackendModList, backendModToCatalogEntry } from "../_lib/mod-api";
+import { BackendModpackList, backendModpackToCatalogEntry, modpackCategoryOptions } from "../_lib/modpack-api";
 import {
   advancedOptions,
   aprilFoolsVersions,
@@ -48,12 +49,10 @@ type FilterChip = { id: string; label: string; remove: () => void };
 
 const filterParams = ["version", "versionMode", "loader", "primary", "tag", "environment", "status", "source", "license", "updated", "feature"];
 const defaultExpandedGroups = ["versions", "loaders", "primary", "tags", "environment", "status", "source", "updated"];
-const preferenceStorageKey = "mcmods-mod-catalog-preferences";
 const expandedStorageKey = "mcmods-mod-filter-groups";
-const favoriteStorageKey = "mcmods-favorite-mods";
 const catalogNow = Date.parse("2026-07-11T12:00:00Z");
 
-export function ModCatalog() {
+export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "modpack" }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
   const pathname = usePathname();
@@ -70,6 +69,10 @@ export function ModCatalog() {
   const [backendMods, setBackendMods] = useState<ModCatalogEntry[]>([]);
   const [submissionOpen, setSubmissionOpen] = useState(false);
   const [favoriteTarget, setFavoriteTarget] = useState<ModCatalogEntry | null>(null);
+  const isModpack = projectType === "modpack";
+  const basePath = isModpack ? "/modpacks" : "/mods";
+  const preferenceStorageKey = `mcmods-${projectType}-catalog-preferences`;
+  const favoriteStorageKey = `mcmods-favorite-${projectType}s`;
 
   const paramsKey = searchParams.toString();
   const filters = useMemo(() => parseFilters(new URLSearchParams(paramsKey), preferences), [paramsKey, preferences]);
@@ -84,14 +87,14 @@ export function ModCatalog() {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setPreferences(readPreferences());
+      setPreferences(readPreferences(preferenceStorageKey));
       setExpandedGroups(readStringSet(expandedStorageKey, defaultExpandedGroups));
       setFavoriteSlugs(readStringSet(favoriteStorageKey));
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [favoriteStorageKey, preferenceStorageKey]);
 
   useEffect(() => {
     if (!token) return;
@@ -100,17 +103,19 @@ export function ModCatalog() {
       .then(async (collections) => Promise.all(collections.map((collection) => loadFavoriteItems(token, collection.id))))
       .then((groups) => {
         if (cancelled) return;
-        setFavoriteSlugs(new Set(groups.flat().filter((item) => item.entityType === "mod").map((item) => item.entityKey)));
+        setFavoriteSlugs(new Set(groups.flat().filter((item) => item.entityType === projectType).map((item) => item.entityKey)));
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [token]);
+  }, [projectType, token]);
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest<BackendModList>("/api/v1/mods?limit=100", {}, token)
+    apiRequest<BackendModList | BackendModpackList>(`${isModpack ? "/api/v1/modpacks" : "/api/v1/mods"}?limit=100`, {}, token)
       .then((result) => {
-        if (!cancelled) setBackendMods(result.items.map(backendModToCatalogEntry));
+        if (!cancelled) setBackendMods(isModpack
+          ? (result as BackendModpackList).items.map(backendModpackToCatalogEntry)
+          : (result as BackendModList).items.map(backendModToCatalogEntry));
       })
       .catch(() => {
         if (!cancelled) setBackendMods([]);
@@ -118,7 +123,7 @@ export function ModCatalog() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [isModpack, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -213,7 +218,7 @@ export function ModCatalog() {
   }
 
   async function shareMod(mod: ModCatalogEntry) {
-    const url = `${window.location.origin}/mods/${mod.siteId}`;
+    const url = `${window.location.origin}${basePath}/${mod.siteId}`;
     try {
       if (navigator.share) await navigator.share({ title: mod.name, url });
       else await navigator.clipboard.writeText(url);
@@ -223,7 +228,7 @@ export function ModCatalog() {
     }
   }
 
-  const chips = buildFilterChips(filters, t, (key, values) => replaceParams({ [key]: values }));
+  const chips = buildFilterChips(filters, t, isModpack, (key, values) => replaceParams({ [key]: values }));
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -231,22 +236,21 @@ export function ModCatalog() {
         <div className="mx-auto max-w-7xl px-4 py-7 lg:py-9">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-sm font-bold text-[var(--accent)]">{t("mods.kicker")}</p>
-              <h1 className="mt-1 text-3xl font-black md:text-4xl">{t("mods.title")}</h1>
-              <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{t("mods.total", { count: backendMods.length })}</p>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.description")}</p>
+              <p className="text-sm font-bold text-[var(--accent)]">{t(isModpack ? "modpacks.kicker" : "mods.kicker")}</p>
+              <h1 className="mt-1 text-3xl font-black md:text-4xl">{t(isModpack ? "modpacks.title" : "mods.title")}</h1>
+              <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{t(isModpack ? "modpacks.total" : "mods.total", { count: backendMods.length })}</p>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t(isModpack ? "modpacks.description" : "mods.description")}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link className="button-secondary focus-ring" href="/mods-tag">{t("globalCatalog.tags.short")}</Link>
-              <Link className="button-secondary focus-ring" href="/recipe-types">{t("globalCatalog.recipeTypes.short")}</Link>
-              <button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>{t("mods.submit")}</button>
+              {!isModpack ? <><Link className="button-secondary focus-ring" href="/mods-tag">{t("globalCatalog.tags.short")}</Link><Link className="button-secondary focus-ring" href="/recipe-types">{t("globalCatalog.recipeTypes.short")}</Link></> : null}
+              {isModpack ? <Link className="button-primary focus-ring" href="/modpacks/new">{t("modpacks.submit")}</Link> : <button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>{t("mods.submit")}</button>}
             </div>
           </div>
           <form className="mt-6 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
             <input
               className="field h-12"
               value={queryDraft}
-              placeholder={t("mods.searchPlaceholder")}
+              placeholder={t(isModpack ? "modpacks.searchPlaceholder" : "mods.searchPlaceholder")}
               onChange={(event) => setQueryDraft(event.target.value)}
             />
             <button className="button-primary focus-ring h-12 px-6" type="submit">{t("mods.search")}</button>
@@ -268,6 +272,7 @@ export function ModCatalog() {
               expandedGroups={expandedGroups}
               filters={filters}
               mods={backendMods}
+              isModpack={isModpack}
               resultCount={filteredMods.length}
               t={t}
               onClear={clearFilters}
@@ -331,7 +336,8 @@ export function ModCatalog() {
                     mod={mod}
                     t={t}
                     view={filters.view}
-                    onViewDownloads={() => window.open(`https://modrinth.com/mod/${mod.modrinthProjectId || mod.siteId}/versions`, "_blank", "noopener,noreferrer")}
+                    basePath={basePath}
+                    onViewDownloads={() => window.open(`https://modrinth.com/${isModpack ? "modpack" : "mod"}/${mod.modrinthProjectId || mod.siteId}/versions`, "_blank", "noopener,noreferrer")}
                     onShare={() => void shareMod(mod)}
                     onToggleExpanded={() => setExpandedCards((current) => toggleSet(current, mod.siteId))}
                     onToggleFavorite={() => toggleFavorite(mod.siteId)}
@@ -376,6 +382,7 @@ export function ModCatalog() {
           expandedGroups={expandedGroups}
           filters={filters}
           mods={backendMods}
+          isModpack={isModpack}
           resultCount={filteredMods.length}
           t={t}
           onClear={clearFilters}
@@ -385,14 +392,14 @@ export function ModCatalog() {
           onToggleList={toggleListParam}
         />
       </CatalogMobileFilterDrawer>
-      {favoriteTarget && token ? <FavoritePickerModal entityType="mod" entityKey={favoriteTarget.uniqueId} title={favoriteTarget.name} token={token} onClose={() => setFavoriteTarget(null)} onSaved={(selected) => {
+      {favoriteTarget && token ? <FavoritePickerModal entityType={projectType} entityKey={favoriteTarget.uniqueId} title={favoriteTarget.name} token={token} onClose={() => setFavoriteTarget(null)} onSaved={(selected) => {
         setFavoriteSlugs((current) => { const next = new Set(current); if (selected) next.add(favoriteTarget.uniqueId); else next.delete(favoriteTarget.uniqueId); return next; });
         setNotice(t(selected ? "mods.notices.favorited" : "mods.notices.unfavorited"));
         setFavoriteTarget(null);
       }} /> : null}
 
       {notice ? <div className="fixed bottom-5 left-1/2 z-[80] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg bg-[var(--foreground)] px-4 py-3 text-center text-sm font-bold text-[var(--background)] shadow-xl" role="status">{notice}</div> : null}
-      <ModSubmissionModal open={submissionOpen} onClose={() => setSubmissionOpen(false)} />
+      {!isModpack ? <ModSubmissionModal open={submissionOpen} onClose={() => setSubmissionOpen(false)} /> : null}
     </main>
   );
 }
@@ -401,6 +408,7 @@ function FilterPanel({
   expandedGroups,
   filters,
   mods,
+  isModpack,
   resultCount,
   t,
   onClear,
@@ -412,6 +420,7 @@ function FilterPanel({
   expandedGroups: Set<string>;
   filters: CatalogFilters;
   mods: ModCatalogEntry[];
+  isModpack: boolean;
   resultCount: number;
   t: Translation;
   onClear: () => void;
@@ -467,12 +476,12 @@ function FilterPanel({
         />
       </CatalogFilterGroup>
 
-      <CatalogFilterGroup group="primary" label={t("mods.groups.primary")} expanded={expandedGroups.has("primary")} onToggle={onGroupToggle}>
+      {!isModpack ? <CatalogFilterGroup group="primary" label={t("mods.groups.primary")} expanded={expandedGroups.has("primary")} onToggle={onGroupToggle}>
         <CatalogRadioList options={primaryCategoryOptions} selected={filters.primaryCategories[0] ?? ""} label={(item) => t(`mods.categories.${item}`)} onChange={(item) => onParamChange({ primary: item })} />
-      </CatalogFilterGroup>
+      </CatalogFilterGroup> : null}
 
-      <CatalogFilterGroup group="tags" label={t("mods.groups.tags")} expanded={expandedGroups.has("tags")} onToggle={onGroupToggle}>
-        <CatalogOptionList options={tagOptions} selected={filters.tags} label={(item) => t(`mods.tags.${item}`)} onToggle={(item) => onToggleList("tag", item)} />
+      <CatalogFilterGroup group="tags" label={t(isModpack ? "modpacks.editor.categories" : "mods.groups.tags")} expanded={expandedGroups.has("tags")} onToggle={onGroupToggle}>
+        <CatalogOptionList options={isModpack ? modpackCategoryOptions : tagOptions} selected={filters.tags} label={(item) => t(isModpack ? `modpacks.categories.${item}` : `mods.tags.${item}`)} onToggle={(item) => onToggleList("tag", item)} />
       </CatalogFilterGroup>
 
       <CatalogFilterGroup group="environment" label={t("mods.groups.environment")} expanded={expandedGroups.has("environment")} onToggle={onGroupToggle}>
@@ -505,13 +514,14 @@ function SmallToggle({ active, label, onClick }: { active: boolean; label: strin
   return <button className={`focus-ring rounded-md px-2 py-1.5 text-left text-xs font-bold ${active ? "bg-[var(--panel-subtle)] text-[var(--accent)]" : "text-[var(--muted)] hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={onClick}>{label}</button>;
 }
 
-function ModCard({ mod, view, locale, t, favorite, expanded, onToggleFavorite, onViewDownloads, onShare, onToggleExpanded }: {
+function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleFavorite, onViewDownloads, onShare, onToggleExpanded }: {
   mod: ModCatalogEntry;
   view: CatalogView;
   locale: string;
   t: Translation;
   favorite: boolean;
   expanded: boolean;
+  basePath: string;
   onToggleFavorite: () => void;
   onViewDownloads: () => void;
   onShare: () => void;
@@ -528,7 +538,7 @@ function ModCard({ mod, view, locale, t, favorite, expanded, onToggleFavorite, o
     : "flex h-full flex-col p-4";
 
   function openDetails() {
-    router.push(`/mods/${mod.siteId}`);
+    router.push(`${basePath}/${mod.siteId}`);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
@@ -693,12 +703,12 @@ function matchesUpdatedRange(updatedAt: string, range: string) {
   return true;
 }
 
-function buildFilterChips(filters: CatalogFilters, t: Translation, update: (key: string, values: string[]) => void): FilterChip[] {
+function buildFilterChips(filters: CatalogFilters, t: Translation, isModpack: boolean, update: (key: string, values: string[]) => void): FilterChip[] {
   const groups: Array<[string, string[], (value: string) => string]> = [
     ["version", filters.versions, (value) => value],
     ["loader", filters.loaders, (value) => value],
     ["primary", filters.primaryCategories, (value) => t(`mods.categories.${value}`)],
-    ["tag", filters.tags, (value) => t(`mods.tags.${value}`)],
+    ["tag", filters.tags, (value) => t(isModpack ? `modpacks.categories.${value}` : `mods.tags.${value}`)],
     ["environment", filters.environments, (value) => t(`mods.environments.${value}`)],
     ["status", filters.statuses, (value) => t(`mods.statuses.${value}`)],
     ["source", filters.sources, (value) => t(`mods.sources.${value}`)],
@@ -718,9 +728,9 @@ function readList(params: Pick<URLSearchParams, "get">, key: string) {
   return (params.get(key) ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-function readPreferences(): CatalogPreferences {
+function readPreferences(storageKey: string): CatalogPreferences {
   try {
-    const value = JSON.parse(window.localStorage.getItem(preferenceStorageKey) ?? "{}") as Partial<CatalogPreferences>;
+    const value = JSON.parse(window.localStorage.getItem(storageKey) ?? "{}") as Partial<CatalogPreferences>;
     return {
       view: value.view === "grid" ? "grid" : "list",
       pageSize: [20, 40, 60].includes(Number(value.pageSize)) ? Number(value.pageSize) : 20,

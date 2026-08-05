@@ -32,9 +32,12 @@ type CommentSectionProps = {
   targetType: CommentTargetType;
   targetKey: string;
   className?: string;
+  acceptedCommentId?: string;
+  canAcceptAnswer?: boolean;
+  onAcceptAnswer?: (commentId: string) => Promise<void>;
 };
 
-export function CommentSection({ targetType, targetKey, className = "" }: CommentSectionProps) {
+export function CommentSection({ targetType, targetKey, className = "", acceptedCommentId = "", canAcceptAnswer = false, onAcceptAnswer }: CommentSectionProps) {
   const { t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const [items, setItems] = useState<CommentItem[]>([]);
@@ -142,6 +145,9 @@ export function CommentSection({ targetType, targetKey, className = "" }: Commen
         onReplyBodyChange={setReplyBody}
         onReplyCancel={() => setReplyTo(null)}
         onReplySubmit={(event, comment) => void publish(event, replyBody, comment.id)}
+        acceptedCommentId={acceptedCommentId}
+        canAcceptAnswer={canAcceptAnswer}
+        onAcceptAnswer={onAcceptAnswer}
       />
       {!loading && items.length === 0 ? <EmptyComments /> : null}
       {nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loading} type="button" onClick={() => void load(nextCursor, true)}>{t("mods.comments.loadMore")}</button> : null}
@@ -163,10 +169,14 @@ type CommentTreeProps = {
   onReplyBodyChange: (body: string) => void;
   onReplyCancel: () => void;
   onReplySubmit: (event: FormEvent, comment: CommentItem) => void;
+  acceptedCommentId: string;
+  canAcceptAnswer: boolean;
+  onAcceptAnswer?: (commentId: string) => Promise<void>;
 };
 
 function CommentTree(props: CommentTreeProps) {
   const { t } = useI18n();
+  const { user } = useAuthSnapshot();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [highlighted, setHighlighted] = useState("");
   const [returnTo, setReturnTo] = useState("");
@@ -326,6 +336,8 @@ function CommentTree(props: CommentTreeProps) {
             ) : null}
             <CommentCard
               comment={item}
+              acceptedAnswer={props.acceptedCommentId === item.id}
+              canAcceptAnswer={props.canAcceptAnswer && !item.deleted && item.author.id !== user?.id}
               highlighted={highlighted === item.id}
               onEdit={() => void edit(item)}
               onDelete={() => void remove(item)}
@@ -337,6 +349,7 @@ function CommentTree(props: CommentTreeProps) {
               onShare={() => void copyBranch(item)}
               onToggleCollapse={hasChildren ? () => setCollapsed((current) => toggleSet(current, item.id)) : undefined}
               onWatch={() => void watch(item)}
+              onAcceptAnswer={props.onAcceptAnswer ? () => void props.onAcceptAnswer?.(item.id) : undefined}
             />
             {item.hasMoreReplies ? <button className="mt-2 text-sm font-bold text-[var(--accent)] hover:underline" type="button" onClick={() => void loadChildren(item)}>{t("mods.comments.loadReplies", { count: item.childCount })}</button> : null}
             {props.replyTo?.id === item.id ? (
@@ -359,6 +372,8 @@ function CommentTree(props: CommentTreeProps) {
 
 function CommentCard({
   comment,
+  acceptedAnswer,
+  canAcceptAnswer,
   highlighted,
   onDelete,
   onEdit,
@@ -370,8 +385,11 @@ function CommentCard({
   onShare,
   onToggleCollapse,
   onWatch,
+  onAcceptAnswer,
 }: {
   comment: CommentItem;
+  acceptedAnswer: boolean;
+  canAcceptAnswer: boolean;
   highlighted: boolean;
   onDelete: () => void;
   onEdit: () => void;
@@ -383,12 +401,13 @@ function CommentCard({
   onShare: () => void;
   onToggleCollapse?: () => void;
   onWatch: () => void;
+  onAcceptAnswer?: () => void;
 }) {
   const { locale, t } = useI18n();
   const [pickerOpen, setPickerOpen] = useState(false);
   const authorName = comment.author.username;
   return (
-    <article className={`rounded-lg border bg-[var(--panel)] p-4 transition ${highlighted ? "border-[var(--accent)] ring-2 ring-[var(--accent-soft)]" : "border-[var(--line)]"}`}>
+    <article className={`rounded-lg border bg-[var(--panel)] p-4 transition ${acceptedAnswer ? "border-[var(--accent)] ring-2 ring-[var(--accent-soft)]" : highlighted ? "border-[var(--accent)] ring-2 ring-[var(--accent-soft)]" : "border-[var(--line)]"}`}>
       <div className="flex gap-3">
         {comment.author.avatarUrl ? <Image unoptimized alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" height={36} src={comment.author.avatarUrl} width={36} /> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--accent)] font-black text-white">{authorName.slice(0, 1).toUpperCase()}</span>}
         <div className="min-w-0 flex-1">
@@ -396,6 +415,7 @@ function CommentCard({
             <Link className="font-black hover:text-[var(--accent)]" href={`/user/${comment.author.id}`}>{authorName}</Link>
             {comment.author.projectRole ? <span className="rounded-md border border-[var(--accent)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t(`mods.comments.projectRoles.${comment.author.projectRole}`)}</span> : null}
             {comment.pinned ? <span className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs font-bold text-[var(--muted)]">{t("mods.comments.pinnedBadge")}</span> : null}
+            {acceptedAnswer ? <span className="rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t("communityPosts.bounty.acceptedAnswer")}</span> : null}
             <time className="text-xs text-[var(--muted)]">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time>
           </div>
           {comment.parent ? <button className="mt-2 block max-w-full truncate rounded border-l-2 border-[var(--accent)] bg-[var(--panel-subtle)] px-3 py-2 text-left text-xs text-[var(--muted)] hover:text-[var(--accent)]" type="button" onClick={() => onJumpParent(comment.parent!.id)}>@{comment.parent.authorName} · {comment.parent.deleted ? t("mods.comments.deleted") : comment.parent.bodySummary}</button> : null}
@@ -414,6 +434,7 @@ function CommentCard({
             {comment.canEdit ? <button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onEdit}>{t("common.edit")}</button> : null}
             {comment.canDelete ? <button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onDelete}>{t("common.delete")}</button> : null}
             {comment.canReport ? <button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onReport}>{t("mods.comments.report")}</button> : null}
+            {canAcceptAnswer && onAcceptAnswer ? <button className="text-xs font-black text-[var(--accent)] hover:underline" type="button" onClick={onAcceptAnswer}>{t("communityPosts.bounty.acceptAnswer")}</button> : null}
           </div>
         </div>
       </div>
@@ -441,7 +462,7 @@ export function CommentThread({ commentId }: { commentId: string }) {
   return <main className="min-h-screen bg-[var(--background)] px-4 py-8 text-[var(--foreground)]"><section className="mx-auto max-w-5xl">
     {target ? <><Link className="font-bold text-[var(--accent)] hover:underline" href={target.url}>← {target.title}</Link><h1 className="mt-4 text-3xl font-black">{t("mods.comments.branchTitle")}</h1></> : null}
     {error ? <p className="surface mt-5 p-5">{error}</p> : null}
-    {items.length ? <CommentTree items={items} loading={false} token={token} sort="oldest" replyTo={null} replyBody="" submitting={false} onItemsChange={setItems} onMessage={setError} onReply={() => setError(t("mods.comments.replyOnOriginal"))} onReplyBodyChange={() => undefined} onReplyCancel={() => undefined} onReplySubmit={() => undefined} /> : !error ? <p className="mt-5 text-[var(--muted)]">{t("common.loading")}</p> : null}
+    {items.length ? <CommentTree items={items} loading={false} token={token} sort="oldest" replyTo={null} replyBody="" submitting={false} acceptedCommentId="" canAcceptAnswer={false} onItemsChange={setItems} onMessage={setError} onReply={() => setError(t("mods.comments.replyOnOriginal"))} onReplyBodyChange={() => undefined} onReplyCancel={() => undefined} onReplySubmit={() => undefined} /> : !error ? <p className="mt-5 text-[var(--muted)]">{t("common.loading")}</p> : null}
   </section></main>;
 }
 

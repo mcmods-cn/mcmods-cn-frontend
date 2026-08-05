@@ -11,6 +11,7 @@ import { loadSkin, type SkinModel, type SkinTexture, type SkinVisibility, update
 import type { BlueprintDetailRecord } from "../_lib/blueprint-api";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
 import { ToolsPlayground } from "./tools-playground";
+import { ReviewLockGate } from "./review-edit-lock";
 
 type AssetKind = "skin" | "blueprint";
 
@@ -92,7 +93,7 @@ export function LocalizedAssetEditor({ kind, publicId }: { kind: AssetKind; publ
   if (!ready) return <EditorState text={t("common.loading")} />;
   if (!token) return <EditorState text={t("assetEditor.loginRequired")} />;
   const back = `/${kind === "skin" ? "skins" : "blueprints"}/${publicId}`;
-  return <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]"><div className="mx-auto max-w-6xl px-4 py-7">
+  const editor = <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]"><div className="mx-auto max-w-6xl px-4 py-7">
     <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="text-sm font-bold text-[var(--accent)]" href={back}>{t("assetEditor.back")}</Link><h1 className="mt-2 text-3xl font-black">{t(kind === "skin" ? "assetEditor.skinTitle" : "assetEditor.blueprintTitle")}</h1><code className="mt-2 block text-xs text-[var(--muted)]">{publicId}</code></div><button className="button-primary focus-ring" disabled={saving || !defaultVersion.fields.name.trim()} type="button" onClick={() => void save()}>{saving ? t("common.saving") : t("assetEditor.submit")}</button></header>
     <div className="mt-6"><ContentLanguageSwitcher value={selectedLocale} versions={versions} onChange={setSelectedLocale} /></div>
     <section className="mt-5 grid gap-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><label className="text-sm font-bold">{t("assetEditor.name")} ({selectedLocale})<input className="field mt-1" maxLength={120} value={selected.fields.name} onChange={(event) => updateFields({ name: event.target.value })} /></label>
@@ -102,6 +103,7 @@ export function LocalizedAssetEditor({ kind, publicId }: { kind: AssetKind; publ
     <label className="mt-5 block text-sm font-bold">{t("assetEditor.reason")}<textarea className="field mt-1 min-h-24" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} /></label>
     {message ? <p className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-sm font-bold">{message}</p> : null}
   </div></main>;
+  return <ReviewLockGate entityType={kind} publicId={publicId} returnHref={back}>{editor}</ReviewLockGate>;
 }
 
 function EditorState({ text }: { text: string }) { return <main className="grid min-h-[65vh] place-items-center px-4 text-center font-bold text-[var(--muted)]">{text}</main>; }
