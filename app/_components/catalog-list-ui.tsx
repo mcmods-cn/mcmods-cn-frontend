@@ -21,6 +21,10 @@ type CatalogPaginationLabels = {
   itemSummary: string;
 };
 
+export function CatalogPageFallback() {
+  return <main className="min-h-screen bg-[var(--background)]" />;
+}
+
 export function CatalogFilterSidebar({ children }: { children: React.ReactNode }) {
   return (
     <aside className="hidden lg:block">

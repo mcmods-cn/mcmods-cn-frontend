@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { deleteUserDraftByKey, loadUserDraft, saveUserDraft } from "./draft-api";
+import { completeUserDraft, loadUserDraft, saveUserDraft } from "./draft-api";
 
 const autosaveIntervalMilliseconds = 15_000;
 
@@ -9,6 +9,7 @@ export type AutoDraftStatus = "idle" | "restoring" | "restored" | "saving" | "sa
 
 export function useAutoDraft<T extends object>({
   draftKey,
+  projectKey,
   editUrl,
   enabled,
   kind,
@@ -18,6 +19,7 @@ export function useAutoDraft<T extends object>({
   onRestore,
 }: {
   draftKey: string;
+  projectKey: string;
   editUrl: string;
   enabled: boolean;
   kind: string;
@@ -31,7 +33,7 @@ export function useAutoDraft<T extends object>({
   const [error, setError] = useState("");
   const valueRef = useRef(value);
   const restoreRef = useRef(onRestore);
-  const metadataRef = useRef({ draftKey, editUrl, kind, title });
+  const metadataRef = useRef({ draftKey, projectKey, editUrl, kind, title });
   const baselineRef = useRef("");
   const lastSavedRef = useRef("");
   const initializedKeyRef = useRef("");
@@ -40,7 +42,7 @@ export function useAutoDraft<T extends object>({
 
   useEffect(() => { valueRef.current = value; }, [value]);
   useEffect(() => { restoreRef.current = onRestore; }, [onRestore]);
-  useEffect(() => { metadataRef.current = { draftKey, editUrl, kind, title }; }, [draftKey, editUrl, kind, title]);
+  useEffect(() => { metadataRef.current = { draftKey, projectKey, editUrl, kind, title }; }, [draftKey, editUrl, kind, projectKey, title]);
 
   useEffect(() => {
     if (!enabled || !token || initializedKeyRef.current === draftKey) return;
@@ -111,18 +113,30 @@ export function useAutoDraft<T extends object>({
     };
   }, [enabled, saveLatest, token]);
 
-  const clearDraft = useCallback(async () => {
+  const completeDraft = useCallback(async (completion: {
+    projectKey: string;
+    projectTitle: string;
+    targetUrl: string;
+    reviewStatus: "pending" | "approved";
+    changeRequestId?: string;
+    reviewTargetType?: "server";
+    reviewTargetPublicId?: string;
+  }) => {
     if (!token) return;
-    await deleteUserDraftByKey(draftKey, token);
+    await completeUserDraft({
+      ...metadataRef.current,
+      ...completion,
+      payload: valueRef.current,
+    }, token);
     const current = serializeDraft(valueRef.current);
     baselineRef.current = current;
     lastSavedRef.current = current;
     setSavedAt("");
     setStatus("idle");
     setError("");
-  }, [draftKey, token]);
+  }, [token]);
 
-  return { clearDraft, error, savedAt, status };
+  return { completeDraft, error, savedAt, status };
 }
 
 function serializeDraft(value: object) {

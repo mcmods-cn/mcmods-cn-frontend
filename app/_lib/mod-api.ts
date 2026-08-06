@@ -1,5 +1,6 @@
 import { ModCatalogEntry, ModFeature } from "./mod-catalog-data";
 import type { CreatorKind } from "./community-api";
+import { API_BASE_URL } from "./api";
 
 type BackendModLink = { type: string; url: string; note: string };
 export type BackendCreatorIdentity = {
@@ -96,6 +97,8 @@ export type BackendModRecord = {
   updatedAt: string;
   publishedAt?: string;
   publishedRevisionId?: string;
+  submissionRevisionId?: string;
+  changeRequestId?: string;
   tags: string[];
   authors: BackendModAuthor[];
   links: BackendModLink[];
@@ -105,7 +108,7 @@ export type BackendModRecord = {
 
 export type BackendModList = { items: BackendModRecord[]; total: number };
 
-export type CreateModPayload = Omit<BackendModRecord, "id" | "uniqueId" | "reviewStatus" | "createdBy" | "createdAt" | "updatedAt" | "publishedAt" | "publishedRevisionId">;
+export type CreateModPayload = Omit<BackendModRecord, "id" | "uniqueId" | "reviewStatus" | "createdBy" | "createdAt" | "updatedAt" | "publishedAt" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId">;
 
 export type BackendModImportJob = {
   id: string;
@@ -178,7 +181,7 @@ export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEn
     localizedName: record.secondaryName || record.primaryName,
     abbreviation: record.abbreviation || record.primaryName,
     summary: record.summary,
-    icon: record.iconUrl,
+    icon: record.iconUrl ? `${API_BASE_URL}/api/v1/mods/${encodeURIComponent(record.siteId)}/icon` : "",
     primaryCategory: record.primaryCategory,
     tags: record.tags,
     keywords: record.searchKeywords,

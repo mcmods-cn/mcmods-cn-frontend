@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 import { normalizeInternalPath } from "../_lib/navigation";
 
 type NotificationKind = "system" | "reply_mention" | "comment_watch_reply" | "review" | "new_follower";
@@ -226,14 +227,8 @@ export function MessagesCenter() {
     }
   }
 
-  if (!ready) return <MessageState text={t("common.loading")} />;
-  if (!user || !token) {
-    return (
-      <MessageState text={t("messages.loginRequired")}>
-        <Link className="button-primary focus-ring mt-4 inline-flex" href="/login?next=/messages">{t("common.login")}</Link>
-      </MessageState>
-    );
-  }
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
+  if (!user || !token) return <LoginRequiredState nextPath="/messages" description={t("messages.loginRequired")} />;
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">

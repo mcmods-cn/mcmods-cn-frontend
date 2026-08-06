@@ -20,6 +20,7 @@ import { SelectedResourceList } from "./editor/selected-resource-list";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { ToolsPlayground } from "./tools-playground";
 import { ReviewLockGate } from "./review-edit-lock";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 const severities: CommunityPostSeverity[] = ["client", "harmless", "minor", "harmful", "severe", "fatal"];
 
@@ -59,6 +60,7 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
   const collection = communityPostCollection(kind);
   const autoDraft = useAutoDraft({
     draftKey: `community:${kind}:${id || "new"}`,
+    projectKey: `community:${kind}:${id || "new"}`,
     editUrl: id ? `/${collection}/${encodeURIComponent(id)}/edit` : `/${collection}/new`,
     enabled: ready && Boolean(token) && !loading,
     kind: "community_post",
@@ -68,7 +70,6 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
     onRestore: setDraft,
   });
 
-  useEffect(() => { if (ready && !user) router.replace(`/login?next=/${communityPostCollection(kind)}/new`); }, [kind, ready, router, user]);
   useEffect(() => () => { if (coverPreview) URL.revokeObjectURL(coverPreview); }, [coverPreview]);
   useEffect(() => {
     if (kind !== "discussion") return;
@@ -101,8 +102,15 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
     setMessage("");
     try {
       const result = await saveCommunityPost(draft, token, id);
-      await autoDraft.clearDraft().catch(() => undefined);
-      router.push(`/${communityPostCollection(kind)}/${result.id}`);
+      const targetUrl = `/${communityPostCollection(kind)}/${result.id}`;
+      await autoDraft.completeDraft({
+        projectKey: `community:${kind}:${result.id}`,
+        projectTitle: draft.title.trim(),
+        targetUrl,
+        reviewStatus: result.reviewStatus === "approved" ? "approved" : "pending",
+        changeRequestId: result.changeRequestId,
+      }).catch(() => undefined);
+      router.push(targetUrl);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("communityPosts.validation.saveFailed"));
     } finally {
@@ -125,6 +133,10 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
       setBusy(false);
     }
   }
+
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
+  if (!user || !token) return <LoginRequiredState nextPath={id ? `/${collection}/${id}/edit` : `/${collection}/new`} />;
+  if (loading) return <PageFeedback title={t("common.loading")} />;
 
   const editor = <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]">
     <article className="mx-auto max-w-6xl">

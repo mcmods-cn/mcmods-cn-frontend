@@ -1,4 +1,5 @@
 import type { BackendModAuthor, BackendModGalleryImage, BackendModRecord } from "./mod-api";
+import { API_BASE_URL } from "./api";
 
 export const simpleProjectTypes = ["plugin", "map", "resource_pack", "shader_pack", "datapack", "addon"] as const;
 export type SimpleProjectType = (typeof simpleProjectTypes)[number];
@@ -49,6 +50,8 @@ export type SimpleProjectRecord = {
   reviewStatus: "pending" | "approved" | "rejected";
   createdBy?: string;
   publishedRevisionId?: string;
+  submissionRevisionId?: string;
+  changeRequestId?: string;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
@@ -56,7 +59,7 @@ export type SimpleProjectRecord = {
 };
 
 export type SimpleProjectPayload = Omit<SimpleProjectRecord,
-  "id" | "reviewStatus" | "createdBy" | "publishedRevisionId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
+  "id" | "reviewStatus" | "createdBy" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
 export type SimpleProjectList = { items: SimpleProjectRecord[]; total: number };
 
 export type SimpleProjectImportProvider = "modrinth" | "curseforge";
@@ -84,10 +87,10 @@ export type SimpleProjectConfig = {
 const resourcePackCategories = ["combat", "cursed", "decoration", "modded", "realistic", "simplistic", "themed", "tweaks", "utility", "vanilla_like"] as const;
 const resourcePackFeatures = ["audio", "blocks", "core_shaders", "entities", "environment", "equipment", "fonts", "gui", "items", "locale", "models"] as const;
 
-export const simpleProjectConfigs: Record<SimpleProjectType, SimpleProjectConfig> = {
+const simpleProjectConfigs: Record<SimpleProjectType, SimpleProjectConfig> = {
   plugin: {
     type: "plugin", path: "/plugins",
-    loaders: ["bukkit", "spigot", "paper", "purpur", "folia", "sponge", "bungeecord", "waterfall", "velocity", "fabric", "forge", "neoforge"],
+    loaders: ["bukkit", "spigot", "paper", "purpur", "folia", "sponge", "bungeecord", "waterfall", "velocity"],
     categories: ["administration", "chat", "economy", "gameplay", "minigame", "permissions", "protection", "roleplay", "utility", "world_management"],
     features: [],
   },
@@ -118,8 +121,6 @@ export const simpleProjectConfigs: Record<SimpleProjectType, SimpleProjectConfig
   },
 };
 
-export const allLargeProjectTypes = ["mod", "modpack", ...simpleProjectTypes] as const;
-
 export function simpleProjectConfig(type: SimpleProjectType) {
   return simpleProjectConfigs[type];
 }
@@ -134,6 +135,19 @@ export function largeProjectPath(type: string, siteId: string) {
     resource_pack: "/resource-packs", shader_pack: "/shaders", datapack: "/datapacks", addon: "/addons",
   };
   return `${paths[type] || "/mods"}/${siteId}`;
+}
+
+export function simpleProjectIconURL(record: Pick<SimpleProjectRecord, "projectType" | "siteId" | "iconUrl">) {
+  return record.iconUrl
+    ? `${API_BASE_URL}/api/v1/content-projects/${encodeURIComponent(record.projectType)}/${encodeURIComponent(record.siteId)}/icon`
+    : "";
+}
+
+export function largeProjectIconURL(project: Pick<SimpleProjectParent, "type" | "siteId" | "iconUrl">) {
+  if (!project.iconUrl || !project.siteId) return project.iconUrl || "";
+  if (project.type === "mod") return `${API_BASE_URL}/api/v1/mods/${encodeURIComponent(project.siteId)}/icon`;
+  if (project.type === "modpack") return `${API_BASE_URL}/api/v1/modpacks/${encodeURIComponent(project.siteId)}/icon`;
+  return `${API_BASE_URL}/api/v1/content-projects/${encodeURIComponent(project.type)}/${encodeURIComponent(project.siteId)}/icon`;
 }
 
 export function localizedSimpleProject(record: Pick<SimpleProjectRecord, "defaultLocale" | "localizations">, locale: string) {

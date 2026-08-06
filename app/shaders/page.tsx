@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { CatalogPageFallback } from "../_components/catalog-list-ui";
 import { SimpleProjectCatalog } from "../_components/simple-project-catalog";
 
-export default function ShadersPage() { return <SimpleProjectCatalog projectType="shader_pack" />; }
+export default function ShadersPage() { return <Suspense fallback={<CatalogPageFallback />}><SimpleProjectCatalog projectType="shader_pack" /></Suspense>; }

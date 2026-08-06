@@ -12,6 +12,7 @@ import type { BlueprintDetailRecord } from "../_lib/blueprint-api";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
 import { ToolsPlayground } from "./tools-playground";
 import { ReviewLockGate } from "./review-edit-lock";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 type AssetKind = "skin" | "blueprint";
 
@@ -90,8 +91,8 @@ export function LocalizedAssetEditor({ kind, publicId }: { kind: AssetKind; publ
     } finally { setSaving(false); }
   }
 
-  if (!ready) return <EditorState text={t("common.loading")} />;
-  if (!token) return <EditorState text={t("assetEditor.loginRequired")} />;
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
+  if (!token) return <LoginRequiredState nextPath={`/${kind === "skin" ? "skins" : "blueprints"}/${publicId}/edit`} description={t("assetEditor.loginRequired")} />;
   const back = `/${kind === "skin" ? "skins" : "blueprints"}/${publicId}`;
   const editor = <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]"><div className="mx-auto max-w-6xl px-4 py-7">
     <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="text-sm font-bold text-[var(--accent)]" href={back}>{t("assetEditor.back")}</Link><h1 className="mt-2 text-3xl font-black">{t(kind === "skin" ? "assetEditor.skinTitle" : "assetEditor.blueprintTitle")}</h1><code className="mt-2 block text-xs text-[var(--muted)]">{publicId}</code></div><button className="button-primary focus-ring" disabled={saving || !defaultVersion.fields.name.trim()} type="button" onClick={() => void save()}>{saving ? t("common.saving") : t("assetEditor.submit")}</button></header>
@@ -106,5 +107,4 @@ export function LocalizedAssetEditor({ kind, publicId }: { kind: AssetKind; publ
   return <ReviewLockGate entityType={kind} publicId={publicId} returnHref={back}>{editor}</ReviewLockGate>;
 }
 
-function EditorState({ text }: { text: string }) { return <main className="grid min-h-[65vh] place-items-center px-4 text-center font-bold text-[var(--muted)]">{text}</main>; }
 function parseTags(value: string) { return [...new Set(value.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean))]; }

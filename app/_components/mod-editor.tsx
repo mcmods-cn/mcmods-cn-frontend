@@ -44,6 +44,8 @@ import { FileDropZone } from "./file-drop-zone";
 import { ReviewLockGate } from "./review-edit-lock";
 import { useAutoDraft } from "../_lib/use-auto-draft";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
+import { Field, FormSection, SelectField } from "./project-editor-fields";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 type ModDraft = Omit<CreateModPayload, "searchKeywords"> & { searchKeywords: string };
 
@@ -103,6 +105,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   const [galleryUploading, setGalleryUploading] = useState(false);
   const [iconCropFile, setIconCropFile] = useState<File>();
   const [iconUploading, setIconUploading] = useState(false);
+  const [iconPreviewUrl, setIconPreviewUrl] = useState("");
 
   const localized = modLocalization(draft, selectedLocale);
   const localizationVersions = draft.localizations.map((item) => ({
@@ -114,6 +117,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   }));
   const autoDraft = useAutoDraft({
     draftKey: `mod:${siteId || "new"}`,
+    projectKey: `mod:${siteId || "new"}`,
     editUrl: siteId ? `/mods/${encodeURIComponent(siteId)}/edit` : "/mods/new",
     enabled: ready && Boolean(token) && !loading,
     kind: "mod",
@@ -141,7 +145,10 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}/editor`, {}, token)
       .then((record) => {
         if (!cancelled) {
-          setDraft(draftFromSource(record));
+          const importedDraft = draftFromSource(record);
+          setDraft(importedDraft);
+          setIconPreviewUrl(record.iconUrl ? `${API_BASE_URL}/api/v1/mods/${encodeURIComponent(record.siteId)}/icon` : "");
+          setSelectedLocale((importedDraft.defaultLocale || locale) as Locale);
           setUniqueId(record.uniqueId);
           setBaseRevisionId(record.publishedRevisionId);
         }
@@ -153,7 +160,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [ready, siteId, t, token]);
+  }, [locale, ready, siteId, t, token]);
 
   useEffect(() => {
     const provider = importMethod === "modrinth" || importMethod === "curseforge" || importMethod === "github" ? importMethod : "";
@@ -184,7 +191,9 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           if (job.status !== "completed" || !job.result) {
             throw new Error(job.error || t("mods.submission.importFailed"));
           }
-          setDraft(draftFromSource(job.result));
+          const importedDraft = draftFromSource(job.result);
+          setDraft(importedDraft);
+          setSelectedLocale((importedDraft.defaultLocale || locale) as Locale);
           setImportProgress(100);
         } catch (error) {
           if (!cancelled) setMessage(error instanceof Error ? error.message : t("mods.submission.importFailed"));
@@ -198,7 +207,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
       window.clearTimeout(startTimer);
       if (timer) window.clearTimeout(timer);
     };
-  }, [importMethod, importURL, ready, siteId, t, token]);
+  }, [importMethod, importURL, locale, ready, siteId, t, token]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -216,11 +225,23 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           { method: "POST", body: JSON.stringify({ snapshot, changeReason, baseRevisionId }) },
           token,
         );
-        await autoDraft.clearDraft().catch(() => undefined);
+        await autoDraft.completeDraft({
+          projectKey: `mod:${snapshot.siteId}`,
+          projectTitle: snapshot.primaryName,
+          targetUrl: `/mods/${snapshot.siteId}`,
+          reviewStatus: revision.status === "approved" ? "approved" : "pending",
+          changeRequestId: revision.changeRequestId,
+        }).catch(() => undefined);
         router.push(`/mods/${revision.status === "approved" ? snapshot.siteId : siteId}/history`);
       } else {
         const created = await apiRequest<BackendModRecord>("/api/v1/mods", { method: "POST", body: JSON.stringify(snapshot) }, token);
-        await autoDraft.clearDraft().catch(() => undefined);
+        await autoDraft.completeDraft({
+          projectKey: `mod:${created.siteId}`,
+          projectTitle: created.primaryName,
+          targetUrl: `/mods/${created.siteId}`,
+          reviewStatus: created.reviewStatus === "approved" ? "approved" : "pending",
+          changeRequestId: created.changeRequestId,
+        }).catch(() => undefined);
         router.push(`/mods/${created.siteId}`);
       }
     } catch (error) {
@@ -261,9 +282,10 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     setMessage("");
     try {
       const record = await uploadUserFileToOSS(file, token, `mod_icon:${siteId || draft.siteId || "draft"}`);
-      const iconUrl = record.accessUrl || record.url || "";
-      if (!iconUrl) throw new Error(t("mods.submission.iconUploadFailed"));
-      setDraft((current) => ({ ...current, iconUrl }));
+      const storageUrl = record.storageUrl || record.accessUrl || record.url || "";
+      if (!storageUrl) throw new Error(t("mods.submission.iconUploadFailed"));
+      setDraft((current) => ({ ...current, iconUrl: storageUrl }));
+      setIconPreviewUrl(record.accessUrl || record.url || storageUrl);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("mods.submission.iconUploadFailed"));
     } finally {
@@ -274,9 +296,9 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
 
   if (!ready || loading) {
     const importing = loading && importMethod !== "manual";
-    return <EditorState text={importing ? t("mods.submission.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
+    return <PageFeedback title={importing ? t("mods.submission.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
   }
-  if (!token) return <EditorState text={t("mods.submission.loginRequired")} login />;
+  if (!token) return <LoginRequiredState nextPath={siteId ? `/mods/${siteId}/edit` : "/mods/new"} description={t("mods.submission.loginRequired")} />;
 
   const editor = (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -321,7 +343,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           <div className="mt-4 flex flex-wrap items-center gap-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
             <div className="grid h-32 w-32 shrink-0 place-items-center overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)]">
               {draft.iconUrl
-                ? <Image unoptimized alt={t("mods.submission.fields.icon")} className="h-full w-full object-contain" height={128} src={apiAssetURL(draft.iconUrl)} width={128} />
+                ? <Image unoptimized alt={t("mods.submission.fields.icon")} className="h-full w-full object-contain" height={128} src={iconPreviewUrl || apiAssetURL(draft.iconUrl)} width={128} />
                 : <span className="text-4xl font-black text-[var(--muted)]">?</span>}
             </div>
             <div className="min-w-0 flex-1">
@@ -347,7 +369,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
                     }}
                   />
                 </label>
-                {draft.iconUrl ? <button className="button-secondary focus-ring text-[var(--red)]" disabled={iconUploading} type="button" onClick={() => setDraft((current) => ({ ...current, iconUrl: "" }))}>{t("common.delete")}</button> : null}
+                {draft.iconUrl ? <button className="button-secondary focus-ring text-[var(--red)]" disabled={iconUploading} type="button" onClick={() => { setDraft((current) => ({ ...current, iconUrl: "" })); setIconPreviewUrl(""); }}>{t("common.delete")}</button> : null}
               </div>
             </div>
           </div>
@@ -394,9 +416,9 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           </div>
         </FormSection>
 
-        <section className="mb-6 overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
+        <FormSection title={t("mods.submission.sections.body")} description={t("mods.submission.sections.bodyHint")}>
           <ToolsPlayground embedded editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} editorDescription={t("mods.submission.sections.bodyHint")} value={localized.contentMarkdown} onChange={(contentMarkdown) => setDraft((current) => updateModLocalization(current, selectedLocale, { contentMarkdown }))} />
-        </section>
+        </FormSection>
 
         <FormSection title={t("mods.submission.sections.gallery")} description={t("mods.submission.sections.galleryHint")}>
           <FileDropZone
@@ -562,23 +584,6 @@ function updateRelationship(groups: BackendModRelationshipGroup[], groupIndex: n
   onChange(replaceAt(groups, groupIndex, { ...group, relationships: replaceAt(group.relationships, relationshipIndex, relationship) }));
 }
 
-function FormSection({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
-  return <section className="mb-6 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{title}</h2>{description ? <p className="mt-1 max-w-4xl text-sm leading-6 text-[var(--muted)]">{description}</p> : null}<div className="mt-4 grid gap-4">{children}</div></section>;
-}
-
-function Field({ label, hint, required = false, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {
-  return <label className="block"><span className="mb-1.5 block text-sm font-black">{label}{required ? <span className="ml-1 text-[var(--red)]">*</span> : null}</span>{children}{hint ? <span className="mt-1.5 block text-xs leading-5 text-[var(--muted)]">{hint}</span> : null}</label>;
-}
-
-function SelectField<T extends string>({ label, value, options, optionLabel, onChange }: { label: string; value: string; options: readonly T[]; optionLabel: (value: T) => string; onChange: (value: T) => void }) {
-  return <Field label={label}><select className="field" value={value} onChange={(event) => onChange(event.target.value as T)}>{options.map((option) => <option key={option} value={option}>{optionLabel(option)}</option>)}</select></Field>;
-}
-
-function EditorState({ text, login = false, progress }: { text: string; login?: boolean; progress?: number }) {
-  const { t } = useI18n();
-  return <main className="grid min-h-[65vh] place-items-center px-4 text-center"><div className="w-full max-w-md"><p className="text-lg font-black">{text}</p>{progress !== undefined ? <div className="mt-4 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} /></div> : null}{login ? <Link className="button-primary focus-ring mt-4 inline-flex" href="/login">{t("common.login")}</Link> : null}</div></main>;
-}
-
 function draftFromSource(source: BackendModRecord | CreateModPayload): ModDraft {
   return normalizeModDraft({ ...source, compatibilities: source.compatibilities ?? [], searchKeywords: source.searchKeywords.join("\n") });
 }
@@ -615,7 +620,8 @@ function payloadFromDraft(draft: ModDraft): CreateModPayload {
 }
 
 function normalizeModDraft(draft: ModDraft): ModDraft {
-  const defaultLocale = draft.defaultLocale || "zh-CN";
+  const importedLocale = draft.localizations?.find((item) => item.name.trim() || item.summary.trim() || item.contentMarkdown.trim())?.locale;
+  const defaultLocale = draft.defaultLocale || importedLocale || "zh-CN";
   const sourceLocalizations = draft.localizations?.length
     ? draft.localizations
     : [{ locale: defaultLocale, name: draft.secondaryName || draft.primaryName, summary: draft.summary, contentMarkdown: draft.bodyMarkdown }];

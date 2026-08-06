@@ -5,7 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { isBearerAccessToken } from "../_lib/api";
+import { backendFetch, isBearerAccessToken } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { contentLanguageCandidates, normalizeContentLanguage } from "../_lib/content-language";
 import { catalogRegistryForKind } from "../_lib/catalog-resource-identifiers";
@@ -177,7 +177,7 @@ function ResourcePresentation({
       async (input, init = {}) => {
         const headers = new Headers(init.headers);
         if (isBearerAccessToken(token)) headers.set("Authorization", `Bearer ${token}`);
-        return fetch(input, { ...init, credentials: init.credentials ?? "include", headers });
+        return backendFetch(input, { ...init, credentials: init.credentials ?? "include", headers });
       },
     );
   }, [modelAssetPaths, revisionId, token]);

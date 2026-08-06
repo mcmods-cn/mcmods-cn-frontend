@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import type { BackendModRecord } from "../_lib/mod-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { ModContentWorkspace } from "./mod-content-workspace";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 export function ModContentManager({ siteId, importSource, versionId, createNew }: { siteId: string; importSource: "" | "icon" | "exporter" | "iconrenderer" | "letmeseesee" | "irr"; versionId?: string; createNew?: boolean }) {
   const { t } = useI18n();
@@ -24,10 +24,10 @@ export function ModContentManager({ siteId, importSource, versionId, createNew }
     return () => { cancelled = true; };
   }, [ready, siteId, token]);
 
-  if (!ready) return <CenteredState text={t("common.loading")} />;
-  if (!token) return <CenteredState text={t("modContent.managerLoginRequired")} action={<Link className="button-primary focus-ring" href={`/login?next=/mods/${encodeURIComponent(siteId)}/data/edit`}>{t("common.login")}</Link>} />;
-  if (error) return <CenteredState text={error || t("modContent.managerDenied")} action={<Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}`}>{t("mods.detail.back")}</Link>} />;
-  if (!mod) return <CenteredState text={t("common.loading")} />;
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
+  if (!token) return <LoginRequiredState nextPath={`/mods/${siteId}/data/edit`} description={t("modContent.managerLoginRequired")} />;
+  if (error) return <PageFeedback title={error || t("modContent.managerDenied")} tone="danger" action={<Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}`}>{t("mods.detail.back")}</Link>} />;
+  if (!mod) return <PageFeedback title={t("common.loading")} />;
 
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)] lg:px-6">
     <div className="mx-auto max-w-[1500px]">
@@ -38,8 +38,4 @@ export function ModContentManager({ siteId, importSource, versionId, createNew }
       <ModContentWorkspace createNew={createNew} initialImportSource={importSource} initialVersionId={versionId} siteId={siteId} token={token} />
     </div>
   </main>;
-}
-
-function CenteredState({ text, action }: { text: string; action?: ReactNode }) {
-  return <main className="grid min-h-[65vh] place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]"><div className="max-w-xl text-center"><p className="font-bold text-[var(--muted)]">{text}</p>{action ? <div className="mt-4">{action}</div> : null}</div></main>;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_BASE_URL, isBearerAccessToken } from "./api";
+import { API_BASE_URL, backendFetch, isBearerAccessToken } from "./api";
 
 export type AuthPermissionRule = {
   code: string;
@@ -56,7 +56,7 @@ export function clearAuth() {
 
   const headers = new Headers();
   if (isBearerAccessToken(logoutToken)) headers.set("Authorization", `Bearer ${logoutToken}`);
-  void fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+  void backendFetch(`${API_BASE_URL}/api/v1/auth/logout`, {
     method: "POST",
     credentials: "include",
     headers,
@@ -159,7 +159,7 @@ function permissionSpecificity(rule: string, required: string) {
 async function bootstrapAuth() {
   if (activeUser) return activeUser;
   if (bootstrapRequest) return bootstrapRequest;
-  bootstrapRequest = fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+  bootstrapRequest = backendFetch(`${API_BASE_URL}/api/v1/auth/me`, {
     credentials: "include",
     headers: { Accept: "application/json" },
   })

@@ -6,7 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { canAccessAdmin, clearAuth, useAuthSnapshot } from "../_lib/auth";
-import { ApiError, apiRequest } from "../_lib/api";
+import { API_BASE_URL, ApiError, apiRequest } from "../_lib/api";
+import { isBackendUnavailable } from "../_lib/backend-status";
 import type { LevelConfig } from "../_lib/community-api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
@@ -32,12 +33,14 @@ import { CommentReportReviewPanel, MinecraftVersionConfigPanel, ModReviewQueuePa
 import { ServerReviewQueuePanel, ServerSettingsPanel } from "./admin-server-panels";
 import { AdminUnresolvedReferences } from "./admin-unresolved-references";
 import { AdminContentAttributePanel } from "./admin-content-attribute-panel";
+import { AdminYggdrasilPanel, defaultAdminYggdrasilConfig, type AdminYggdrasilConfig } from "./admin-yggdrasil-panel";
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
 
 type PanelId =
   | "overview"
   | "general-settings"
+  | "yggdrasil"
   | "roles"
   | "user-roles"
   | "permission-list"
@@ -139,6 +142,7 @@ type MailConfig = {
 
 type AdminConfig = {
   general: { siteName: string; logoUrl: string };
+  yggdrasil: AdminYggdrasilConfig;
   auth: Record<string, string | number | boolean | string[]>;
   oauth: OAuthConfig;
   mail: MailConfig;
@@ -515,6 +519,7 @@ const adminNavGroups: Array<{
     label: "",
     items: [
       { id: "general-settings", label: "", description: "" },
+      { id: "yggdrasil", label: "", description: "" },
       { id: "mail", label: "", description: "" },
       { id: "auth", label: "", description: "" },
       { id: "markdown", label: "", description: "" },
@@ -529,6 +534,7 @@ const emptyDashboard: DashboardData = { cards: [] };
 
 const emptyConfig: AdminConfig = {
   general: { siteName: "Mcmods-cn", logoUrl: "" },
+  yggdrasil: defaultAdminYggdrasilConfig,
   auth: {
     allowRegistration: true,
     emailPasswordLogin: true,
@@ -836,10 +842,7 @@ export function AdminConsolePolished() {
     return (
       <>
         <AdminGateMessage
-          text={t("admin.backendLockedRetry", {
-            reason: status,
-            retry: reconnectIn > 0 ? t("admin.retrySeconds", { seconds: reconnectIn }) : t("admin.reconnecting"),
-          })}
+          text={reconnectIn > 0 ? t("admin.retrySeconds", { seconds: reconnectIn }) : t("admin.reconnecting")}
         />
         {noticeModal}
       </>
@@ -862,7 +865,7 @@ export function AdminConsolePolished() {
           <div className="flex max-h-[80vh] flex-col lg:sticky lg:top-0 lg:h-screen lg:max-h-none">
             <div className="flex items-center gap-3 border-b border-[var(--line)] p-3 lg:block lg:p-4">
               <Link className="flex min-w-0 flex-1 items-center gap-3" href="/">
-                {brand.logoUrl ? <img alt="" className="h-10 w-10 rounded-lg object-contain" src={brand.logoUrl} /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">M</span>}
+                {brand.logoUrl ? <img alt="" className="h-10 w-10 rounded-lg object-contain" src={`${API_BASE_URL}/api/v1/site/logo`} /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">M</span>}
                 <span>
                   <span className="block text-sm font-semibold text-[var(--muted)]">{brand.siteName}</span>
                   <span className="block text-xl font-bold">{t("admin.title")}</span>
@@ -945,6 +948,7 @@ export function AdminConsolePolished() {
 
           {activePanel === "overview" ? <OverviewPanel dashboard={dashboard} config={config} /> : null}
           {activePanel === "general-settings" ? <GeneralSettingsPanel initialConfig={config.general ?? emptyConfig.general} token={auth.token} /> : null}
+          {activePanel === "yggdrasil" ? <AdminYggdrasilPanel initialConfig={config.yggdrasil ?? emptyConfig.yggdrasil} token={auth.token} /> : null}
           {activePanel === "roles" ? (
             <PermissionGroupEditor catalog={catalog} token={auth.token} refreshCatalog={refreshCatalog} />
           ) : null}
@@ -3319,7 +3323,8 @@ function RoleTracksPanel({
 function GeneralSettingsPanel({ initialConfig, token }: { initialConfig: { siteName: string; logoUrl: string }; token: string }) {
   const { t } = useI18n();
   const [siteName, setSiteName] = useState(initialConfig.siteName || "Mcmods-cn");
-  const [logoUrl, setLogoUrl] = useState(initialConfig.logoUrl || "");
+	const [logoUrl, setLogoUrl] = useState(initialConfig.logoUrl || "");
+	const [logoPreviewUrl, setLogoPreviewUrl] = useState(initialConfig.logoUrl ? `${API_BASE_URL}/api/v1/site/logo` : "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
@@ -3334,9 +3339,10 @@ function GeneralSettingsPanel({ initialConfig, token }: { initialConfig: { siteN
     setMessage("");
     try {
       const uploaded = await uploadUserFileToOSS(file, token, "site-logo");
-      const url = uploaded.accessUrl || uploaded.url || "";
-      if (!url) throw new Error(t("tools.playground.uploadMissingUrl"));
-      setLogoUrl(url);
+		const storageUrl = uploaded.storageUrl || uploaded.accessUrl || uploaded.url || "";
+		if (!storageUrl) throw new Error(t("tools.playground.uploadMissingUrl"));
+		setLogoUrl(storageUrl);
+		setLogoPreviewUrl(uploaded.accessUrl || uploaded.url || storageUrl);
     } catch (error) {
       setMessage(cleanError(error));
     } finally {
@@ -3362,7 +3368,7 @@ function GeneralSettingsPanel({ initialConfig, token }: { initialConfig: { siteN
     }
   }
 
-  return <PanelShell title={t("admin.generalSettings.title")}><div className="grid gap-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><label className="text-sm font-semibold">{t("admin.generalSettings.siteName")}<input className="field mt-2" maxLength={80} value={siteName} onChange={(event) => setSiteName(event.target.value)} /></label><section><h3 className="text-sm font-semibold">{t("admin.generalSettings.siteLogo")}</h3><div className="mt-3 flex flex-wrap items-center gap-4">{logoUrl ? <img alt="" className="h-20 w-20 rounded-lg border border-[var(--line)] object-contain" src={logoUrl} /> : <span className="grid h-20 w-20 place-items-center rounded-lg bg-[var(--accent)] text-2xl font-black text-white">M</span>}<div className="flex flex-wrap gap-2"><label className="button-secondary focus-ring cursor-pointer"><span>{uploading ? t("tools.playground.uploading") : t("admin.generalSettings.uploadLogo")}</span><input className="hidden" disabled={uploading} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadLogo(file); }} /></label>{logoUrl ? <button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => setLogoUrl("")}>{t("admin.generalSettings.removeLogo")}</button> : null}</div></div></section>{message ? <p className="text-sm font-bold text-[var(--muted)]">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={!siteName.trim() || saving || uploading} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></div></div></PanelShell>;
+	return <PanelShell title={t("admin.generalSettings.title")}><div className="grid gap-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><label className="text-sm font-semibold">{t("admin.generalSettings.siteName")}<input className="field mt-2" maxLength={80} value={siteName} onChange={(event) => setSiteName(event.target.value)} /></label><section><h3 className="text-sm font-semibold">{t("admin.generalSettings.siteLogo")}</h3><div className="mt-3 flex flex-wrap items-center gap-4">{logoUrl ? <img alt="" className="h-20 w-20 rounded-lg border border-[var(--line)] object-contain" src={logoPreviewUrl || logoUrl} /> : <span className="grid h-20 w-20 place-items-center rounded-lg bg-[var(--accent)] text-2xl font-black text-white">M</span>}<div className="flex flex-wrap gap-2"><label className="button-secondary focus-ring cursor-pointer"><span>{uploading ? t("tools.playground.uploading") : t("admin.generalSettings.uploadLogo")}</span><input className="hidden" disabled={uploading} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; void uploadLogo(file); }} /></label>{logoUrl ? <button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => { setLogoUrl(""); setLogoPreviewUrl(""); }}>{t("admin.generalSettings.removeLogo")}</button> : null}</div></div></section>{message ? <p className="text-sm font-bold text-[var(--muted)]">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={!siteName.trim() || saving || uploading} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></div></div></PanelShell>;
 }
 
 function ProfileSettingsPanel({ initialConfig, token }: { initialConfig: { signatureMaxBytes: number }; token: string }) {
@@ -5302,6 +5308,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
   const titles: Record<PanelId, string> = {
     overview: t("admin.overview"),
     "general-settings": t("admin.generalSettings.title"),
+    yggdrasil: t("admin.yggdrasil.title"),
     roles: t("admin.roles"),
     "user-roles": t("admin.userRoles"),
     "permission-list": t("admin.permissionList"),
@@ -5379,6 +5386,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
   const descriptions: Partial<Record<PanelId, string>> = {
     overview: t("admin.overviewDesc"),
     "general-settings": t("admin.generalSettings.description"),
+    yggdrasil: t("admin.yggdrasil.navDescription"),
     roles: t("admin.rolesDesc"),
     "user-roles": t("admin.userRolesDesc"),
     "permission-list": t("admin.permissionListDesc"),
@@ -5827,7 +5835,7 @@ function notifyPermissionDenied(message: string) {
 }
 
 function notifyAdminNotice(message: string, title?: string, tone: "info" | "danger" = "info") {
-  if (typeof window === "undefined" || !message.trim()) return;
+  if (typeof window === "undefined" || !message.trim() || (tone === "danger" && isBackendUnavailable())) return;
   window.dispatchEvent(new CustomEvent("mcmods-admin-notice", { detail: { message, title, tone } }));
 }
 

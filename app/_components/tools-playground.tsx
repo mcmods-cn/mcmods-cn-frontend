@@ -468,9 +468,8 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
             if (!publicId) throw new Error(t("tools.playground.blueprintMissingId"));
             replaceMarkdownSnippet(marker, `[Bluemap:${publicId}]`);
           } else {
-            const url = record.accessUrl || record.url || "";
-            if (!url) throw new Error(t("tools.playground.uploadMissingUrl"));
-            replaceMarkdownSnippet(marker, markdownForUploadedFile(file, url));
+            if (!record.id) throw new Error(t("tools.playground.uploadMissingUrl"));
+            replaceMarkdownSnippet(marker, markdownForUploadedFile(file, `/api/v1/oss/files/${encodeURIComponent(record.id)}/content`));
           }
         } catch (error) {
           failed += 1;

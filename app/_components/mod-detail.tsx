@@ -200,7 +200,7 @@ function ModApplicationModal({ kind, mod, token, onClose }: { kind: "editor" | "
 
 function ModIcon({ icon, name, alt }: { icon: string; name: string; alt: string }) {
   if (!icon) return <div className="grid h-24 w-24 shrink-0 place-items-center rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] text-3xl font-black text-[var(--accent)] sm:h-28 sm:w-28">{name.slice(0, 1).toUpperCase()}</div>;
-  return <Image className="h-24 w-24 shrink-0 rounded-lg border border-[var(--line)] object-cover sm:h-28 sm:w-28" src={icon} alt={alt} width={112} height={112} />;
+  return <Image unoptimized className="h-24 w-24 shrink-0 rounded-lg border border-[var(--line)] object-contain sm:h-28 sm:w-28" src={icon} alt={alt} width={112} height={112} />;
 }
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 sm:p-6"><h2 className="text-xl font-black">{title}</h2><div className="mt-5">{children}</div></section>; }

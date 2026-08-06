@@ -273,5 +273,5 @@ function PasswordStrength({ password }: { password: string }) {
 
 function destinationAfterLogin(nextPath: string, user: AuthResult["user"]) {
   if (nextPath === "/admin" && !canAccessAdmin(user)) return "/user";
-  return nextPath || (canAccessAdmin(user) ? "/admin" : "/user");
+  return nextPath || "/user";
 }

@@ -1,3 +1,6 @@
 import { SimpleProjectEditor } from "../../_components/simple-project-editor";
 
-export default function NewAddonsPage() { return <SimpleProjectEditor projectType="addon" />; }
+export default async function NewAddonsPage({ searchParams }: { searchParams: Promise<{ method?: string; url?: string }> }) {
+  const params = await searchParams;
+  return <SimpleProjectEditor importMethod={params.method ?? "manual"} importURL={params.url ?? ""} projectType="addon" />;
+}

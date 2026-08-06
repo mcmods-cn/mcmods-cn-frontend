@@ -3,9 +3,15 @@ import { apiRequest } from "./api";
 export type UserDraftSummary = {
   id: string;
   draftKey: string;
+  projectKey: string;
+  projectTitle: string;
   kind: string;
   title: string;
   editUrl: string;
+  targetUrl: string;
+  status: "draft" | "reviewing" | "approved";
+  statusAt: string;
+  submittedAt?: string;
   expiresAt: string;
   createdAt: string;
   updatedAt: string;
@@ -30,6 +36,7 @@ export function loadUserDraft<T extends object>(id: string, token: string) {
 
 export function saveUserDraft<T extends object>(request: {
   draftKey: string;
+  projectKey: string;
   kind: string;
   title: string;
   editUrl: string;
@@ -42,13 +49,28 @@ export function saveUserDraft<T extends object>(request: {
   }, token);
 }
 
-export function deleteUserDraft(id: string, token: string) {
-  return apiRequest<{ deleted: boolean }>(`/api/v1/users/me/drafts/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
+export function completeUserDraft<T extends object>(request: {
+  draftKey: string;
+  projectKey: string;
+  projectTitle: string;
+  kind: string;
+  title: string;
+  editUrl: string;
+  targetUrl: string;
+  reviewStatus: "pending" | "approved";
+  changeRequestId?: string;
+  reviewTargetType?: "server";
+  reviewTargetPublicId?: string;
+  payload: T;
+}, token: string) {
+  return apiRequest<{ completed: boolean }>("/api/v1/users/me/drafts/complete", {
+    method: "POST",
+    body: JSON.stringify(request),
+  }, token);
 }
 
-export function deleteUserDraftByKey(draftKey: string, token: string) {
-  const query = new URLSearchParams({ draftKey });
-  return apiRequest<{ deleted: boolean }>(`/api/v1/users/me/drafts?${query}`, { method: "DELETE" }, token);
+export function deleteUserDraft(id: string, token: string) {
+  return apiRequest<{ deleted: boolean }>(`/api/v1/users/me/drafts/${encodeURIComponent(id)}`, { method: "DELETE" }, token);
 }
 
 export function draftResumeURL(draft: UserDraftSummary) {

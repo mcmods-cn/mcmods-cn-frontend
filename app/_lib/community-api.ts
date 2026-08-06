@@ -72,6 +72,7 @@ export type CreatorDetail = {
   canEdit: boolean;
   canClaim: boolean;
   publishedRevisionId?: string;
+  avatarFileId?: string;
 };
 
 export type CreatorSnapshot = {

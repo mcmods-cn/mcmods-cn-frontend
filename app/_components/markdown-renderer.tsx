@@ -15,7 +15,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import { visit } from "unist-util-visit";
 import type { PluggableList } from "unified";
-import { apiRequest } from "../_lib/api";
+import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import type { BlueprintDetailRecord } from "../_lib/blueprint-api";
 import { DRAWIO_ORIGIN, parseDrawioMessage } from "../_lib/drawio";
@@ -206,7 +206,7 @@ function MarkdownBody({
           isSafeHref(href) ? (
             <a
               className="font-semibold text-[var(--accent)] underline underline-offset-4"
-              href={href}
+              href={markdownAssetURL(href)}
               rel="noreferrer"
               target={href?.startsWith("http") ? "_blank" : undefined}
             >
@@ -248,10 +248,11 @@ function MarkdownBody({
         },
         img: ({ src, alt, width, height, className }) => {
           const safeSrc = typeof src === "string" ? src : "";
+          const renderedSrc = markdownAssetURL(safeSrc);
           const isMcIcon = safeSrc.startsWith("/mc-icons/") || String(className ?? "").includes("mc-icon-image");
           if (isMcIcon) {
             return isSafeHref(safeSrc) ? (
-              <img alt={typeof alt === "string" ? alt : ""} className="mc-icon-image" src={safeSrc} />
+              <img alt={typeof alt === "string" ? alt : ""} className="mc-icon-image" src={renderedSrc} />
             ) : null;
           }
           return isSafeHref(safeSrc) ? (
@@ -259,7 +260,7 @@ function MarkdownBody({
               alt={typeof alt === "string" ? alt : ""}
               className="max-w-full rounded-lg border border-[var(--line)]"
               height={typeof height === "number" || typeof height === "string" ? height : undefined}
-              src={safeSrc}
+              src={renderedSrc}
               width={typeof width === "number" || typeof width === "string" ? width : undefined}
             />
           ) : null;
@@ -1103,6 +1104,11 @@ function textContent(node: Element | Text): string {
 
 function isSafeHref(href?: string) {
   return Boolean(href && /^(https?:\/\/|\/(?!\/)|#)/i.test(href.trim()));
+}
+
+function markdownAssetURL(value?: string) {
+  if (!value) return "";
+  return value.startsWith("/api/") ? `${API_BASE_URL}${value}` : value;
 }
 
 function escapeRegExp(value: string) {

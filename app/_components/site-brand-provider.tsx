@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { apiRequest } from "../_lib/api";
+import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
 
 export type SiteBrand = {
@@ -57,9 +57,9 @@ function normalizeSiteBrand(value: Partial<SiteBrand>): SiteBrand {
 }
 
 function safeHTTPURL(value: unknown) {
-  if (typeof value !== "string" || !value.trim()) return "";
-  try {
-    const parsed = new URL(value);
+	if (typeof value !== "string" || !value.trim()) return "";
+	try {
+		const parsed = new URL(value.startsWith("/") ? `${API_BASE_URL}${value}` : value);
     return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : "";
   } catch {
     return "";

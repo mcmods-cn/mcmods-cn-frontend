@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 import { IconFont } from "./iconfont";
 
 type ComparisonOption = { kind: "me" | "role"; code: string; name: string };
@@ -83,14 +83,8 @@ export function PermissionComparison() {
     });
   }, [filter, result, search]);
 
-  if (!ready) return <PageState text={t("common.loading")} />;
-  if (!token) {
-    return (
-      <PageState text={t("permissions.compare.loginRequired")}>
-        <Link className="button-primary focus-ring mt-4 inline-flex" href="/login?next=/permissions/compare">{t("common.login")}</Link>
-      </PageState>
-    );
-  }
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
+  if (!token) return <LoginRequiredState nextPath="/permissions/compare" description={t("permissions.compare.loginRequired")} />;
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -189,7 +183,3 @@ function differenceLabel(row: ComparisonRow, t: (key: string) => string) {
 
 function optionValue(option: ComparisonOption) { return `${option.kind}:${option.code}`; }
 function parseOptionValue(value: string) { const [kind, ...parts] = value.split(":"); return { kind, code: parts.join(":") }; }
-
-function PageState({ text, children }: { text: string; children?: React.ReactNode }) {
-  return <main className="grid min-h-[60vh] place-items-center px-4"><div className="surface w-full max-w-lg p-6 text-center"><p className="text-sm text-[var(--muted)]">{text}</p>{children}</div></main>;
-}

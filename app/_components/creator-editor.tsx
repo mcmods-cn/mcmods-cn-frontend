@@ -27,6 +27,7 @@ import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
 import { ToolsPlayground } from "./tools-playground";
 import { SquareImageCropDialog } from "./square-image-crop-dialog";
 import { ReviewLockGate } from "./review-edit-lock";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 const authorCreatorKinds: CreatorKind[] = ["author"];
 
@@ -64,9 +65,9 @@ export function CreatorEditorPage({ initialKind, publicId = "" }: { initialKind:
     return () => window.clearTimeout(timer);
   }, [load, ready, token]);
 
-  if (!ready || (token && loading)) return <EditorState text={t("common.loading")} />;
-  if (!token) return <EditorState text={t("creators.editLoginRequired")} action={<Link className="button-primary focus-ring mt-4 inline-flex" href={`/login?next=${encodeURIComponent(publicId ? `${creatorBaseHref(initialKind)}/${publicId}/edit` : "/authors/new")}`}>{t("common.login")}</Link>} />;
-  if (error || (publicId && !detail)) return <EditorState text={error || t("creators.notFound")} />;
+  if (!ready || (token && loading)) return <PageFeedback title={t("common.loading")} />;
+  if (!token) return <LoginRequiredState nextPath={publicId ? `${creatorBaseHref(initialKind)}/${publicId}/edit` : initialKind === "team" ? "/teams/new" : "/authors/new"} description={t("creators.editLoginRequired")} />;
+  if (error || (publicId && !detail)) return <PageFeedback title={error || t("creators.notFound")} tone="danger" />;
 
   const editor = <CreatorEditorForm detail={detail} initialKind={initialKind} roles={roles} token={token} />;
   return publicId
@@ -85,7 +86,7 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
   const [selectedLocale, setSelectedLocale] = useState<Locale>(initialDefaultLocale);
   const [localizations, setLocalizations] = useState<CreatorLocalization[]>(() => creatorEditorLocalizations(detail, initialDefaultLocale));
   const [avatarUrl, setAvatarUrl] = useState(detail?.creator.avatarUrl ?? "");
-  const [avatarFileId, setAvatarFileId] = useState<string>();
+  const [avatarFileId, setAvatarFileId] = useState<string | undefined>(detail?.avatarFileId);
   const [links, setLinks] = useState<CreatorLink[]>(detail?.links ?? []);
   const [members, setMembers] = useState<BackendModAuthor[]>(() => detail?.members.map((member) => ({
     creatorId: member.creatorId,
@@ -108,6 +109,7 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
   const autoDraft = useAutoDraft({
     token,
     draftKey: `creator:${detail?.creator.publicId || `new:${initialKind}`}`,
+    projectKey: `creator:${detail?.creator.publicId || `new:${initialKind}`}`,
     kind: "creator",
     title: name.trim() || t(kind === "team" ? "creators.kinds.team" : "creators.kinds.author"),
     editUrl: detail
@@ -169,7 +171,7 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
     try {
       const uploaded = await uploadUserFileToOSS(file, token, `creator_avatar:${kind}:${detail?.creator.publicId || "new"}`);
       setAvatarFileId(uploaded.id);
-      setAvatarUrl(uploaded.accessUrl || uploaded.url || "");
+      setAvatarUrl(uploaded.storageUrl || uploaded.accessUrl || uploaded.url || "");
     } catch (uploadError) {
       notifySite(uploadError instanceof Error ? uploadError.message : t("creators.avatarUploadFailed"), t("creators.avatar"), "danger");
     } finally {
@@ -212,12 +214,19 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
     setSaving(true);
     try {
       const result = editing
-        ? await apiRequest<{ reviewStatus: "pending" | "approved" }>(`/api/v1/creators/${encodeURIComponent(detail!.creator.publicId)}`, { method: "PUT", body: JSON.stringify(snapshot) }, token)
-        : await apiRequest<{ publicId: string; reviewStatus: "pending" | "approved" }>("/api/v1/creators", { method: "POST", body: JSON.stringify(snapshot) }, token);
+        ? await apiRequest<{ reviewStatus: "pending" | "approved"; changeRequestId: string }>(`/api/v1/creators/${encodeURIComponent(detail!.creator.publicId)}`, { method: "PUT", body: JSON.stringify(snapshot) }, token)
+        : await apiRequest<{ publicId: string; reviewStatus: "pending" | "approved"; changeRequestId: string }>("/api/v1/creators", { method: "POST", body: JSON.stringify(snapshot) }, token);
       const publicId = editing ? detail!.creator.publicId : "publicId" in result ? result.publicId : "";
-      await autoDraft.clearDraft();
+      const targetUrl = `${creatorBaseHref(kind)}/${publicId}`;
+      await autoDraft.completeDraft({
+        projectKey: `creator:${publicId}`,
+        projectTitle: snapshot.name,
+        targetUrl,
+        reviewStatus: result.reviewStatus,
+        changeRequestId: result.changeRequestId,
+      });
       notifySite(result.reviewStatus === "pending" ? t(editing ? "creators.editSubmitted" : "creators.createSubmitted") : t(editing ? "creators.editSaved" : "creators.createSaved"), t("creators.title"), "success");
-      router.push(`${creatorBaseHref(kind)}/${publicId}`);
+      router.push(targetUrl);
     } catch (saveError) {
       notifySite(saveError instanceof Error ? saveError.message : t(editing ? "creators.editFailed" : "creators.createFailed"), t("creators.title"), "danger");
     } finally {
@@ -307,19 +316,15 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
           </label>
         </div>
 
-        <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="min-w-0 space-y-5">
-            <section><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("creators.introduction")} ({selectedLocale})</h2><span className="text-xs text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded editorTitle={`${t("creators.introduction")} (${selectedLocale})`} value={localized.contentMarkdown} onChange={(contentMarkdown) => setLocalizations((current) => updateCreatorLocalization(current, selectedLocale, { contentMarkdown }))} /></section>
-          </div>
-          <aside className="space-y-5">
+        <div className="mt-6 grid gap-5 xl:grid-cols-2">
             <section className="rounded-lg border border-[var(--line)] p-4">
               <h2 className="font-black">{t("creators.avatar")}</h2>
               <div className="mt-3 flex items-center gap-3"><CreatorAvatar avatarUrl={avatarUrl} name={name} /><label className="button-secondary focus-ring cursor-pointer">{uploadingAvatar ? t("common.loading") : t("creators.chooseAvatar")}<input className="sr-only" accept="image/png,image/jpeg,image/webp,image/gif,image/apng,.apng" disabled={uploadingAvatar} type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setAvatarCropFile(file); }} /></label></div>
             </section>
             <LinkEditor links={links} onChange={setLinks} />
             {kind === "team" ? <section className="rounded-lg border border-[var(--line)] p-4"><h2 className="font-black">{t("creators.members")}</h2><div className="mt-3"><CreatorPicker allowTitle allowedKinds={authorCreatorKinds} initialRoles={roles} value={members} onChange={updateMembers} /></div><div className="mt-4 border-t border-[var(--line)] pt-4"><p className="text-sm font-black">{t("creators.customRole")}</p><div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]"><input className="field" value={customRole} onChange={(event) => setCustomRole(event.target.value)} /><button className="button-secondary focus-ring" disabled={creatingRole || !customRole.trim()} type="button" onClick={() => void createRole()}>{creatingRole ? t("common.loading") : t("common.create")}</button></div></div></section> : null}
-          </aside>
         </div>
+        <section className="mt-6"><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("creators.introduction")} ({selectedLocale})</h2><span className="text-xs text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded editorTitle={`${t("creators.introduction")} (${selectedLocale})`} value={localized.contentMarkdown} onChange={(contentMarkdown) => setLocalizations((current) => updateCreatorLocalization(current, selectedLocale, { contentMarkdown }))} /></section>
       </form>
       <SquareImageCropDialog file={avatarCropFile} minimumSize={1} outputSizes={[256]} onCancel={() => setAvatarCropFile(undefined)} onConfirm={(output) => { const file = output.files.get(256); setAvatarCropFile(undefined); if (file) void uploadAvatar(file); }} />
     </main>
@@ -333,10 +338,6 @@ function LinkEditor({ links, onChange }: { links: CreatorLink[]; onChange: (link
 
 function CreatorAvatar({ avatarUrl, name }: { avatarUrl: string; name: string }) {
   return <span className="grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent-soft)] text-3xl font-black text-[var(--accent)]">{avatarUrl ? <img alt="" className="h-full w-full object-cover" src={avatarUrl} /> : name.trim().slice(0, 1).toUpperCase()}</span>;
-}
-
-function EditorState({ text, action }: { text: string; action?: React.ReactNode }) {
-  return <main className="grid min-h-[65vh] place-items-center bg-[var(--background)] px-4"><div className="surface w-full max-w-lg rounded-lg p-6 text-center text-sm text-[var(--muted)]"><p>{text}</p>{action}</div></main>;
 }
 
 function creatorBaseHref(kind: CreatorKind) {

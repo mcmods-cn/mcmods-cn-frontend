@@ -1,4 +1,6 @@
-﻿export const API_BASE_URL =
+import { reportBackendAvailability } from "./backend-status";
+
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 export class ApiError extends Error {
@@ -27,11 +29,12 @@ export async function apiRequest<T>(
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await backendFetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: options.credentials ?? "include",
     headers,
   });
+
   const envelope = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!response.ok) {
     if (response.status === 401 && typeof window !== "undefined") {
@@ -43,6 +46,17 @@ export async function apiRequest<T>(
     throw new ApiError("接口响应为空", response.status);
   }
   return envelope.data;
+}
+
+export async function backendFetch(input: RequestInfo | URL, init?: RequestInit) {
+  try {
+    const response = await fetch(input, init);
+    reportBackendAvailability(![502, 503, 504].includes(response.status));
+    return response;
+  } catch (error) {
+    reportBackendAvailability(false);
+    throw error;
+  }
 }
 
 function clearExpiredAuth() {

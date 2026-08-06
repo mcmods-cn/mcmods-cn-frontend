@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   archiveCatalogRecipeType,
@@ -24,6 +23,7 @@ import { ResourcePickerDialog } from "./editor/resource-picker-dialog";
 import { ReviewStatusPanel } from "./editor/review-status-panel";
 import { SelectedResourceList } from "./editor/selected-resource-list";
 import { ToolsPlayground } from "./tools-playground";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 type EditorMode = "create" | "edit";
 
@@ -141,9 +141,10 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
     }
   }
 
-  if (!ready) return <CatalogEditorGate loading />;
-  if (!user) return <CatalogEditorGate />;
-  if (loading) return <CatalogEditorGate loading />;
+  const loginNextPath = `/mods-tag?editor=${mode === "edit" ? "edit" : "create"}${publicId ? `&publicId=${encodeURIComponent(publicId)}` : ""}`;
+  if (!ready) return <CatalogEditorGate loading nextPath={loginNextPath} />;
+  if (!user) return <CatalogEditorGate nextPath={loginNextPath} />;
+  if (loading) return <CatalogEditorGate loading nextPath={loginNextPath} />;
 
   return <>
     <EditorShell
@@ -191,6 +192,7 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
         onChoose={() => setPickerOpen(true)}
         onRemove={(resource) => setMembers((current) => current.filter((item) => item.publicId !== resource.publicId))}
       />
+      <MarkdownContentPanel fields={fields} locale={selectedLocale} onChange={updateFields} />
     </EditorShell>
     <ResourcePickerDialog
       multiple
@@ -327,9 +329,10 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
     }
   }
 
-  if (!ready) return <CatalogEditorGate loading />;
-  if (!user) return <CatalogEditorGate />;
-  if (loading) return <CatalogEditorGate loading />;
+  const loginNextPath = `/recipe-types?editor=${mode === "edit" ? "edit" : "create"}${publicId ? `&publicId=${encodeURIComponent(publicId)}` : ""}`;
+  if (!ready) return <CatalogEditorGate loading nextPath={loginNextPath} />;
+  if (!user) return <CatalogEditorGate nextPath={loginNextPath} />;
+  if (loading) return <CatalogEditorGate loading nextPath={loginNextPath} />;
 
   return <>
     <EditorShell
@@ -372,6 +375,7 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
         onChoose={() => setPickerOpen(true)}
         onRemove={(resource) => setCatalysts((current) => current.filter((item) => item.publicId !== resource.publicId))}
       />
+      <MarkdownContentPanel fields={fields} locale={selectedLocale} onChange={updateFields} />
     </EditorShell>
     <ResourcePickerDialog
       multiple
@@ -417,9 +421,13 @@ function LocalizedFieldsPanel({ fields, locale, onChange }: { fields: LocalizedC
         <textarea className="field min-h-24" value={fields.summary} onChange={(event) => onChange({ summary: event.target.value })} />
       </label>
     </div>
-    <div className="mt-5">
-      <ToolsPlayground embedded editorTitle={t("catalogEditor.contentMarkdown")} value={fields.contentMarkdown} onChange={(value) => onChange({ contentMarkdown: value })} />
-    </div>
+  </section>;
+}
+
+function MarkdownContentPanel({ fields, locale, onChange }: { fields: LocalizedContentFields; locale: Locale; onChange: (patch: Partial<LocalizedContentFields>) => void }) {
+  const { t } = useI18n();
+  return <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
+    <ToolsPlayground embedded editorTitle={`${t("catalogEditor.contentMarkdown")} (${locale})`} value={fields.contentMarkdown} onChange={(value) => onChange({ contentMarkdown: value })} />
   </section>;
 }
 
@@ -469,14 +477,11 @@ function CatalogEditorAside({ defaultLocale, reason, resourceCount, resourceLabe
   </div>;
 }
 
-function CatalogEditorGate({ loading = false }: { loading?: boolean }) {
+function CatalogEditorGate({ loading = false, nextPath }: { loading?: boolean; nextPath: string }) {
   const { t } = useI18n();
-  return <main className="grid min-h-[70vh] place-items-center bg-[var(--background)] p-4 text-[var(--foreground)]">
-    <section className="surface max-w-lg rounded-lg p-8 text-center">
-      <h1 className="text-2xl font-black">{loading ? t("common.loading") : t("catalogEditor.loginRequired")}</h1>
-      {!loading ? <Link className="button-primary focus-ring mt-5 inline-flex" href="/login">{t("common.login")}</Link> : null}
-    </section>
-  </main>;
+  return loading
+    ? <PageFeedback title={t("common.loading")} />
+    : <LoginRequiredState nextPath={nextPath} description={t("catalogEditor.loginRequired")} />;
 }
 
 function CatalogEditorError({ text }: { text: string }) {

@@ -11,6 +11,7 @@ import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
 import { SkinPreview2D } from "./skin-preview";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 export function SkinUpload() {
   const router = useRouter();
@@ -33,9 +34,6 @@ export function SkinUpload() {
   const defaultVersion = localizations.find((item) => item.locale === defaultLocale) ?? emptyUploadLocalization(defaultLocale);
 
   useEffect(() => () => { if (previewURL) URL.revokeObjectURL(previewURL); }, [previewURL]);
-  useEffect(() => {
-    if (ready && !user) router.replace("/login?next=/skins/upload");
-  }, [ready, router, user]);
 
   async function chooseFile(nextFile?: File) {
     setError("");
@@ -86,6 +84,9 @@ export function SkinUpload() {
       setUploading(false);
     }
   }
+
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
+  if (!user || !token) return <LoginRequiredState nextPath="/skins/upload" />;
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">

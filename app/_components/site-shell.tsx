@@ -8,6 +8,7 @@ import { type WheelEvent as ReactWheelEvent, useEffect, useId, useRef, useState 
 import { createPortal } from "react-dom";
 import { apiRequest } from "../_lib/api";
 import { canAccessAdmin, clearAuth, type AuthUser, useAuthSnapshot } from "../_lib/auth";
+import { reportBackendAvailability } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
@@ -51,10 +52,10 @@ const navItems: HeaderNavItem[] = [
 
 export function SiteShell({ children }: SiteShellProps) {
   const pathname = usePathname();
-  if (pathname?.startsWith("/admin")) return <>{children}</>;
+  const admin = pathname?.startsWith("/admin");
   return (
     <>
-      <SiteHeader />
+      {admin ? <BackendStatusBanner /> : <SiteHeader />}
       {children}
       <SiteNoticeDialog />
     </>
@@ -62,6 +63,46 @@ export function SiteShell({ children }: SiteShellProps) {
 }
 
 type SiteNotice = { message: string; title?: string; tone?: "danger" | "success" | "info" };
+
+function BackendStatusBanner() {
+  const { t } = useI18n();
+  const [available, setAvailable] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const receive = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      if (typeof detail?.available === "boolean") setAvailable(detail.available);
+    };
+    const check = () => {
+      void apiRequest<{ status: "ok" | "error" }>("/health", { cache: "no-store" })
+        .then((health) => {
+          if (cancelled) return;
+          const nextAvailable = health.status === "ok";
+          setAvailable(nextAvailable);
+          reportBackendAvailability(nextAvailable);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setAvailable(false);
+          reportBackendAvailability(false);
+        });
+    };
+    window.addEventListener("mcmods-backend-status", receive);
+    window.addEventListener("online", check);
+    check();
+    const timer = window.setInterval(check, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("mcmods-backend-status", receive);
+      window.removeEventListener("online", check);
+    };
+  }, []);
+
+  if (available) return null;
+  return <div className="bg-red-700 px-4 py-2 text-center text-sm font-bold text-white" role="alert">{t("site.backendUnavailable")}</div>;
+}
 
 function SiteNoticeDialog() {
   const { t } = useI18n();
@@ -91,36 +132,15 @@ function SiteNoticeDialog() {
 
 function SiteHeader() {
   const { t, locale, setLocale } = useI18n();
+  const pathname = usePathname();
   const { toggleTheme } = useTheme();
   const { token, user } = useAuthSnapshot();
   const brand = useSiteBrand();
   const router = useRouter();
   const [unread, setUnread] = useState(0);
-  const [backendAvailable, setBackendAvailable] = useState(true);
   const navigationRef = useRef<HTMLElement>(null);
   const navigationScrollTimerRef = useRef<number | null>(null);
   const [navigationEdges, setNavigationEdges] = useState({ left: true, right: false });
-
-  useEffect(() => {
-    let cancelled = false;
-    const checkBackend = () => {
-      void apiRequest<{ status: "ok" | "error" }>("/health", { cache: "no-store" })
-        .then((health) => {
-          if (!cancelled) setBackendAvailable(health.status === "ok");
-        })
-        .catch(() => {
-          if (!cancelled) setBackendAvailable(false);
-        });
-    };
-    checkBackend();
-    const timer = window.setInterval(checkBackend, 5_000);
-    window.addEventListener("online", checkBackend);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      window.removeEventListener("online", checkBackend);
-    };
-  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -193,11 +213,7 @@ function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--panel)_94%,transparent)] backdrop-blur">
-      {!backendAvailable ? (
-        <div className="bg-red-700 px-4 py-2 text-center text-sm font-bold text-white" role="alert">
-          {t("site.backendUnavailable")}
-        </div>
-      ) : null}
+      <BackendStatusBanner />
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
         <Link className="flex shrink-0 items-center gap-3" href="/" aria-label={t("common.home")}>
           {brand.logoUrl ? <img alt="" className="h-10 w-10 rounded-lg object-contain" src={brand.logoUrl} /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-black text-white">M</span>}
@@ -289,7 +305,7 @@ function SiteHeader() {
               </Link>
             </>
           ) : (
-            <Link className="button-primary focus-ring px-4 py-2 text-sm" href="/login">
+            <Link className="button-primary focus-ring px-4 py-2 text-sm" href={`/login?next=${encodeURIComponent(pathname || "/")}`}>
               {t("common.login")}
             </Link>
           )}

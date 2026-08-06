@@ -128,6 +128,19 @@ export function AspectImageCropDialog({ file, aspectWidth, aspectHeight, minimum
     setCrop({ ...crop, x: clamp(imageX - drag.offsetX, 0, imageSize.width - crop.width), y: clamp(imageY - drag.offsetY, 0, imageSize.height - crop.height) });
   }
 
+  function resizeCrop(scalePercent: number) {
+    if (!imageSize || !crop) return;
+    const maximum = maximumAspectCrop(imageSize.width, imageSize.height, aspectWidth, aspectHeight);
+    const minimumCropWidth = Math.min(maximum.width, Math.max(minimumWidth, minimumHeight * aspectWidth / aspectHeight));
+    const targetWidth = clamp(maximum.width * scalePercent / 100, minimumCropWidth, maximum.width);
+    setCrop(resizeAspectCropAroundCenter(crop, targetWidth, imageSize, aspectWidth / aspectHeight));
+  }
+
+  const maximumCrop = imageSize ? maximumAspectCrop(imageSize.width, imageSize.height, aspectWidth, aspectHeight) : undefined;
+  const minimumCropWidth = maximumCrop ? Math.min(maximumCrop.width, Math.max(minimumWidth, minimumHeight * aspectWidth / aspectHeight)) : 0;
+  const minimumScale = maximumCrop ? Math.ceil(minimumCropWidth / maximumCrop.width * 100) : 100;
+  const cropScale = crop && maximumCrop ? Math.round(crop.width / maximumCrop.width * 100) : 100;
+
   return <div aria-modal="true" className="fixed inset-0 z-[130] grid place-items-center bg-black/65 p-3 sm:p-5" role="dialog">
     <section className="surface flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-[var(--line)] shadow-2xl">
       <header className="flex items-start justify-between gap-4 border-b border-[var(--line)] p-4 sm:p-5">
@@ -151,6 +164,10 @@ export function AspectImageCropDialog({ file, aspectWidth, aspectHeight, minimum
             onPointerUp={(event) => { dragRef.current = undefined; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }} />
         </div>
         <p className="mt-3 text-xs text-[var(--muted)]">{t("resourceEditor.cropHint", { size: `${minimumWidth} × ${minimumHeight}` })}</p>
+        <label className="mt-4 grid gap-2 text-sm font-bold">
+          <span className="flex items-center justify-between gap-3"><span>{t("resourceEditor.cropScale")}</span><output>{cropScale}%</output></span>
+          <input className="w-full accent-[var(--accent)]" disabled={!crop || Boolean(error)} max={100} min={minimumScale} step={1} type="range" value={cropScale} onChange={(event) => resizeCrop(Number(event.target.value))} />
+        </label>
         {error ? <p className="mt-3 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{error}</p> : null}
       </div>
       <footer className="flex justify-end gap-3 border-t border-[var(--line)] p-4 sm:p-5"><button className="button-secondary focus-ring" disabled={busy} type="button" onClick={onCancel}>{t("common.cancel")}</button><button className="button-primary focus-ring" disabled={busy || Boolean(error) || !crop || loadedObjectUrl !== objectUrl} type="button" onClick={() => void confirm()}>{busy ? t("resourceEditor.processing") : t("resourceEditor.cropConfirm")}</button></footer>
@@ -187,6 +204,18 @@ function drawThirds(context: CanvasRenderingContext2D, crop: ReturnType<typeof c
     context.beginPath(); context.moveTo(crop.x, y); context.lineTo(crop.x + crop.width, y); context.stroke();
   }
   context.restore();
+}
+
+function resizeAspectCropAroundCenter(crop: Crop, width: number, image: ImageSize, ratio: number): Crop {
+  const height = width / ratio;
+  const centerX = crop.x + crop.width / 2;
+  const centerY = crop.y + crop.height / 2;
+  return {
+    x: clamp(centerX - width / 2, 0, image.width - width),
+    y: clamp(centerY - height / 2, 0, image.height - height),
+    width,
+    height,
+  };
 }
 
 function eventCanvasPoint(event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement) {

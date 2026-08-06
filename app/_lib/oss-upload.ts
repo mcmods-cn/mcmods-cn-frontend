@@ -21,6 +21,7 @@ export type OSSFileRecord = {
   updatedAt: string;
   url?: string;
   accessUrl?: string;
+  storageUrl?: string;
   blueprintId?: string;
   blueprint?: { id: string; status: string; jobId?: string };
   locked?: boolean;
@@ -31,6 +32,7 @@ export type OSSDirectUploadTicket = {
   method?: string;
   url?: string;
   accessUrl?: string;
+  storageUrl?: string;
   headers?: Record<string, string>;
   bucket: string;
   objectKey: string;
@@ -421,6 +423,7 @@ function normalizeUploadResult(record: OSSFileRecord | undefined, ticket: OSSDir
     // object. Prefer its final URL; the presign ticket still points at the
     // consumed source object in that case.
     accessUrl: record?.accessUrl || record?.url || ticket.accessUrl,
+    storageUrl: record?.storageUrl || ticket.storageUrl,
     blueprintId: record?.blueprintId || ticket.blueprintId || record?.blueprint?.id || ticket.blueprint?.id,
     blueprint: record?.blueprint || ticket.blueprint,
   };

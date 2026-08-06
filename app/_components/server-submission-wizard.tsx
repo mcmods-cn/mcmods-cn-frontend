@@ -91,6 +91,7 @@ export function ServerSubmissionWizard({
   const autoDraft = useAutoDraft({
     token,
     draftKey: `server:${initialServer?.id || "new"}`,
+    projectKey: `server:${initialServer?.id || "new"}`,
     kind: "server",
     title: draft.name.trim() || address.trim() || t(editing ? "servers.wizard.editTitle" : "servers.wizard.title"),
     editUrl: initialServer ? `/servers/${initialServer.id}` : "/servers/new",
@@ -248,7 +249,14 @@ export function ServerSubmissionWizard({
       };
       if (initialServer) {
         await updateServer(initialServer.id, metadata, token);
-        await autoDraft.clearDraft();
+        await autoDraft.completeDraft({
+          projectKey: `server:${initialServer.id}`,
+          projectTitle: draft.name.trim(),
+          targetUrl: `/servers/${initialServer.id}`,
+          reviewStatus: initialServer.reviewStatus === "approved" ? "approved" : "pending",
+          reviewTargetType: "server",
+          reviewTargetPublicId: initialServer.id,
+        });
         onSubmitted(initialServer.id, initialServer.reviewStatus === "approved");
         return;
       }
@@ -258,7 +266,14 @@ export function ServerSubmissionWizard({
         proofText: reviewRequired ? draft.proofText.trim() : "",
         proofFileIds: reviewRequired ? proofFiles.map((file) => file.id) : [],
       }, token);
-      await autoDraft.clearDraft();
+      await autoDraft.completeDraft({
+        projectKey: `server:${result.id}`,
+        projectTitle: draft.name.trim(),
+        targetUrl: `/servers/${result.id}`,
+        reviewStatus: result.reviewStatus,
+        reviewTargetType: "server",
+        reviewTargetPublicId: result.id,
+      });
       onSubmitted(result.id, result.published);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t(editing ? "servers.wizard.updateFailed" : "servers.wizard.submitFailed"));

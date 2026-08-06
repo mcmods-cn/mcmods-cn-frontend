@@ -26,6 +26,7 @@ export type ModContentEntryType = {
   kindCodes?: string[];
   names: ModContentLocalizedNames;
   groups: ModContentEntryGroup[];
+  enabled?: boolean;
 };
 export type ModContentTemplateDefinition = Record<string, unknown> & {
   resourceKinds?: string[];

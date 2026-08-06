@@ -156,6 +156,7 @@ export function AdminContentAttributePanel({ token }: { token: string }) {
       kindCodes: [...(draft.resourceKinds || [])],
       names,
       groups: [{ code, names: { ...names }, fields: [] }],
+      enabled: true,
     };
     setDraft({ ...draft, entryTypes: [...(draft.entryTypes || []), entryType] });
     setSelectedTypeCode(code);
@@ -181,6 +182,15 @@ export function AdminContentAttributePanel({ token }: { token: string }) {
     setNewFieldCode("");
     setNewFieldName("");
     setNewFieldType("integer");
+    setError("");
+  }
+
+  function deleteSelectedType() {
+    if (!draft || !selectedType || !window.confirm(t("admin.resourceAttributes.deleteTypeConfirm"))) return;
+    const remaining = (draft.entryTypes || []).filter((entryType) => entryType.code !== selectedType.code);
+    const nextEditable = remaining.find((entryType) => entryType.code !== "default");
+    setDraft({ ...draft, entryTypes: remaining });
+    setSelectedTypeCode(nextEditable?.code || "");
     setError("");
   }
 
@@ -286,7 +296,7 @@ export function AdminContentAttributePanel({ token }: { token: string }) {
 
         <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5">
           <h3 className="font-black">{t("admin.resourceAttributes.attributeTypes")}</h3>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-2">{entryTypes.map((entryType) => <button className={`focus-ring shrink-0 rounded-lg px-3 py-2 font-bold ${selectedTypeCode === entryType.code ? "bg-[var(--accent)] text-white" : "bg-[var(--panel-subtle)]"}`} key={entryType.code} type="button" onClick={() => setSelectedTypeCode(entryType.code)}>{localizedValue(entryType.names, locale) || entryType.code}</button>)}</div>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-2">{entryTypes.map((entryType) => <button className={`focus-ring shrink-0 rounded-lg px-3 py-2 font-bold ${selectedTypeCode === entryType.code ? "bg-[var(--accent)] text-white" : "bg-[var(--panel-subtle)]"} ${entryType.enabled === false ? "opacity-55" : ""}`} key={entryType.code} type="button" onClick={() => setSelectedTypeCode(entryType.code)}>{localizedValue(entryType.names, locale) || entryType.code}{entryType.enabled === false ? ` · ${t("admin.resourceAttributes.disabled")}` : ""}</button>)}</div>
           <div className="mt-4 grid gap-3 border-t border-[var(--line)] pt-4 md:grid-cols-[minmax(0,220px)_minmax(0,1fr)_auto]">
             <input className="field font-mono" maxLength={64} placeholder={t("admin.resourceAttributes.typeId")} value={newTypeCode} onChange={(event) => setNewTypeCode(event.target.value)} />
             <input className="field" maxLength={160} placeholder={t("admin.resourceAttributes.typeName")} value={newTypeName} onChange={(event) => setNewTypeName(event.target.value)} />
@@ -295,7 +305,7 @@ export function AdminContentAttributePanel({ token }: { token: string }) {
         </section>
 
         {selectedType ? <section className="space-y-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5">
-          <div><h3 className="text-lg font-black">{localizedValue(selectedType.names, locale) || selectedType.code}</h3><code className="text-xs text-[var(--muted)]">{selectedType.code}</code></div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-black">{localizedValue(selectedType.names, locale) || selectedType.code}</h3><code className="text-xs text-[var(--muted)]">{selectedType.code}</code></div><div className="flex flex-wrap gap-2"><button className="button-secondary focus-ring" type="button" onClick={() => updateSelectedType((entryType) => ({ ...entryType, enabled: entryType.enabled === false }))}>{t(selectedType.enabled === false ? "admin.resourceAttributes.enableType" : "admin.resourceAttributes.disableType")}</button><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={deleteSelectedType}>{t("admin.resourceAttributes.deleteType")}</button></div></div>
           <LocalizedNameEditor language={selectedEditingLanguage} names={selectedType.names} onChange={(names) => updateSelectedType((entryType) => ({ ...entryType, names, groups: entryType.groups.map((group, index) => index === 0 ? { ...group, names: { ...names } } : group) }))} />
           <div className="space-y-3">{selectedType.groups.flatMap((group) => group.fields).map((field) => <FieldEditor
             field={field}
@@ -330,6 +340,23 @@ function FieldEditor({ field, language, locked, onChange }: { field: ModContentE
       {(field.type === "reference" || field.type === "reference-list") && field.format === "resource" ? <label className="grid gap-1 text-xs font-bold text-[var(--muted)]">{t("admin.resourceAttributes.resourceKind")}<input className="field font-mono text-[var(--foreground)]" disabled={locked} value={field.referenceKind || ""} onChange={(event) => onChange({ ...field, referenceKind: event.target.value.trim().toLowerCase() })} /></label> : null}
       {(field.type === "reference" || field.type === "reference-list") && field.format === "tag" ? <label className="grid gap-1 text-xs font-bold text-[var(--muted)]">{t("admin.resourceAttributes.tagRegistry")}<input className="field font-mono text-[var(--foreground)]" disabled={locked} placeholder="minecraft:item" value={field.referenceRegistry || ""} onChange={(event) => onChange({ ...field, referenceRegistry: event.target.value.trim().toLowerCase() })} /></label> : null}
     </div>
+    <label className="mt-4 flex items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3">
+      <input
+        checked={field.editable !== false}
+        className="mt-1 h-4 w-4"
+        type="checkbox"
+        onChange={(event) => {
+          const next = { ...field };
+          if (event.target.checked) delete next.editable;
+          else next.editable = false;
+          onChange(next);
+        }}
+      />
+      <span>
+        <strong className="block text-sm text-[var(--foreground)]">{t("admin.resourceAttributes.fieldEditable")}</strong>
+        <span className="mt-1 block text-xs font-normal leading-5 text-[var(--muted)]">{t("admin.resourceAttributes.fieldEditableHint")}</span>
+      </span>
+    </label>
     <div className="mt-4"><LocalizedNameEditor language={language} names={field.names} onChange={(names) => onChange({ ...field, names })} /></div>
     <label className="mt-4 grid gap-1 text-xs font-bold text-[var(--muted)]">{t("admin.resourceAttributes.importPaths")}<textarea className="field min-h-24 font-mono text-xs text-[var(--foreground)]" value={(field.paths || []).map((path) => path.join(".")).join("\n")} onChange={(event) => onChange({ ...field, paths: parseImportPaths(event.target.value, field.code) })} /></label>
   </article>;

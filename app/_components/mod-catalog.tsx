@@ -29,7 +29,7 @@ import {
 import { useI18n } from "../_lib/i18n-provider";
 import { loadFavoriteCollections, loadFavoriteItems } from "../_lib/favorite-api";
 import { FavoritePickerModal } from "./favorite-picker-modal";
-import { ModSubmissionModal } from "./mod-submission-modal";
+import { ProjectSubmissionModal } from "./project-submission-modal";
 import {
   CatalogEmptyState,
   CatalogFilterGroup,
@@ -243,7 +243,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
             </div>
             <div className="flex flex-wrap gap-2">
               {!isModpack ? <><Link className="button-secondary focus-ring" href="/mods-tag">{t("globalCatalog.tags.short")}</Link><Link className="button-secondary focus-ring" href="/recipe-types">{t("globalCatalog.recipeTypes.short")}</Link></> : null}
-              {isModpack ? <Link className="button-primary focus-ring" href="/modpacks/new">{t("modpacks.submit")}</Link> : <button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>{t("mods.submit")}</button>}
+              <button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>{t(isModpack ? "modpacks.submit" : "mods.submit")}</button>
             </div>
           </div>
           <form className="mt-6 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
@@ -399,7 +399,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
       }} /> : null}
 
       {notice ? <div className="fixed bottom-5 left-1/2 z-[80] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg bg-[var(--foreground)] px-4 py-3 text-center text-sm font-bold text-[var(--background)] shadow-xl" role="status">{notice}</div> : null}
-      {!isModpack ? <ModSubmissionModal open={submissionOpen} onClose={() => setSubmissionOpen(false)} /> : null}
+      <ProjectSubmissionModal open={submissionOpen} projectType={projectType} onClose={() => setSubmissionOpen(false)} />
     </main>
   );
 }
@@ -551,7 +551,7 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
   return (
     <article className={`surface focus-ring group cursor-pointer rounded-lg transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md ${cardClass}`} role="link" tabIndex={0} onClick={openDetails} onKeyDown={handleKeyDown}>
       <div className={view === "grid" ? "flex items-start gap-3" : "flex items-start gap-3 lg:block"}>
-        {mod.icon ? <Image className="aspect-square h-20 w-20 shrink-0 rounded-lg object-cover [image-rendering:auto] lg:h-24 lg:w-24" src={mod.icon} alt={t("mods.card.iconAlt", { name: displayName })} width={96} height={96} /> : <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] text-2xl font-black text-[var(--accent)] lg:h-24 lg:w-24" aria-label={t("mods.card.iconAlt", { name: displayName })}>{displayName.trim().slice(0, 1).toUpperCase() || "M"}</div>}
+        {mod.icon ? <Image unoptimized className="aspect-square h-20 w-20 shrink-0 rounded-lg object-cover [image-rendering:auto] lg:h-24 lg:w-24" src={mod.icon} alt={t("mods.card.iconAlt", { name: displayName })} width={96} height={96} /> : <div className="grid h-20 w-20 shrink-0 place-items-center rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] text-2xl font-black text-[var(--accent)] lg:h-24 lg:w-24" aria-label={t("mods.card.iconAlt", { name: displayName })}>{displayName.trim().slice(0, 1).toUpperCase() || "M"}</div>}
         {view === "grid" ? <CardTitle mod={mod} displayName={displayName} secondaryName={secondaryName} t={t} /> : null}
         {view === "list" ? <div className="min-w-0 lg:hidden"><CardTitle mod={mod} displayName={displayName} secondaryName={secondaryName} t={t} /></div> : null}
       </div>

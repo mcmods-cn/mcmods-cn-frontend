@@ -88,14 +88,15 @@ function relatedTitleKey(kind: CommunityPostKind) {
   }
 }
 
-export function RotatingResourceIcon({ resources, compact = false }: { resources: CommunityPostReference[]; compact?: boolean }) {
+export function RotatingResourceIcon({ resources, compact = false }: { resources?: CommunityPostReference[] | null; compact?: boolean }) {
   const [index, setIndex] = useState(0);
+  const resourceCount = resources?.length ?? 0;
   useEffect(() => {
-    if (resources.length < 2) return;
-    const timer = window.setInterval(() => setIndex((value) => (value + 1) % resources.length), 1000);
+    if (resourceCount < 2) return;
+    const timer = window.setInterval(() => setIndex((value) => (value + 1) % resourceCount), 1000);
     return () => window.clearInterval(timer);
-  }, [resources.length]);
-  const resource = resources[index % Math.max(1, resources.length)];
+  }, [resourceCount]);
+  const resource = resourceCount > 0 ? resources?.[index % resourceCount] : undefined;
   const icon = resourceIcon(resource);
   const fallback = resource?.unresolved ? "?" : (resource?.name || resource?.identifier || "R").trim().slice(0, 2);
   return <div className="grid h-full w-full place-items-center">{icon ? <Image unoptimized alt="" className={compact ? "h-8 w-8 object-contain [image-rendering:pixelated]" : "h-24 w-24 object-contain [image-rendering:pixelated]"} height={compact ? 32 : 96} src={icon} width={compact ? 32 : 96} /> : <strong className={compact ? "text-sm text-[var(--muted)]" : "text-3xl text-[var(--muted)]"}>{fallback}</strong>}</div>;

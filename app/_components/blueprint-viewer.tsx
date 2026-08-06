@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { BlueprintBlock, StructureRendererLoadResult } from "@/lib/mcmods-exporter/renderer";
 import { IndexedHttpAssetSource } from "@/lib/mcmods-exporter/renderer";
-import { API_BASE_URL, isBearerAccessToken } from "../_lib/api";
+import { API_BASE_URL, backendFetch, isBearerAccessToken } from "../_lib/api";
 import type { BlueprintDetailRecord, BlueprintMaterial } from "../_lib/blueprint-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { modExportAssetURL } from "../_lib/mod-export-api";
@@ -69,7 +69,7 @@ export function BlueprintViewer({
     name: `${publicId}.json`,
     load: async () => {
       const headers = isBearerAccessToken(token) ? { Authorization: `Bearer ${token}` } : undefined;
-      const response = await fetch(`${API_BASE_URL}/api/v1/blueprints/${encodeURIComponent(publicId)}/render`, {
+      const response = await backendFetch(`${API_BASE_URL}/api/v1/blueprints/${encodeURIComponent(publicId)}/render`, {
         credentials: "include",
         headers,
       });

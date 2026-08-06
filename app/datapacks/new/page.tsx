@@ -1,3 +1,6 @@
 import { SimpleProjectEditor } from "../../_components/simple-project-editor";
 
-export default function NewDatapacksPage() { return <SimpleProjectEditor projectType="datapack" />; }
+export default async function NewDatapacksPage({ searchParams }: { searchParams: Promise<{ method?: string; url?: string }> }) {
+  const params = await searchParams;
+  return <SimpleProjectEditor importMethod={params.method ?? "manual"} importURL={params.url ?? ""} projectType="datapack" />;
+}

@@ -14,6 +14,7 @@ import { ToolsPlayground } from "./tools-playground";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
 import { AspectImageCropDialog } from "./aspect-image-crop-dialog";
 import { FileDropZone } from "./file-drop-zone";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 const blueprintAccept = ".nbt,.schem,.schematic,.litematic";
 
@@ -35,9 +36,6 @@ export function BlueprintUpload() {
   const defaultVersion = localizations.find((item) => item.locale === defaultLocale) ?? emptyUploadLocalization(defaultLocale);
 
   useEffect(() => () => { if (coverPreview) URL.revokeObjectURL(coverPreview); }, [coverPreview]);
-  useEffect(() => {
-    if (ready && !user) router.replace("/login?next=/blueprints/upload");
-  }, [ready, router, user]);
 
   function selectBlueprint(file?: File) {
     if (!file) return;
@@ -81,6 +79,9 @@ export function BlueprintUpload() {
       setUploading(false);
     }
   }
+
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
+  if (!user || !token) return <LoginRequiredState nextPath="/blueprints/upload" />;
 
   return <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
     <header className="border-b border-[var(--line)] bg-[var(--panel)]"><div className="mx-auto max-w-6xl px-4 py-7"><Link className="text-sm font-bold text-[var(--accent)]" href="/blueprints">{t("blueprints.title")}</Link><h1 className="mt-2 text-3xl font-black">{t("blueprints.uploadPage.title")}</h1><p className="mt-2 text-[var(--muted)]">{t("blueprints.uploadPage.subtitle")}</p></div></header>

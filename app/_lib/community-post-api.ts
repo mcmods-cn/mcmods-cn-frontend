@@ -56,6 +56,21 @@ export type CommunityPost = {
   canResolve: boolean;
 };
 
+type CommunityPostResponse = Omit<CommunityPost, "minecraftVersions" | "projects" | "resources"> & {
+  minecraftVersions: string[] | null;
+  projects: CommunityPostReference[] | null;
+  resources: CommunityPostReference[] | null;
+};
+
+function normalizeCommunityPost(post: CommunityPostResponse): CommunityPost {
+  return {
+    ...post,
+    minecraftVersions: post.minecraftVersions ?? [],
+    projects: post.projects ?? [],
+    resources: post.resources ?? [],
+  };
+}
+
 export type CommunityPostDraft = Pick<CommunityPost, "kind" | "title" | "bodyMarkdown" | "minecraftVersions" | "modVersionMin" | "modVersionMax" | "severity" | "hasFix" | "issueUrl" | "projects" | "resources"> & {
   sourceLocale?: string;
   coverFileId?: string;
@@ -72,20 +87,22 @@ export function communityPostCollection(kind: CommunityPostKind) {
   }
 }
 
-export function loadCommunityPosts(kind: CommunityPostKind, options: { query?: string; modId?: string; resourceId?: string; limit?: number; offset?: number } = {}, token = "", signal?: AbortSignal) {
+export async function loadCommunityPosts(kind: CommunityPostKind, options: { query?: string; modId?: string; resourceId?: string; limit?: number; offset?: number } = {}, token = "", signal?: AbortSignal) {
   const parameters = new URLSearchParams({ kind, limit: String(options.limit ?? 24), offset: String(options.offset ?? 0) });
   if (options.query) parameters.set("q", options.query);
   if (options.modId) parameters.set("modId", options.modId);
   if (options.resourceId) parameters.set("resourceId", options.resourceId);
-  return apiRequest<{ items: CommunityPost[]; total: number; limit: number; offset: number }>(`/api/v1/community/posts?${parameters}`, { cache: "no-store", signal }, token || undefined);
+  const result = await apiRequest<{ items: CommunityPostResponse[] | null; total: number; limit: number; offset: number }>(`/api/v1/community/posts?${parameters}`, { cache: "no-store", signal }, token || undefined);
+  return { ...result, items: (result.items ?? []).map(normalizeCommunityPost) };
 }
 
-export function loadCommunityPost(id: string, token = "") {
-  return apiRequest<CommunityPost>(`/api/v1/community/posts/${encodeURIComponent(id)}`, { cache: "no-store" }, token || undefined);
+export async function loadCommunityPost(id: string, token = "") {
+  const post = await apiRequest<CommunityPostResponse>(`/api/v1/community/posts/${encodeURIComponent(id)}`, { cache: "no-store" }, token || undefined);
+  return normalizeCommunityPost(post);
 }
 
 export function saveCommunityPost(draft: CommunityPostDraft, token: string, id = "") {
-  return apiRequest<{ id: string; reviewStatus: CommunityPost["reviewStatus"]; revisionId: string }>(id ? `/api/v1/community/posts/${encodeURIComponent(id)}` : "/api/v1/community/posts", {
+  return apiRequest<{ id: string; reviewStatus: CommunityPost["reviewStatus"]; revisionId: string; changeRequestId: string }>(id ? `/api/v1/community/posts/${encodeURIComponent(id)}` : "/api/v1/community/posts", {
     method: id ? "PUT" : "POST",
     body: JSON.stringify(draft),
   }, token);

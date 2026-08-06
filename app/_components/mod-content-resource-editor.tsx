@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
@@ -38,6 +37,7 @@ import { ToolsPlayground } from "./tools-playground";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { loadTagPickerPage } from "../_lib/resource-picker-loaders";
 import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 
 type EditorMode = "create" | "edit";
@@ -46,6 +46,7 @@ type EditorLocalization = LocalizationVersion<LocalizedFields>;
 type DefinitionFieldKind = "number" | "range" | "text" | "boolean" | "list" | "json" | "reference" | "reference-list";
 type DefinitionPath = readonly string[];
 type DefinitionField = {
+  editable: boolean;
   label?: string;
   labelKey: string;
   kind: DefinitionFieldKind;
@@ -126,7 +127,6 @@ export function ModContentResourceEditor({
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [definitionJSONError, setDefinitionJSONError] = useState("");
   const [invalidDefinitionFields, setInvalidDefinitionFields] = useState<Set<string>>(() => new Set());
   const [submittedPending, setSubmittedPending] = useState(false);
   const missingCreateTarget = mode === "create" && (!versionId || !sectionId);
@@ -261,18 +261,9 @@ export function ModContentResourceEditor({
       : [],
     [locale, selectedEntryType],
   );
-  const handleDefinitionChange = useCallback((value: Record<string, unknown>) => {
-    setDefinition(definitionOverrides(baselineDefinition, value));
-    setDefinitionJSONError("");
-    setInvalidDefinitionFields(new Set());
-  }, [baselineDefinition]);
   const handleStructuredDefinitionChange = useCallback((value: Record<string, unknown>) => {
     setDefinition(definitionOverrides(baselineDefinition, value));
-    setDefinitionJSONError("");
   }, [baselineDefinition]);
-  const handleDefinitionValidity = useCallback((valid: boolean) => {
-    setDefinitionJSONError(valid ? "" : t("modContent.sectionActions.invalidJson"));
-  }, [t]);
   const handleDefinitionFieldValidity = useCallback((fieldId: string, valid: boolean) => {
     setInvalidDefinitionFields((current) => {
       const next = new Set(current);
@@ -297,6 +288,7 @@ export function ModContentResourceEditor({
   };
   const autoDraft = useAutoDraft({
     draftKey: `mod-resource:${siteId}:${mode}:${resourceId || `${versionId}:${sectionId}`}`,
+    projectKey: `mod:${siteId}`,
     editUrl: resourceEditorEditURL(mode, siteId, resourceId, activeVersionId, selectedSectionId),
     enabled: ready && Boolean(token) && !loading && !missingCreateTarget,
     kind: "mod_resource",
@@ -331,7 +323,6 @@ export function ModContentResourceEditor({
     && !busy
     && !deleting
     && !submittedPending
-    && !definitionJSONError
     && invalidDefinitionFields.size === 0
     && localizationFields(localizations, defaultLocale).name.trim(),
   );
@@ -441,12 +432,19 @@ export function ModContentResourceEditor({
           resourcePublicId: resourceId,
           baseRevisionId: publishedRevisionId,
         }, token);
-      await autoDraft.clearDraft().catch(() => undefined);
+      const nextResourceId = mode === "create" ? result.publicId : resourceId;
+      const targetUrl = `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(nextResourceId)}?version=${encodeURIComponent(activeVersionId)}&section=${encodeURIComponent(rootSection?.publicId || sectionId)}`;
+      await autoDraft.completeDraft({
+        projectKey: `mod:${siteId}`,
+        projectTitle: siteId,
+        targetUrl,
+        reviewStatus: result.reviewStatus,
+        changeRequestId: result.changeRequestId,
+      }).catch(() => undefined);
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       if (result.reviewStatus === "pending") setSubmittedPending(true);
       if (result.reviewStatus === "approved") {
-        const nextResourceId = mode === "create" ? result.publicId : resourceId;
-        router.push(`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(nextResourceId)}?version=${encodeURIComponent(activeVersionId)}&section=${encodeURIComponent(rootSection?.publicId || sectionId)}`);
+        router.push(targetUrl);
         router.refresh();
       }
     } catch (cause) {
@@ -464,7 +462,13 @@ export function ModContentResourceEditor({
     setMessage("");
     try {
       const result = await archiveModContentResource(siteId, resourceId, activeVersionId, token);
-      await autoDraft.clearDraft().catch(() => undefined);
+      await autoDraft.completeDraft({
+        projectKey: `mod:${siteId}`,
+        projectTitle: siteId,
+        targetUrl: backHref,
+        reviewStatus: result.reviewStatus,
+        changeRequestId: result.changeRequestId,
+      }).catch(() => undefined);
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       if (result.reviewStatus === "pending") setSubmittedPending(true);
       else {
@@ -478,10 +482,10 @@ export function ModContentResourceEditor({
     }
   }
 
-  if (!ready) return <EditorGate text={t("common.loading")} />;
-  if (!user || !token) return <EditorGate login text={t("catalogEditor.loginRequired")} />;
-  if (missingCreateTarget) return <EditorGate text={t("modContent.resourceEdit.missingTarget")} />;
-  if (loading) return <EditorGate text={t("common.loading")} />;
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
+  if (!user || !token) return <LoginRequiredState nextPath={mode === "edit" ? `/mods/${siteId}/resources/${resourceId}/edit` : `/mods/${siteId}/resources/new`} description={t("catalogEditor.loginRequired")} />;
+  if (missingCreateTarget) return <PageFeedback title={t("modContent.resourceEdit.missingTarget")} />;
+  if (loading) return <PageFeedback title={t("common.loading")} />;
 
   return <EditorShell
     aside={<EditorAside
@@ -503,7 +507,6 @@ export function ModContentResourceEditor({
     statusMessage={<>
       <DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} />
       {error ? <p className="rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{error}</p> : null}
-      {definitionJSONError ? <p className="rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{definitionJSONError}</p> : null}
       {message ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 font-bold">{message}</p> : null}
     </>}
     title={t(mode === "create" ? "modContent.sectionActions.addTitle" : "modContent.resourceEdit.title")}
@@ -531,7 +534,6 @@ export function ModContentResourceEditor({
           {mode === "create" && templateKindCodes.length > 1
             ? <select aria-label={t("resourceEditor.identityKind")} className="field" value={kindCode} onChange={(event) => {
               setKindCode(event.target.value);
-              setDefinitionJSONError("");
             }}>
               {templateKindCodes.map((item) => <option key={item} value={item}>{localizedResourceKind(item, locale)}</option>)}
             </select>
@@ -566,17 +568,6 @@ export function ModContentResourceEditor({
           <span>{t("modContent.sectionActions.name")}</span>
           <input className="field" value={fields.name} onChange={(event) => updateLocalization({ name: event.target.value })} />
         </label>
-      </div>
-      <div className="mt-5">
-        <ToolsPlayground
-          embedded
-          editorTitle={`${t("modContent.sectionActions.content")} (${selectedLocale})`}
-          key={selectedLocale}
-          uploadSource={`mod_text:${siteId}:${resourceId || "staging"}`}
-          value={fields.contentMarkdown}
-          onBusyChange={setUploadingMarkdownAsset}
-          onChange={(contentMarkdown) => updateLocalization({ contentMarkdown })}
-        />
       </div>
     </section>
 
@@ -615,11 +606,21 @@ export function ModContentResourceEditor({
       onValidityChange={handleDefinitionFieldValidity}
     />)}
 
-    {kindCode !== "minecraft.loot_table" ? <DefinitionJSONEditor
+    {kindCode !== "minecraft.loot_table" ? <DefinitionJSONViewer
       definition={effectiveDefinition}
-      onChange={handleDefinitionChange}
-      onValidityChange={handleDefinitionValidity}
     /> : null}
+
+    <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
+      <ToolsPlayground
+        embedded
+        editorTitle={`${t("modContent.sectionActions.content")} (${selectedLocale})`}
+        key={selectedLocale}
+        uploadSource={`mod_text:${siteId}:${resourceId || "staging"}`}
+        value={fields.contentMarkdown}
+        onBusyChange={setUploadingMarkdownAsset}
+        onChange={(contentMarkdown) => updateLocalization({ contentMarkdown })}
+      />
+    </section>
     <SquareImageCropDialog
       file={cropRequest?.file}
       minimumSize={128}
@@ -761,47 +762,15 @@ function DefinitionGroupEditor({
   </section>;
 }
 
-function DefinitionJSONEditor({
-  definition,
-  onChange,
-  onValidityChange,
-}: {
-  definition: Record<string, unknown>;
-  onChange: (value: Record<string, unknown>) => void;
-  onValidityChange: (valid: boolean) => void;
-}) {
+function DefinitionJSONViewer({ definition }: { definition: Record<string, unknown> }) {
   const { t } = useI18n();
-  const [value, setValue] = useState(() => JSON.stringify(definition, null, 2));
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    if (document.activeElement !== inputRef.current) {
-      setValue(JSON.stringify(definition, null, 2));
-      onValidityChange(true);
-    }
-  }, [definition, onValidityChange]);
-  function validate(next: string) {
-    try {
-      const parsed: unknown = JSON.parse(next || "{}");
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
-      onValidityChange(true);
-      onChange(parsed as Record<string, unknown>);
-    } catch {
-      onValidityChange(false);
-    }
-  }
   return <details className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
     <summary className="cursor-pointer font-black">{t("modContent.sectionActions.definition")}</summary>
     <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("catalogEditor.invariantHint")}</p>
     <textarea
-      aria-invalid={Boolean(value) && (() => { try { const parsed = JSON.parse(value); return !parsed || typeof parsed !== "object" || Array.isArray(parsed); } catch { return true; } })()}
       className="field mt-4 min-h-72 font-mono text-xs"
-      ref={inputRef}
-      value={value}
-      onChange={(event) => {
-        const next = event.target.value;
-        setValue(next);
-        validate(next);
-      }}
+      readOnly
+      value={JSON.stringify(definition, null, 2)}
     />
   </details>;
 }
@@ -839,6 +808,7 @@ function DefinitionFieldEditor({
       values={Array.isArray(value)
         ? value.filter((item): item is string => typeof item === "string")
         : typeof value === "string" && value ? [value] : []}
+      readOnly={!field.editable}
       onChange={onChange}
       onValidityChange={() => onValidityChange(fieldId, true)}
     />;
@@ -847,6 +817,7 @@ function DefinitionFieldEditor({
     const values = Array.isArray(value) ? value : [];
     return <RangeFieldEditor
       label={field.label || t(field.labelKey)}
+      readOnly={!field.editable}
       maximum={typeof values[1] === "number" ? values[1] : undefined}
       minimum={typeof values[0] === "number" ? values[0] : undefined}
       onChange={(minimum, maximum, valid) => {
@@ -874,7 +845,7 @@ function DefinitionFieldEditor({
       <select className="field" value={normalized} onChange={(event) => {
         onValidityChange(fieldId, true);
         onChange(setDefinitionValue(definition, path, event.target.value === "" ? undefined : event.target.value === "true"));
-      }}>
+      }} disabled={!field.editable}>
         <option value="">{t("resourceEditor.unset")}</option>
         <option value="true">{t("common.yes")}</option>
         <option value="false">{t("common.no")}</option>
@@ -887,6 +858,7 @@ function DefinitionFieldEditor({
       <textarea
         aria-invalid={jsonInvalid}
         className="field min-h-40 font-mono text-xs"
+        readOnly={!field.editable}
         value={draft}
         onChange={(event) => {
           const next = event.target.value;
@@ -920,6 +892,7 @@ function DefinitionFieldEditor({
       inputMode={field.kind === "number" ? "decimal" : undefined}
       step={field.kind === "number" && integerNumber ? 1 : undefined}
       type="text"
+      readOnly={!field.editable}
       value={draft}
       onChange={(event) => {
         const next = event.target.value;
@@ -957,7 +930,7 @@ function DefinitionFieldEditor({
   </label>;
 }
 
-function RangeFieldEditor({ label, minimum, maximum, onChange }: { label: string; minimum?: number; maximum?: number; onChange: (minimum: number | undefined, maximum: number | undefined, valid: boolean) => void }) {
+function RangeFieldEditor({ label, minimum, maximum, readOnly, onChange }: { label: string; minimum?: number; maximum?: number; readOnly: boolean; onChange: (minimum: number | undefined, maximum: number | undefined, valid: boolean) => void }) {
   const [draft, setDraft] = useState({ minimum: minimum === undefined ? "" : String(minimum), maximum: maximum === undefined ? "" : String(maximum) });
   function update(next: { minimum: string; maximum: string }) {
     setDraft(next);
@@ -972,9 +945,9 @@ function RangeFieldEditor({ label, minimum, maximum, onChange }: { label: string
   return <fieldset className="grid gap-2 text-sm font-bold md:col-span-2">
     <legend>{label}</legend>
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-      <input aria-label={`${label} minimum`} className="field" inputMode="decimal" type="number" value={draft.minimum} onChange={(event) => update({ ...draft, minimum: event.target.value })} />
+      <input aria-label={`${label} minimum`} className="field" inputMode="decimal" readOnly={readOnly} type="number" value={draft.minimum} onChange={(event) => update({ ...draft, minimum: event.target.value })} />
       <span aria-hidden="true">–</span>
-      <input aria-label={`${label} maximum`} className="field" inputMode="decimal" type="number" value={draft.maximum} onChange={(event) => update({ ...draft, maximum: event.target.value })} />
+      <input aria-label={`${label} maximum`} className="field" inputMode="decimal" readOnly={readOnly} type="number" value={draft.maximum} onChange={(event) => update({ ...draft, maximum: event.target.value })} />
     </div>
   </fieldset>;
 }
@@ -993,6 +966,7 @@ function ReferenceListFieldEditor({
   path,
   token,
   values,
+  readOnly,
   onChange,
   onValidityChange,
 }: {
@@ -1001,6 +975,7 @@ function ReferenceListFieldEditor({
   path: DefinitionPath;
   token: string;
   values: string[];
+  readOnly: boolean;
   onChange: (value: Record<string, unknown>) => void;
   onValidityChange: () => void;
 }) {
@@ -1030,9 +1005,9 @@ function ReferenceListFieldEditor({
 
   return <div className="grid gap-2 text-sm font-bold">
     <span>{label}</span>
-    <button className="field focus-ring flex min-h-11 items-center justify-between gap-3 text-left" type="button" onClick={() => setOpen(true)}>
+    <button className="field focus-ring flex min-h-11 items-center justify-between gap-3 text-left disabled:cursor-default disabled:opacity-75" disabled={readOnly} type="button" onClick={() => setOpen(true)}>
       <span className="truncate">{values.length ? values.join(", ") : t("resourceEditor.unset")}</span>
-      <span className="shrink-0 text-[var(--accent)]">{t("common.select")}</span>
+      {!readOnly ? <span className="shrink-0 text-[var(--accent)]">{t("common.select")}</span> : null}
     </button>
     <ResourcePickerDialog
       allowUnresolved
@@ -1101,19 +1076,9 @@ function EditorAside({
   </div>;
 }
 
-function EditorGate({ text, login = false }: { text: string; login?: boolean }) {
-  const { t } = useI18n();
-  return <main className="grid min-h-[70vh] place-items-center bg-[var(--background)] p-4 text-[var(--foreground)]">
-    <section className="surface max-w-lg rounded-lg p-8 text-center">
-      <h1 className="text-2xl font-black">{text}</h1>
-      {login ? <Link className="button-primary focus-ring mt-5 inline-flex" href="/login">{t("common.login")}</Link> : null}
-    </section>
-  </main>;
-}
-
 function compatibleEntryTypes(entryTypes: ModContentEntryType[] | undefined) {
   const values = Array.isArray(entryTypes) && entryTypes.length
-    ? entryTypes
+    ? entryTypes.filter((entryType) => entryType.enabled !== false)
     : [{ code: "default", names: { "en-US": "Default", "zh-CN": "默认", "zh-TW": "預設" }, groups: [] }];
   return values;
 }
@@ -1156,7 +1121,8 @@ function groupsForEntryType(entryType: ModContentEntryType, locale: string): Def
     titleKey: `entry-type:${entryType.code}:${group.code}`,
     description: localizedSchemaName(group.descriptions || {}, locale, ""),
     descriptionKey: "",
-    fields: group.fields.filter(isEditablePrimitiveEntryField).map((field) => ({
+    fields: group.fields.map((field) => ({
+      editable: field.editable !== false,
       label: localizedSchemaName(field.names, locale, field.code),
       labelKey: `entry-field:${entryType.code}:${group.code}:${field.code}`,
       kind: field.type,
@@ -1167,10 +1133,6 @@ function groupsForEntryType(entryType: ModContentEntryType, locale: string): Def
       referenceRegistry: field.referenceRegistry,
     })),
   }));
-}
-
-function isEditablePrimitiveEntryField(field: ModContentEntryField): field is ModContentEntryField & { type: DefinitionFieldKind } {
-  return field.editable !== false;
 }
 
 function localizedSchemaName(names: Record<string, string>, locale: string, fallback: string) {

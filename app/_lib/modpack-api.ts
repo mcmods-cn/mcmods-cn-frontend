@@ -1,5 +1,6 @@
 import type { ModCatalogEntry, ModFeature } from "./mod-catalog-data";
 import type { BackendModAuthor, BackendModCompatibility, BackendModGalleryImage, BackendModRecord } from "./mod-api";
+import { API_BASE_URL } from "./api";
 
 export type BackendModpackMod = {
   modPublicId?: string;
@@ -46,6 +47,8 @@ export type BackendModpackRecord = {
   reviewStatus: "pending" | "approved" | "rejected";
   createdBy?: string;
   publishedRevisionId?: string;
+  submissionRevisionId?: string;
+  changeRequestId?: string;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
@@ -57,7 +60,7 @@ export const modpackTypeOptions = ["native", "customized"] as const;
 export const modpackPackagingMethodOptions = ["curseforge", "ftb", "other_launcher", "manual", "atlauncher", "modrinth", "mcbbs", "other"] as const;
 
 export type BackendModpackList = { items: BackendModpackRecord[]; total: number };
-export type CreateModpackPayload = Omit<BackendModpackRecord, "id" | "reviewStatus" | "createdBy" | "publishedRevisionId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
+export type CreateModpackPayload = Omit<BackendModpackRecord, "id" | "reviewStatus" | "createdBy" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
 export type BackendModpackImportJob = {
   id: string;
   projectType: "modpack";
@@ -92,7 +95,7 @@ export function backendModpackToCatalogEntry(record: BackendModpackRecord): ModC
     localizedName: record.secondaryName || record.primaryName,
     abbreviation: record.abbreviation || record.primaryName,
     summary: record.summary,
-    icon: record.iconUrl,
+    icon: modpackIconURL(record),
     primaryCategory: record.primaryCategory,
     tags: record.tags,
     keywords: record.searchKeywords,
@@ -121,4 +124,14 @@ export function backendModpackToCatalogEntry(record: BackendModpackRecord): ModC
     galleryImages: record.galleryImages,
     stats: { downloads: 0, views: 0, favorites: 0, rating: 0, comments: 0, downloadSource: record.modrinthProjectId ? "Modrinth" : record.curseforgeProjectId ? "CurseForge" : "Internal" },
   };
+}
+
+export function modpackIconURL(record: Pick<BackendModpackRecord, "siteId" | "iconUrl">) {
+  return record.iconUrl ? `${API_BASE_URL}/api/v1/modpacks/${encodeURIComponent(record.siteId)}/icon` : "";
+}
+
+export function modpackModIconURL(mod: BackendModpackMod) {
+  return mod.resolved && mod.modSiteId
+    ? `${API_BASE_URL}/api/v1/mods/${encodeURIComponent(mod.modSiteId)}/icon`
+    : mod.iconUrl || "";
 }

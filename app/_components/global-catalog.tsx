@@ -31,6 +31,7 @@ import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { CatalogRecipeTypeEditor, CatalogTagEditor } from "./catalog-manual-editors";
+import { LoginRequiredState } from "./page-feedback";
 import { LocalizationStatusBadge } from "./editor/localization-status-badge";
 import { RecipeEditor } from "./editor/recipe-editor";
 import { RecipeTemplateEditor } from "./editor/recipe-template-editor";
@@ -229,7 +230,7 @@ function CatalogRecipeTemplateEditorRoute({ recipeTypePublicId, templatePublicId
   }, [recipeTypePublicId, t, templatePublicId, token]);
   const title = t(templatePublicId ? "catalogEditor.templateEdit" : "catalogEditor.templateCreate");
   if (!ready) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><Loading /></CatalogFrame>;
-  if (!user) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><ErrorBox text={t("catalogEditor.loginRequired")} /></CatalogFrame>;
+  if (!user) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><LoginRequiredState compact nextPath={`/recipe-types?editor=${templatePublicId ? "template-edit" : "template-create"}&publicId=${encodeURIComponent(recipeTypePublicId)}${templatePublicId ? `&templatePublicId=${encodeURIComponent(templatePublicId)}` : ""}`} description={t("catalogEditor.loginRequired")} /></CatalogFrame>;
   if (loading) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><Loading /></CatalogFrame>;
   if (error || templatePublicId && !initialValue) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><ErrorBox text={error || t("catalogEditor.loadFailed")} /></CatalogFrame>;
   return <CatalogFrame active="recipes" description={t("catalogEditor.templateDescription")} title={title}>
@@ -275,7 +276,7 @@ function CatalogRecipeEditorRoute({ recipeTypePublicId, recipePublicId = "" }: {
   }, [recipePublicId, recipeTypePublicId, t, token]);
   const title = t(recipePublicId ? "catalogEditor.recipeEdit" : "catalogEditor.recipeCreate");
   if (!ready) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><Loading /></CatalogFrame>;
-  if (!user) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><ErrorBox text={t("catalogEditor.loginRequired")} /></CatalogFrame>;
+  if (!user) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><LoginRequiredState compact nextPath={`/recipe-types?editor=${recipePublicId ? "recipe-edit" : "recipe-create"}&publicId=${encodeURIComponent(recipeTypePublicId)}${recipePublicId ? `&recipePublicId=${encodeURIComponent(recipePublicId)}` : ""}`} description={t("catalogEditor.loginRequired")} /></CatalogFrame>;
   if (loading) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><Loading /></CatalogFrame>;
   if (error || recipePublicId && !initialValue) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><ErrorBox text={error || t("catalogEditor.loadFailed")} /></CatalogFrame>;
   const seed = initialValue ?? { recipeTypePublicId, templatePublicId: "", canonicalSourceId: "", definition: {}, bindings: {}, defaultLocale: locale };
