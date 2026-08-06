@@ -262,7 +262,6 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
         <Field label={t("admin.community.userId")}>
           <input
             className="field"
-            inputMode="numeric"
             value={filters.userId}
             onChange={(event) => setFilters({ ...filters, userId: event.target.value })}
           />
@@ -338,7 +337,7 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
       </form>
 
       <div className="mt-5 overflow-x-auto">
-        <table className="w-full min-w-[1040px] text-left text-sm">
+        <table className="w-full min-w-[900px] text-left text-sm">
           <thead>
             <tr className="border-b border-[var(--line)] text-[var(--muted)]">
               <th className="px-3 py-3">{t("admin.community.time")}</th>
@@ -347,7 +346,6 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
               <th className="px-3 py-3">{t("admin.community.objectType")}</th>
               <th className="px-3 py-3">{t("admin.community.objectPublicId")}</th>
               <th className="px-3 py-3">{t("admin.community.markdownAddedBytes")}</th>
-              <th className="px-3 py-3">{t("admin.community.metadata")}</th>
             </tr>
           </thead>
           <tbody>
@@ -362,9 +360,6 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
                 <td className="px-3 py-3">{item.objectTypeName || item.objectType}</td>
                 <td className="px-3 py-3 font-mono text-xs">{item.objectPublicId || "-"}</td>
                 <td className="px-3 py-3">{item.markdownAddedBytes.toLocaleString()}</td>
-                <td className="max-w-80 px-3 py-3 font-mono text-xs break-all">
-                  {Object.keys(item.metadata ?? {}).length ? JSON.stringify(item.metadata) : "-"}
-                </td>
               </tr>
             ))}
           </tbody>
@@ -1693,6 +1688,17 @@ const activityObjectTypes = [
   "economy",
   "task",
   "shop_item",
+  "modpack",
+  "server",
+  "map",
+  "resource_pack",
+  "shader_pack",
+  "datapack",
+  "addon",
+  "community_post",
+  "review",
+  "skin",
+  "player_profile",
 ] as const;
 
 const rewardObjectTypes = ["mod", "blueprint", "plugin", "map", "resource_pack", "skin"] as const;

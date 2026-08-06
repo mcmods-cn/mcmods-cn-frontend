@@ -233,7 +233,6 @@ export type ActivityEvent = {
   objectTypeName: string;
   objectPublicId: string;
   markdownAddedBytes: number;
-  metadata: Record<string, unknown>;
   occurredAt: string;
 };
 
