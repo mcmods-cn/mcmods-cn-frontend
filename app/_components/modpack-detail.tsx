@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
@@ -15,8 +16,11 @@ import { MarkdownRenderer } from "./markdown-renderer";
 import { ProjectGallery } from "./mod-detail";
 import { ProjectDownloads } from "./project-downloads";
 import { ReviewAwareEditAction } from "./review-edit-lock";
+import { RatingPanel } from "./rating-panel";
+import { ProjectChangelog } from "./project-changelog";
+import { ContentMetricsPanel } from "./content-metrics-panel";
 
-type ModpackTab = "introduction" | "mods" | "downloads" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
+type ModpackTab = "introduction" | "mods" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
 export function ModpackDetailLoader({ siteId }: { siteId: string }) {
   const { ready, token } = useAuthSnapshot();
@@ -40,7 +44,9 @@ export function ModpackDetailLoader({ siteId }: { siteId: string }) {
 function ModpackDetail({ record }: { record: BackendModpackRecord }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
-  const [tab, setTab] = useState<ModpackTab>("introduction");
+  const searchParams = useSearchParams();
+  const [selectedTab, setSelectedTab] = useState<ModpackTab>();
+  const tab = selectedTab ?? (searchParams.get("tab") === "changelog" ? "changelog" : "introduction");
   const displayName = locale.startsWith("zh") && record.secondaryName ? record.secondaryName : record.primaryName;
   const secondaryName = displayName === record.primaryName ? record.secondaryName : record.primaryName;
   const versions = [...new Set(record.compatibilities.flatMap((item) => item.versions))];
@@ -53,17 +59,20 @@ function ModpackDetail({ record }: { record: BackendModpackRecord }) {
     </div></header>
     <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
       <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("mods.detail.compatibility")}</h2><div className="mt-4 grid gap-4 md:grid-cols-3"><Detail label={t("mods.card.loaders")} value={loaders.join("、")} /><Detail label={t("mods.card.versions")} value={versions.join("、")} /><Detail label={t("mods.card.environment")} value={t(`mods.environments.${record.environment}`)} /><Detail label={t("modpacks.editor.packType")} value={t(`modpacks.packTypes.${record.packType || "native"}`)} /><Detail label={t("modpacks.editor.packagingMethod")} value={t(`modpacks.packagingMethods.${record.packagingMethod || "other"}`)} /><Detail label={t("modpacks.editor.categories")} value={record.tags.map((category) => t(`modpacks.categories.${category}`)).join("、")} /></div></section>
-      <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("modpacks.detail.sections")}>{(["introduction", "mods", "downloads", "gallery", "discussion", "tutorial", "issues", "news"] as ModpackTab[]).map((item) => <button key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setTab(item)}><strong className="block whitespace-nowrap">{t(`modpacks.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
+      <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("modpacks.detail.sections")}>{(["introduction", "mods", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as ModpackTab[]).map((item) => <button key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setSelectedTab(item)}><strong className="block whitespace-nowrap">{t(`modpacks.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0">
         {tab === "introduction" ? <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText={record.summary} markdown={record.bodyMarkdown} /></section> : null}
         {tab === "mods" ? <ModpackMods record={record} /> : null}
         {tab === "downloads" ? <ProjectDownloads projectType="modpack" projectId={record.id} projectName={displayName} token={token} suggestedVersions={versions} suggestedLoaders={loaders} /> : null}
+        {tab === "changelog" ? <ProjectChangelog targetId={record.id} targetType="modpack" /> : null}
         {tab === "gallery" ? <ProjectGallery images={record.galleryImages} emptyText={t("mods.detail.emptyGallery")} /> : null}
         {tab === "discussion" ? <RelatedCommunityPosts kind="discussion" modId={record.id} /> : null}
         {tab === "tutorial" ? <RelatedCommunityPosts kind="tutorial" modId={record.id} /> : null}
         {tab === "issues" ? <RelatedCommunityPosts kind="issue" modId={record.id} /> : null}
         {tab === "news" ? <RelatedCommunityPosts kind="news" modId={record.id} /> : null}
       </div><aside className="space-y-4 lg:sticky lg:top-20 lg:h-fit"><section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><h2 className="font-black">{t("mods.detail.projectInfo")}</h2><div className="mt-4 grid gap-3"><Detail label={t("mods.detail.siteId")} value={record.siteId} /><Detail label={t("mods.detail.uniqueId")} value={record.id} /><Detail label={t("modpacks.detail.modCount")} value={String(record.mods.length)} /><Detail label={t("mods.detail.license")} value={record.license} /></div></section><ProjectLinks links={record.links} /><CreatorSection record={record} /></aside></div>
+      <ContentMetricsPanel publicId={record.id} />
+      <RatingPanel targetId={record.id} targetName={displayName} targetType="modpack" />
       <CommentSection targetKey={record.id} targetType="modpack" />
     </div>
   </main>;

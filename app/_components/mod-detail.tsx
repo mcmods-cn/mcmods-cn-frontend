@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
@@ -17,13 +18,18 @@ import { CommentSection } from "./comment-section";
 import { CreatorIdentityAvatar, CreatorTeamMemberGroup } from "./creator-identity";
 import { RelatedCommunityPosts } from "./community-post-catalog";
 import { ReviewAwareEditAction } from "./review-edit-lock";
+import { RatingPanel } from "./rating-panel";
+import { ProjectChangelog } from "./project-changelog";
+import { ContentMetricsPanel } from "./content-metrics-panel";
 
-type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
+type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
 export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
   const { locale, t } = useI18n();
   const { token, user } = useAuthSnapshot();
-  const [tab, setTab] = useState<DetailTab>("introduction");
+  const searchParams = useSearchParams();
+  const [selectedTab, setSelectedTab] = useState<DetailTab>();
+  const tab = selectedTab ?? (searchParams.get("tab") === "changelog" ? "changelog" : "introduction");
   const [applicationKind, setApplicationKind] = useState<"editor" | "developer" | null>(null);
   const isChinese = locale.startsWith("zh");
   const displayName = isChinese && mod.localizedName ? mod.localizedName : mod.name;
@@ -65,7 +71,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
         <div className="mt-5 lg:hidden"><ModSidebar mod={mod} locale={locale} /></div>
 
         <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("mods.detail.sections")}>
-          {(["introduction", "relationships", "data", "downloads", "gallery", "discussion", "tutorial", "issues", "news"] as DetailTab[]).map((item) => <button key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setTab(item)}><strong className="block whitespace-nowrap">{t(`mods.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}
+          {(["introduction", "relationships", "data", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as DetailTab[]).map((item) => <button key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setSelectedTab(item)}><strong className="block whitespace-nowrap">{t(`mods.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}
         </nav>
 
         <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -73,6 +79,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
             {tab === "data" ? <ModDataTab mod={mod} canEdit={canEdit} token={token} /> : null}
             {tab === "relationships" ? <ModRelationshipsTab mod={mod} /> : null}
             {tab === "downloads" ? <ProjectDownloads projectType="mod" projectId={mod.uniqueId} projectName={displayName} token={token} suggestedVersions={mod.versions} suggestedLoaders={mod.loaders} /> : null}
+            {tab === "changelog" ? <ProjectChangelog targetId={mod.uniqueId} targetType="mod" /> : null}
             {tab === "introduction" ? <ModIntroductionTab mod={mod} /> : null}
             {tab === "gallery" ? <ProjectGallery images={mod.galleryImages ?? []} emptyText={t("mods.detail.emptyGallery")} /> : null}
             {tab === "discussion" ? <RelatedCommunityPosts kind="discussion" modId={mod.uniqueId} /> : null}
@@ -82,6 +89,8 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
           </div>
           <aside className="hidden space-y-4 lg:sticky lg:top-20 lg:block lg:h-fit"><ModSidebar mod={mod} locale={locale} /></aside>
         </div>
+        <ContentMetricsPanel publicId={mod.uniqueId} />
+        <RatingPanel targetId={mod.uniqueId} targetName={displayName} targetType="mod" />
         <CommentSection targetKey={mod.uniqueId} targetType="mod" />
       </div>
       {applicationKind ? <ModApplicationModal kind={applicationKind} mod={mod} token={token} onClose={() => setApplicationKind(null)} /> : null}

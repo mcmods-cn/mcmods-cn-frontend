@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { canAccessAdmin, clearAuth, useAuthSnapshot } from "../_lib/auth";
-import { API_BASE_URL, ApiError, apiRequest } from "../_lib/api";
+import { ApiError, apiRequest } from "../_lib/api";
 import { isBackendUnavailable } from "../_lib/backend-status";
 import type { LevelConfig } from "../_lib/community-api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
@@ -17,7 +17,6 @@ import {
   computeFileSHA256,
   formatBytes,
   putFileToOSS,
-  uploadUserFileToOSS,
   type OSSDirectUploadTicket,
 } from "../_lib/oss-upload";
 import {
@@ -34,6 +33,7 @@ import { ServerReviewQueuePanel, ServerSettingsPanel } from "./admin-server-pane
 import { AdminUnresolvedReferences } from "./admin-unresolved-references";
 import { AdminContentAttributePanel } from "./admin-content-attribute-panel";
 import { AdminYggdrasilPanel, defaultAdminYggdrasilConfig, type AdminYggdrasilConfig } from "./admin-yggdrasil-panel";
+import { AdminDashboardPanel, type AdminDashboardData } from "./admin-dashboard-panel";
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
 
@@ -126,8 +126,13 @@ type AdminUserDetails = {
   }>;
 };
 
-type DashboardData = {
-  cards: Array<{ label: string; value: number; tone: string }>;
+type AdminUserBalance = {
+  publicId: string;
+  code: string;
+  name: string;
+  icon: string;
+  balance: number;
+  status: string;
 };
 
 type MailConfig = {
@@ -530,7 +535,14 @@ const adminNavGroups: Array<{
   },
 ];
 
-const emptyDashboard: DashboardData = { cards: [] };
+const emptyDashboard: AdminDashboardData = {
+  cards: [],
+  overview: {
+    onlineUsers: 0, monthlyActiveUsers: 0, totalUsers: 0, totalProjects: 0,
+    approvedProjects: 0, pendingReviews: 0, viewsToday: 0, actionsToday: 0,
+    trend: [], updatedAt: "",
+  },
+};
 
 const emptyConfig: AdminConfig = {
   general: { siteName: "Mcmods-cn", logoUrl: "" },
@@ -665,7 +677,7 @@ export function AdminConsolePolished() {
   const { t } = useI18n();
   const brand = useSiteBrand();
   const auth = useAuthSnapshot();
-  const [activePanel, setActivePanel] = useState<PanelId>("roles");
+  const [activePanel, setActivePanel] = useState<PanelId>("overview");
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [expanded, setExpanded] = useState([
     "workbench",
@@ -756,7 +768,7 @@ export function AdminConsolePolished() {
       try {
         setStatus(attempt === 0 ? t("admin.connecting") : t("admin.reconnecting"));
         const [dashboardData, configData, permissionData, userData] = await Promise.all([
-          apiRequest<DashboardData>("/api/v1/admin/dashboard", {}, auth.token),
+          apiRequest<AdminDashboardData>("/api/v1/admin/dashboard", {}, auth.token),
           apiRequest<AdminConfig>("/api/v1/admin/config", {}, auth.token),
           apiRequest<PermissionCatalog>("/api/v1/admin/permissions", {}, auth.token),
           apiRequest<User[]>("/api/v1/admin/users", {}, auth.token),
@@ -865,7 +877,7 @@ export function AdminConsolePolished() {
           <div className="flex max-h-[80vh] flex-col lg:sticky lg:top-0 lg:h-screen lg:max-h-none">
             <div className="flex items-center gap-3 border-b border-[var(--line)] p-3 lg:block lg:p-4">
               <Link className="flex min-w-0 flex-1 items-center gap-3" href="/">
-                {brand.logoUrl ? <img alt="" className="h-10 w-10 rounded-lg object-contain" src={`${API_BASE_URL}/api/v1/site/logo`} /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">M</span>}
+                {brand.logoUrl ? <img alt="" className="h-10 w-10 rounded-lg object-contain" src={brand.logoUrl} /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">M</span>}
                 <span>
                   <span className="block text-sm font-semibold text-[var(--muted)]">{brand.siteName}</span>
                   <span className="block text-xl font-bold">{t("admin.title")}</span>
@@ -946,7 +958,7 @@ export function AdminConsolePolished() {
             ) : null}
           </div>
 
-          {activePanel === "overview" ? <OverviewPanel dashboard={dashboard} config={config} /> : null}
+          {activePanel === "overview" ? <AdminDashboardPanel initialData={dashboard} token={auth.token} features={config.features} /> : null}
           {activePanel === "general-settings" ? <GeneralSettingsPanel initialConfig={config.general ?? emptyConfig.general} token={auth.token} /> : null}
           {activePanel === "yggdrasil" ? <AdminYggdrasilPanel initialConfig={config.yggdrasil ?? emptyConfig.yggdrasil} token={auth.token} /> : null}
           {activePanel === "roles" ? (
@@ -2961,28 +2973,6 @@ function AIStatsTable({ title, rows }: { title: string; rows: LogRow[] }) {
   );
 }
 
-function OverviewPanel({ dashboard, config }: { dashboard: DashboardData; config: AdminConfig }) {
-  const { t } = useI18n();
-
-  return (
-    <div className="grid gap-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {dashboard.cards.map((card) => (
-          <div key={card.label} className="surface rounded-lg p-4">
-            <p className="text-sm font-semibold text-[var(--muted)]">{t(`admin.dashboardCards.${card.label}`)}</p>
-            <p className={`mt-3 text-3xl font-bold ${toneClass(card.tone)}`}>{card.value}</p>
-          </div>
-        ))}
-      </div>
-      <ConfigBlock title={t("admin.featureFlags")}>
-        {Object.entries(config.features).map(([key, enabled]) => (
-          <ConfigLine key={key} label={featureLabel(key)} value={enabled ? t("common.enabled") : t("common.disabled")} />
-        ))}
-      </ConfigBlock>
-    </div>
-  );
-}
-
 function AuthPanelV2({ config, token }: { config: AdminConfig; token: string }) {
   const { t } = useI18n();
   return (
@@ -3324,7 +3314,7 @@ function GeneralSettingsPanel({ initialConfig, token }: { initialConfig: { siteN
   const { t } = useI18n();
   const [siteName, setSiteName] = useState(initialConfig.siteName || "Mcmods-cn");
 	const [logoUrl, setLogoUrl] = useState(initialConfig.logoUrl || "");
-	const [logoPreviewUrl, setLogoPreviewUrl] = useState(initialConfig.logoUrl ? `${API_BASE_URL}/api/v1/site/logo` : "");
+	const [logoPreviewUrl, setLogoPreviewUrl] = useState(initialConfig.logoUrl || "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
@@ -3338,11 +3328,17 @@ function GeneralSettingsPanel({ initialConfig, token }: { initialConfig: { siteN
     setUploading(true);
     setMessage("");
     try {
-      const uploaded = await uploadUserFileToOSS(file, token, "site-logo");
-		const storageUrl = uploaded.storageUrl || uploaded.accessUrl || uploaded.url || "";
-		if (!storageUrl) throw new Error(t("tools.playground.uploadMissingUrl"));
-		setLogoUrl(storageUrl);
-		setLogoPreviewUrl(uploaded.accessUrl || uploaded.url || storageUrl);
+      const form = new FormData();
+      form.set("file", file);
+      const response = await fetch("/api/site-logo", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const result = await response.json().catch(() => ({})) as { url?: string; error?: string };
+      if (!response.ok || !result.url) throw new Error(result.error || t("tools.playground.uploadMissingUrl"));
+		setLogoUrl(result.url);
+		setLogoPreviewUrl(result.url);
     } catch (error) {
       setMessage(cleanError(error));
     } finally {
@@ -3963,6 +3959,8 @@ function AdminUserDetailsDialog({
             <UserDetailValue label={t("admin.lastLoginDevice")} value={details.lastLogin?.userAgent || "-"} wide />
           </section>
 
+          <AdminUserBalanceEditor token={token} userID={user.id} />
+
           <section className="border-t border-[var(--line)] px-5 py-5">
             <h3 className="font-bold">{t("admin.roleList")}</h3>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -4012,6 +4010,105 @@ function AdminUserDetailsDialog({
         </div>
       </section>
     </div>
+  );
+}
+
+function AdminUserBalanceEditor({ token, userID }: { token: string; userID: string }) {
+  const { locale, t } = useI18n();
+  const [balances, setBalances] = useState<AdminUserBalance[]>([]);
+  const [currencyCode, setCurrencyCode] = useState("");
+  const [mode, setMode] = useState<"set" | "adjust">("set");
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const selected = balances.find((item) => item.code === currencyCode);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiRequest<{ items: AdminUserBalance[] }>(`/api/v1/admin/users/${userID}/balances`, {}, token)
+      .then((result) => {
+        if (cancelled) return;
+        const items = result.items ?? [];
+        setBalances(items);
+        setCurrencyCode(items[0]?.code || "");
+        setAmount(items[0] ? String(items[0].balance) : "");
+      })
+      .catch((error) => {
+        if (!cancelled) notifyAdminNotice(cleanError(error), t("admin.userBalancesLoadFailed"), "danger");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [t, token, userID]);
+
+  async function saveBalance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const parsedAmount = Number(amount);
+    if (!Number.isSafeInteger(parsedAmount)) {
+      notifyAdminNotice(t("admin.invalidBalanceAmount"), t("admin.noticeTitle"), "danger");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await apiRequest<{ balance: number }>(`/api/v1/admin/users/${userID}/balances`, {
+        method: "POST",
+        body: JSON.stringify({ currencyCode, mode, amount: parsedAmount, reason: reason.trim() }),
+      }, token);
+      setBalances((current) => current.map((item) => item.code === currencyCode ? { ...item, balance: result.balance } : item));
+      setAmount(mode === "set" ? String(result.balance) : "");
+      setReason("");
+      notifyAdminNotice(t("admin.userBalanceSaved"));
+    } catch (error) {
+      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="border-t border-[var(--line)] px-5 py-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-bold">{t("admin.userBalances")}</h3>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.userBalancesHint")}</p>
+        </div>
+        {selected ? <strong className="rounded-lg bg-[var(--panel-subtle)] px-4 py-2 text-lg tabular-nums">{new Intl.NumberFormat(locale).format(selected.balance)} {selected.code}</strong> : null}
+      </div>
+      {loading ? <p className="mt-4 text-sm text-[var(--muted)]">{t("common.loading")}</p> : balances.length === 0 ? <p className="mt-4 text-sm text-[var(--muted)]">{t("admin.noActiveCurrencies")}</p> : (
+        <form className="mt-4 grid gap-3 lg:grid-cols-[minmax(180px,1fr)_150px_minmax(160px,1fr)_minmax(240px,2fr)_auto]" onSubmit={saveBalance}>
+          <label className="text-sm font-semibold">{t("admin.currency")}
+            <select className="field mt-2" value={currencyCode} onChange={(event) => {
+              const nextCode = event.target.value;
+              setCurrencyCode(nextCode);
+              const nextBalance = balances.find((item) => item.code === nextCode)?.balance ?? 0;
+              setAmount(mode === "set" ? String(nextBalance) : "");
+            }}>
+              {balances.map((item) => <option key={item.publicId} value={item.code}>{item.name || item.code} ({item.code})</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-semibold">{t("admin.balanceMode")}
+            <select className="field mt-2" value={mode} onChange={(event) => {
+              const nextMode = event.target.value as "set" | "adjust";
+              setMode(nextMode);
+              setAmount(nextMode === "set" ? String(selected?.balance ?? 0) : "");
+            }}>
+              <option value="set">{t("admin.setBalance")}</option>
+              <option value="adjust">{t("admin.adjustBalance")}</option>
+            </select>
+          </label>
+          <label className="text-sm font-semibold">{mode === "set" ? t("admin.targetBalance") : t("admin.balanceDelta")}
+            <input className="field mt-2" required step="1" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} />
+          </label>
+          <label className="text-sm font-semibold">{t("admin.adjustmentReason")}
+            <input className="field mt-2" maxLength={500} required value={reason} onChange={(event) => setReason(event.target.value)} />
+          </label>
+          <button className="button-primary focus-ring self-end" disabled={saving || !currencyCode || !reason.trim()} type="submit">{saving ? t("admin.saving") : t("common.save")}</button>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -4183,6 +4280,8 @@ type ReviewSettings = {
   newsEdit: boolean;
   discussionCreate: boolean;
   discussionEdit: boolean;
+  changelogCreate: boolean;
+  changelogEdit: boolean;
   modCreate: boolean;
   modEdit: boolean;
   modpackCreate: boolean;
@@ -4244,6 +4343,8 @@ function ReviewSettingsPanel({ token }: { token: string }) {
     { key: "newsEdit", title: t("admin.reviewSettings.newsEdit"), description: t("admin.reviewSettings.newsEditDescription") },
     { key: "discussionCreate", title: t("admin.reviewSettings.discussionCreate"), description: t("admin.reviewSettings.discussionCreateDescription") },
     { key: "discussionEdit", title: t("admin.reviewSettings.discussionEdit"), description: t("admin.reviewSettings.discussionEditDescription") },
+    { key: "changelogCreate", title: t("admin.reviewSettings.changelogCreate"), description: t("admin.reviewSettings.changelogCreateDescription") },
+    { key: "changelogEdit", title: t("admin.reviewSettings.changelogEdit"), description: t("admin.reviewSettings.changelogEditDescription") },
     { key: "modCreate", title: t("admin.reviewSettings.modCreate"), description: t("admin.reviewSettings.modCreateDescription") },
     { key: "modEdit", title: t("admin.reviewSettings.modEdit"), description: t("admin.reviewSettings.modEditDescription") },
     { key: "modpackCreate", title: t("admin.reviewSettings.modpackCreate"), description: t("admin.reviewSettings.modpackCreateDescription") },
@@ -5440,17 +5541,6 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
   return descriptions[panel] ?? fallback;
 }
 
-function toneClass(tone: string) {
-  const tones: Record<string, string> = {
-    green: "text-[var(--accent)]",
-    blue: "text-[var(--blue)]",
-    violet: "text-[var(--violet)]",
-    red: "text-[var(--red)]",
-    warning: "text-[var(--warning)]",
-  };
-  return tones[tone] ?? "text-[var(--foreground)]";
-}
-
 function valueText(value: unknown) {
   return value ? "true" : "false";
 }
@@ -5493,19 +5583,6 @@ function logCategoryTitle(category: string, t: (key: string, params?: Record<str
     ai_call: t("admin.panels.logsAi"),
   };
   return titles[category] ?? category;
-}
-
-function featureLabel(key: string) {
-  const labels: Record<string, string> = {
-    contentReview: "contentReview",
-    emailSystem: "emailSystem",
-    permissionRBAC: "permissionRBAC",
-    oss: "oss",
-    redis: "redis",
-    crawler: "crawler",
-    ai: "ai",
-  };
-  return labels[key] ?? key;
 }
 
 function cloneAIConfig(config: AIConfig): AIConfig {

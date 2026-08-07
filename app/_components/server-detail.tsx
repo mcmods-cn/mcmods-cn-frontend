@@ -12,6 +12,9 @@ import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { ServerDetail as ServerDetailRecord, ServerHistory, ServerHistoryPoint } from "../_lib/server-api";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ServerSubmissionWizard } from "./server-submission-wizard";
+import { RatingPanel } from "./rating-panel";
+import { ContentMetricsPanel } from "./content-metrics-panel";
+import { ProjectChangelog } from "./project-changelog";
 
 type HistoryRange = ServerHistory["range"];
 const ranges: HistoryRange[] = ["24h", "7d", "30d", "90d"];
@@ -155,6 +158,9 @@ export function ServerDetail({ serverId }: { serverId: string }) {
             ) : null}
           </aside>
         </div>
+        <div className="mt-8"><ProjectChangelog targetId={record.id} targetType="minecraft_server" /></div>
+        <ContentMetricsPanel publicId={record.id} />
+        <RatingPanel targetId={record.id} targetName={record.name} targetType="minecraft_server" />
       </div>
       {editOpen ? (
         <ServerSubmissionWizard

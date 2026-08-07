@@ -55,11 +55,47 @@ export function SiteShell({ children }: SiteShellProps) {
   const admin = pathname?.startsWith("/admin");
   return (
     <>
+      <SitePresence />
       {admin ? <BackendStatusBanner /> : <SiteHeader />}
       {children}
       <SiteNoticeDialog />
     </>
   );
+}
+
+const presenceStorageKey = "mcmods.presence.visitor";
+
+function SitePresence() {
+  const { token } = useAuthSnapshot();
+
+  useEffect(() => {
+    let cancelled = false;
+    let visitorId = window.localStorage.getItem(presenceStorageKey) ?? "";
+    if (!visitorId) {
+      visitorId = typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+      window.localStorage.setItem(presenceStorageKey, visitorId);
+    }
+    const touch = () => {
+      if (cancelled || document.visibilityState !== "visible") return;
+      void apiRequest<{ online: boolean }>(
+        "/api/v1/site/presence",
+        { method: "POST", body: JSON.stringify({ visitorId }) },
+        token,
+      ).catch(() => undefined);
+    };
+    touch();
+    const timer = window.setInterval(touch, 60_000);
+    document.addEventListener("visibilitychange", touch);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", touch);
+    };
+  }, [token]);
+
+  return null;
 }
 
 type SiteNotice = { message: string; title?: string; tone?: "danger" | "success" | "info" };

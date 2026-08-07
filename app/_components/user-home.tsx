@@ -7,13 +7,14 @@ import { apiRequest } from "../_lib/api";
 import { saveAuth, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
-import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection, FavoriteCollectionItem, loadFavoriteCollections, loadFavoriteItems } from "../_lib/favorite-api";
+import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection, favoriteItemHref, FavoriteCollectionItem, loadFavoriteCollections, loadFavoriteItems, updateFavoriteCollection } from "../_lib/favorite-api";
 import { UserEconomyPanel } from "./user-economy-panel";
 import { UserPlayerProfilesPanel } from "./user-player-profiles-panel";
 import { ContentLanguagePreferences } from "./content-language-preferences";
 import { TimezonePicker } from "./timezone-picker";
 import { UserCommentWatchesPanel } from "./user-comment-watches-panel";
 import { UserDraftsPanel } from "./user-drafts-panel";
+import { UserProfileOverview } from "./user-profile-overview";
 
 type FileQuota = {
   daily: QuotaItem;
@@ -325,13 +326,14 @@ export function UserHome() {
                 </Link> : <button className="button-secondary focus-ring" disabled type="button">{t("user.previewAsVisitor")}</button>}
               </div>
               <div className="relative z-10 mt-5 grid border-y border-[var(--line)] sm:grid-cols-3">
-                <AccountMetric label={t("user.myFollowing")} value={overview ? formatTokenCount(overview.following, locale) : "-"} />
-                <AccountMetric className="sm:border-x sm:border-[var(--line)]" label={t("user.myFollowers")} value={overview ? formatTokenCount(overview.followers, locale) : "-"} />
+                <AccountMetric href={profile?.publicId ? `/user/${encodeURIComponent(profile.publicId)}/following` : undefined} label={t("user.myFollowing")} value={overview ? formatTokenCount(overview.following, locale) : "-"} />
+                <AccountMetric className="sm:border-x sm:border-[var(--line)]" href={profile?.publicId ? `/user/${encodeURIComponent(profile.publicId)}/followers` : undefined} label={t("user.myFollowers")} value={overview ? formatTokenCount(overview.followers, locale) : "-"} />
                 <AIBalanceMetric balance={overview?.aiBalance ?? null} locale={locale} />
               </div>
             </div>
 
             <nav className="surface flex overflow-x-auto rounded-lg border-b border-[var(--line)]" aria-label={t("user.accountSections")}>
+              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "overview" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=overview", { scroll: false })}>{t("user.overview")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "settings" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=settings", { scroll: false })}>{t("user.settings")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "drafts" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=drafts", { scroll: false })}>{t("drafts.title")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "favorites" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=favorites", { scroll: false })}>{t("favorites.title")}</button>
@@ -341,7 +343,7 @@ export function UserHome() {
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "players" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=players", { scroll: false })}>{t("skins.playerProfiles")}</button>
             </nav>
 
-            {activeSection === "settings" ? <section className="surface rounded-lg p-4">
+            {activeSection === "overview" && profile ? <UserProfileOverview token={token} userId={profile.publicId} /> : activeSection === "settings" ? <section className="surface rounded-lg p-4">
               <h2 className="text-lg font-bold">{t("user.settings")}</h2>
               {message ? <p className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}</p> : null}
               {profile ? (
@@ -500,10 +502,10 @@ export function UserHome() {
   );
 }
 
-type AccountSection = "settings" | "drafts" | "favorites" | "comment-watches" | "files" | "economy" | "players";
+type AccountSection = "overview" | "settings" | "drafts" | "favorites" | "comment-watches" | "files" | "economy" | "players";
 
 function accountSection(value: string | null): AccountSection {
-  return value === "drafts" || value === "favorites" || value === "comment-watches" || value === "files" || value === "economy" || value === "players" ? value : "settings";
+  return value === "settings" || value === "drafts" || value === "favorites" || value === "comment-watches" || value === "files" || value === "economy" || value === "players" ? value : "overview";
 }
 
 function FavoriteCollectionsPanel({ token }: { token: string }) {
@@ -512,6 +514,7 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [items, setItems] = useState<FavoriteCollectionItem[]>([]);
   const [name, setName] = useState("");
+  const [newCollectionPublic, setNewCollectionPublic] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
@@ -557,10 +560,11 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
     const nextName = name.trim();
     if (!nextName) return;
     try {
-      const created = await createFavoriteCollection(token, nextName);
+      const created = await createFavoriteCollection(token, nextName, newCollectionPublic);
       setCollections((current) => [...current, created]);
       setSelectedId(created.id);
       setName("");
+      setNewCollectionPublic(false);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("favorites.createFailed"));
     }
@@ -576,23 +580,82 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
     }
   }
 
+  async function toggleCollectionVisibility(collection: FavoriteCollection) {
+    try {
+      const updated = await updateFavoriteCollection(token, collection.id, { isPublic: !collection.isPublic });
+      setCollections((current) => current.map((item) => item.id === updated.id ? updated : item));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("favorites.saveFailed"));
+    }
+  }
+
   const selected = collections.find((item) => item.id === selectedId);
-  return <section className="surface rounded-lg p-4"><div className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-xl font-black">{t("favorites.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("favorites.description")}</p></div><div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"><input className="field min-w-48" placeholder={t("favorites.newFolderName")} value={name} onChange={(event) => setName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createCollection(); } }} /><button className="button-primary focus-ring" disabled={!name.trim()} type="button" onClick={() => void createCollection()}>{t("favorites.createFolder")}</button></div></div>{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">{message}</p> : null}<div className="mt-5 grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]"><aside className="grid content-start gap-2">{loading ? <p className="p-3 font-bold text-[var(--muted)]">{t("common.loading")}</p> : collections.map((collection) => <div className={`flex items-center rounded-lg border ${selectedId === collection.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`} key={collection.id}><button className="focus-ring min-w-0 flex-1 px-3 py-3 text-left" type="button" onClick={() => setSelectedId(collection.id)}><span className="block truncate font-bold">{collection.isDefault ? t("favorites.defaultFolder") : collection.name}</span><span className="text-xs text-[var(--muted)]">{t("favorites.itemCount", { count: collection.itemCount })}</span></button>{!collection.isDefault ? <button className="focus-ring mr-2 rounded p-2 text-sm text-red-600" title={t("common.delete")} type="button" onClick={() => void removeCollection(collection)}>×</button> : null}</div>)}</aside><section className="min-w-0 rounded-lg border border-[var(--line)] p-4"><h3 className="font-black">{selected?.isDefault ? t("favorites.defaultFolder") : selected?.name ?? t("favorites.title")}</h3>{items.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item) => <Link className="focus-ring rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)} key={`${item.entityType}:${item.entityKey}`}><span className="block truncate font-bold">{item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityKey}</span><span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.entityType} · {item.entityKey}</span></Link>)}</div> : <p className="py-12 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}</section></div></section>;
-}
-
-function favoriteItemHref(item: FavoriteCollectionItem) {
-  if (item.entityType === "mod") return `/mods/${item.metadata.slug || item.entityKey}`;
-  if (item.entityType === "blueprint") return `/blueprints/${item.metadata.publicId || item.entityKey}`;
-  return `/${item.entityKey}`;
-}
-
-function AccountMetric({ className = "", label, value }: { className?: string; label: string; value: string }) {
   return (
-    <div className={`px-3 py-4 ${className}`}>
+    <section className="surface rounded-lg p-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-black">{t("favorites.title")}</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("favorites.description")}</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
+          <input
+            className="field min-w-48"
+            placeholder={t("favorites.newFolderName")}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void createCollection();
+              }
+            }}
+          />
+          <label className="flex items-center gap-2 whitespace-nowrap text-sm font-bold">
+            <input checked={newCollectionPublic} type="checkbox" onChange={(event) => setNewCollectionPublic(event.target.checked)} />
+            {t("favorites.public")}
+          </label>
+          <button className="button-primary focus-ring" disabled={!name.trim()} type="button" onClick={() => void createCollection()}>
+            {t("favorites.createFolder")}
+          </button>
+        </div>
+      </div>
+      {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">{message}</p> : null}
+      <div className="mt-5 grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <aside className="grid content-start gap-2">
+          {loading ? <p className="p-3 font-bold text-[var(--muted)]">{t("common.loading")}</p> : collections.map((collection) => (
+            <div className={`flex items-center rounded-lg border ${selectedId === collection.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`} key={collection.id}>
+              <button className="focus-ring min-w-0 flex-1 px-3 py-3 text-left" type="button" onClick={() => setSelectedId(collection.id)}>
+                <span className="block truncate font-bold">{collection.isDefault ? t("favorites.defaultFolder") : collection.name}</span>
+                <span className="text-xs text-[var(--muted)]">{t("favorites.itemCount", { count: collection.itemCount })} · {collection.isPublic ? t("favorites.public") : t("favorites.private")}</span>
+              </button>
+              <button className="focus-ring rounded p-2 text-xs font-bold text-[var(--accent)]" title={t("favorites.changeVisibility")} type="button" onClick={() => void toggleCollectionVisibility(collection)}>
+                {collection.isPublic ? t("favorites.makePrivate") : t("favorites.makePublic")}
+              </button>
+              {!collection.isDefault ? <button className="focus-ring mr-2 rounded p-2 text-sm text-red-600" title={t("common.delete")} type="button" onClick={() => void removeCollection(collection)}>×</button> : null}
+            </div>
+          ))}
+        </aside>
+        <section className="min-w-0 rounded-lg border border-[var(--line)] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-black">{selected?.isDefault ? t("favorites.defaultFolder") : selected?.name ?? t("favorites.title")}</h3>
+            {selected ? <span className="rounded-full border border-[var(--line)] px-2 py-1 text-xs font-bold">{selected.isPublic ? t("favorites.public") : t("favorites.private")}</span> : null}
+          </div>
+          {items.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item) => <Link className="focus-ring rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)} key={`${item.entityType}:${item.entityKey}`}><span className="block truncate font-bold">{item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityKey}</span><span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.entityType} · {item.entityKey}</span></Link>)}</div> : <p className="py-12 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
+        </section>
+      </div>
+    </section>
+  );
+}
+
+function AccountMetric({ className = "", href, label, value }: { className?: string; href?: string; label: string; value: string }) {
+  const content = (
+    <>
       <div className="text-sm font-semibold text-[var(--muted)]">{label}</div>
       <div className="mt-1 text-2xl font-black">{value}</div>
-    </div>
+    </>
   );
+  if (href) return <Link className={`focus-ring px-3 py-4 transition hover:bg-[var(--panel-subtle)] hover:text-[var(--accent)] ${className}`} href={href}>{content}</Link>;
+  return <div className={`px-3 py-4 ${className}`}>{content}</div>;
 }
 
 function AIBalanceMetric({ balance, locale }: { balance: AIBalance | null; locale: string }) {

@@ -32,7 +32,7 @@ import { IndexedHttpAssetSource } from "@/lib/mcmods-exporter/renderer";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { CommentSection } from "./comment-section";
 import { ModLootTableView, ModRecipeGallery, ModResourceProperties } from "./mod-resource-components";
-import { RelatedCommunityPosts } from "./community-post-catalog";
+import { ContentMetricsPanel } from "./content-metrics-panel";
 
 const BlockModelCanvas = dynamic(() => import("@/components/mcmods-exporter/BlockModelCanvas").then((module) => module.BlockModelCanvas), { ssr: false });
 
@@ -84,9 +84,9 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
     </header>
     {current && similarResources.length > 1 ? <SimilarResourceStrip currentResourceId={resourceId} locale={locale} resources={similarResources} sectionId={sectionId} siteId={siteId} versionId={current.publicId} /> : null}
     {!current || !versionDetail ? <section className="mt-8 rounded-lg border border-dashed border-[var(--red)] bg-[var(--panel)] p-8 text-center"><h2 className="text-xl font-black">{current?.label}</h2><p className="mt-3 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionContentMissing")}</p></section> : <ResourcePresentation canonicalId={detail.canonicalId} current={current} definition={versionDetail.definition} entryTypeCode={versionDetail.entryTypeCode} key={current.publicId} kindCode={detail.kindCode} name={localization?.name || detail.canonicalId} resourceId={resourceId} schemaDefinition={versionDetail.schemaDefinition}>
-      <RelatedCommunityPosts compact resourceId={resourceId} />
       {localization?.contentMarkdown ? <div className="markdown-preview mt-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={localization.contentMarkdown} /></div> : <p className="mt-5 text-[var(--muted)]">{t("mods.exportImport.entry.noIntroduction")}</p>}
     </ResourcePresentation>}
+    <ContentMetricsPanel pageKey={current ? `version:${current.publicId}` : "detail"} publicId={resourceId} />
     {current && versionDetail ? <CommentSection targetKey={`${resourceId}~${current.publicId}`} targetType="mod_resource" /> : null}
   </article></main>;
 }

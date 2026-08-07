@@ -13,10 +13,34 @@ import { useI18n } from "../_lib/i18n-provider";
 import { CatalogResourceIconValue } from "./catalog-resource-icon";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
+import type { CatalogResourceRef } from "../_lib/editor-types";
+import { ModResourcePickerDialog, type ProjectResourceType } from "./editor/mod-resource-picker";
 
 type ProfileSettingsResult = {
   profileBackgroundUrl: string;
 };
+
+type CurrencyTransaction = {
+  currency: Pick<Currency, "publicId" | "code" | "name" | "icon">;
+  amountDelta: number;
+  balanceAfter: number;
+  transactionType: string;
+  counterparty: { publicId: string; username: string };
+  referenceType: string;
+  referenceKey: string;
+  createdAt: string;
+};
+
+type ExperienceTransaction = {
+  amountDelta: number;
+  experienceAfter: number;
+  reason: string;
+  referenceType: string;
+  referenceKey: string;
+  createdAt: string;
+};
+
+type TransactionPage<T> = { items: T[]; nextCursor: string };
 
 export function UserEconomyPanel({
   token,
@@ -30,25 +54,36 @@ export function UserEconomyPanel({
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
   const [tasks, setTasks] = useState<TaskDefinition[]>([]);
+  const [currencyTransactions, setCurrencyTransactions] = useState<CurrencyTransaction[]>([]);
+  const [experienceTransactions, setExperienceTransactions] = useState<ExperienceTransaction[]>([]);
+  const [currencyCursor, setCurrencyCursor] = useState("");
+  const [experienceCursor, setExperienceCursor] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [recipient, setRecipient] = useState("");
   const [transferCurrency, setTransferCurrency] = useState("");
   const [transferAmount, setTransferAmount] = useState(1);
+  const [heatBoostItem, setHeatBoostItem] = useState<ShopItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextOverview, currencyResponse, shopResponse, taskResponse] = await Promise.all([
+      const [nextOverview, currencyResponse, shopResponse, taskResponse, currencyHistory, experienceHistory] = await Promise.all([
         apiRequest<EconomyOverview>("/api/v1/users/me/economy", {}, token),
         apiRequest<{ items: Currency[] }>("/api/v1/economy/currencies", {}, token),
         apiRequest<{ items: ShopItem[] }>("/api/v1/shop/items", {}, token),
         apiRequest<{ items: TaskDefinition[] }>("/api/v1/users/me/tasks", {}, token),
+        apiRequest<TransactionPage<CurrencyTransaction>>("/api/v1/users/me/economy/transactions", {}, token),
+        apiRequest<TransactionPage<ExperienceTransaction>>("/api/v1/users/me/experience/transactions", {}, token),
       ]);
       setOverview(nextOverview);
       setCurrencies(currencyResponse.items);
       setShopItems(shopResponse.items);
       setTasks(taskResponse.items);
+      setCurrencyTransactions(currencyHistory.items);
+      setExperienceTransactions(experienceHistory.items);
+      setCurrencyCursor(currencyHistory.nextCursor);
+      setExperienceCursor(experienceHistory.nextCursor);
       setTransferCurrency((current) => current || nextOverview.balances[0]?.code || "");
     } catch (error) {
       notifySite(errorMessage(error, t("user.economyLoadFailed")), t("user.economyAndProgression"), "danger");
@@ -66,6 +101,42 @@ export function UserEconomyPanel({
     () => new Map(currencies.map((currency) => [currency.code, currency])),
     [currencies],
   );
+
+  async function loadMoreCurrencyTransactions() {
+    if (!currencyCursor) return;
+    setBusy("currency-history");
+    try {
+      const page = await apiRequest<TransactionPage<CurrencyTransaction>>(
+        `/api/v1/users/me/economy/transactions?cursor=${encodeURIComponent(currencyCursor)}`,
+        {},
+        token,
+      );
+      setCurrencyTransactions((current) => [...current, ...page.items]);
+      setCurrencyCursor(page.nextCursor);
+    } catch (error) {
+      notifySite(errorMessage(error, t("user.transactionHistoryFailed")), t("user.transactionHistory"), "danger");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function loadMoreExperienceTransactions() {
+    if (!experienceCursor) return;
+    setBusy("experience-history");
+    try {
+      const page = await apiRequest<TransactionPage<ExperienceTransaction>>(
+        `/api/v1/users/me/experience/transactions?cursor=${encodeURIComponent(experienceCursor)}`,
+        {},
+        token,
+      );
+      setExperienceTransactions((current) => [...current, ...page.items]);
+      setExperienceCursor(page.nextCursor);
+    } catch (error) {
+      notifySite(errorMessage(error, t("user.transactionHistoryFailed")), t("user.experienceHistory"), "danger");
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function checkIn() {
     setBusy("checkin");
@@ -160,6 +231,31 @@ export function UserEconomyPanel({
     }
   }
 
+  async function applyHeatBoost(item: ShopItem, target: CatalogResourceRef) {
+    setBusy(`use:${item.code}`);
+    try {
+      await apiRequest(
+        "/api/v1/users/me/shop/use",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            itemCode: item.code,
+            targetType: target.kind || target.registry,
+            targetId: target.publicId,
+          }),
+        },
+        token,
+      );
+      setHeatBoostItem(null);
+      notifySite(t("user.heatBoostApplied"), t("user.shop"), "success");
+      await load();
+    } catch (error) {
+      notifySite(errorMessage(error, t("user.itemUseFailed")), t("user.shop"), "danger");
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (loading && !overview) {
     return <section className="surface rounded-lg p-12 text-center font-bold text-[var(--muted)]">{t("common.loading")}</section>;
   }
@@ -191,6 +287,48 @@ export function UserEconomyPanel({
             />
           ))}
         </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <TransactionHistory
+          title={t("user.transactionHistory")}
+          empty={t("user.noTransactions")}
+          hasMore={Boolean(currencyCursor)}
+          loading={busy === "currency-history"}
+          onLoadMore={() => void loadMoreCurrencyTransactions()}
+        >
+          {currencyTransactions.map((transaction, index) => (
+            <HistoryRow
+              key={`${transaction.createdAt}:${transaction.currency.code}:${index}`}
+              amount={transaction.amountDelta}
+              balance={transaction.balanceAfter}
+              label={transactionLabel(transaction.transactionType, t)}
+              detail={transaction.counterparty.username || transaction.referenceKey}
+              icon={transaction.currency.icon}
+              time={transaction.createdAt}
+              locale={locale}
+            />
+          ))}
+        </TransactionHistory>
+        <TransactionHistory
+          title={t("user.experienceHistory")}
+          empty={t("user.noExperienceTransactions")}
+          hasMore={Boolean(experienceCursor)}
+          loading={busy === "experience-history"}
+          onLoadMore={() => void loadMoreExperienceTransactions()}
+        >
+          {experienceTransactions.map((transaction, index) => (
+            <HistoryRow
+              key={`${transaction.createdAt}:${transaction.reason}:${index}`}
+              amount={transaction.amountDelta}
+              balance={transaction.experienceAfter}
+              label={experienceReasonLabel(transaction.reason, t)}
+              detail={transaction.referenceKey}
+              time={transaction.createdAt}
+              locale={locale}
+            />
+          ))}
+        </TransactionHistory>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -359,6 +497,16 @@ export function UserEconomyPanel({
                         />
                       </label>
                     ) : null}
+                    {(item.itemType === "project_heat_boost" || item.itemType === "server_heat_boost") && quantity > 0 ? (
+                      <button
+                        className="button-secondary focus-ring"
+                        disabled={!item.canUse || busy === `use:${item.code}`}
+                        type="button"
+                        onClick={() => setHeatBoostItem(item)}
+                      >
+                        {t("user.selectHeatBoostTarget")}
+                      </button>
+                    ) : null}
                   </div>
                   {!item.canPurchase && quantity === 0 ? (
                     <p className="mt-2 text-xs font-bold text-[var(--muted)]">{t("user.shopPermissionRequired")}</p>
@@ -370,6 +518,26 @@ export function UserEconomyPanel({
           {shopItems.length === 0 ? <EmptyState>{t("user.noShopItems")}</EmptyState> : null}
         </div>
       </section>
+      <ModResourcePickerDialog
+        allowUnresolved={false}
+        multiple={false}
+        open={heatBoostItem !== null}
+        projectTypes={(heatBoostItem?.itemType === "server_heat_boost"
+          ? ["minecraft_server"]
+          : ["mod", "modpack", "plugin", "map", "resource_pack", "shader_pack", "datapack", "addon"]) as ProjectResourceType[]}
+        token={token}
+        value={[]}
+        labels={{
+          title: t("user.selectHeatBoostTarget"),
+          description: t("user.heatBoostTargetDescription"),
+        }}
+        onClose={() => setHeatBoostItem(null)}
+        onConfirm={(resources) => {
+          const item = heatBoostItem;
+          const target = resources[0];
+          if (item && target) void applyHeatBoost(item, target);
+        }}
+      />
     </section>
   );
 }
@@ -383,6 +551,67 @@ function Metric({ label, value, icon }: { label: string; value: string; icon?: s
       </div>
       <div className="mt-2 text-2xl font-black">{value}</div>
     </div>
+  );
+}
+
+function TransactionHistory({
+  title,
+  empty,
+  hasMore,
+  loading,
+  onLoadMore,
+  children,
+}: {
+  title: string;
+  empty: string;
+  hasMore: boolean;
+  loading: boolean;
+  onLoadMore: () => void;
+  children: ReactNode;
+}) {
+  const { t } = useI18n();
+  const hasItems = Array.isArray(children) ? children.length > 0 : Boolean(children);
+  return (
+    <section className="surface rounded-lg p-5">
+      <h3 className="text-lg font-black">{title}</h3>
+      <div className="mt-4 grid gap-2">
+        {hasItems ? children : <p className="rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">{empty}</p>}
+      </div>
+      {hasMore ? <button className="button-secondary focus-ring mt-4" disabled={loading} type="button" onClick={onLoadMore}>{loading ? t("common.loading") : t("user.loadMoreTransactions")}</button> : null}
+    </section>
+  );
+}
+
+function HistoryRow({
+  amount,
+  balance,
+  label,
+  detail,
+  icon,
+  time,
+  locale,
+}: {
+  amount: number;
+  balance: number;
+  label: string;
+  detail?: string;
+  icon?: string;
+  time: string;
+  locale: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <article className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-[var(--line)] p-3">
+      {icon ? <CatalogResourceIconValue className="h-9 w-9" fallbackName={label} value={icon} /> : <span className="grid h-9 w-9 place-items-center rounded-md bg-[var(--panel-subtle)] font-black">XP</span>}
+      <div className="min-w-0">
+        <p className="truncate font-bold">{label}</p>
+        <p className="truncate text-xs text-[var(--muted)]">{detail || t("user.noTransactionReference")} · {new Date(time).toLocaleString(locale)}</p>
+      </div>
+      <div className="text-right">
+        <strong className={amount >= 0 ? "text-[var(--accent)]" : "text-red-600"}>{amount >= 0 ? "+" : ""}{formatSignedNumber(amount, locale)}</strong>
+        <span className="mt-1 block text-xs text-[var(--muted)]">{t("user.balanceAfter", { amount: formatNumber(balance, locale) })}</span>
+      </div>
+    </article>
   );
 }
 
@@ -428,6 +657,19 @@ function rewardText(
 
 function formatNumber(value: number, locale: string) {
   return new Intl.NumberFormat(locale).format(Math.max(0, value));
+}
+
+function formatSignedNumber(value: number, locale: string) {
+  return new Intl.NumberFormat(locale).format(value);
+}
+
+function transactionLabel(type: string, t: (key: string) => string) {
+  const known = new Set(["checkin", "transfer_out", "transfer_in", "shop_purchase", "content_download_reward", "task_reward", "question_bounty_hold", "question_bounty_refund", "question_bounty_award"]);
+  return known.has(type) ? t(`user.transactionTypes.${type}`) : type;
+}
+
+function experienceReasonLabel(reason: string, t: (key: string) => string) {
+  return reason === "task_reward" ? t("user.experienceReasons.task_reward") : reason;
 }
 
 function errorMessage(error: unknown, fallback: string) {

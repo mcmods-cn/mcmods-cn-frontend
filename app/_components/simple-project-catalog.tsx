@@ -488,7 +488,9 @@ function sortProjects(items: SimpleProjectRecord[], sort: CatalogSort, query: st
     if (sort === "nameAsc") return leftName.localeCompare(rightName, locale);
     if (sort === "nameDesc") return rightName.localeCompare(leftName, locale);
     if (query) return projectSearchScore(right, query, locale) - projectSearchScore(left, query, locale);
-    return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+    // The API already returns the default catalog in authoritative heat order.
+    // Keep that order stable instead of replacing it with a client-only timestamp sort.
+    return 0;
   });
 }
 

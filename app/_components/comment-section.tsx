@@ -538,7 +538,7 @@ function toggleSet(current: Set<string>, value: string) {
 }
 
 function score(item: CommentItem) {
-  return item.descendantCount + Object.values(item.reactions).reduce((sum, value) => sum + value * 2, 0);
+  return item.heatScore;
 }
 
 function currentPath() {

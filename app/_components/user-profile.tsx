@@ -9,6 +9,7 @@ import { useI18n } from "../_lib/i18n-provider";
 import { loadPublicPlayerProfiles, PlayerProfile, skinTextureURL } from "../_lib/skin-api";
 import { UserHome } from "./user-home";
 import { SkinPreview2D } from "./skin-preview";
+import { UserProfileOverview } from "./user-profile-overview";
 
 type PublicUserProfile = {
   id: string;
@@ -139,15 +140,17 @@ export function UserProfile({ userId }: { userId: string }) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="surface p-5">
+          <Link className="surface focus-ring p-5 transition hover:-translate-y-0.5 hover:border-[var(--accent)]" href={`/user/${encodeURIComponent(profile.id)}/followers`}>
             <div className="text-sm font-semibold text-[var(--muted)]">{t("user.followers")}</div>
             <div className="mt-1 text-3xl font-black">{profile.followers}</div>
-          </div>
-          <div className="surface p-5">
+          </Link>
+          <Link className="surface focus-ring p-5 transition hover:-translate-y-0.5 hover:border-[var(--accent)]" href={`/user/${encodeURIComponent(profile.id)}/following`}>
             <div className="text-sm font-semibold text-[var(--muted)]">{t("user.following")}</div>
             <div className="mt-1 text-3xl font-black">{profile.following}</div>
-          </div>
+          </Link>
         </div>
+
+        <UserProfileOverview token={token || undefined} userId={profile.id} />
 
         <section className="surface p-5">
           <h2 className="text-xl font-black">{t("skins.publicPlayerProfiles")}</h2>

@@ -14,7 +14,7 @@ export type ReviewLockStatus = {
   canSubscribe: boolean;
 };
 
-type ReviewTargetType = "mod" | "modpack" | "plugin" | "map" | "resource_pack" | "shader_pack" | "datapack" | "addon" | "creator" | "community_post" | "blueprint" | "skin";
+type ReviewTargetType = "mod" | "modpack" | "plugin" | "map" | "resource_pack" | "shader_pack" | "datapack" | "addon" | "creator" | "community_post" | "blueprint" | "skin" | "project_changelog";
 
 function useReviewLock(entityType: ReviewTargetType, publicId: string, enabled = true) {
   const { ready, token } = useAuthSnapshot();

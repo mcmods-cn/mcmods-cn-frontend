@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ApiError, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
@@ -14,9 +15,12 @@ import { CreatorIdentityAvatar, CreatorTeamMemberGroup } from "./creator-identit
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ProjectGallery } from "./mod-detail";
 import { ProjectDownloads } from "./project-downloads";
+import { ProjectChangelog } from "./project-changelog";
 import { ReviewAwareEditAction } from "./review-edit-lock";
+import { RatingPanel } from "./rating-panel";
+import { ContentMetricsPanel } from "./content-metrics-panel";
 
-type ProjectTab = "introduction" | "downloads" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
+type ProjectTab = "introduction" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
 export function SimpleProjectDetailLoader({ projectType, siteId }: { projectType: SimpleProjectType; siteId: string }) {
   const { ready, token } = useAuthSnapshot();
@@ -38,7 +42,9 @@ export function SimpleProjectDetailLoader({ projectType, siteId }: { projectType
 function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
-  const [tab, setTab] = useState<ProjectTab>("introduction");
+  const searchParams = useSearchParams();
+  const [selectedTab, setSelectedTab] = useState<ProjectTab>();
+  const tab = selectedTab ?? (searchParams.get("tab") === "changelog" ? "changelog" : "introduction");
   const config = simpleProjectConfig(record.projectType);
   const localization = localizedSimpleProject(record, locale);
   const name = localization.name || record.siteId;
@@ -51,10 +57,11 @@ function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
     </div></header>
     <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
       <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("mods.detail.compatibility")}</h2><div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Detail label={t("largeProjects.fields.minecraftVersions")} value={record.minecraftVersions.join("、")} /><Detail label={t("largeProjects.fields.loaders")} value={record.loaders.map((value) => t(`largeProjects.options.${value}`)).join("、")} />{information.map((item) => <Detail key={item.label} label={t(item.label)} value={item.values.map((value) => t(`largeProjects.options.${value}`)).join("、")} />)}</div></section>
-      <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("largeProjects.detail.sections")}>{(["introduction", "downloads", "gallery", "discussion", "tutorial", "issues", "news"] as ProjectTab[]).map((item) => <button className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} key={item} type="button" onClick={() => setTab(item)}><strong className="block whitespace-nowrap">{t(`largeProjects.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
+      <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("largeProjects.detail.sections")}>{(["introduction", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as ProjectTab[]).map((item) => <button className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} key={item} type="button" onClick={() => setSelectedTab(item)}><strong className="block whitespace-nowrap">{t(`largeProjects.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0">
         {tab === "introduction" ? <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText={localization.summary} markdown={localization.bodyMarkdown} /></section> : null}
         {tab === "downloads" ? <ProjectDownloads projectType={record.projectType} projectId={record.id} projectName={name} token={token} suggestedVersions={record.minecraftVersions} suggestedLoaders={record.loaders} /> : null}
+        {tab === "changelog" ? <ProjectChangelog targetId={record.id} targetType={record.projectType} /> : null}
         {tab === "gallery" ? <ProjectGallery images={record.galleryImages} emptyText={t("mods.detail.emptyGallery")} /> : null}
         {tab === "discussion" ? <RelatedCommunityPosts kind="discussion" modId={record.id} /> : null}
         {tab === "tutorial" ? <RelatedCommunityPosts kind="tutorial" modId={record.id} /> : null}
@@ -66,6 +73,8 @@ function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
         {record.projectType === "addon" ? <ParentProjects record={record} /> : null}
         <CreatorSection record={record} />
       </aside></div>
+      <ContentMetricsPanel publicId={record.id} />
+      <RatingPanel targetId={record.id} targetName={name} targetType={record.projectType} />
       <CommentSection targetKey={record.id} targetType={record.projectType} />
     </div>
   </main>;

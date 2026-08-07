@@ -875,6 +875,8 @@ export function ShopManagementPanel({ token }: { token: string }) {
                 onChange={(event) => setDraft({ ...draft, itemType: event.target.value })}
               >
                 <option value="profile_background">{t("admin.community.profileBackgroundItem")}</option>
+                <option value="project_heat_boost">{t("admin.community.projectHeatBoostItem")}</option>
+                <option value="server_heat_boost">{t("admin.community.serverHeatBoostItem")}</option>
               </select>
             </Field>
             <Field label={t("admin.community.icon")}>

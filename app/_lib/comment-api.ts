@@ -36,6 +36,7 @@ export type CommentItem = {
   userReactions: string[];
   childCount: number;
   descendantCount: number;
+  heatScore: number;
   hasMoreReplies: boolean;
   currentUserWatch?: CommentWatchState;
   pinned: boolean;

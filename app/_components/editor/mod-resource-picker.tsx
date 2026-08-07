@@ -5,6 +5,7 @@ import { apiRequest } from "../../_lib/api";
 import type { CatalogResourceRef, ResourcePageLoader } from "../../_lib/editor-types";
 import type { BackendModList, BackendModRecord } from "../../_lib/mod-api";
 import type { BackendModpackList, BackendModpackRecord } from "../../_lib/modpack-api";
+import type { ServerCatalogItem, ServerCatalogResponse } from "../../_lib/server-api";
 import { isSimpleProjectType, localizedSimpleProject, type SimpleProjectList, type SimpleProjectRecord, type SimpleProjectType } from "../../_lib/simple-project-api";
 import { useI18n } from "../../_lib/i18n-provider";
 import {
@@ -37,7 +38,7 @@ type ModResourceSelectionFieldProps = {
   onChange: (resources: CatalogResourceRef[]) => void;
 };
 
-export type ProjectResourceType = "mod" | "modpack" | SimpleProjectType;
+export type ProjectResourceType = "mod" | "modpack" | "minecraft_server" | SimpleProjectType;
 
 export function ModResourcePickerDialog({
   open,
@@ -54,13 +55,19 @@ export function ModResourcePickerDialog({
   const { t } = useI18n();
   const projectTypeKey = projectTypes.join(",");
   const loadModPage = useCallback<ResourcePageLoader>(async (options, requestToken, signal) => {
-    const requestedTypes = projectTypeKey.split(",").filter((value): value is ProjectResourceType => value === "mod" || value === "modpack" || isSimpleProjectType(value));
+    const requestedTypes = projectTypeKey.split(",").filter((value): value is ProjectResourceType => value === "mod" || value === "modpack" || value === "minecraft_server" || isSimpleProjectType(value));
     const fetchProjectPage = async (projectType: ProjectResourceType, limit: number, offset: number) => {
       const parameters = new URLSearchParams({ limit: String(limit), offset: String(offset) });
       if (options.query) parameters.set("q", options.query);
       if (projectType === "modpack") {
         const result = await apiRequest<BackendModpackList>(`/api/v1/modpacks?${parameters}`, { signal }, requestToken || undefined);
         return { items: result.items.map(modpackRecordToPickerResource), total: result.total };
+      }
+      if (projectType === "minecraft_server") {
+        parameters.delete("offset");
+        parameters.set("page", String(Math.floor(offset / limit) + 1));
+        const result = await apiRequest<ServerCatalogResponse>(`/api/v1/servers?${parameters}`, { signal }, requestToken || undefined);
+        return { items: result.items.map(serverRecordToPickerResource), total: result.total };
       }
       if (isSimpleProjectType(projectType)) {
         const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?${parameters}`, { signal }, requestToken || undefined);
@@ -211,6 +218,19 @@ function modRecordToPickerResource(mod: BackendModRecord): CatalogResourceRef {
     resolvedName: mod.secondaryName || mod.primaryName,
     iconUrl: mod.iconUrl,
     source: { publicId: mod.id, siteId: mod.siteId, name: mod.primaryName },
+  };
+}
+
+function serverRecordToPickerResource(server: ServerCatalogItem): CatalogResourceRef {
+  return {
+    publicId: server.id,
+    id: server.id,
+    registry: "minecraft_server",
+    kind: "minecraft_server",
+    names: {},
+    resolvedName: server.name,
+    iconUrl: server.iconDataUri,
+    source: { publicId: server.id, siteId: server.id, name: server.name },
   };
 }
 
