@@ -1,4 +1,5 @@
 import { API_BASE_URL, apiRequest } from "./api";
+import { apiRecord as record, apiText as text } from "./api-normalizers";
 import type {
   CatalogResourcePage,
   CatalogResourceQuery,
@@ -21,9 +22,8 @@ export function loadCatalogResources(query: CatalogResourceQuery, token = "", si
   return apiRequest<{
     items: Array<{
       publicId: string;
-      kindCode: string;
-      canonicalId: string;
-	  entityId?: string;
+	  kind: string;
+	  id: string;
 	  namespace?: string;
 	  registry?: string;
       defaultLocale?: string;
@@ -47,10 +47,9 @@ export function loadCatalogResources(query: CatalogResourceQuery, token = "", si
     ...page,
 	items: page.items.map((item) => ({
       publicId: item.publicId,
-	  entityId: item.entityId,
-      id: item.canonicalId,
-	  registry: item.registry || item.namespace || item.canonicalId.split(":", 1)[0] || "minecraft",
-      kind: item.kindCode,
+	  id: item.id,
+	  registry: item.registry || item.namespace || item.id.split(":", 1)[0] || "minecraft",
+      kind: item.kind,
       names: item.names || (item.name ? { [item.locale || query.locale || item.defaultLocale || "en-US"]: item.name } : {}),
 	  resolvedName: item.name,
 	  resolvedLocale: item.locale,
@@ -189,12 +188,4 @@ function normalizeTranslationState(value: unknown): ResolvedContentDocument["tra
   return candidate === "queued" || candidate === "running" || candidate === "retrying" || candidate === "completed"
     || candidate === "ready" || candidate === "failed" || candidate === "request_required" || candidate === "unavailable"
     || candidate === "no_source" ? candidate : "not_required";
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function text(value: unknown) {
-  return typeof value === "string" ? value : "";
 }

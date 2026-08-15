@@ -4,10 +4,12 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
+import type { AITokenBalance, OnlineStatus } from "../_lib/user-api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
 import { normalizeInternalPath } from "../_lib/navigation";
+import { OnlineStatusDot, UserAvatar } from "./user-avatar";
 
 type NotificationKind = "system" | "reply_mention" | "comment_watch_reply" | "review" | "new_follower";
 
@@ -28,6 +30,8 @@ type Conversation = {
   id: string;
   partnerId: string;
   username: string;
+  avatarUrl: string;
+  onlineStatus: OnlineStatus;
   lastMessage: string;
   lastAt?: string;
   unreadCount: number;
@@ -41,14 +45,6 @@ type DirectMessage = {
   body: string;
   readAt?: string;
   createdAt: string;
-};
-
-type AIBalance = {
-  usedTokens: number;
-  reservedTokens: number;
-  limitTokens: number;
-  remainingTokens: number;
-  unlimited: boolean;
 };
 
 type Translation = { title: string; body: string };
@@ -73,7 +69,7 @@ export function MessagesCenter() {
   const [translations, setTranslations] = useState<Record<string, Translation>>({});
   const [translatingID, setTranslatingID] = useState<string | null>(null);
   const [markingAllRead, setMarkingAllRead] = useState(false);
-  const [aiBalance, setAIBalance] = useState<AIBalance | null>(null);
+  const [aiBalance, setAIBalance] = useState<AITokenBalance | null>(null);
   const [status, setStatus] = useState("");
 
   const selectedConversation = conversations.find((item) => item.id === selectedConversationID) ?? null;
@@ -98,7 +94,7 @@ export function MessagesCenter() {
 
   const loadBalance = useCallback(async () => {
     if (!token) return;
-    setAIBalance(await apiRequest<AIBalance>("/api/v1/notifications/ai-balance", {}, token));
+    setAIBalance(await apiRequest<AITokenBalance>("/api/v1/notifications/ai-balance", {}, token));
   }, [token]);
 
   const loadMessages = useCallback(async (conversationID: string) => {
@@ -323,7 +319,7 @@ export function MessagesCenter() {
               <div className="max-h-[620px] overflow-y-auto">
                 {conversations.map((item) => (
                   <button key={item.id} className={`focus-ring flex w-full items-start gap-3 border-b border-[var(--line)] p-4 text-left ${selectedConversationID === item.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setSelectedConversationID(item.id)}>
-<span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[var(--panel-subtle)] font-black text-[var(--accent)]">{item.username.slice(0, 1)}</span>
+                    <UserAvatar avatarUrl={item.avatarUrl} onlineStatus={item.onlineStatus} size={40} username={item.username} />
                     <span className="min-w-0 flex-1">
 <span className="flex items-center justify-between gap-2"><strong className="truncate">{item.username}</strong>{item.unreadCount > 0 ? <b className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">{item.unreadCount}</b> : null}</span>
                       <span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.lastMessage || t("messages.noMessages")}</span>
@@ -336,7 +332,7 @@ export function MessagesCenter() {
               {selectedConversation ? (
                 <>
                   <div className="flex items-center justify-between border-b border-[var(--line)] p-4">
-<Link className="font-bold hover:text-[var(--accent)]" href={`/user/${selectedConversation.partnerId}`}>{selectedConversation.username}</Link>
+                    <Link className="flex items-center gap-2 font-bold hover:text-[var(--accent)]" href={`/user/${selectedConversation.partnerId}`}><OnlineStatusDot className="h-3 w-3" status={selectedConversation.onlineStatus} />{selectedConversation.username}</Link>
                   </div>
                   <div className="flex-1 space-y-3 overflow-y-auto bg-[var(--background)] p-4">
                     {messages.map((item) => <MessageBubble key={item.id} item={item} own={item.senderId === user.id} />)}
@@ -412,7 +408,7 @@ function MessageBubble({ item, own }: { item: DirectMessage; own: boolean }) {
   );
 }
 
-function AIBalanceCard({ balance }: { balance: AIBalance }) {
+function AIBalanceCard({ balance }: { balance: AITokenBalance }) {
   const { t } = useI18n();
   const used = balance.usedTokens + balance.reservedTokens;
   const percent = balance.unlimited || balance.limitTokens <= 0 ? 0 : Math.min(100, Math.round((used / balance.limitTokens) * 100));

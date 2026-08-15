@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
+import { createEmptyLocalizedContent, ensureLocalizedContent, updateLocalizedContent } from "../_lib/content-language";
 import { supportedLocales, useI18n, type Locale } from "../_lib/i18n-provider";
 import type { LocalizedContentFields, LocalizationVersion } from "../_lib/editor-types";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -29,18 +30,18 @@ export function BlueprintUpload() {
   const initialLocale = locale as Locale;
   const [selectedLocale, setSelectedLocale] = useState<Locale>(initialLocale);
   const [defaultLocale, setDefaultLocale] = useState<Locale>(initialLocale);
-  const [localizations, setLocalizations] = useState<LocalizationVersion<LocalizedContentFields>[]>(() => [emptyUploadLocalization(initialLocale)]);
+  const [localizations, setLocalizations] = useState<LocalizationVersion<LocalizedContentFields>[]>(() => [createEmptyLocalizedContent(initialLocale)]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const selected = localizations.find((item) => item.locale === selectedLocale) ?? emptyUploadLocalization(selectedLocale);
-  const defaultVersion = localizations.find((item) => item.locale === defaultLocale) ?? emptyUploadLocalization(defaultLocale);
+  const selected = localizations.find((item) => item.locale === selectedLocale) ?? createEmptyLocalizedContent(selectedLocale);
+  const defaultVersion = localizations.find((item) => item.locale === defaultLocale) ?? createEmptyLocalizedContent(defaultLocale);
 
   useEffect(() => () => { if (coverPreview) URL.revokeObjectURL(coverPreview); }, [coverPreview]);
 
   function selectBlueprint(file?: File) {
     if (!file) return;
     setBlueprint(file);
-    if (!selected.fields.name) updateUploadLocalization(setLocalizations, selectedLocale, { name: file.name.replace(/\.[^.]+$/, "") });
+    if (!selected.fields.name) setLocalizations((items) => updateLocalizedContent(items, selectedLocale, { name: file.name.replace(/\.[^.]+$/, "") }));
   }
 
   async function submit() {
@@ -88,11 +89,11 @@ export function BlueprintUpload() {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="space-y-6">
         <ContentLanguageSwitcher value={selectedLocale} versions={localizations} onChange={setSelectedLocale} />
-        <label className="block font-black">{t("mods.submission.defaultLocale")}<select className="field mt-2" value={defaultLocale} onChange={(event) => { const next = event.target.value as Locale; setDefaultLocale(next); setLocalizations((items) => ensureUploadLocalization(items, next)); }}>
+        <label className="block font-black">{t("mods.submission.defaultLocale")}<select className="field mt-2" value={defaultLocale} onChange={(event) => { const next = event.target.value as Locale; setDefaultLocale(next); setLocalizations((items) => ensureLocalizedContent(items, next)); }}>
           {supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
         </select></label>
         <div><span className="mb-2 block font-black">{t("blueprints.uploadPage.file")}</span><FileDropZone accept={blueprintAccept} className="min-h-44 p-6" disabled={uploading} hint={t("blueprints.dropFileHint")} title={blueprint?.name || t("blueprints.dropFile")} onFiles={(files) => selectBlueprint(files[0])} /></div>
-        <label className="block"><span className="mb-2 block font-black">{t("blueprints.uploadPage.name")} ({selectedLocale})</span><input className="field" maxLength={120} value={selected.fields.name} onChange={(event) => updateUploadLocalization(setLocalizations, selectedLocale, { name: event.target.value })} /></label>
+        <label className="block"><span className="mb-2 block font-black">{t("blueprints.uploadPage.name")} ({selectedLocale})</span><input className="field" maxLength={120} value={selected.fields.name} onChange={(event) => setLocalizations((items) => updateLocalizedContent(items, selectedLocale, { name: event.target.value }))} /></label>
         <section className="surface rounded-lg border border-[var(--line)] p-5">
           <h2 className="font-black">{t("blueprints.uploadPage.cover")}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{t("blueprints.uploadPage.coverHint")}</p>
@@ -103,7 +104,7 @@ export function BlueprintUpload() {
             <div className="relative aspect-[121/75] overflow-hidden rounded-md bg-[var(--panel-subtle)]">{coverPreview ? <Image unoptimized fill alt="" className="object-cover" src={coverPreview} /> : <div className="grid h-full place-items-center text-sm text-[var(--muted)]">121 : 75</div>}</div>
           </div>
         </section>
-        <section><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("blueprints.introduction")} ({selectedLocale})</h2><span className="text-sm text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded editorTitle={t("blueprints.introduction")} value={selected.fields.contentMarkdown} onChange={(contentMarkdown) => updateUploadLocalization(setLocalizations, selectedLocale, { contentMarkdown })} /></section>
+        <section><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("blueprints.introduction")} ({selectedLocale})</h2><span className="text-sm text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded editorTitle={t("blueprints.introduction")} value={selected.fields.contentMarkdown} onChange={(contentMarkdown) => setLocalizations((items) => updateLocalizedContent(items, selectedLocale, { contentMarkdown }))} /></section>
         <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_280px] sm:items-center">
         {uploading ? <div className="surface rounded-lg border border-[var(--line)] p-5"><div className="flex justify-between font-bold"><span>{t("blueprints.uploadPage.uploading")}</span><span>{progress}%</span></div><div className="mt-3 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div><p className="mt-3 text-sm text-[var(--muted)]">{t("blueprints.uploadPage.canClose")}</p></div> : null}
           <button className="button-primary focus-ring w-full sm:col-start-2" disabled={!blueprint || !defaultVersion.fields.name.trim() || uploading} type="button" onClick={() => void submit()}>{uploading ? t("tools.playground.uploading") : t("blueprints.upload")}</button>
@@ -114,22 +115,4 @@ export function BlueprintUpload() {
       outputs={[{ key: "cover", width: 1210, height: 750, type: "image/webp", quality: 0.86 }]}
       onCancel={() => setCoverCropFile(undefined)} onConfirm={(output) => { setCoverCropFile(undefined); setCover(output.files.get("cover")); setCoverPreview(output.previewUrl); }} />
   </main>;
-}
-function emptyUploadLocalization(locale: Locale): LocalizationVersion<LocalizedContentFields> {
-  return { locale, fields: { name: "", summary: "", contentMarkdown: "" }, provenance: "human", reviewStatus: "draft", editable: true };
-}
-function ensureUploadLocalization(items: LocalizationVersion<LocalizedContentFields>[], locale: Locale) {
-  return items.some((item) => item.locale === locale) ? items : [...items, emptyUploadLocalization(locale)];
-}
-
-function updateUploadLocalization(
-  setter: React.Dispatch<React.SetStateAction<LocalizationVersion<LocalizedContentFields>[]>>,
-  locale: Locale,
-  patch: Partial<LocalizedContentFields>,
-) {
-  setter((items) => {
-    const current = items.find((item) => item.locale === locale) ?? emptyUploadLocalization(locale);
-    const next = { ...current, fields: { ...current.fields, ...patch }, reviewStatus: "draft" as const };
-    return items.some((item) => item.locale === locale) ? items.map((item) => item.locale === locale ? next : item) : [...items, next];
-  });
 }

@@ -16,13 +16,11 @@ import {
   catalogDirectAssetURL,
   catalogQueryLocales,
   GlobalRecipeType,
-  GlobalRecipeTypeDetail,
+  GlobalRecipeTypeCatalog,
   GlobalResource,
   GlobalTag,
-  GlobalTagDetail,
-  loadGlobalRecipeTypeDetail,
+  loadGlobalRecipeTypeCatalog,
   loadGlobalRecipeTypes,
-  loadGlobalTagDetail,
   loadGlobalTags,
   localizedCatalogName,
   RecipeCatalyst,
@@ -46,13 +44,10 @@ export function ModTagCatalog() {
 	const searchParams = useSearchParams();
 	const editor = searchParams.get("editor") || "";
 	const publicId = searchParams.get("publicId") || "";
-	const registry = searchParams.get("registry") || "";
-	const tagId = searchParams.get("tagId") || "";
-	const entityId = searchParams.get("entityId") || "";
 	if (editor === "create") return <CatalogTagEditor mode="create" />;
 	if (editor === "edit" && publicId) return <CatalogTagEditor mode="edit" publicId={publicId} />;
 	if (publicId) return <CanonicalTagDetail publicId={publicId} />;
-	return registry && tagId ? <ModTagDetail entityId={entityId} registry={registry} tagId={tagId} /> : <ModTagList />;
+	return <ModTagList />;
 }
 
 function ModTagList() {
@@ -83,7 +78,7 @@ function ModTagList() {
   return <CatalogFrame active="tags" description={t("globalCatalog.tags.description")} title={t("globalCatalog.tags.title")}>
     <div className="mt-5 flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><CatalogToolbar compact query={query} placeholder={t("globalCatalog.tags.search")} onQuery={setQuery} onSubmit={search} /></div>{user ? <Link className="button-primary focus-ring" href="/mods-tag?editor=create">{t("catalogEditor.tagCreate")}</Link> : null}</div>
     {error ? <ErrorBox text={error} /> : null}
-    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{result.items.map((tag) => <TagCard key={`${tag.registry}:${tag.tagId}`} locale={locale} tag={tag} />)}</div>
+    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{result.items.map((tag) => <TagCard key={tag.publicId} locale={locale} tag={tag} />)}</div>
     {!error && !result.items.length ? <Empty text={t("globalCatalog.tags.empty")} /> : null}
     <CatalogPagination base="/mods-tag" page={page} query={searchParams.get("q") || ""} total={result.total} />
   </CatalogFrame>;
@@ -92,38 +87,10 @@ function ModTagList() {
 function TagCard({ tag, locale }: { tag: GlobalTag; locale: string }) {
   const { t } = useI18n();
   const preview = useRotatingValue(tag.previews);
-  const href = tag.publicId ? `/mods-tag?publicId=${encodeURIComponent(tag.publicId)}` : `/mods-tag?entityId=${encodeURIComponent(tag.entityId)}&registry=${encodeURIComponent(tag.registry)}&tagId=${encodeURIComponent(tag.tagId)}`;
-  return <Link className="focus-ring flex min-h-28 items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 hover:border-[var(--accent)]" href={href}>
+  return <Link className="focus-ring flex min-h-28 items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 hover:border-[var(--accent)]" href={`/mods-tag?publicId=${encodeURIComponent(tag.publicId)}`}>
     <ResourceIcon resource={preview} size={56} />
-    <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-[var(--muted)]">{tag.registry}</span><strong className="mt-1 block break-all text-lg">{tag.name || `#${tag.tagId}`}</strong>{tag.name ? <code className="mt-1 block break-all text-xs text-[var(--muted)]">#{tag.tagId}</code> : null}<span className="mt-2 block text-sm text-[var(--muted)]">{t("globalCatalog.memberCount", { count: tag.memberCount })}{preview ? ` / ${localizedCatalogName(preview.names, locale, preview.id)}` : ""}</span></span>
+    <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-[var(--muted)]">{tag.registry}</span><strong className="mt-1 block break-all text-lg">{tag.name || `#${tag.canonicalId}`}</strong>{tag.name ? <code className="mt-1 block break-all text-xs text-[var(--muted)]">#{tag.canonicalId}</code> : null}<span className="mt-2 block text-sm text-[var(--muted)]">{t("globalCatalog.memberCount", { count: tag.memberCount })}{preview ? ` / ${localizedCatalogName(preview.names, locale, preview.id)}` : ""}</span></span>
   </Link>;
-}
-
-function ModTagDetail({ entityId, registry, tagId }: { entityId: string; registry: string; tagId: string }) {
-  const { locale, t } = useI18n();
-  const { token, user } = useAuthSnapshot();
-  const searchParams = useSearchParams();
-  const page = positivePage(searchParams.get("page"));
-  const [detail, setDetail] = useState<GlobalTagDetail>();
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    const params = new URLSearchParams({ registry, tagId, ...catalogQueryLocales(locale), limit: String(pageSize), offset: String((page - 1) * pageSize) });
-    if (entityId) params.set("entityId", entityId);
-    loadGlobalTagDetail(params, token).then((value) => { if (!cancelled) { setDetail(value); setError(""); } })
-      .catch((reason) => { if (!cancelled) setError(errorText(reason)); });
-    return () => { cancelled = true; };
-  }, [entityId, locale, page, registry, tagId, token]);
-
-  if (!detail) return <CatalogFrame active="tags" description={registry} title={`#${tagId}`}>{error ? <ErrorBox text={error} /> : <Loading />}</CatalogFrame>;
-  return <CatalogFrame active="tags" description={`${registry} / ${t("globalCatalog.memberCount", { count: detail.memberCount })}`} title={`#${tagId}`}>
-    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-3"><Link className="font-bold text-[var(--accent)] hover:underline" href="/mods-tag">{t("globalCatalog.backToTags")}</Link>{user && detail.publicId ? <Link className="button-secondary focus-ring" href={`/mods-tag?editor=edit&publicId=${encodeURIComponent(detail.publicId)}`}>{t("common.edit")}</Link> : null}</div>
-    {error ? <ErrorBox text={error} /> : null}
-    <section className="mt-5"><h2 className="text-xl font-black">{t("globalCatalog.introduction")}</h2>{detail.contentMarkdown ? <div className="markdown-preview mt-3"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={detail.contentMarkdown} /></div> : <p className="mt-3 text-[var(--muted)]">{t("globalCatalog.noIntroduction")}</p>}</section>
-    <section className="mt-8"><h2 className="text-xl font-black">{t("globalCatalog.tags.items")}</h2><div className="mt-4 grid gap-px overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-4">{detail.members.map((member) => <GlobalResourceLink key={`${member.registry}:${member.id}`} locale={locale} resource={member} />)}</div></section>
-    <CatalogPagination base={`/mods-tag?entityId=${encodeURIComponent(detail.entityId)}&registry=${encodeURIComponent(registry)}&tagId=${encodeURIComponent(tagId)}`} page={page} query="" total={detail.memberCount} queryMode />
-  </CatalogFrame>;
 }
 
 export function RecipeTypeCatalog() {
@@ -132,16 +99,13 @@ export function RecipeTypeCatalog() {
 	const publicId = searchParams.get("publicId") || "";
 	const templatePublicId = searchParams.get("templatePublicId") || "";
 	const recipePublicId = searchParams.get("recipePublicId") || "";
-	const id = searchParams.get("id") || "";
-	const entityId = searchParams.get("entityId") || "";
 	if (editor === "template-create" && publicId) return <CatalogRecipeTemplateEditorRoute recipeTypePublicId={publicId} />;
 	if (editor === "template-edit" && publicId && templatePublicId) return <CatalogRecipeTemplateEditorRoute recipeTypePublicId={publicId} templatePublicId={templatePublicId} />;
 	if (editor === "recipe-create" && publicId) return <CatalogRecipeEditorRoute recipeTypePublicId={publicId} />;
 	if (editor === "recipe-edit" && publicId && recipePublicId) return <CatalogRecipeEditorRoute recipePublicId={recipePublicId} recipeTypePublicId={publicId} />;
-	if (editor === "recipe-edit" && id && recipePublicId) return <CatalogRecipeEditorByCanonicalIdRoute recipePublicId={recipePublicId} recipeTypeId={id} />;
 	if (editor === "create") return <CatalogRecipeTypeEditor mode="create" />;
 	if (editor === "edit" && publicId) return <CatalogRecipeTypeEditor mode="edit" publicId={publicId} />;
-	if (publicId || id) return <RecipeTypeDetail entityId={publicId || entityId} id={id} key={`${publicId}\u0000${entityId}\u0000${id}`} />;
+	if (publicId) return <RecipeTypeDetail publicId={publicId} key={publicId} />;
 	return <RecipeTypeList />;
 }
 
@@ -193,7 +157,7 @@ function RecipeTypeList() {
   return <CatalogFrame active="recipes" description={t("globalCatalog.recipeTypes.description")} title={t("globalCatalog.recipeTypes.title")}>
     <div className="mt-5 flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><CatalogToolbar compact query={query} placeholder={t("globalCatalog.recipeTypes.search")} onQuery={setQuery} onSubmit={search} /></div>{user ? <Link className="button-primary focus-ring" href="/recipe-types?editor=create">{t("catalogEditor.recipeTypeCreate")}</Link> : null}</div>
     {error ? <ErrorBox text={error} /> : null}
-    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{result.items.map((item) => <RecipeTypeCard item={item} key={item.recipeTypeId} locale={locale} />)}</div>
+    <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{result.items.map((item) => <RecipeTypeCard item={item} key={item.publicId} locale={locale} />)}</div>
     <CatalogPagination base="/recipe-types" page={page} query={searchParams.get("q") || ""} total={result.total} />
   </CatalogFrame>;
 }
@@ -201,33 +165,14 @@ function RecipeTypeList() {
 function RecipeTypeCard({ item, locale }: { item: GlobalRecipeType; locale: string }) {
   const { t } = useI18n();
   const catalyst = useRotatingValue(item.catalysts);
-  return <Link className="focus-ring flex min-h-28 items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 hover:border-[var(--accent)]" href={`/recipe-types?id=${encodeURIComponent(item.recipeTypeId)}`}><CatalystIcon catalyst={catalyst} size={56} /><span className="min-w-0"><strong className="block text-lg">{item.name || localizedCatalogName(item.names, locale, item.recipeTypeId)}</strong><code className="mt-1 block break-all text-xs text-[var(--muted)]">{item.recipeTypeId}</code><span className="mt-2 block text-sm text-[var(--muted)]">{t("globalCatalog.recipeCount", { count: item.recipeCount })}{typeof item.templateCount === "number" ? ` · ${t("catalogEditor.templateCount", { count: item.templateCount })}` : ""}</span></span></Link>;
+  return <Link className="focus-ring flex min-h-28 items-center gap-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 hover:border-[var(--accent)]" href={`/recipe-types?publicId=${encodeURIComponent(item.publicId)}`}><CatalystIcon catalyst={catalyst} size={56} /><span className="min-w-0"><strong className="block text-lg">{localizedCatalogName(item.names, locale, item.canonicalId)}</strong><code className="mt-1 block break-all text-xs text-[var(--muted)]">{item.canonicalId}</code><span className="mt-2 block text-sm text-[var(--muted)]">{t("globalCatalog.recipeCount", { count: item.recipeCount })}{typeof item.templateCount === "number" ? ` · ${t("catalogEditor.templateCount", { count: item.templateCount })}` : ""}</span></span></Link>;
 }
 
 function CatalogRecipeTemplateEditorRoute({ recipeTypePublicId, templatePublicId = "" }: { recipeTypePublicId: string; templatePublicId?: string }) {
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const router = useRouter();
-  const [initialValue, setInitialValue] = useState<Awaited<ReturnType<typeof loadRecipeTemplate>>>();
-  const [loading, setLoading] = useState(Boolean(templatePublicId));
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!templatePublicId || !token) return;
-    let cancelled = false;
-    const controller = new AbortController();
-    loadRecipeTemplate(templatePublicId, token, controller.signal).then((value) => {
-      if (!cancelled) {
-        const valid = value?.recipeTypePublicId === recipeTypePublicId;
-        setInitialValue(valid ? value : undefined);
-        setError(valid ? "" : t("catalogEditor.loadFailed"));
-      }
-    }).catch((reason: unknown) => {
-      if (!cancelled && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => { cancelled = true; controller.abort(); };
-  }, [recipeTypePublicId, t, templatePublicId, token]);
+  const { initialValue, loading, error } = useScopedRecipeEditorRecord(templatePublicId, recipeTypePublicId, token, loadRecipeTemplate, t("catalogEditor.loadFailed"));
   const title = t(templatePublicId ? "catalogEditor.templateEdit" : "catalogEditor.templateCreate");
   if (!ready) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><Loading /></CatalogFrame>;
   if (!user) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><LoginRequiredState compact nextPath={`/recipe-types?editor=${templatePublicId ? "template-edit" : "template-create"}&publicId=${encodeURIComponent(recipeTypePublicId)}${templatePublicId ? `&templatePublicId=${encodeURIComponent(templatePublicId)}` : ""}`} description={t("catalogEditor.loginRequired")} /></CatalogFrame>;
@@ -254,26 +199,7 @@ function CatalogRecipeEditorRoute({ recipeTypePublicId, recipePublicId = "" }: {
   const { ready, token, user } = useAuthSnapshot();
   const router = useRouter();
   const closeOnComplete = useSearchParams().get("closeOnComplete") === "1";
-  const [initialValue, setInitialValue] = useState<Awaited<ReturnType<typeof loadRecipe>>>();
-  const [loading, setLoading] = useState(Boolean(recipePublicId));
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!recipePublicId || !token) return;
-    let cancelled = false;
-    const controller = new AbortController();
-    loadRecipe(recipePublicId, token, controller.signal).then((value) => {
-      if (!cancelled) {
-        const valid = value?.recipeTypePublicId === recipeTypePublicId;
-        setInitialValue(valid ? value : undefined);
-        setError(valid ? "" : t("catalogEditor.loadFailed"));
-      }
-    }).catch((reason: unknown) => {
-      if (!cancelled && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
-    }).finally(() => {
-      if (!cancelled) setLoading(false);
-    });
-    return () => { cancelled = true; controller.abort(); };
-  }, [recipePublicId, recipeTypePublicId, t, token]);
+  const { initialValue, loading, error } = useScopedRecipeEditorRecord(recipePublicId, recipeTypePublicId, token, loadRecipe, t("catalogEditor.loadFailed"));
   const title = t(recipePublicId ? "catalogEditor.recipeEdit" : "catalogEditor.recipeCreate");
   if (!ready) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><Loading /></CatalogFrame>;
   if (!user) return <CatalogFrame active="recipes" description={recipeTypePublicId} title={title}><LoginRequiredState compact nextPath={`/recipe-types?editor=${recipePublicId ? "recipe-edit" : "recipe-create"}&publicId=${encodeURIComponent(recipeTypePublicId)}${recipePublicId ? `&recipePublicId=${encodeURIComponent(recipePublicId)}` : ""}`} description={t("catalogEditor.loginRequired")} /></CatalogFrame>;
@@ -313,28 +239,33 @@ function CatalogRecipeEditorRoute({ recipeTypePublicId, recipePublicId = "" }: {
   </CatalogFrame>;
 }
 
-function CatalogRecipeEditorByCanonicalIdRoute({ recipeTypeId, recipePublicId }: { recipeTypeId: string; recipePublicId: string }) {
-  const { locale, t } = useI18n();
-  const { token } = useAuthSnapshot();
-  const [recipeTypePublicId, setRecipeTypePublicId] = useState("");
+function useScopedRecipeEditorRecord<T extends { recipeTypePublicId: string }>(
+  publicId: string,
+  recipeTypePublicId: string,
+  token: string,
+  load: (publicId: string, token: string, signal?: AbortSignal) => Promise<T | undefined>,
+  loadFailed: string,
+) {
+  const [initialValue, setInitialValue] = useState<T>();
+  const [loading, setLoading] = useState(Boolean(publicId));
   const [error, setError] = useState("");
   useEffect(() => {
+    if (!publicId || !token) return;
     let cancelled = false;
-    const params = new URLSearchParams({ id: recipeTypeId, ...catalogQueryLocales(locale), limit: "1", offset: "0" });
-    loadGlobalRecipeTypeDetail(params, token).then((value) => {
-      if (!cancelled) {
-        setRecipeTypePublicId(value.publicId);
-        setError(value.publicId ? "" : t("catalogEditor.loadFailed"));
-      }
+    const controller = new AbortController();
+    load(publicId, token, controller.signal).then((value) => {
+      if (cancelled) return;
+      const valid = value?.recipeTypePublicId === recipeTypePublicId;
+      setInitialValue(valid ? value : undefined);
+      setError(valid ? "" : loadFailed);
     }).catch((reason: unknown) => {
-      if (!cancelled) setError(errorText(reason));
+      if (!cancelled && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
     });
-    return () => { cancelled = true; };
-  }, [locale, recipeTypeId, t, token]);
-  if (!recipeTypePublicId) {
-    return <CatalogFrame active="recipes" description={recipeTypeId} title={t("catalogEditor.recipeEdit")}>{error ? <ErrorBox text={error} /> : <Loading />}</CatalogFrame>;
-  }
-  return <CatalogRecipeEditorRoute recipePublicId={recipePublicId} recipeTypePublicId={recipeTypePublicId} />;
+    return () => { cancelled = true; controller.abort(); };
+  }, [load, loadFailed, publicId, recipeTypePublicId, token]);
+  return { initialValue, loading, error };
 }
 
 type CatalogTranslator = (key: string, params?: Record<string, string | number>) => string;
@@ -459,23 +390,22 @@ function recipeEditorLabels(t: CatalogTranslator): RecipeEditorLabels {
   };
 }
 
-function RecipeTypeDetail({ entityId, id }: { entityId: string; id: string }) {
+function RecipeTypeDetail({ publicId }: { publicId: string }) {
   const { locale, t } = useI18n();
   const { token, user } = useAuthSnapshot();
   const searchParams = useSearchParams();
   const page = positivePage(searchParams.get("page"));
-  const [detail, setDetail] = useState<GlobalRecipeTypeDetail>();
+  const [detail, setDetail] = useState<GlobalRecipeTypeCatalog>();
   const [templates, setTemplates] = useState<Awaited<ReturnType<typeof loadRecipeTemplates>>>([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [templateError, setTemplateError] = useState("");
   const [error, setError] = useState("");
   useEffect(() => {
     let cancelled = false;
-    const params = new URLSearchParams({ id, ...catalogQueryLocales(locale), limit: String(pageSize), offset: String((page - 1) * pageSize) });
-    if (entityId) params.set("entityId", entityId);
-    loadGlobalRecipeTypeDetail(params, token).then((value) => { if (!cancelled) { setDetail(value); setError(""); } }).catch((reason) => { if (!cancelled) setError(errorText(reason)); });
+    const params = new URLSearchParams({ ...catalogQueryLocales(locale), limit: String(pageSize), offset: String((page - 1) * pageSize) });
+    loadGlobalRecipeTypeCatalog(publicId, params, token).then((value) => { if (!cancelled) { setDetail(value); setError(""); } }).catch((reason) => { if (!cancelled) setError(errorText(reason)); });
     return () => { cancelled = true; };
-  }, [entityId, id, locale, page, token]);
+  }, [locale, page, publicId, token]);
   const recipeTypePublicId = detail?.publicId || "";
   useEffect(() => {
     if (!recipeTypePublicId) return;
@@ -490,10 +420,9 @@ function RecipeTypeDetail({ entityId, id }: { entityId: string; id: string }) {
     });
     return () => { cancelled = true; controller.abort(); };
   }, [recipeTypePublicId, token]);
-  const requestedIdentity = id || entityId;
-  if (!detail) return <CatalogFrame active="recipes" description={requestedIdentity} title={requestedIdentity}>{error ? <ErrorBox text={error} /> : <Loading />}</CatalogFrame>;
+  if (!detail) return <CatalogFrame active="recipes" description={publicId} title={publicId}>{error ? <ErrorBox text={error} /> : <Loading />}</CatalogFrame>;
   const templateCount = templatesLoading ? detail.templateCount ?? 0 : templates.length;
-  return <CatalogFrame active="recipes" description={detail.recipeTypeId} title={localizedCatalogName(detail.names, locale, detail.recipeTypeId)}>
+  return <CatalogFrame active="recipes" description={detail.canonicalId} title={localizedCatalogName(detail.names, locale, detail.canonicalId)}>
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-3"><Link className="font-bold text-[var(--accent)] hover:underline" href="/recipe-types">{t("globalCatalog.backToRecipeTypes")}</Link>{user && detail.publicId ? <Link className="button-secondary focus-ring" href={`/recipe-types?editor=edit&publicId=${encodeURIComponent(detail.publicId)}`}>{t("common.edit")}</Link> : null}</div>
     {error ? <ErrorBox text={error} /> : null}
     <section className="mt-5"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-black">{t("globalCatalog.introduction")}</h2><span className="rounded-md bg-[var(--panel-subtle)] px-3 py-1.5 text-sm font-bold">{t("catalogEditor.templateCount", { count: templateCount })}</span></div>{detail.contentMarkdown ? <div className="markdown-preview mt-3"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={detail.contentMarkdown} /></div> : <p className="mt-3 text-[var(--muted)]">{t("globalCatalog.noIntroduction")}</p>}</section>
@@ -503,8 +432,8 @@ function RecipeTypeDetail({ entityId, id }: { entityId: string; id: string }) {
       {templateError ? <ErrorBox text={templateError} /> : null}
       {templatesLoading ? <Loading /> : templates.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{templates.map((template) => <article className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" key={template.publicId || template.templateKey}><div className="flex min-w-0 items-start justify-between gap-3"><div className="min-w-0"><strong className="block truncate font-mono">{template.templateKey}</strong><span className="mt-2 block text-sm text-[var(--muted)]">{template.canvas.width} × {template.canvas.height} / {t("catalogEditor.slotCount", { count: template.slotCount ?? 0 })}</span></div>{user && template.publicId ? <Link className="button-secondary focus-ring shrink-0 px-3 py-1.5 text-sm" href={`/recipe-types?editor=template-edit&publicId=${encodeURIComponent(detail.publicId)}&templatePublicId=${encodeURIComponent(template.publicId)}`}>{t("common.edit")}</Link> : null}</div></article>)}</div> : <Empty text={t("catalogEditor.noTemplates")} />}
     </section>
-    <section className="mt-8"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-black">{t("globalCatalog.recipeTypes.recipes")}</h2>{user && templates.length ? <Link className="button-primary focus-ring" href={`/recipe-types?editor=recipe-create&publicId=${encodeURIComponent(detail.publicId)}`}>{t("catalogEditor.recipeCreate")}</Link> : null}</div><div className="mt-4 grid items-start gap-5 xl:grid-cols-2">{detail.recipes.map((recipe) => <div id={`recipe-${recipe.publicId}`} key={recipe.recipeKey}><GlobalRecipeCard editHref={user && detail.publicId && recipe.publicId ? `/recipe-types?editor=recipe-edit&publicId=${encodeURIComponent(detail.publicId)}&recipePublicId=${encodeURIComponent(recipe.publicId)}` : undefined} recipe={recipe} /></div>)}</div></section>
-    <CatalogPagination base={`/recipe-types?id=${encodeURIComponent(detail.recipeTypeId)}`} page={page} query="" total={detail.total} queryMode />
+    <section className="mt-8"><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-black">{t("globalCatalog.recipeTypes.recipes")}</h2>{user && templates.length ? <Link className="button-primary focus-ring" href={`/recipe-types?editor=recipe-create&publicId=${encodeURIComponent(detail.publicId)}`}>{t("catalogEditor.recipeCreate")}</Link> : null}</div><div className="mt-4 grid items-start gap-5 xl:grid-cols-2">{detail.recipes.map((recipe) => <div id={`recipe-${recipe.publicId}`} key={recipe.publicId}><GlobalRecipeCard editHref={user && detail.publicId && recipe.publicId ? `/recipe-types?editor=recipe-edit&publicId=${encodeURIComponent(detail.publicId)}&recipePublicId=${encodeURIComponent(recipe.publicId)}` : undefined} recipe={recipe} /></div>)}</div></section>
+    <CatalogPagination base={`/recipe-types?publicId=${encodeURIComponent(detail.publicId)}`} page={page} query="" total={detail.total} queryMode />
     <CommentSection targetKey={detail.publicId} targetType="recipe_type" />
   </CatalogFrame>;
 }
@@ -527,7 +456,7 @@ function GlobalResourceLink({ resource, locale }: { resource: GlobalResource; lo
   const version = versions[activeVersionIndex];
   const displayed = version ? resourceAtVersion(resource, version) : resource;
   const content = <><ResourceIcon resource={displayed} size={48} /><span className="min-w-0 flex-1"><strong className="block truncate">{localizedCatalogName(displayed.names, locale, displayed.id)}</strong><code className="mt-1 block truncate text-xs text-[var(--muted)]">{displayed.id}</code>{version ? <span className={`mt-1 block truncate text-xs font-bold ${version.hasDetail ? "text-[var(--muted)]" : "text-[var(--red)]"}`}>{version.label}</span> : null}</span></>;
-  const linked = displayed.entityId && displayed.detailUrl
+  const linked = displayed.publicId && displayed.detailUrl
     ? <Link className="focus-ring flex min-w-0 flex-1 items-center gap-3 rounded-md p-2 hover:bg-[var(--panel-subtle)]" href={displayed.detailUrl} target="_blank" rel="noopener noreferrer">{content}</Link>
     : <div className="flex min-w-0 flex-1 items-center gap-3 p-2" title={version && !version.hasDetail ? t("globalCatalog.versionNoDetail") : undefined}>{content}</div>;
   return <article className="min-h-28 bg-[var(--panel)] p-2">
@@ -540,12 +469,12 @@ function GlobalResourceLink({ resource, locale }: { resource: GlobalResource; lo
   </article>;
 }
 function ResourceIcon({ resource, size }: { resource?: GlobalResource; size: number }) { const src = resource ? catalogDirectAssetURL(resource.iconUrl) || catalogAssetURL(resource.revisionId, resource.iconPath) : ""; return src ? <Image unoptimized alt="" className="shrink-0 object-contain [image-rendering:pixelated]" height={size} width={size} src={src} /> : <span className="grid shrink-0 place-items-center rounded-md bg-[var(--panel-subtle)] text-xs font-black text-[var(--muted)]" style={{ width: size, height: size }}>TAG</span>; }
-function CatalystIcon({ catalyst, size }: { catalyst?: RecipeCatalyst; size: number }) { const src = catalyst ? catalogAssetURL(catalyst.revisionId, catalyst.iconPath) : ""; return src ? <Image unoptimized alt="" className="shrink-0 object-contain [image-rendering:pixelated]" height={size} width={size} src={src} /> : <span className="grid shrink-0 place-items-center rounded-md bg-[var(--panel-subtle)] text-xs font-black" style={{ width: size, height: size }}>GUI</span>; }
+function CatalystIcon({ catalyst, size }: { catalyst?: RecipeCatalyst; size: number }) { const src = catalyst ? catalogDirectAssetURL(catalyst.iconUrl) || catalogAssetURL(catalyst.revisionId, catalyst.iconPath) : ""; return src ? <Image unoptimized alt="" className="shrink-0 object-contain [image-rendering:pixelated]" height={size} width={size} src={src} /> : <span className="grid shrink-0 place-items-center rounded-md bg-[var(--panel-subtle)] text-xs font-black" style={{ width: size, height: size }}>GUI</span>; }
 function CatalystChip({ catalyst, locale }: { catalyst: RecipeCatalyst; locale: string }) { return <span className="flex items-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel)] px-3 py-2"><CatalystIcon catalyst={catalyst} size={32} /><span className="font-bold">{localizedCatalogName(catalyst.names, locale, catalystID(catalyst))}</span></span>; }
 function CatalogPagination({ base, page, total, query, queryMode = false }: { base: string; page: number; total: number; query: string; queryMode?: boolean }) { const { t } = useI18n(); const pages = Math.max(1, Math.ceil(total / pageSize)); if (pages <= 1) return null; const href = (next: number) => { const separator = queryMode || base.includes("?") ? "&" : "?"; const queryPart = query ? `${separator}q=${encodeURIComponent(query)}&page=${next}` : `${separator}page=${next}`; return `${base}${queryPart}`; }; return <nav className="mt-7 flex items-center justify-center gap-3"><Link className={`button-secondary focus-ring ${page <= 1 ? "pointer-events-none opacity-40" : ""}`} href={href(Math.max(1, page - 1))}>{t("globalCatalog.previous")}</Link><span className="text-sm font-bold text-[var(--muted)]">{page} / {pages}</span><Link className={`button-secondary focus-ring ${page >= pages ? "pointer-events-none opacity-40" : ""}`} href={href(Math.min(pages, page + 1))}>{t("globalCatalog.next")}</Link></nav>; }
 function resourceAtVersion(resource: GlobalResource, version: CatalogResourceVersion): GlobalResource { return { ...resource, registry: version.registry || resource.registry, names: Object.keys(version.names).length ? version.names : resource.names, revisionId: version.revisionId, modSiteId: version.modSiteId || resource.modSiteId, iconPath: version.iconPath, iconUrl: version.iconUrl, detailUrl: version.detailUrl, versions: resource.versions }; }
-function catalogRefToGlobalResource(resource: CatalogResourceRef): GlobalResource { return { entityId: resource.entityId || "", publicId: resource.publicId, id: resource.id, registry: resource.registry, names: resource.names, revisionId: "", modSiteId: resource.source?.siteId || "", iconPath: "", iconUrl: resource.iconUrl, versions: resource.versions ?? [] }; }
-function catalystID(value: RecipeCatalyst) { return value.item || value.resource_location || ""; }
+function catalogRefToGlobalResource(resource: CatalogResourceRef): GlobalResource { return { publicId: resource.publicId, id: resource.id, registry: resource.registry, names: resource.names, revisionId: "", modSiteId: resource.source?.siteId || "", iconPath: "", iconUrl: resource.iconUrl, versions: resource.versions ?? [] }; }
+function catalystID(value: RecipeCatalyst) { return value.id; }
 function positivePage(value: string | null) { const parsed = Number.parseInt(value || "1", 10); return Number.isFinite(parsed) && parsed > 0 ? parsed : 1; }
 function errorText(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
 function emptyCatalogLocalization(locale: string) { return { locale, fields: { name: "", summary: "", contentMarkdown: "" }, provenance: "human" as const, reviewStatus: "approved" as const, editable: true }; }

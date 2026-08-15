@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
-import { communityPostCollection, communityPostCoverURL, loadCommunityPost, type CommunityPostDraft, type CommunityPostKind, type CommunityPostSeverity, saveCommunityPost } from "../_lib/community-post-api";
+import { communityPostCollection, communityPostCoverURL, loadCommunityPost, loadCommunityPostCategories, type CommunityPostDraft, type CommunityPostKind, type CommunityPostSeverity, saveCommunityPost } from "../_lib/community-post-api";
 import type { Currency } from "../_lib/community-api";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
@@ -44,6 +44,7 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const [draft, setDraft] = useState<CommunityPostDraft>(() => emptyDraft(kind));
+  const [categories, setCategories] = useState<string[]>([]);
   const [smallPickerOpen, setSmallPickerOpen] = useState(false);
   const [coverCropFile, setCoverCropFile] = useState<File>();
   const [coverPreview, setCoverPreview] = useState("");
@@ -72,6 +73,14 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
 
   useEffect(() => () => { if (coverPreview) URL.revokeObjectURL(coverPreview); }, [coverPreview]);
   useEffect(() => {
+    const controller = new AbortController();
+    loadCommunityPostCategories(kind, controller.signal)
+      .then((result) => setCategories(result.items))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [kind]);
+
+  useEffect(() => {
     if (kind !== "discussion") return;
     apiRequest<{ items: Currency[] }>("/api/v1/economy/currencies", { cache: "no-store" }, token || undefined)
       .then((result) => setCurrencies(result.items.filter((currency) => currency.status === "active")))
@@ -82,7 +91,7 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
     loadCommunityPost(id, token).then((post) => {
       if (post.kind !== kind) throw new Error("community post kind mismatch");
       setDraft({
-        kind: post.kind, title: post.title, bodyMarkdown: post.bodyMarkdown, minecraftVersions: post.minecraftVersions,
+        kind: post.kind, category: post.category, title: post.title, bodyMarkdown: post.bodyMarkdown, minecraftVersions: post.minecraftVersions,
         modVersionMin: post.modVersionMin || "", modVersionMax: post.modVersionMax || "", severity: post.severity || "minor",
         hasFix: Boolean(post.hasFix), issueUrl: post.issueUrl || "", coverFileId: post.coverFileId,
         bountyCurrency: post.bounty?.currency || "", bountyAmount: post.bounty?.amount || 0,
@@ -144,6 +153,7 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
       {message ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{message}</p> : null}
       <div className="mt-6 grid gap-6">
         <label className="block font-black">{t("communityPosts.fields.title")}<input className="field mt-2" maxLength={160} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+        <label className="font-black">{t("communityPosts.fields.category")}<select className="field mt-2" value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>{categories.map((category) => <option key={category} value={category}>{t(`communityPosts.categories.${kind}.${category}`)}</option>)}</select></label>
         {kind !== "news" ? <fieldset><legend className="mb-2 font-black">{t("communityPosts.fields.minecraftVersions")}</legend><MinecraftVersionPicker values={draft.minecraftVersions} onChange={(minecraftVersions) => setDraft({ ...draft, minecraftVersions })} /></fieldset> : null}
         {kind === "issue" ? <section className="grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 md:grid-cols-2">
           <label className="font-black">{t("communityPosts.fields.modVersionMin")}<input className="field mt-2" value={draft.modVersionMin} onChange={(event) => setDraft({ ...draft, modVersionMin: event.target.value })} /></label>
@@ -168,7 +178,8 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
 }
 
 function emptyDraft(kind: CommunityPostKind): CommunityPostDraft {
-  return { kind, title: "", bodyMarkdown: "", minecraftVersions: [], modVersionMin: "", modVersionMax: "", severity: "minor", hasFix: false, issueUrl: "", bountyCurrency: "", bountyAmount: 0, projects: [], resources: [] };
+  const category = { tutorial: "general", issue: "client", news: "site", discussion: "help" }[kind];
+  return { kind, category, title: "", bodyMarkdown: "", minecraftVersions: [], modVersionMin: "", modVersionMax: "", severity: "minor", hasFix: false, issueUrl: "", bountyCurrency: "", bountyAmount: 0, projects: [], resources: [] };
 }
 
 function localizedCurrencyName(currency: Currency, locale: string) {

@@ -210,7 +210,7 @@ function normalizeMutationResult(value: RawMutationResult, fallbackPublicId = ""
 function normalizeRecipeTypeOption(value: unknown): RecipeTypeOption | undefined {
   const row = objectValue(value);
   const publicId = stringValue(row.publicId) || stringValue(row.entityPublicId);
-  const canonicalId = stringValue(row.canonicalId) || stringValue(row.recipeTypeId) || stringValue(row.id);
+  const canonicalId = stringValue(row.canonicalId);
   if (!publicId || !canonicalId) return undefined;
   return {
     publicId,

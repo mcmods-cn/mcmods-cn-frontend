@@ -17,7 +17,7 @@ type ModRelationship = {
   relatedModIdentifier?: string;
 };
 
-export type ModCreatorIdentity = {
+type ModCreatorIdentity = {
   creatorId?: string;
   kind?: "author" | "team";
   name: string;
@@ -86,10 +86,79 @@ export type ModCatalogEntry = {
   };
 };
 
-export const commonVersions = ["1.21.1", "1.20.1", "1.19.2", "1.18.2", "1.16.5", "1.12.2", "1.7.10"];
-export const releaseVersions = ["1.21.5", "1.21.4", "1.21.3", "1.21", "1.20.6", "1.20.4", "1.20.2", "1.19.4", "1.19.3", "1.18.1", "1.17.1", "1.15.2", "1.14.4", "1.10.2", "1.8.9"];
-export const snapshotVersions = ["25w14craftmine", "24w14potato", "23w13a_or_b", "20w14∞"];
-export const aprilFoolsVersions = ["3D Shareware v1.34", "Minecraft 2.0", "Love and Hugs Update"];
+type BaseCatalogProjectSource = {
+  siteId: string;
+  primaryName: string;
+  secondaryName: string;
+  abbreviation: string;
+  summary: string;
+  primaryCategory: string;
+  tags: string[];
+  searchKeywords: string[];
+  compatibilities: ModLoaderCompatibility[];
+  environment: ModEnvironment;
+  officialStatus: ModMaintenanceStatus;
+  sourceStatus: ModSourceStatus;
+  license: string;
+  curseforgeProjectId?: string;
+  modrinthProjectId?: string;
+  authors: ModCreatorIdentity[];
+  updatedAt: string;
+  createdAt: string;
+  bodyMarkdown?: string;
+  reviewStatus?: "pending" | "approved" | "rejected";
+  createdBy?: string;
+  links?: ModCatalogEntry["links"];
+  galleryImages?: ModCatalogEntry["galleryImages"];
+};
+
+type BaseCatalogProjectEntry = Omit<ModCatalogEntry, "uniqueId" | "modId" | "icon" | "features" | "relationshipGroups" | "stats">;
+
+export const emptyModFeatures: Record<ModFeature, boolean> = {
+  tutorials: false,
+  items: false,
+  gallery: false,
+  downloads: false,
+  reviewed: false,
+  claimed: false,
+  serverSupport: false,
+  modpackAllowed: false,
+  severeIssues: false,
+};
+
+export function baseProjectCatalogEntry(record: BaseCatalogProjectSource): BaseCatalogProjectEntry {
+  return {
+    siteId: record.siteId,
+    name: record.primaryName,
+    localizedName: record.secondaryName || record.primaryName,
+    abbreviation: record.abbreviation || record.primaryName,
+    summary: record.summary,
+    primaryCategory: record.primaryCategory,
+    tags: record.tags,
+    keywords: record.searchKeywords,
+    versions: [...new Set(record.compatibilities.flatMap((compatibility) => compatibility.versions))],
+    loaders: record.compatibilities.map((compatibility) => compatibility.loader),
+    compatibilities: record.compatibilities,
+    environment: record.environment,
+    status: record.officialStatus,
+    sourceStatus: record.sourceStatus,
+    license: record.license,
+    curseforgeProjectId: record.curseforgeProjectId,
+    modrinthProjectId: record.modrinthProjectId,
+    authors: record.authors.map((author) => author.name).filter(Boolean),
+    authorDetails: record.authors,
+    team: record.authors.find((author) => author.kind === "team")?.name,
+    updatedAt: record.updatedAt,
+    collectedAt: record.createdAt,
+    certified: false,
+    claimed: false,
+    bodyMarkdown: record.bodyMarkdown,
+    reviewStatus: record.reviewStatus,
+    createdBy: record.createdBy,
+    links: record.links,
+    galleryImages: record.galleryImages,
+  };
+}
 
 export const loaderOptions = [
   "Fabric", "Forge", "NeoForge", "Babric", "BTA (Babric)", "Java Agent", "Legacy Fabric",
@@ -108,4 +177,4 @@ export const sourceOptions: ModSourceStatus[] = ["open", "partial", "closed", "u
 export const licenseOptions = ["MIT", "GPL-3.0", "LGPL-3.0", "Apache-2.0", "ARR", "Custom"] as const;
 export const updatedOptions = ["all", "week", "month", "quarter", "year", "stale"] as const;
 export const advancedOptions: ModFeature[] = ["tutorials", "items", "gallery", "downloads", "reviewed", "claimed", "serverSupport", "modpackAllowed", "severeIssues"];
-export const sortOptions: string[] = ["relevance", "updated", "collected", "downloads", "favorites", "rating", "views", "comments", "nameAsc", "nameDesc"];
+export const sortOptions: string[] = ["relevance", "heat", "updated", "collected", "downloads", "favorites", "rating", "views", "comments", "nameAsc", "nameDesc"];

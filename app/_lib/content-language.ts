@@ -1,5 +1,5 @@
 import type { Locale } from "./i18n-provider";
-import type { CatalogResourceRef, ContentLanguageTag, LocalizationVersion } from "./editor-types";
+import type { CatalogResourceRef, ContentLanguageTag, LocalizedContentFields, LocalizationVersion } from "./editor-types";
 
 export const editableContentLanguages = ["zh-CN", "zh-TW", "en-US", "ja-JP", "fr-FR", "de-DE", "es-ES", "ru-RU"] as const satisfies readonly Locale[];
 
@@ -127,6 +127,35 @@ export function localizedCatalogResourceName(
     }
   }
   return resource.id;
+}
+
+export function createEmptyLocalizedContent(locale: Locale): LocalizationVersion<LocalizedContentFields> {
+  return {
+    locale,
+    fields: { name: "", summary: "", contentMarkdown: "" },
+    provenance: "human",
+    reviewStatus: "draft",
+    editable: true,
+  };
+}
+
+export function ensureLocalizedContent(
+  items: LocalizationVersion<LocalizedContentFields>[],
+  locale: Locale,
+) {
+  return items.some((item) => item.locale === locale) ? items : [...items, createEmptyLocalizedContent(locale)];
+}
+
+export function updateLocalizedContent(
+  items: LocalizationVersion<LocalizedContentFields>[],
+  locale: Locale,
+  patch: Partial<LocalizedContentFields>,
+) {
+  const current = items.find((item) => item.locale === locale) ?? createEmptyLocalizedContent(locale);
+  const next = { ...current, fields: { ...current.fields, ...patch }, reviewStatus: "draft" as const };
+  return items.some((item) => item.locale === locale)
+    ? items.map((item) => item.locale === locale ? next : item)
+    : [...items, next];
 }
 
 function contentLanguageAliases(value: ContentLanguageTag) {

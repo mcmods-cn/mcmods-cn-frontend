@@ -26,7 +26,7 @@ export function GlobalRecipeCard({ recipe, editHref }: { recipe: GlobalRecipe; e
   const inputs = slots.filter((slot) => slot.role === "input");
   const materials: UnifiedRecipeMaterial[] = inputs.map((slot) => {
     const item = record((Array.isArray(slot.alternatives) ? slot.alternatives : [])[0]);
-    const id = String(item.item || item.resource_location || slot.tag || "?");
+    const id = String(item.id || slot.tag || "?");
     return {
       id: typeof slot.tag === "string" ? `#${slot.tag}` : id,
       name: localizedCatalogName(recordStrings(item.names), locale, id),
@@ -39,7 +39,7 @@ export function GlobalRecipeCard({ recipe, editHref }: { recipe: GlobalRecipe; e
   const recipeType = typeof layout.underlying_recipe_type_id === "string" ? layout.underlying_recipe_type_id : "";
   const templateID = typeof layout.template_id === "string" ? layout.template_id : "";
   const visual = <div className="relative mx-auto" style={{ width, height }}>{background ? <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={catalogAssetURL(recipe.revisionId, background)} /> : null}{slots.map((slot, index) => <RecipeSlot key={index} locale={locale} scale={displayScale} showVisual={!contains} slot={slot} />)}</div>;
-  return <UnifiedRecipeCard badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)} editAction={user && editHref ? <RecipeEditLink className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</RecipeEditLink> : undefined} labels={unifiedRecipeLabels(t)} materials={materials} note={recipe.note} recipeId={recipe.recipeId} recipeType={recipeType} recipeTypeHref={recipeType ? `/recipe-types?id=${encodeURIComponent(recipeType)}` : undefined} source={sourceMod ? `${sourceMod}${sourceVersion ? `@${sourceVersion}` : ""}` : ""} sourceHref={recipe.modSiteId ? `/mods/${encodeURIComponent(recipe.modSiteId)}` : undefined} technicalInfo={{ recipeIdSource: recipe.recipeIdSource, templateId: templateID, fingerprint: recipe.semanticFingerprint }} visual={visual} />;
+  return <UnifiedRecipeCard badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)} editAction={user && editHref ? <RecipeEditLink className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</RecipeEditLink> : undefined} labels={unifiedRecipeLabels(t)} materials={materials} note={recipe.note} recipeId={recipe.recipeId} recipeType={recipeType} recipeTypeHref={recipe.recipeTypePublicId ? `/recipe-types?publicId=${encodeURIComponent(recipe.recipeTypePublicId)}` : undefined} source={sourceMod ? `${sourceMod}${sourceVersion ? `@${sourceVersion}` : ""}` : ""} sourceHref={recipe.modSiteId ? `/mods/${encodeURIComponent(recipe.modSiteId)}` : undefined} technicalInfo={{ recipeIdSource: recipe.recipeIdSource, templateId: templateID, fingerprint: recipe.semanticFingerprint }} visual={visual} />;
 }
 
 function GlobalRecipeCandidateChanceLabel({ candidate, slot, locale }: { candidate: Record<string, unknown>; slot: Record<string, unknown>; locale: string }) {
@@ -65,11 +65,11 @@ function GlobalRecipeCandidateChanceLabel({ candidate, slot, locale }: { candida
 function RecipeSlot({ slot, scale, locale, showVisual }: { slot: Record<string, unknown>; scale: number; locale: string; showVisual: boolean }) {
   const item = record(useRotatingValue(Array.isArray(slot.alternatives) ? slot.alternatives : []));
   if (!Object.keys(item).length) return null;
-  const itemId = String(item.item || item.resource_location || "");
+  const itemId = String(item.id || "");
   const tagId = typeof slot.tag === "string" ? slot.tag : typeof item.tag === "string" ? item.tag : "";
   const sourceRevisionId = typeof item.sourceRevisionId === "string" ? item.sourceRevisionId : "";
   const iconPath = typeof item.iconPath === "string" ? item.iconPath : "";
-  const tagEntityId = typeof slot.tagEntityId === "string" ? slot.tagEntityId : "";
+  const tagPublicId = typeof slot.tagPublicId === "string" ? slot.tagPublicId : "";
   const resourceId = tagId ? `#${tagId}` : itemId;
   const displayName = localizedCatalogName(recordStrings(item.names), locale, itemId || resourceId);
   const tooltipResourceId = tagId && itemId ? `${itemId} · ${resourceId}` : resourceId;
@@ -78,7 +78,7 @@ function RecipeSlot({ slot, scale, locale, showVisual }: { slot: Record<string, 
   const content = <><RecipeResourceVisual fallback={tagId ? "#" : "?"} name={displayName} presentation={presentation} resourceId={tooltipResourceId} showVisual={showVisual} src={src} /><GlobalRecipeCandidateChanceLabel candidate={item} locale={locale} slot={slot} /></>;
   const label = `${displayName || resourceId} (${tooltipResourceId})`;
   const slotClass = "group focus-ring absolute z-10 hover:z-40 focus-visible:z-40";
-  if (tagId) return <Link aria-label={label} className={slotClass} href={`/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`} style={presentation.style}>{content}</Link>;
+  if (tagId && tagPublicId) return <Link aria-label={label} className={slotClass} href={`/mods-tag?publicId=${encodeURIComponent(tagPublicId)}`} style={presentation.style}>{content}</Link>;
   const detailUrl = canonicalRecipeResourceHref(item);
   if (itemId && detailUrl) return <Link aria-label={label} className={slotClass} href={detailUrl} target="_blank" rel="noopener noreferrer" style={presentation.style}>{content}</Link>;
   return <span aria-label={label} className="group absolute z-10 hover:z-40 focus-visible:z-40" style={presentation.style} tabIndex={resourceId ? 0 : undefined}>{content}</span>;
@@ -87,10 +87,10 @@ function RecipeSlot({ slot, scale, locale, showVisual }: { slot: Record<string, 
 function globalRecipeMaterialHref(slot: Record<string, unknown>, item: Record<string, unknown>) {
   const tagId = typeof slot.tag === "string" ? slot.tag : typeof item.tag === "string" ? item.tag : "";
   if (tagId) {
-    const tagEntityId = typeof slot.tagEntityId === "string" ? slot.tagEntityId : "";
-    return `/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`;
+    const tagPublicId = typeof slot.tagPublicId === "string" ? slot.tagPublicId : "";
+    return tagPublicId ? `/mods-tag?publicId=${encodeURIComponent(tagPublicId)}` : undefined;
   }
-  const itemId = String(item.item || item.resource_location || "");
+  const itemId = String(item.id || "");
   if (!itemId) return undefined;
   return canonicalRecipeResourceHref(item) || undefined;
 }
@@ -99,7 +99,7 @@ function canonicalRecipeResourceHref(item: Record<string, unknown>) {
   if (typeof item.detailUrl === "string" && item.detailUrl) return item.detailUrl;
   const siteId = typeof item.sourceModSiteId === "string" ? item.sourceModSiteId : "";
   const versionId = typeof item.sourceVersionPublicId === "string" ? item.sourceVersionPublicId : "";
-  const resourceId = typeof item.entityId === "string" ? item.entityId : typeof item.publicId === "string" ? item.publicId : "";
+  const resourceId = typeof item.publicId === "string" ? item.publicId : "";
   if (!siteId || !versionId || !resourceId) return "";
   return `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}?version=${encodeURIComponent(versionId)}`;
 }

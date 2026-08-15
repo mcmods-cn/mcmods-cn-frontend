@@ -171,7 +171,7 @@ function parseOverrides(value: string): I18nOverrides {
   }
 }
 
-export function normalizeUILocale(value: string | null | undefined): Locale | undefined {
+function normalizeUILocale(value: string | null | undefined): Locale | undefined {
   const normalized = value?.trim().replaceAll("_", "-").toLowerCase();
   const aliases: Record<string, Locale> = {
     "zh": "zh-CN", "zh-cn": "zh-CN", "zh-hans": "zh-CN",

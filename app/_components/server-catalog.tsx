@@ -30,8 +30,10 @@ import {
   unresolvedModResource,
 } from "./editor/mod-resource-picker";
 import { MinecraftLanguagePicker } from "./minecraft-language-picker";
+import { MinecraftVersionPicker } from "./minecraft-version-picker";
 
 const serverPageSizes = [20, 40, 60];
+const serverSortOptions = ["heat", "updated", "nameAsc", "nameDesc"] as const;
 
 export function ServerCatalog() {
   const { t } = useI18n();
@@ -183,7 +185,13 @@ export function ServerCatalog() {
                     ? t("servers.queryResults", { query: searchParams.get("q") ?? "", count: result?.total ?? 0 })
                     : t("servers.resultCount", { count: result?.total ?? 0 })}
                 </h2>
-                {!canCreate && ready ? <p className="text-xs text-[var(--muted)]">{t(user ? "servers.permissionRequired" : "servers.loginToSubmit")}</p> : null}
+                <div className="flex items-center gap-2">
+                  <label className="sr-only" htmlFor="server-catalog-sort">{t("servers.sortLabel")}</label>
+                  <select className="field h-10 min-w-36 py-0" id="server-catalog-sort" value={searchParams.get("sort") ?? "heat"} onChange={(event) => replaceParams({ sort: event.target.value })}>
+                    {serverSortOptions.map((sort) => <option key={sort} value={sort}>{t(`servers.sort.${sort}`)}</option>)}
+                  </select>
+                  {!canCreate && ready ? <p className="text-xs text-[var(--muted)]">{t(user ? "servers.permissionRequired" : "servers.loginToSubmit")}</p> : null}
+                </div>
               </div>
               <p className="mt-3 text-sm text-[var(--muted)]">
                 {activeFilterCount ? t("servers.activeFilters", { count: activeFilterCount }) : t("servers.noActiveFilters")}
@@ -297,7 +305,11 @@ function ServerFilters({
         />
       </CatalogFilterGroup>
       <CatalogFilterGroup label={t("servers.filters.version")}>
-        <input className="field w-full" placeholder="1.21.1" value={params.get("version") ?? ""} onChange={(event) => onChange({ version: event.target.value || null })} />
+        <MinecraftVersionPicker
+          multiple={false}
+          values={params.get("version") ? [params.get("version") ?? ""] : []}
+          onChange={(versions) => onChange({ version: versions[0] || null })}
+        />
       </CatalogFilterGroup>
       <CatalogFilterGroup label={t("servers.filters.mods")}>
         <ModResourceSelectionField

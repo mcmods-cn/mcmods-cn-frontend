@@ -2,25 +2,29 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
-import { BackendModList, backendModToCatalogEntry } from "../_lib/mod-api";
+import {
+  readCatalogList as readList,
+  readStoredStringSet as readStringSet,
+  type CatalogFilterChip as FilterChip,
+  type CatalogPreferences,
+  type CatalogTranslation as Translation,
+  type CatalogView,
+  useCatalogControls,
+} from "../_lib/catalog-state";
+import { BackendModList, backendModToCatalogEntry, type MinecraftVersionConfig } from "../_lib/mod-api";
 import { BackendModpackList, backendModpackToCatalogEntry, modpackCategoryOptions } from "../_lib/modpack-api";
 import {
   advancedOptions,
-  aprilFoolsVersions,
-  commonVersions,
   environmentOptions,
   licenseOptions,
-  loaderOptions,
   maintenanceOptions,
   ModCatalogEntry,
   ModFeature,
   primaryCategoryOptions,
-  releaseVersions,
-  snapshotVersions,
   sortOptions,
   sourceOptions,
   tagOptions,
@@ -40,61 +44,61 @@ import {
   CatalogPagination,
   CatalogRadioList,
 } from "./catalog-list-ui";
+import { MinecraftVersionPicker, useMinecraftVersionConfig } from "./minecraft-version-picker";
 
-type CatalogView = "list" | "grid";
-type CatalogPreferences = { view: CatalogView; pageSize: number; sort: string };
 type CatalogFilters = ReturnType<typeof parseFilters>;
-type Translation = (key: string, params?: Record<string, string | number>) => string;
-type FilterChip = { id: string; label: string; remove: () => void };
 
 const filterParams = ["version", "versionMode", "loader", "primary", "tag", "environment", "status", "source", "license", "updated", "feature"];
 const defaultExpandedGroups = ["versions", "loaders", "primary", "tags", "environment", "status", "source", "updated"];
 const expandedStorageKey = "mcmods-mod-filter-groups";
-const catalogNow = Date.parse("2026-07-11T12:00:00Z");
+const catalogReferenceTime = Date.now();
 
 export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "modpack" }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
-  const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
-  const [preferences, setPreferences] = useState<CatalogPreferences>({ view: "list", pageSize: 20, sort: "relevance" });
-  const [expandedGroups, setExpandedGroups] = useState(() => new Set(defaultExpandedGroups));
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [queryDraft, setQueryDraft] = useState(searchParams.get("q") ?? "");
   const [favoriteSlugs, setFavoriteSlugs] = useState(() => new Set<string>());
   const [expandedCards, setExpandedCards] = useState(() => new Set<string>());
-  const [notice, setNotice] = useState("");
   const [backendMods, setBackendMods] = useState<ModCatalogEntry[]>([]);
+  const [backendTotal, setBackendTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [reload, setReload] = useState(0);
   const [submissionOpen, setSubmissionOpen] = useState(false);
   const [favoriteTarget, setFavoriteTarget] = useState<ModCatalogEntry | null>(null);
+  const minecraftVersionConfig = useMinecraftVersionConfig();
   const isModpack = projectType === "modpack";
   const basePath = isModpack ? "/modpacks" : "/mods";
   const preferenceStorageKey = `mcmods-${projectType}-catalog-preferences`;
   const favoriteStorageKey = `mcmods-favorite-${projectType}s`;
+  const {
+    paramsKey, preferences, expandedGroups, mobileFiltersOpen, setMobileFiltersOpen,
+    queryDraft, setQueryDraft, notice, setNotice, replaceParams, toggleListParam, clearFilters,
+    submitSearch, changePreference, toggleGroup, changePage,
+  } = useCatalogControls({
+    preferenceStorageKey,
+    expandedStorageKey,
+    filterParams,
+    defaultExpandedGroups,
+    sortOptions,
+    defaultSort: "relevance",
+    onPageChange: () => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+  });
 
-  const paramsKey = searchParams.toString();
   const filters = useMemo(() => parseFilters(new URLSearchParams(paramsKey), preferences), [paramsKey, preferences]);
-  const filteredMods = useMemo(() => sortMods(filterMods(backendMods, filters), filters.sort, filters.query), [backendMods, filters]);
-  const totalPages = Math.max(1, Math.ceil(filteredMods.length / filters.pageSize));
+  const totalPages = Math.max(1, Math.ceil(backendTotal / filters.pageSize));
   const currentPage = Math.min(filters.page, totalPages);
   const pageStart = (currentPage - 1) * filters.pageSize;
-  const visibleMods = filteredMods.slice(pageStart, pageStart + filters.pageSize);
+  const visibleMods = backendMods;
   const selectedFilterCount = countSelectedFilters(filters);
 
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
-      if (cancelled) return;
-      setPreferences(readPreferences(preferenceStorageKey));
-      setExpandedGroups(readStringSet(expandedStorageKey, defaultExpandedGroups));
-      setFavoriteSlugs(readStringSet(favoriteStorageKey));
+      if (!cancelled) setFavoriteSlugs(readStringSet(favoriteStorageKey));
     });
-    return () => {
-      cancelled = true;
-    };
-  }, [favoriteStorageKey, preferenceStorageKey]);
+    return () => { cancelled = true; };
+  }, [favoriteStorageKey]);
 
   useEffect(() => {
     if (!token) return;
@@ -110,96 +114,36 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
   }, [projectType, token]);
 
   useEffect(() => {
-    let cancelled = false;
-    apiRequest<BackendModList | BackendModpackList>(`${isModpack ? "/api/v1/modpacks" : "/api/v1/mods"}?limit=100`, {}, token)
+	let cancelled = false;
+	queueMicrotask(() => { if (!cancelled) setLoading(true); });
+	const requestParams = new URLSearchParams(paramsKey);
+	requestParams.delete("page");
+	requestParams.delete("size");
+	requestParams.delete("view");
+	requestParams.set("limit", String(filters.pageSize));
+	requestParams.set("offset", String((filters.page - 1) * filters.pageSize));
+	apiRequest<BackendModList | BackendModpackList>(`${isModpack ? "/api/v1/modpacks" : "/api/v1/mods"}?${requestParams}`, {}, token)
       .then((result) => {
-        if (!cancelled) setBackendMods(isModpack
-          ? (result as BackendModpackList).items.map(backendModpackToCatalogEntry)
-          : (result as BackendModList).items.map(backendModToCatalogEntry));
+        if (!cancelled) {
+          setBackendMods(isModpack
+            ? (result as BackendModpackList).items.map(backendModpackToCatalogEntry)
+            : (result as BackendModList).items.map(backendModToCatalogEntry));
+          setBackendTotal(result.total);
+          setMessage("");
+        }
       })
-      .catch(() => {
-        if (!cancelled) setBackendMods([]);
-      });
+      .catch((error) => {
+        if (!cancelled) {
+          setBackendMods([]);
+          setBackendTotal(0);
+          setMessage(error instanceof Error ? error.message : t("mods.empty.description"));
+        }
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
     return () => {
       cancelled = true;
     };
-  }, [isModpack, token]);
-
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) setQueryDraft(filters.query);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [filters.query]);
-
-  useEffect(() => {
-    if (!mobileFiltersOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [mobileFiltersOpen]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 2600);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  function replaceParams(updates: Record<string, string | string[] | number | null>, resetPage = true) {
-    const next = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(updates)) {
-      if (value === null || value === "" || (Array.isArray(value) && value.length === 0)) next.delete(key);
-      else next.set(key, Array.isArray(value) ? value.join(",") : String(value));
-    }
-    if (resetPage && !("page" in updates)) next.delete("page");
-    const query = next.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }
-
-  function toggleListParam(key: string, value: string) {
-    const current = readList(searchParams, key);
-    replaceParams({ [key]: current.includes(value) ? current.filter((item) => item !== value) : [...current, value] });
-  }
-
-  function clearFilters() {
-    replaceParams(Object.fromEntries(filterParams.map((key) => [key, null])));
-  }
-
-  function submitSearch(event: FormEvent) {
-    event.preventDefault();
-    replaceParams({ q: queryDraft.trim() || null });
-  }
-
-  function changePreference(next: Partial<CatalogPreferences>) {
-    const value = { ...preferences, ...next };
-    setPreferences(value);
-    window.localStorage.setItem(preferenceStorageKey, JSON.stringify(value));
-    replaceParams({
-      ...(next.view ? { view: next.view } : {}),
-      ...(next.pageSize ? { size: next.pageSize } : {}),
-      ...(next.sort ? { sort: next.sort } : {}),
-    });
-  }
-
-  function toggleGroup(group: string, open: boolean) {
-    setExpandedGroups((current) => {
-      const next = new Set(current);
-      if (open) next.add(group);
-      else next.delete(group);
-      window.localStorage.setItem(expandedStorageKey, JSON.stringify([...next]));
-      return next;
-    });
-  }
-
-  function changePage(page: number) {
-    replaceParams({ page }, false);
-    window.requestAnimationFrame(() => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }
+	}, [filters.page, filters.pageSize, isModpack, paramsKey, reload, t, token]);
 
   function toggleFavorite(siteId: string) {
     if (token) {
@@ -238,7 +182,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
             <div>
               <p className="text-sm font-bold text-[var(--accent)]">{t(isModpack ? "modpacks.kicker" : "mods.kicker")}</p>
               <h1 className="mt-1 text-3xl font-black md:text-4xl">{t(isModpack ? "modpacks.title" : "mods.title")}</h1>
-              <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{t(isModpack ? "modpacks.total" : "mods.total", { count: backendMods.length })}</p>
+              <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{t(isModpack ? "modpacks.total" : "mods.total", { count: backendTotal })}</p>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t(isModpack ? "modpacks.description" : "mods.description")}</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -263,7 +207,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
           <button className="button-secondary focus-ring" type="button" onClick={() => setMobileFiltersOpen(true)}>
             {t("mods.filterButton", { count: selectedFilterCount })}
           </button>
-          <span className="text-sm font-semibold text-[var(--muted)]">{t("mods.results", { count: filteredMods.length })}</span>
+          <span className="text-sm font-semibold text-[var(--muted)]">{t("mods.results", { count: backendTotal })}</span>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[272px_minmax(0,1fr)]">
@@ -271,9 +215,9 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
             <FilterPanel
               expandedGroups={expandedGroups}
               filters={filters}
-              mods={backendMods}
+              minecraftVersionConfig={minecraftVersionConfig}
               isModpack={isModpack}
-              resultCount={filteredMods.length}
+              resultCount={backendTotal}
               t={t}
               onClear={clearFilters}
               onClose={null}
@@ -289,8 +233,8 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
                 <div>
                   <h2 className="text-xl font-black">
                     {filters.query
-                      ? t("mods.queryResults", { query: filters.query, count: filteredMods.length })
-                      : t("mods.results", { count: filteredMods.length })}
+                      ? t("mods.queryResults", { query: filters.query, count: backendTotal })
+                      : t("mods.results", { count: backendTotal })}
                   </h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -325,7 +269,9 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
               </div>
             </div>
 
-            {visibleMods.length > 0 ? (
+            {loading ? <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-8 text-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</div> : null}
+            {message ? <div className="mt-4 rounded-lg border border-[var(--red)] bg-[var(--panel)] p-4"><p className="font-bold text-[var(--red)]">{message}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => setReload((value) => value + 1)}>{t("common.refresh")}</button></div> : null}
+            {!loading && !message && visibleMods.length > 0 ? (
               <div className={filters.view === "grid" ? "mt-4 grid gap-4 md:grid-cols-2" : "mt-4 grid gap-4"}>
                 {visibleMods.map((mod) => (
                   <ModCard
@@ -344,7 +290,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
                   />
                 ))}
               </div>
-            ) : (
+            ) : !loading && !message ? (
               <CatalogEmptyState
                 clearLabel={t("mods.empty.clear")}
                 description={filters.versionMode === "all" && filters.versions.length > 1
@@ -353,7 +299,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
                 title={t("mods.empty.title")}
                 onClear={clearFilters}
               />
-            )}
+            ) : null}
 
             <CatalogPagination
               currentPage={currentPage}
@@ -365,9 +311,9 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
                 pageSize: t("mods.pagination.pageSize"),
                 pageSummary: t("mods.pagination.pageSummary", { page: currentPage, pages: totalPages }),
                 itemSummary: t("mods.pagination.itemSummary", {
-                  start: filteredMods.length === 0 ? 0 : pageStart + 1,
-                  end: Math.min(pageStart + filters.pageSize, filteredMods.length),
-                  total: filteredMods.length,
+                  start: backendTotal === 0 ? 0 : pageStart + 1,
+                  end: Math.min(pageStart + visibleMods.length, backendTotal),
+                  total: backendTotal,
                 }),
               }}
               onPageChange={changePage}
@@ -381,9 +327,9 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
         <FilterPanel
           expandedGroups={expandedGroups}
           filters={filters}
-          mods={backendMods}
+          minecraftVersionConfig={minecraftVersionConfig}
           isModpack={isModpack}
-          resultCount={filteredMods.length}
+          resultCount={backendTotal}
           t={t}
           onClear={clearFilters}
           onClose={() => setMobileFiltersOpen(false)}
@@ -407,7 +353,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
 function FilterPanel({
   expandedGroups,
   filters,
-  mods,
+  minecraftVersionConfig,
   isModpack,
   resultCount,
   t,
@@ -419,7 +365,7 @@ function FilterPanel({
 }: {
   expandedGroups: Set<string>;
   filters: CatalogFilters;
-  mods: ModCatalogEntry[];
+  minecraftVersionConfig: MinecraftVersionConfig;
   isModpack: boolean;
   resultCount: number;
   t: Translation;
@@ -429,16 +375,6 @@ function FilterPanel({
   onParamChange: (updates: Record<string, string | string[] | number | null>) => void;
   onToggleList: (key: string, value: string) => void;
 }) {
-  const [showAllVersions, setShowAllVersions] = useState(false);
-  const [showSnapshots, setShowSnapshots] = useState(false);
-  const [showAprilFools, setShowAprilFools] = useState(false);
-  const versions = [
-    ...commonVersions,
-    ...(showAllVersions ? releaseVersions : []),
-    ...(showSnapshots ? snapshotVersions : []),
-    ...(showAprilFools ? aprilFoolsVersions : []),
-  ];
-
   return (
     <CatalogFilterPanel
       clearLabel={t("mods.clearAll")}
@@ -458,20 +394,19 @@ function FilterPanel({
             </button>
           ))}
         </div>
-        <CatalogOptionList options={versions} selected={filters.versions} label={(item) => item} onToggle={(item) => onToggleList("version", item)} />
-        <div className="mt-2 grid gap-1">
-          <SmallToggle active={showAllVersions} label={t(showAllVersions ? "mods.showLessVersions" : "mods.showAllVersions")} onClick={() => setShowAllVersions((value) => !value)} />
-          <SmallToggle active={showSnapshots} label={t("mods.showSnapshots")} onClick={() => setShowSnapshots((value) => !value)} />
-          <SmallToggle active={showAprilFools} label={t("mods.showAprilFools")} onClick={() => setShowAprilFools((value) => !value)} />
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {(minecraftVersionConfig.commonVersions ?? []).map((version) => (
+            <button key={version} className={`focus-ring rounded-md border px-2 py-1 text-xs font-bold ${filters.versions.includes(version) ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--line)]"}`} type="button" onClick={() => onToggleList("version", version)}>{version}</button>
+          ))}
         </div>
+        <MinecraftVersionPicker config={minecraftVersionConfig} values={filters.versions} onChange={(versions) => onParamChange({ version: versions })} />
       </CatalogFilterGroup>
 
       <CatalogFilterGroup group="loaders" label={t("mods.groups.loaders")} expanded={expandedGroups.has("loaders")} onToggle={onGroupToggle}>
         <CatalogOptionList
-          options={loaderOptions}
+          options={minecraftVersionConfig.loaders.map((loader) => loader.code)}
           selected={filters.loaders}
           label={(item) => item}
-          count={(item) => mods.filter((mod) => mod.loaders.includes(item)).length}
           onToggle={(item) => onToggleList("loader", item)}
         />
       </CatalogFilterGroup>
@@ -510,10 +445,6 @@ function FilterPanel({
   );
 }
 
-function SmallToggle({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return <button className={`focus-ring rounded-md px-2 py-1.5 text-left text-xs font-bold ${active ? "bg-[var(--panel-subtle)] text-[var(--accent)]" : "text-[var(--muted)] hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={onClick}>{label}</button>;
-}
-
 function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleFavorite, onViewDownloads, onShare, onToggleExpanded }: {
   mod: ModCatalogEntry;
   view: CatalogView;
@@ -532,7 +463,7 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
   const secondaryName = locale.startsWith("zh") ? mod.name : mod.localizedName;
   const visibleTags = mod.tags.slice(0, 4);
   const visibleVersions = mod.versions.slice(0, 4);
-  const stale = catalogNow - Date.parse(mod.updatedAt) > 730 * 86_400_000;
+  const stale = catalogReferenceTime - Date.parse(mod.updatedAt) > 730 * 86_400_000;
   const cardClass = view === "list"
     ? "grid gap-4 p-4 lg:grid-cols-[96px_minmax(0,1fr)_190px]"
     : "flex h-full flex-col p-4";
@@ -646,63 +577,6 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences) 
   };
 }
 
-function filterMods(mods: ModCatalogEntry[], filters: CatalogFilters) {
-  const query = normalizeSearch(filters.query);
-  return mods.filter((mod) => {
-    if (query) {
-      const searchable = [mod.localizedName, mod.name, mod.abbreviation, mod.modId, ...mod.authors, mod.team ?? "", ...mod.keywords].map(normalizeSearch).join(" ");
-      if (!searchable.includes(query)) return false;
-    }
-    if (filters.versions.length > 0) {
-      const matches = filters.versionMode === "all" ? filters.versions.every((item) => mod.versions.includes(item)) : filters.versions.some((item) => mod.versions.includes(item));
-      if (!matches) return false;
-    }
-    if (filters.loaders.length > 0 && !filters.loaders.some((item) => mod.loaders.includes(item))) return false;
-    if (filters.primaryCategories.length > 0 && !filters.primaryCategories.includes(mod.primaryCategory)) return false;
-    if (filters.tags.length > 0 && !filters.tags.every((item) => mod.tags.includes(item))) return false;
-    if (filters.environments.length > 0 && !filters.environments.includes(mod.environment)) return false;
-    if (filters.statuses.length > 0 && !filters.statuses.includes(mod.status)) return false;
-    if (filters.sources.length > 0 && !filters.sources.includes(mod.sourceStatus)) return false;
-    if (filters.licenses.length > 0 && !filters.licenses.includes(mod.license)) return false;
-    if (filters.features.length > 0 && !filters.features.every((item) => mod.features[item])) return false;
-    if (filters.updated && !matchesUpdatedRange(mod.updatedAt, filters.updated)) return false;
-    return true;
-  });
-}
-
-function sortMods(mods: ModCatalogEntry[], sort: string, query: string) {
-  return [...mods].sort((left, right) => {
-    if (sort === "updated") return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
-    if (sort === "collected") return Date.parse(right.collectedAt) - Date.parse(left.collectedAt);
-    if (sort === "downloads") return right.stats.downloads - left.stats.downloads;
-    if (sort === "favorites") return right.stats.favorites - left.stats.favorites;
-    if (sort === "rating") return right.stats.rating - left.stats.rating;
-    if (sort === "views") return right.stats.views - left.stats.views;
-    if (sort === "comments") return right.stats.comments - left.stats.comments;
-    if (sort === "nameAsc") return left.name.localeCompare(right.name);
-    if (sort === "nameDesc") return right.name.localeCompare(left.name);
-    if (query) return searchScore(right, query) - searchScore(left, query);
-    return right.stats.favorites - left.stats.favorites;
-  });
-}
-
-function searchScore(mod: ModCatalogEntry, query: string) {
-  const normalized = normalizeSearch(query);
-  if (normalizeSearch(mod.name) === normalized || normalizeSearch(mod.localizedName) === normalized || normalizeSearch(mod.modId) === normalized) return 100;
-  if (normalizeSearch(mod.name).startsWith(normalized) || normalizeSearch(mod.localizedName).startsWith(normalized)) return 60;
-  return 10;
-}
-
-function matchesUpdatedRange(updatedAt: string, range: string) {
-  const days = Math.max(0, (catalogNow - Date.parse(updatedAt)) / 86_400_000);
-  if (range === "week") return days <= 7;
-  if (range === "month") return days <= 30;
-  if (range === "quarter") return days <= 90;
-  if (range === "year") return days <= 365;
-  if (range === "stale") return days > 365;
-  return true;
-}
-
 function buildFilterChips(filters: CatalogFilters, t: Translation, isModpack: boolean, update: (key: string, values: string[]) => void): FilterChip[] {
   const groups: Array<[string, string[], (value: string) => string]> = [
     ["version", filters.versions, (value) => value],
@@ -724,34 +598,6 @@ function countSelectedFilters(filters: CatalogFilters) {
   return filters.versions.length + filters.loaders.length + filters.primaryCategories.length + filters.tags.length + filters.environments.length + filters.statuses.length + filters.sources.length + filters.licenses.length + filters.features.length + (filters.updated ? 1 : 0);
 }
 
-function readList(params: Pick<URLSearchParams, "get">, key: string) {
-  return (params.get(key) ?? "").split(",").map((item) => item.trim()).filter(Boolean);
-}
-
-function readPreferences(storageKey: string): CatalogPreferences {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(storageKey) ?? "{}") as Partial<CatalogPreferences>;
-    return {
-      view: value.view === "grid" ? "grid" : "list",
-      pageSize: [20, 40, 60].includes(Number(value.pageSize)) ? Number(value.pageSize) : 20,
-      sort: sortOptions.includes(value.sort ?? "") ? value.sort ?? "relevance" : "relevance",
-    };
-  } catch {
-    return { view: "list", pageSize: 20, sort: "relevance" };
-  }
-}
-
-function readStringSet(key: string, fallback: string[] = []) {
-  try {
-    const stored = window.localStorage.getItem(key);
-    if (stored === null) return new Set(fallback);
-    const value = JSON.parse(stored) as unknown;
-    return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : fallback);
-  } catch {
-    return new Set(fallback);
-  }
-}
-
 function toggleSet(current: Set<string>, value: string) {
   const next = new Set(current);
   if (next.has(value)) next.delete(value);
@@ -764,10 +610,6 @@ function stopAnd(action: () => void) {
     event.stopPropagation();
     action();
   };
-}
-
-function normalizeSearch(value: string) {
-  return value.trim().toLocaleLowerCase().replace(/[\s_-]+/g, " ");
 }
 
 function formatCompact(value: number, locale: string) {

@@ -675,7 +675,9 @@ function ModRecipeSlot({
   if (slot.ingredient_present === false || slot.coordinates_available === false) return null;
   const itemId = stringValue(item.item) || stringValue(item.resource_location);
   const tagId = stringValue(slot.tag) || stringValue(item.tag);
-  const tagEntityId = stringValue(slot.tagEntityId);
+  // Imported recipe layouts still use tagEntityId; its value is the canonical
+  // public ID. Normalize it at this external-format boundary.
+  const tagPublicId = stringValue(slot.tagPublicId) || stringValue(slot.tagEntityId);
   const sourceRevisionId = stringValue(item.sourceRevisionId);
   const sourceSiteId = stringValue(item.sourceModSiteId);
   const sourceEntityId = stringValue(item.entityId);
@@ -698,11 +700,11 @@ function ModRecipeSlot({
   </>;
   const label = `${displayName || resourceId} (${tooltipResourceId})`;
   const slotClass = "group focus-ring absolute z-10 hover:z-40 focus-visible:z-40";
-  if (tagId) {
+  if (tagId && tagPublicId) {
     return <Link
       aria-label={label}
       className={slotClass}
-      href={`/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`}
+      href={`/mods-tag?publicId=${encodeURIComponent(tagPublicId)}`}
       style={presentation.style}
     >{content}</Link>;
   }
@@ -723,8 +725,8 @@ function ModRecipeSlot({
 function modRecipeMaterialHref(slot: Record<string, unknown>, item: Record<string, unknown>) {
   const tagId = stringValue(slot.tag) || stringValue(item.tag);
   if (tagId) {
-    const tagEntityId = stringValue(slot.tagEntityId);
-    return `/mods-tag?entityId=${encodeURIComponent(tagEntityId)}&registry=minecraft:item&tagId=${encodeURIComponent(tagId)}`;
+    const tagPublicId = stringValue(slot.tagPublicId) || stringValue(slot.tagEntityId);
+    return tagPublicId ? `/mods-tag?publicId=${encodeURIComponent(tagPublicId)}` : undefined;
   }
   const itemId = stringValue(item.item) || stringValue(item.resource_location);
   const sourceSiteId = stringValue(item.sourceModSiteId);

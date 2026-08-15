@@ -1,4 +1,4 @@
-import { ModCatalogEntry, ModFeature } from "./mod-catalog-data";
+import { baseProjectCatalogEntry, emptyModFeatures, ModCatalogEntry } from "./mod-catalog-data";
 import type { CreatorKind } from "./community-api";
 import { API_BASE_URL } from "./api";
 
@@ -50,7 +50,8 @@ export type BackendModGalleryImage = {
   url?: string;
 };
 export type MinecraftVersionConfig = {
-  versions: Array<{ code: string; type: "release" | "snapshot" | "april_fools" | "legacy" }>;
+  versions: Array<{ code: string; type: "release" | "snapshot" | "pre_release" | "release_candidate" | "april_fools" | "legacy" }>;
+  commonVersions?: string[];
   loaders: Array<{ code: string; name: string; versions: string[] }>;
   loaderSyncs?: Array<{
     code: string;
@@ -160,54 +161,14 @@ export type BackendModApplication = {
   reviewedAt?: string;
 };
 
-const emptyFeatures: Record<ModFeature, boolean> = {
-  tutorials: false,
-  items: false,
-  gallery: false,
-  downloads: false,
-  reviewed: false,
-  claimed: false,
-  serverSupport: false,
-  modpackAllowed: false,
-  severeIssues: false,
-};
-
 export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEntry {
   return {
-    siteId: record.siteId,
+    ...baseProjectCatalogEntry(record),
     uniqueId: record.uniqueId,
     modId: record.modIds.find((identifier) => identifier.primary)?.identifier ?? record.modIds[0]?.identifier ?? "",
-    name: record.primaryName,
-    localizedName: record.secondaryName || record.primaryName,
-    abbreviation: record.abbreviation || record.primaryName,
-    summary: record.summary,
     icon: record.iconUrl ? `${API_BASE_URL}/api/v1/mods/${encodeURIComponent(record.siteId)}/icon` : "",
-    primaryCategory: record.primaryCategory,
-    tags: record.tags,
-    keywords: record.searchKeywords,
-    versions: [...new Set(record.compatibilities.flatMap((compatibility) => compatibility.versions))],
-    loaders: record.compatibilities.map((compatibility) => compatibility.loader),
-    compatibilities: record.compatibilities,
-    environment: record.environment,
-    status: record.officialStatus,
-    sourceStatus: record.sourceStatus,
-    license: record.license,
-    curseforgeProjectId: record.curseforgeProjectId,
-    modrinthProjectId: record.modrinthProjectId,
-    authors: record.authors.map((author) => author.name).filter(Boolean),
-    authorDetails: record.authors,
-    team: record.authors.find((author) => author.kind === "team")?.name,
-    updatedAt: record.updatedAt,
-    collectedAt: record.createdAt,
-    certified: false,
-    claimed: false,
-    features: { ...emptyFeatures, reviewed: record.reviewStatus === "approved", downloads: Boolean(record.modrinthProjectId || record.curseforgeProjectId) },
-    bodyMarkdown: record.bodyMarkdown,
-    reviewStatus: record.reviewStatus,
-    createdBy: record.createdBy,
-    links: record.links,
+    features: { ...emptyModFeatures, reviewed: record.reviewStatus === "approved", downloads: Boolean(record.modrinthProjectId || record.curseforgeProjectId), gallery: record.galleryImages.length > 0 },
     relationshipGroups: record.relationshipGroups,
-    galleryImages: record.galleryImages,
     stats: { downloads: 0, views: 0, favorites: 0, rating: 0, comments: 0, downloadSource: "Modrinth" },
   };
 }

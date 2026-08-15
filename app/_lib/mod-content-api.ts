@@ -2,7 +2,7 @@ import { apiRequest, API_BASE_URL } from "./api";
 import type { CatalogResourceVersion } from "./editor-types";
 
 export type ModContentLocalization = { locale: string; name: string; summary: string; contentMarkdown: string };
-export type ModContentLocalizedNames = Record<string, string>;
+type ModContentLocalizedNames = Record<string, string>;
 export type ModContentEntryFieldType = "number" | "range" | "text" | "boolean" | "list" | "reference" | "reference-list" | "json";
 export type ModContentEntryFieldFormat = "integer" | "float" | "health" | "armor" | "range" | "text" | "boolean" | "text-list" | "resource" | "entity" | "tag" | "enchantment" | "item" | "json";
 export type ModContentEntryField = {
@@ -15,7 +15,7 @@ export type ModContentEntryField = {
   referenceRegistry?: string;
   editable?: boolean;
 };
-export type ModContentEntryGroup = {
+type ModContentEntryGroup = {
   code: string;
   names: ModContentLocalizedNames;
   descriptions?: ModContentLocalizedNames;
@@ -93,7 +93,7 @@ export type ModContentSection = {
 };
 
 export type ModContentMutationResult = { publicId: string; revisionId: string; changeRequestId: string; reviewStatus: "pending" | "approved"; activityEventId: string };
-export type ModContentResourceVersionDetail = {
+type ModContentResourceVersionDetail = {
   versionPublicId: string;
   sectionPublicId?: string;
   entryTypeCode: string;
@@ -112,7 +112,7 @@ export type ModContentResource = { entityId: string; publicId: string; kindCode:
 export type ModContentSimilarResource = Pick<ModContentSectionResource,
   "versionPublicId" | "resourcePublicId" | "kindCode" | "canonicalId" | "revisionId" | "iconPath" | "iconFileId" | "names"
 >;
-export type ModContentSectionResourcePage = { section: ModContentSection; versionLabel: string; categories: ModContentSection[]; items: ModContentSectionResource[]; total: number; limit: number; offset: number };
+type ModContentSectionResourcePage = { section: ModContentSection; versionLabel: string; categories: ModContentSection[]; items: ModContentSectionResource[]; total: number; limit: number; offset: number };
 export type ModContentLayoutPayload = {
   versionPublicId: string;
   rootSectionPublicId: string;
@@ -142,7 +142,7 @@ export function createModContentTemplate(siteId: string, payload: { code: string
 export function updateModContentTemplate(siteId: string, templateId: string, payload: { code: string; defaultLocale: string; defaultDisplayMode: "compact" | "large"; definition: Record<string, unknown>; localizations: ModContentLocalization[]; reason: string; baseRevisionId?: string }, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-templates/${encodeURIComponent(templateId)}`, { method: "PUT", body: JSON.stringify(payload) }, token); }
 
 export function loadModContentSections(siteId: string, token = "") { return apiRequest<{ items: ModContentSection[] }>(`${modPath(siteId)}/content-sections`, {}, token).then((value) => value.items); }
-export function loadModContentSectionResources(siteId: string, sectionId: string, options: { locale?: string; query?: string; limit?: number; offset?: number; all?: boolean } = {}, token = "") {
+function loadModContentSectionResources(siteId: string, sectionId: string, options: { locale?: string; query?: string; limit?: number; offset?: number; all?: boolean } = {}, token = "") {
   const parameters = new URLSearchParams();
   if (options.locale) parameters.set("locale", options.locale);
   if (options.query?.trim()) parameters.set("q", options.query.trim());

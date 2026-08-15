@@ -17,7 +17,7 @@ const thirdPartyProviders = [
   { key: "google", label: "Google" },
   { key: "github", label: "GitHub" },
 ];
-export function SiteLoginPanelClean() {
+export function SiteLoginPanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useI18n();

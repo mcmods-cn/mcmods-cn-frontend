@@ -14,6 +14,7 @@ export function recipeSlotPresentation(slot: UnknownRecord, alternative: Unknown
   const descriptor = [
     alternative.ingredient_kind,
     slot.ingredient_kind,
+    alternative.kind,
     alternative.kindCode,
     alternative.ingredient_type,
     slot.ingredient_type,

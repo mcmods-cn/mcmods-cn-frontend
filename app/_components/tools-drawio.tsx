@@ -2,21 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DRAWIO_ORIGIN, parseDrawioMessage } from "../_lib/drawio";
+import { DRAWIO_ORIGIN, parseDrawioMessage, type DrawioEditorMessage } from "../_lib/drawio";
 import { useI18n } from "../_lib/i18n-provider";
 import { useTheme } from "./theme-provider";
 
 const storageKey = "mcmods-drawio-draft";
 const defaultDiagramXml =
   '<mxfile host="embed.diagrams.net"><diagram id="mcmods-page-1" name="Page 1"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>';
-
-type DrawioMessage = {
-  event?: string;
-  xml?: string;
-  error?: string;
-  modified?: boolean;
-  exit?: boolean;
-};
 
 export function ToolsDrawio() {
   const { locale, t } = useI18n();
@@ -57,7 +49,7 @@ export function ToolsDrawio() {
   useEffect(() => {
     function receiveMessage(event: MessageEvent<string>) {
       if (event.origin !== DRAWIO_ORIGIN) return;
-      const message = parseDrawioMessage<DrawioMessage>(event.data);
+      const message = parseDrawioMessage<DrawioEditorMessage>(event.data);
       if (!message) return;
       if (message.event === "init") {
         postToEditor({

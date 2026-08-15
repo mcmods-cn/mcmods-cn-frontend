@@ -5,7 +5,7 @@ import Image from "next/image";
 import { createPortal } from "react-dom";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
-import { DRAWIO_ORIGIN, parseDrawioMessage } from "../_lib/drawio";
+import { DRAWIO_ORIGIN, parseDrawioMessage, type DrawioEditorMessage } from "../_lib/drawio";
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
 import { markdownForUploadedFile, uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -17,12 +17,6 @@ type DrawioEditSession = {
   xml: string;
   replaceStart: number;
   replaceEnd: number;
-};
-type DrawioMessage = {
-  event?: string;
-  xml?: string;
-  error?: string;
-  exit?: boolean;
 };
 type MediaField = "bilibili" | "youtube" | "geogebra";
 type MediaPreset = {
@@ -253,7 +247,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
 
     function receiveMessage(event: MessageEvent<unknown>) {
       if (event.origin !== DRAWIO_ORIGIN) return;
-      const message = parseDrawioMessage<DrawioMessage>(event.data);
+      const message = parseDrawioMessage<DrawioEditorMessage>(event.data);
       if (!message) return;
       if (message.event === "init") {
         drawioFrameRef.current?.contentWindow?.postMessage(

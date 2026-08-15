@@ -6,7 +6,7 @@ import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 
-export type ReviewLockStatus = {
+type ReviewLockStatus = {
   locked: boolean;
   requestId?: string;
   submittedAt?: string;

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { API_BASE_URL, backendFetch, isBearerAccessToken } from "./api";
 
-export type AuthPermissionRule = {
+type AuthPermissionRule = {
   code: string;
   allow: boolean;
   priority: number;

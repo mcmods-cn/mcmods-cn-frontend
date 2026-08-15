@@ -8,6 +8,7 @@ import {
   Currency,
   EconomyConfig,
   LevelConfig,
+  RoleTrack,
   ShopItem,
   TaskDefinition,
   translatedRecord,
@@ -15,13 +16,6 @@ import {
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { formatBytes } from "../_lib/oss-upload";
 import { CatalogResourceIconPicker } from "./catalog-resource-icon";
-
-type RoleTrack = {
-  code: string;
-  name: string;
-  description: string;
-  roles: string[];
-};
 
 type TranslationFields = {
   name: string;

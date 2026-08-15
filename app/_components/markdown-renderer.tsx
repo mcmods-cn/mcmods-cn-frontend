@@ -18,7 +18,7 @@ import type { PluggableList } from "unified";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import type { BlueprintDetailRecord } from "../_lib/blueprint-api";
-import { DRAWIO_ORIGIN, parseDrawioMessage } from "../_lib/drawio";
+import { DRAWIO_ORIGIN, parseDrawioMessage, type DrawioEditorMessage } from "../_lib/drawio";
 import { loadResolvedContent } from "../_lib/editor-api";
 import { loadGlobalRecipe } from "../_lib/global-catalog-api";
 import { useI18n } from "../_lib/i18n-provider";
@@ -412,7 +412,7 @@ function DrawioDiagramPreview({ xml, sourcePosition }: { xml: string; sourcePosi
     function receiveMessage(event: MessageEvent<unknown>) {
       if (event.origin !== DRAWIO_ORIGIN) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
-      const message = parseDrawioMessage<{ data?: string; event?: string }>(event.data);
+      const message = parseDrawioMessage<DrawioEditorMessage>(event.data);
       if (message?.event === "init") {
         iframeRef.current?.contentWindow?.postMessage(
           JSON.stringify({

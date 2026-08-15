@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { saveAuth, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
+import { invalidatePublicUserCard, type AITokenBalance, type OnlineStatus } from "../_lib/user-api";
 import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection, favoriteItemHref, FavoriteCollectionItem, loadFavoriteCollections, loadFavoriteItems, updateFavoriteCollection } from "../_lib/favorite-api";
 import { UserEconomyPanel } from "./user-economy-panel";
@@ -15,6 +16,8 @@ import { TimezonePicker } from "./timezone-picker";
 import { UserCommentWatchesPanel } from "./user-comment-watches-panel";
 import { UserDraftsPanel } from "./user-drafts-panel";
 import { UserProfileOverview } from "./user-profile-overview";
+import { UserAvatar } from "./user-avatar";
+import { UserStatisticsPanel } from "./user-statistics-panel";
 
 type FileQuota = {
   daily: QuotaItem;
@@ -40,22 +43,18 @@ type ProfileSettings = {
   profileBackgroundUrl: string;
   timezone: string;
   messageReceive: boolean;
+  showOnlineStatus: boolean;
+  onlineStatus: OnlineStatus;
+  publicCardStatSlots: string[];
+  cardStatisticOptions: string[];
   canUpdateAvatar: boolean;
   canUseAnimatedAvatar: boolean;
-};
-
-type AIBalance = {
-  usedTokens: number;
-  reservedTokens: number;
-  limitTokens: number;
-  remainingTokens: number;
-  unlimited: boolean;
 };
 
 type UserOverview = {
   followers: number;
   following: number;
-  aiBalance: AIBalance;
+  aiBalance: AITokenBalance;
 };
 
 export function UserHome() {
@@ -73,6 +72,7 @@ export function UserHome() {
   const [username, setUsername] = useState("");
   const [signature, setSignature] = useState("");
   const [timezone, setTimezone] = useState("Asia/Shanghai");
+  const [cardSlots, setCardSlots] = useState<string[]>(["", "", "", "", "", ""]);
   const [savingProfile, setSavingProfile] = useState(false);
   const [overview, setOverview] = useState<UserOverview | null>(null);
   const activeSection = accountSection(searchParams.get("section"));
@@ -93,6 +93,7 @@ export function UserHome() {
           setUsername(profileResult.value.username);
           setSignature(profileResult.value.signature);
           setTimezone(profileResult.value.timezone);
+          setCardSlots(profileResult.value.publicCardStatSlots);
         }
         if (overviewResult.status === "fulfilled") setOverview(overviewResult.value);
       });
@@ -112,6 +113,8 @@ export function UserHome() {
     setUsername(nextProfile.username);
     setSignature(nextProfile.signature);
     setTimezone(nextProfile.timezone);
+    setCardSlots(nextProfile.publicCardStatSlots);
+    invalidatePublicUserCard(nextProfile.publicId);
     if (user) {
       saveAuth({ token, user: { ...user, username: nextProfile.username, avatarUrl: nextProfile.avatarUrl, signature: nextProfile.signature } });
     }
@@ -175,6 +178,34 @@ export function UserHome() {
     try {
       await updateProfile({ messageReceive: enabled });
       setMessage(t("user.privateMessageSettingSaved"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("user.profileSaveFailed"));
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function updateOnlineStatusVisibility(enabled: boolean) {
+    if (!profile) return;
+    setSavingProfile(true);
+    setMessage("");
+    try {
+      await updateProfile({ showOnlineStatus: enabled });
+      setMessage(t("user.onlineStatusSettingSaved"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("user.profileSaveFailed"));
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function savePublicCardSlots() {
+    if (!profile) return;
+    setSavingProfile(true);
+    setMessage("");
+    try {
+      await updateProfile({ publicCardStatSlots: cardSlots });
+      setMessage(t("user.userCardSettingSaved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("user.profileSaveFailed"));
     } finally {
@@ -305,12 +336,7 @@ export function UserHome() {
                 <div className="absolute inset-0 bg-[var(--background)] opacity-80" aria-hidden="true" />
               ) : null}
               <div className="relative z-10 flex items-center gap-4">
-                <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent)] text-3xl font-black text-white">
-                  {profile?.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img alt="" className="h-full w-full object-cover" src={profile.avatarUrl} />
-                  ) : user.username.slice(0, 1).toUpperCase()}
-                </div>
+                <UserAvatar avatarUrl={profile?.avatarUrl} className="rounded-lg text-white" onlineStatus={profile?.onlineStatus ?? "hidden"} size={80} username={user.username} />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-[var(--accent)]">{t("user.title")}</p>
                   <h1 className="truncate text-2xl font-bold">{user.username}</h1>
@@ -334,6 +360,7 @@ export function UserHome() {
 
             <nav className="surface flex overflow-x-auto rounded-lg border-b border-[var(--line)]" aria-label={t("user.accountSections")}>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "overview" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=overview", { scroll: false })}>{t("user.overview")}</button>
+              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "statistics" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=statistics", { scroll: false })}>{t("user.statistics")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "settings" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=settings", { scroll: false })}>{t("user.settings")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "drafts" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=drafts", { scroll: false })}>{t("drafts.title")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "favorites" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=favorites", { scroll: false })}>{t("favorites.title")}</button>
@@ -408,6 +435,33 @@ export function UserHome() {
                     </span>
                     <input checked={profile.messageReceive} disabled={savingProfile} type="checkbox" onChange={(event) => void updateMessageReceive(event.target.checked)} />
                   </label>
+                  <label className="flex items-center justify-between gap-4 rounded-lg border border-[var(--line)] p-4">
+                    <span>
+                      <span className="block font-semibold">{t("user.showOnlineStatus")}</span>
+                      <span className="mt-1 block text-sm text-[var(--muted)]">{t("user.showOnlineStatusDescription")}</span>
+                    </span>
+                    <input checked={profile.showOnlineStatus} disabled={savingProfile} type="checkbox" onChange={(event) => void updateOnlineStatusVisibility(event.target.checked)} />
+                  </label>
+                  <div className="rounded-lg border border-[var(--line)] p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div><p className="font-semibold">{t("user.userCardDisplay")}</p><p className="mt-1 text-sm text-[var(--muted)]">{t("user.userCardDisplayDescription")}</p></div>
+                      <button className="button-secondary focus-ring" disabled={savingProfile} type="button" onClick={() => setCardSlots(["", "", "", "", "", ""])}>{t("user.clearUserCard")}</button>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {cardSlots.map((value, index) => (
+                        <label className="text-sm font-semibold" key={index}>{t("user.userCardPosition", { position: index + 1 })}
+                          <select className="field mt-1" value={value} onChange={(event) => setCardSlots((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}>
+                            <option value="">{t("user.userCardEmpty")}</option>
+                            {profile.cardStatisticOptions.map((option) => <option disabled={cardSlots.includes(option) && option !== value} key={option} value={option}>{t(`user.cardStatistics.${option}`)}</option>)}
+                          </select>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-lg border border-[var(--line)]" aria-label={t("user.userCardPreview")}>
+                      {cardSlots.map((value, index) => <div className={`grid min-h-16 place-items-center border-[var(--line)] p-2 text-center text-xs ${index % 2 === 0 ? "border-r" : ""} ${index < 4 ? "border-b" : ""}`} key={index}>{value ? t(`user.cardStatistics.${value}`) : "—"}</div>)}
+                    </div>
+                    <button className="button-primary focus-ring mt-4" disabled={savingProfile || cardSlots.some((value, index) => value !== "" && cardSlots.indexOf(value) !== index)} type="button" onClick={() => void savePublicCardSlots()}>{t("user.saveUserCard")}</button>
+                  </div>
                 </div>
               ) : null}
               <label className="mt-3 flex items-center justify-between gap-4 rounded-lg border border-[var(--line)] p-4">
@@ -422,7 +476,7 @@ export function UserHome() {
                   onChange={(event) => void updateEmailNotifications(event.target.checked)}
                 />
               </label>
-            </section> : activeSection === "drafts" ? <UserDraftsPanel token={token} /> : activeSection === "favorites" ? <FavoriteCollectionsPanel token={token} /> : null}
+            </section> : activeSection === "statistics" ? <UserStatisticsPanel token={token} /> : activeSection === "drafts" ? <UserDraftsPanel token={token} /> : activeSection === "favorites" ? <FavoriteCollectionsPanel token={token} /> : null}
 
             {activeSection === "files" ? (
               <section className="surface rounded-lg p-4">
@@ -502,10 +556,10 @@ export function UserHome() {
   );
 }
 
-type AccountSection = "overview" | "settings" | "drafts" | "favorites" | "comment-watches" | "files" | "economy" | "players";
+type AccountSection = "overview" | "statistics" | "settings" | "drafts" | "favorites" | "comment-watches" | "files" | "economy" | "players";
 
 function accountSection(value: string | null): AccountSection {
-  return value === "settings" || value === "drafts" || value === "favorites" || value === "comment-watches" || value === "files" || value === "economy" || value === "players" ? value : "overview";
+  return value === "statistics" || value === "settings" || value === "drafts" || value === "favorites" || value === "comment-watches" || value === "files" || value === "economy" || value === "players" ? value : "overview";
 }
 
 function FavoriteCollectionsPanel({ token }: { token: string }) {
@@ -658,7 +712,7 @@ function AccountMetric({ className = "", href, label, value }: { className?: str
   return <div className={`px-3 py-4 ${className}`}>{content}</div>;
 }
 
-function AIBalanceMetric({ balance, locale }: { balance: AIBalance | null; locale: string }) {
+function AIBalanceMetric({ balance, locale }: { balance: AITokenBalance | null; locale: string }) {
   const { t } = useI18n();
   const consumed = balance ? balance.usedTokens + balance.reservedTokens : 0;
   const percent = !balance || balance.unlimited || balance.limitTokens <= 0 ? 0 : Math.min(100, Math.round((consumed / balance.limitTokens) * 100));

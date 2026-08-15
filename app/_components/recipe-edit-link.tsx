@@ -22,7 +22,7 @@ export function RecipeEditLink({
   </Link>;
 }
 
-export function recipeEditorTabHref(href: string) {
+function recipeEditorTabHref(href: string) {
   if (!href || /(?:^|[?&])closeOnComplete=1(?:&|$)/.test(href)) return href;
   return `${href}${href.includes("?") ? "&" : "?"}closeOnComplete=1`;
 }

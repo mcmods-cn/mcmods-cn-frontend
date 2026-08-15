@@ -25,7 +25,7 @@ export type CreatorRole = {
   custom: boolean;
 };
 
-export type CreatorMember = {
+type CreatorMember = {
   creatorId: string;
   name: string;
   avatarUrl: string;
@@ -33,7 +33,7 @@ export type CreatorMember = {
   title: string;
 };
 
-export type CreatorTeamMembership = {
+type CreatorTeamMembership = {
   team: CreatorSummary;
   role: Pick<CreatorRole, "id" | "code" | "name">;
   title: string;
@@ -105,7 +105,7 @@ export type CreatorImportResult = {
   createdMembers: number;
 };
 
-export type CreatorClaimAttachment = {
+type CreatorClaimAttachment = {
   id: string;
   name: string;
   sizeBytes: number;
@@ -234,6 +234,13 @@ export type ActivityEvent = {
   objectPublicId: string;
   markdownAddedBytes: number;
   occurredAt: string;
+};
+
+export type RoleTrack = {
+  code: string;
+  name: string;
+  description: string;
+  roles: string[];
 };
 
 export function creatorHref(creator: Pick<CreatorSummary, "kind" | "publicId">) {

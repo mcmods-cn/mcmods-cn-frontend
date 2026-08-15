@@ -1,11 +1,21 @@
 "use client";
 
 import Image from "next/image";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, KeyboardEvent, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { KeyboardEvent, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
+import {
+  readCatalogList as readList,
+  type CatalogFilterChip as FilterChip,
+  type CatalogParamValue as ParamValue,
+  type CatalogPreferences,
+  type CatalogTranslation as Translation,
+  type CatalogView,
+  useCatalogControls,
+} from "../_lib/catalog-state";
 import { useI18n } from "../_lib/i18n-provider";
+import { licenseOptions } from "../_lib/mod-catalog-data";
 import {
   localizedSimpleProject,
   simpleProjectConfig,
@@ -26,16 +36,11 @@ import {
   CatalogRadioList,
 } from "./catalog-list-ui";
 import { ProjectSubmissionModal } from "./project-submission-modal";
+import { MinecraftVersionPicker } from "./minecraft-version-picker";
 
-type CatalogView = "list" | "grid";
-type CatalogPreferences = { view: CatalogView; pageSize: number; sort: CatalogSort };
-type CatalogSort = "relevance" | "updated" | "nameAsc" | "nameDesc";
+type CatalogSort = "relevance" | "heat" | "updated" | "nameAsc" | "nameDesc";
 type CatalogFilters = ReturnType<typeof parseFilters>;
-type Translation = (key: string, params?: Record<string, string | number>) => string;
-type FilterChip = { id: string; label: string; remove: () => void };
-type ParamValue = string | string[] | number | null;
-
-const sortOptions: CatalogSort[] = ["relevance", "updated", "nameAsc", "nameDesc"];
+const sortOptions: CatalogSort[] = ["relevance", "heat", "updated", "nameAsc", "nameDesc"];
 const officialStatusOptions = ["active", "lowFrequency", "development", "discontinued", "archived"] as const;
 const sourceStatusOptions = ["open", "partial", "closed", "unknown"] as const;
 const updatedOptions = ["all", "week", "month", "quarter", "year", "stale"] as const;
@@ -46,48 +51,47 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const config = simpleProjectConfig(projectType);
-  const pathname = usePathname();
-  const router = useRouter();
-  const searchParams = useSearchParams();
   const resultsTopRef = useRef<HTMLElement | null>(null);
   const preferenceStorageKey = `mcmods-${projectType}-catalog-preferences`;
   const expandedStorageKey = `mcmods-${projectType}-filter-groups`;
-  const [preferences, setPreferences] = useState<CatalogPreferences>({ view: "list", pageSize: 20, sort: "relevance" });
-  const [expandedGroups, setExpandedGroups] = useState(() => new Set(defaultExpandedGroups));
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
-  const [queryDraft, setQueryDraft] = useState(searchParams.get("q") ?? "");
   const [items, setItems] = useState<SimpleProjectRecord[]>([]);
   const [backendTotal, setBackendTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [notice, setNotice] = useState("");
   const [submissionOpen, setSubmissionOpen] = useState(false);
+  const {
+    paramsKey, preferences, expandedGroups, mobileFiltersOpen, setMobileFiltersOpen,
+    queryDraft, setQueryDraft, notice, setNotice, replaceParams, toggleListParam, clearFilters,
+    submitSearch, changePreference, toggleGroup, changePage,
+  } = useCatalogControls<CatalogSort>({
+    preferenceStorageKey,
+    expandedStorageKey,
+    filterParams,
+    defaultExpandedGroups,
+    sortOptions,
+    defaultSort: "relevance",
+    onPageChange: () => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+  });
 
-  const paramsKey = searchParams.toString();
   const filters = useMemo(() => parseFilters(new URLSearchParams(paramsKey), preferences, config), [config, paramsKey, preferences]);
-  const filteredItems = useMemo(() => sortProjects(filterProjects(items, filters, config), filters.sort, filters.query, locale), [config, filters, items, locale]);
-  const totalPages = Math.max(1, Math.ceil(filteredItems.length / filters.pageSize));
+  const totalPages = Math.max(1, Math.ceil(backendTotal / filters.pageSize));
   const currentPage = Math.min(filters.page, totalPages);
   const pageStart = (currentPage - 1) * filters.pageSize;
-  const visibleItems = filteredItems.slice(pageStart, pageStart + filters.pageSize);
+  const visibleItems = items;
   const selectedFilterCount = countSelectedFilters(filters);
   const options = useMemo(() => catalogFilterOptions(items, config), [config, items]);
-
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setPreferences(readPreferences(preferenceStorageKey));
-      setExpandedGroups(readStringSet(expandedStorageKey, defaultExpandedGroups));
-    });
-    return () => { cancelled = true; };
-  }, [expandedStorageKey, preferenceStorageKey]);
 
   const load = useCallback(async () => {
     if (!ready) return;
     setLoading(true);
     try {
-      const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?limit=100`, {}, token);
+      const requestParams = new URLSearchParams(paramsKey);
+      requestParams.delete("page");
+      requestParams.delete("size");
+      requestParams.delete("view");
+      requestParams.set("limit", String(filters.pageSize));
+      requestParams.set("offset", String((filters.page - 1) * filters.pageSize));
+      const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?${requestParams}`, {}, token);
       setItems(result.items);
       setBackendTotal(result.total);
       setMessage("");
@@ -98,84 +102,12 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
     } finally {
       setLoading(false);
     }
-  }, [projectType, ready, t, token]);
+  }, [filters.page, filters.pageSize, paramsKey, projectType, ready, t, token]);
 
   useEffect(() => {
     const task = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(task);
   }, [load]);
-
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) setQueryDraft(filters.query);
-    });
-    return () => { cancelled = true; };
-  }, [filters.query]);
-
-  useEffect(() => {
-    if (!mobileFiltersOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = previousOverflow; };
-  }, [mobileFiltersOpen]);
-
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(""), 2600);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
-
-  function replaceParams(updates: Record<string, ParamValue>, resetPage = true) {
-    const next = new URLSearchParams(searchParams.toString());
-    for (const [key, value] of Object.entries(updates)) {
-      if (value === null || value === "" || (Array.isArray(value) && value.length === 0)) next.delete(key);
-      else next.set(key, Array.isArray(value) ? value.join(",") : String(value));
-    }
-    if (resetPage && !("page" in updates)) next.delete("page");
-    const query = next.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }
-
-  function toggleListParam(key: string, value: string) {
-    const current = readList(searchParams, key);
-    replaceParams({ [key]: current.includes(value) ? current.filter((item) => item !== value) : [...current, value] });
-  }
-
-  function clearFilters() {
-    replaceParams(Object.fromEntries(filterParams.map((key) => [key, null])));
-  }
-
-  function submitSearch(event: FormEvent) {
-    event.preventDefault();
-    replaceParams({ q: queryDraft.trim() || null });
-  }
-
-  function changePreference(next: Partial<CatalogPreferences>) {
-    const value = { ...preferences, ...next };
-    setPreferences(value);
-    window.localStorage.setItem(preferenceStorageKey, JSON.stringify(value));
-    replaceParams({
-      ...(next.view ? { view: next.view } : {}),
-      ...(next.pageSize ? { size: next.pageSize } : {}),
-      ...(next.sort ? { sort: next.sort } : {}),
-    });
-  }
-
-  function toggleGroup(group: string, open: boolean) {
-    setExpandedGroups((current) => {
-      const next = new Set(current);
-      if (open) next.add(group);
-      else next.delete(group);
-      window.localStorage.setItem(expandedStorageKey, JSON.stringify([...next]));
-      return next;
-    });
-  }
-
-  function changePage(page: number) {
-    replaceParams({ page }, false);
-    window.requestAnimationFrame(() => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }
 
   async function shareProject(item: SimpleProjectRecord) {
     const localization = localizedSimpleProject(item, locale);
@@ -214,7 +146,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
       <div className="mx-auto max-w-7xl px-4 py-6">
         <div className="mb-4 flex items-center justify-between gap-3 lg:hidden">
           <button className="button-secondary focus-ring" type="button" onClick={() => setMobileFiltersOpen(true)}>{t("largeProjects.catalog.filterButton", { count: selectedFilterCount })}</button>
-          <span className="text-sm font-semibold text-[var(--muted)]">{t("largeProjects.catalog.results", { count: filteredItems.length })}</span>
+          <span className="text-sm font-semibold text-[var(--muted)]">{t("largeProjects.catalog.results", { count: backendTotal })}</span>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[272px_minmax(0,1fr)]">
@@ -223,9 +155,8 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
               config={config}
               expandedGroups={expandedGroups}
               filters={filters}
-              items={items}
               options={options}
-              resultCount={filteredItems.length}
+              resultCount={backendTotal}
               t={t}
               onClear={clearFilters}
               onClose={null}
@@ -238,7 +169,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
           <section className="min-w-0" ref={resultsTopRef}>
             <div className="border-b border-[var(--line)] pb-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-xl font-black">{filters.query ? t("largeProjects.catalog.queryResults", { query: filters.query, count: filteredItems.length }) : t("largeProjects.catalog.results", { count: filteredItems.length })}</h2>
+                <h2 className="text-xl font-black">{filters.query ? t("largeProjects.catalog.queryResults", { query: filters.query, count: backendTotal }) : t("largeProjects.catalog.results", { count: backendTotal })}</h2>
                 <div className="flex flex-wrap items-center gap-2">
                   <label className="flex items-center gap-2 text-sm font-bold">
                     <span className="sr-only">{t("largeProjects.catalog.sortLabel")}</span>
@@ -258,7 +189,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
             </div>
 
             {loading ? <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-8 text-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</div> : null}
-            {message ? <p className="mt-4 rounded-lg border border-[var(--red)] bg-[var(--panel)] p-4 font-bold text-[var(--red)]">{message}</p> : null}
+            {message ? <div className="mt-4 rounded-lg border border-[var(--red)] bg-[var(--panel)] p-4"><p className="font-bold text-[var(--red)]">{message}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => void load()}>{t("common.refresh")}</button></div> : null}
             {!loading && !message && visibleItems.length > 0 ? (
               <div className={filters.view === "grid" ? "mt-4 grid gap-4 md:grid-cols-2" : "mt-4 grid gap-4"}>
                 {visibleItems.map((item) => <ProjectCard key={item.id} config={config} item={item} locale={locale} t={t} view={filters.view} onShare={() => void shareProject(item)} />)}
@@ -275,7 +206,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
                 next: t("largeProjects.catalog.pagination.next"),
                 pageSize: t("largeProjects.catalog.pagination.pageSize"),
                 pageSummary: t("largeProjects.catalog.pagination.pageSummary", { page: currentPage, pages: totalPages }),
-                itemSummary: t("largeProjects.catalog.pagination.itemSummary", { start: filteredItems.length === 0 ? 0 : pageStart + 1, end: Math.min(pageStart + filters.pageSize, filteredItems.length), total: filteredItems.length }),
+                itemSummary: t("largeProjects.catalog.pagination.itemSummary", { start: backendTotal === 0 ? 0 : pageStart + 1, end: Math.min(pageStart + visibleItems.length, backendTotal), total: backendTotal }),
               }}
               onPageChange={changePage}
               onPageSizeChange={(pageSize) => changePreference({ pageSize })}
@@ -289,9 +220,8 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
           config={config}
           expandedGroups={expandedGroups}
           filters={filters}
-          items={items}
           options={options}
-          resultCount={filteredItems.length}
+          resultCount={backendTotal}
           t={t}
           onClear={clearFilters}
           onClose={() => setMobileFiltersOpen(false)}
@@ -306,11 +236,10 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
   );
 }
 
-function ProjectFilterPanel({ config, expandedGroups, filters, items, options, resultCount, t, onClear, onClose, onGroupToggle, onParamChange, onToggleList }: {
+function ProjectFilterPanel({ config, expandedGroups, filters, options, resultCount, t, onClear, onClose, onGroupToggle, onParamChange, onToggleList }: {
   config: SimpleProjectConfig;
   expandedGroups: Set<string>;
   filters: CatalogFilters;
-  items: SimpleProjectRecord[];
   options: ReturnType<typeof catalogFilterOptions>;
   resultCount: number;
   t: Translation;
@@ -330,30 +259,30 @@ function ProjectFilterPanel({ config, expandedGroups, filters, items, options, r
     onClose={onClose ?? undefined}
     onShowResults={onClose ?? undefined}
   >
-    {options.versions.length ? <FilterGroup group="versions" label={t("largeProjects.fields.minecraftVersions")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <CatalogOptionList options={options.versions} selected={filters.versions} label={(value) => value} count={(value) => countMatches(items, (item) => item.minecraftVersions.includes(value))} onToggle={(value) => onToggleList("version", value)} />
-    </FilterGroup> : null}
+    <FilterGroup group="versions" label={t("largeProjects.fields.minecraftVersions")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
+      <MinecraftVersionPicker values={filters.versions} onChange={(versions) => onParamChange({ version: versions })} />
+    </FilterGroup>
     {options.loaders.length ? <FilterGroup group="loaders" label={t("largeProjects.fields.loaders")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <CatalogOptionList options={options.loaders} selected={filters.loaders} label={(value) => optionLabel(value, t)} count={(value) => countMatches(items, (item) => item.loaders.includes(value))} onToggle={(value) => onToggleList("loader", value)} />
+      <CatalogOptionList options={options.loaders} selected={filters.loaders} label={(value) => optionLabel(value, t)} onToggle={(value) => onToggleList("loader", value)} />
     </FilterGroup> : null}
     {options.categories.length ? <FilterGroup group="categories" label={t("largeProjects.fields.categories")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <CatalogOptionList options={options.categories} selected={filters.categories} label={(value) => optionLabel(value, t)} count={(value) => countMatches(items, (item) => item.categories.includes(value))} onToggle={(value) => onToggleList("category", value)} />
+      <CatalogOptionList options={options.categories} selected={filters.categories} label={(value) => optionLabel(value, t)} onToggle={(value) => onToggleList("category", value)} />
     </FilterGroup> : null}
     {selectorKey && options.selectorValues.length ? <FilterGroup group="selector" label={t(`largeProjects.fields.${selectorKey}`)} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <CatalogOptionList options={options.selectorValues} selected={filters.selectorValues} label={(value) => optionLabel(value, t)} count={(value) => countMatches(items, (item) => selectorValue(item, selectorKey) === value)} onToggle={(value) => onToggleList(selectorKey, value)} />
+      <CatalogOptionList options={options.selectorValues} selected={filters.selectorValues} label={(value) => optionLabel(value, t)} onToggle={(value) => onToggleList(selectorKey, value)} />
     </FilterGroup> : null}
     {options.features.length ? <FilterGroup group="features" label={t("largeProjects.fields.features")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <CatalogOptionList options={options.features} selected={filters.features} label={(value) => optionLabel(value, t)} count={(value) => countMatches(items, (item) => item.features.includes(value))} onToggle={(value) => onToggleList("feature", value)} />
+      <CatalogOptionList options={options.features} selected={filters.features} label={(value) => optionLabel(value, t)} onToggle={(value) => onToggleList("feature", value)} />
     </FilterGroup> : null}
     {config.type === "addon" && options.parentProjects.length ? <FilterGroup group="parentProjects" label={t("largeProjects.fields.parentProjects")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <CatalogOptionList options={options.parentProjects.map((option) => option.key)} selected={filters.parents} label={(value) => options.parentProjects.find((option) => option.key === value)?.label || value} count={(value) => countMatches(items, (item) => item.parentProjects.some((parent) => parentProjectKey(parent) === value))} onToggle={(value) => onToggleList("parent", value)} />
+      <CatalogOptionList options={options.parentProjects.map((option) => option.key)} selected={filters.parents} label={(value) => options.parentProjects.find((option) => option.key === value)?.label || value} onToggle={(value) => onToggleList("parent", value)} />
     </FilterGroup> : null}
     <FilterGroup group="status" label={t("largeProjects.catalog.groups.status")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <CatalogOptionList options={officialStatusOptions} selected={filters.statuses} label={(value) => optionLabel(value, t)} count={(value) => countMatches(items, (item) => item.officialStatus === value)} onToggle={(value) => onToggleList("status", value)} />
+      <CatalogOptionList options={officialStatusOptions} selected={filters.statuses} label={(value) => optionLabel(value, t)} onToggle={(value) => onToggleList("status", value)} />
     </FilterGroup>
     <FilterGroup group="source" label={t("largeProjects.catalog.groups.source")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <CatalogOptionList options={sourceStatusOptions} selected={filters.sources} label={(value) => optionLabel(value, t)} count={(value) => countMatches(items, (item) => item.sourceStatus === value)} onToggle={(value) => onToggleList("source", value)} />
-      {options.licenses.length ? <><div className="my-3 border-t border-[var(--line)]" /><p className="mb-2 text-xs font-bold text-[var(--muted)]">{t("largeProjects.catalog.groups.license")}</p><CatalogOptionList options={options.licenses} selected={filters.licenses} label={(value) => value} count={(value) => countMatches(items, (item) => item.license === value)} onToggle={(value) => onToggleList("license", value)} /></> : null}
+      <CatalogOptionList options={sourceStatusOptions} selected={filters.sources} label={(value) => optionLabel(value, t)} onToggle={(value) => onToggleList("source", value)} />
+      {options.licenses.length ? <><div className="my-3 border-t border-[var(--line)]" /><p className="mb-2 text-xs font-bold text-[var(--muted)]">{t("largeProjects.catalog.groups.license")}</p><CatalogOptionList options={options.licenses} selected={filters.licenses} label={(value) => value} onToggle={(value) => onToggleList("license", value)} /></> : null}
     </FilterGroup>
     <FilterGroup group="updated" label={t("largeProjects.catalog.groups.updated")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
       <CatalogRadioList options={updatedOptions} selected={filters.updated || "all"} label={(value) => t(`largeProjects.catalog.updated.${value}`)} onChange={(value) => onParamChange({ updated: value === "all" ? null : value })} />
@@ -435,7 +364,7 @@ function CardMeta({ label, value }: { label: string; value: string }) {
   return <div><dt className="text-[10px] font-bold text-[var(--muted)]">{label}</dt><dd className="font-black">{value}</dd></div>;
 }
 
-function parseFilters(params: URLSearchParams, preferences: CatalogPreferences, config: SimpleProjectConfig) {
+function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<CatalogSort>, config: SimpleProjectConfig) {
   const pageSize = [20, 40, 60].includes(Number(params.get("size"))) ? Number(params.get("size")) : preferences.pageSize;
   const view = params.get("view") === "grid" || params.get("view") === "list" ? params.get("view") as CatalogView : preferences.view;
   const requestedSort = params.get("sort") as CatalogSort | null;
@@ -459,49 +388,6 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences, 
   };
 }
 
-function filterProjects(items: SimpleProjectRecord[], filters: CatalogFilters, config: SimpleProjectConfig) {
-  const query = normalizeSearch(filters.query);
-  return items.filter((item) => {
-    if (query) {
-      const searchable = [item.siteId, item.abbreviation, ...item.searchKeywords, ...item.localizations.flatMap((value) => [value.name, value.summary]), ...item.authors.map((author) => author.name)].map(normalizeSearch).join(" ");
-      if (!searchable.includes(query)) return false;
-    }
-    if (filters.versions.length && !filters.versions.some((value) => item.minecraftVersions.includes(value))) return false;
-    if (filters.loaders.length && !filters.loaders.some((value) => item.loaders.includes(value))) return false;
-    if (filters.categories.length && !filters.categories.every((value) => item.categories.includes(value))) return false;
-    if (filters.features.length && !filters.features.every((value) => item.features.includes(value))) return false;
-    if (config.selector && filters.selectorValues.length && !filters.selectorValues.includes(selectorValue(item, config.selector))) return false;
-    if (filters.parents.length && !filters.parents.some((value) => item.parentProjects.some((parent) => parentProjectKey(parent) === value))) return false;
-    if (filters.statuses.length && !filters.statuses.includes(item.officialStatus)) return false;
-    if (filters.sources.length && !filters.sources.includes(item.sourceStatus)) return false;
-    if (filters.licenses.length && !filters.licenses.includes(item.license)) return false;
-    if (filters.updated && !matchesUpdatedRange(item.updatedAt, filters.updated)) return false;
-    return true;
-  });
-}
-
-function sortProjects(items: SimpleProjectRecord[], sort: CatalogSort, query: string, locale: string) {
-  return [...items].sort((left, right) => {
-    const leftName = localizedSimpleProject(left, locale).name || left.siteId;
-    const rightName = localizedSimpleProject(right, locale).name || right.siteId;
-    if (sort === "updated") return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
-    if (sort === "nameAsc") return leftName.localeCompare(rightName, locale);
-    if (sort === "nameDesc") return rightName.localeCompare(leftName, locale);
-    if (query) return projectSearchScore(right, query, locale) - projectSearchScore(left, query, locale);
-    // The API already returns the default catalog in authoritative heat order.
-    // Keep that order stable instead of replacing it with a client-only timestamp sort.
-    return 0;
-  });
-}
-
-function projectSearchScore(item: SimpleProjectRecord, query: string, locale: string) {
-  const normalized = normalizeSearch(query);
-  const name = normalizeSearch(localizedSimpleProject(item, locale).name);
-  if (name === normalized || normalizeSearch(item.siteId) === normalized) return 100;
-  if (name.startsWith(normalized) || normalizeSearch(item.siteId).startsWith(normalized)) return 60;
-  return 10;
-}
-
 function catalogFilterOptions(items: SimpleProjectRecord[], config: SimpleProjectConfig) {
   return {
     versions: uniqueSorted(items.flatMap((item) => item.minecraftVersions), compareMinecraftVersions),
@@ -510,7 +396,7 @@ function catalogFilterOptions(items: SimpleProjectRecord[], config: SimpleProjec
     features: uniqueStable([...config.features, ...items.flatMap((item) => item.features)]),
     selectorValues: uniqueStable([...(config.selectorOptions ?? []), ...items.map((item) => config.selector ? selectorValue(item, config.selector) : "")]),
     parentProjects: uniqueParentProjects(items),
-    licenses: uniqueSorted(items.map((item) => item.license).filter(Boolean)),
+    licenses: uniqueStable([...licenseOptions, ...items.map((item) => item.license)]),
   };
 }
 
@@ -561,45 +447,6 @@ function optionLabel(value: string, t: Translation) {
   return t(`largeProjects.options.${value}`);
 }
 
-function countMatches(items: SimpleProjectRecord[], predicate: (item: SimpleProjectRecord) => boolean) {
-  return items.filter(predicate).length;
-}
-
-function matchesUpdatedRange(updatedAt: string, range: string) {
-  const days = Math.max(0, (Date.now() - Date.parse(updatedAt)) / 86_400_000);
-  if (range === "week") return days <= 7;
-  if (range === "month") return days <= 30;
-  if (range === "quarter") return days <= 90;
-  if (range === "year") return days <= 365;
-  if (range === "stale") return days > 365;
-  return true;
-}
-
-function readList(params: Pick<URLSearchParams, "get">, key: string) {
-  return (params.get(key) ?? "").split(",").map((item) => item.trim()).filter(Boolean);
-}
-
-function readPreferences(storageKey: string): CatalogPreferences {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(storageKey) ?? "{}") as Partial<CatalogPreferences>;
-    const sort = value.sort && sortOptions.includes(value.sort) ? value.sort : "relevance";
-    return { view: value.view === "grid" ? "grid" : "list", pageSize: [20, 40, 60].includes(Number(value.pageSize)) ? Number(value.pageSize) : 20, sort };
-  } catch {
-    return { view: "list", pageSize: 20, sort: "relevance" };
-  }
-}
-
-function readStringSet(key: string, fallback: string[] = []) {
-  try {
-    const stored = window.localStorage.getItem(key);
-    if (stored === null) return new Set(fallback);
-    const value = JSON.parse(stored) as unknown;
-    return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : fallback);
-  } catch {
-    return new Set(fallback);
-  }
-}
-
 function uniqueStable(values: readonly string[]) {
   return [...new Set(values.filter(Boolean))];
 }
@@ -610,10 +457,6 @@ function uniqueSorted(values: readonly string[], compare?: (left: string, right:
 
 function compareMinecraftVersions(left: string, right: string) {
   return right.localeCompare(left, undefined, { numeric: true, sensitivity: "base" });
-}
-
-function normalizeSearch(value: string) {
-  return value.trim().toLocaleLowerCase().replace(/[\s_-]+/g, " ");
 }
 
 function formatDate(value: string, locale: string) {

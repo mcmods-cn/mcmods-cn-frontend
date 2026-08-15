@@ -17,6 +17,30 @@ type MinecraftVersionPickerProps = {
 };
 
 const emptyConfig: MinecraftVersionConfig = { versions: [], loaders: [] };
+let cachedMinecraftVersionConfig: MinecraftVersionConfig | undefined;
+let minecraftVersionConfigRequest: Promise<MinecraftVersionConfig> | undefined;
+
+export function useMinecraftVersionConfig() {
+  const [config, setConfig] = useState<MinecraftVersionConfig>(() => cachedMinecraftVersionConfig ?? emptyConfig);
+  useEffect(() => {
+    let cancelled = false;
+    if (cachedMinecraftVersionConfig) {
+      queueMicrotask(() => { if (!cancelled) setConfig(cachedMinecraftVersionConfig ?? emptyConfig); });
+      return () => { cancelled = true; };
+    }
+    minecraftVersionConfigRequest ??= apiRequest<MinecraftVersionConfig>("/api/v1/minecraft/versions")
+      .then((result) => {
+        cachedMinecraftVersionConfig = result;
+        return result;
+      })
+      .finally(() => { minecraftVersionConfigRequest = undefined; });
+    minecraftVersionConfigRequest
+      .then((result) => { if (!cancelled) setConfig(result); })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+  return config;
+}
 
 export function MinecraftVersionPicker({
   values,
@@ -30,19 +54,10 @@ export function MinecraftVersionPicker({
 }: MinecraftVersionPickerProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const [remoteConfig, setRemoteConfig] = useState<MinecraftVersionConfig>(emptyConfig);
+  const remoteConfig = useMinecraftVersionConfig();
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [showAprilFools, setShowAprilFools] = useState(false);
   const [search, setSearch] = useState("");
-
-  useEffect(() => {
-    if (config) return;
-    let cancelled = false;
-    apiRequest<MinecraftVersionConfig>("/api/v1/minecraft/versions")
-      .then((result) => { if (!cancelled) setRemoteConfig(result); })
-      .catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [config]);
 
   const effectiveConfig = config ?? remoteConfig;
 
@@ -60,7 +75,7 @@ export function MinecraftVersionPicker({
     const query = search.trim().toLowerCase();
     const grouped = new Map<string, typeof available>();
     for (const version of available) {
-      if (version.type === "snapshot" && !showSnapshots) continue;
+      if (["snapshot", "pre_release", "release_candidate"].includes(version.type) && !showSnapshots) continue;
       if (version.type === "april_fools" && !showAprilFools) continue;
       if (query && !version.code.toLowerCase().includes(query)) continue;
       const key = versionGroup(version.code, version.type);
@@ -132,6 +147,8 @@ export function MinecraftVersionPicker({
 
 function versionGroup(code: string, type: MinecraftVersionConfig["versions"][number]["type"]) {
   if (type === "april_fools") return "april_fools";
+  if (type === "pre_release") return "pre_release";
+  if (type === "release_candidate") return "release_candidate";
   if (type === "snapshot") {
     const match = code.match(/^(\d{2})w/i);
     return match ? `snapshot:20${match[1]}` : "snapshot";
@@ -143,6 +160,8 @@ function versionGroup(code: string, type: MinecraftVersionConfig["versions"][num
 
 function groupLabel(group: string, t: (key: string, params?: Record<string, string | number>) => string) {
   if (group === "april_fools") return t("minecraftVersionPicker.aprilFoolsGroup");
+  if (group === "pre_release") return t("minecraftVersionPicker.preReleaseGroup");
+  if (group === "release_candidate") return t("minecraftVersionPicker.releaseCandidateGroup");
   if (group === "legacy") return t("minecraftVersionPicker.legacyGroup");
   if (group === "snapshot") return t("minecraftVersionPicker.snapshotGroup");
   if (group === "other") return t("minecraftVersionPicker.otherGroup");

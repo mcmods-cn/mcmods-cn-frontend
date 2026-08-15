@@ -1,5 +1,11 @@
 import { apiRequest } from "./api";
-import type { CatalogResourceRef, CatalogResourceVersion, EditResult, LocalizedContentFields, LocalizationVersion, ReviewStatus } from "./editor-types";
+import {
+  apiRecord as record,
+  apiStringRecord as stringRecord,
+  apiText as text,
+  normalizeCatalogResourceVersions as normalizeResourceVersions,
+} from "./api-normalizers";
+import type { CatalogResourceRef, EditResult, LocalizedContentFields, LocalizationVersion, ReviewStatus } from "./editor-types";
 
 export type CatalogEditorLocalization = LocalizationVersion<LocalizedContentFields>;
 
@@ -55,7 +61,6 @@ export type CatalogRecipeTypeMutation = {
 };
 
 type RawEditResult = Partial<EditResult> & {
-  publicId?: string;
   objectPublicId?: string;
   revisionId?: string;
   changeRequestId?: string;
@@ -119,12 +124,12 @@ function normalizeTagDocument(value: unknown): CatalogTagEditorDocument {
   return {
     publicId: text(source.publicId),
     registry: text(source.registry),
-    canonicalId: text(source.canonicalId) || text(source.tagId),
+    canonicalId: text(source.canonicalId),
     defaultLocale: text(source.defaultLocale) || "en-US",
     publishedRevisionId: text(source.publishedRevisionId) || undefined,
     reviewStatus: normalizeReviewStatus(source.reviewStatus),
     localizations: normalizeLocalizations(source.localizations),
-    members: normalizeResources(source.members ?? source.memberResources),
+    members: normalizeResources(source.members),
   };
 }
 
@@ -132,12 +137,12 @@ function normalizeRecipeTypeDocument(value: unknown): CatalogRecipeTypeEditorDoc
   const source = record(value);
   return {
     publicId: text(source.publicId),
-    canonicalId: text(source.canonicalId) || text(source.recipeTypeId),
+    canonicalId: text(source.canonicalId),
     defaultLocale: text(source.defaultLocale) || "en-US",
     publishedRevisionId: text(source.publishedRevisionId) || undefined,
     reviewStatus: normalizeReviewStatus(source.reviewStatus),
     localizations: normalizeLocalizations(source.localizations),
-    catalysts: normalizeResources(source.catalysts ?? source.catalystResources),
+    catalysts: normalizeResources(source.catalysts),
     definition: record(source.definition),
     templateCount: number(source.templateCount),
     recipeCount: number(source.recipeCount),
@@ -148,18 +153,17 @@ function normalizeLocalizations(value: unknown): CatalogEditorLocalization[] {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => {
     const source = record(entry);
-    const fields = record(source.fields);
     return {
       locale: text(source.locale),
       fields: {
-        name: text(fields.name ?? source.name),
-        summary: text(fields.summary ?? source.summary),
-        contentMarkdown: text(fields.contentMarkdown ?? source.contentMarkdown),
+        name: text(source.name),
+        summary: text(source.summary),
+        contentMarkdown: text(source.contentMarkdown),
       },
-      revisionId: text(source.revisionId ?? source.publishedRevisionId) || undefined,
+      revisionId: text(source.publishedRevisionId) || undefined,
       provenance: normalizeProvenance(source.provenance),
       reviewStatus: normalizeReviewStatus(source.reviewStatus),
-      generatedFromLocale: text(source.generatedFromLocale ?? source.sourceLocale) || undefined,
+      generatedFromLocale: text(source.sourceLocale) || undefined,
       editable: source.editable !== false,
       updatedAt: text(source.updatedAt) || undefined,
     };
@@ -170,12 +174,11 @@ function normalizeResources(value: unknown): CatalogResourceRef[] {
   if (!Array.isArray(value)) return [];
   return value.map((entry) => {
     const source = record(entry);
-    const registry = text(source.registry ?? source.kindCode) || "minecraft:item";
-    const kind = text(source.kind ?? source.kindCode) || kindFromRegistry(registry);
+    const registry = text(source.registry) || "minecraft:item";
+    const kind = text(source.kind) || kindFromRegistry(registry);
     return {
       publicId: text(source.publicId),
-      entityId: text(source.entityId) || undefined,
-      id: text(source.id ?? source.canonicalId ?? source.item ?? source.resource_location),
+      id: text(source.id),
       registry,
       kind,
       names: Object.keys(stringRecord(source.names)).length
@@ -191,32 +194,9 @@ function normalizeResources(value: unknown): CatalogResourceRef[] {
   }).filter((entry) => entry.publicId && entry.id);
 }
 
-function normalizeResourceVersions(value: unknown): CatalogResourceVersion[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((entry) => {
-    const source = record(entry);
-    return {
-      publicId: text(source.publicId),
-      label: text(source.label),
-      minecraftVersions: stringArray(source.minecraftVersions),
-      loaders: stringArray(source.loaders),
-      modVersion: text(source.modVersion),
-      sourceKind: source.sourceKind === "manual" ? "manual" as const : "import" as const,
-      hasDetail: source.hasDetail === true,
-      revisionId: text(source.revisionId),
-      registry: text(source.registry),
-      iconPath: text(source.iconPath),
-      modSiteId: text(source.modSiteId),
-      names: stringRecord(source.names),
-      name: text(source.name) || undefined,
-      iconUrl: text(source.iconUrl) || undefined,
-    };
-  }).filter((entry) => entry.publicId);
-}
-
 function normalizeEditResult(value: RawEditResult): EditResult {
   return {
-    objectPublicId: value.objectPublicId || value.publicId || "",
+    objectPublicId: value.objectPublicId || "",
     revisionId: text(value.revisionId) || undefined,
     changeRequestId: text(value.changeRequestId),
     reviewStatus: value.reviewStatus === "approved" || value.reviewStatus === "rejected" ? value.reviewStatus : "pending",
@@ -237,22 +217,6 @@ function kindFromRegistry(value: string) {
   if (lowered.includes("fluid") || lowered.includes("chemical") || lowered.includes("gas")) return "fluid";
   if (lowered.includes("block")) return "block";
   return "item";
-}
-
-function stringRecord(value: unknown): Record<string, string> {
-  return Object.fromEntries(Object.entries(record(value)).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
-}
-
-function stringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function text(value: unknown) {
-  return typeof value === "string" ? value : "";
 }
 
 function number(value: unknown) {

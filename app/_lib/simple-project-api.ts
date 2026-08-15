@@ -1,7 +1,7 @@
 import type { BackendModAuthor, BackendModGalleryImage, BackendModRecord } from "./mod-api";
 import { API_BASE_URL } from "./api";
 
-export const simpleProjectTypes = ["plugin", "map", "resource_pack", "shader_pack", "datapack", "addon"] as const;
+const simpleProjectTypes = ["plugin", "map", "resource_pack", "shader_pack", "datapack", "addon"] as const;
 export type SimpleProjectType = (typeof simpleProjectTypes)[number];
 
 export type SimpleProjectLocalization = {

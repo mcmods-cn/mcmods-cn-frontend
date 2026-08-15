@@ -11,7 +11,7 @@ export type RatingTargetType =
   | "map"
   | "minecraft_server";
 
-export type RatingDimensionSummary = {
+type RatingDimensionSummary = {
   code: string;
   average: number;
   count: number;

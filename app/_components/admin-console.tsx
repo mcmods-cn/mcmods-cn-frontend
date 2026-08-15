@@ -8,7 +8,7 @@ import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 
 import { canAccessAdmin, clearAuth, useAuthSnapshot } from "../_lib/auth";
 import { ApiError, apiRequest } from "../_lib/api";
 import { isBackendUnavailable } from "../_lib/backend-status";
-import type { LevelConfig } from "../_lib/community-api";
+import type { LevelConfig, RoleTrack } from "../_lib/community-api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
 import {
@@ -36,6 +36,7 @@ import { AdminYggdrasilPanel, defaultAdminYggdrasilConfig, type AdminYggdrasilCo
 import { AdminDashboardPanel, type AdminDashboardData } from "./admin-dashboard-panel";
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
+import { AdminActivityRetentionPanel } from "./admin-activity-retention-panel";
 
 type PanelId =
   | "overview"
@@ -649,13 +650,6 @@ const emptyConfig: AdminConfig = {
   },
 };
 
-type RoleTrack = {
-  code: string;
-  name: string;
-  description: string;
-  roles: string[];
-};
-
 type PermissionDefaults = {
   registeredRole: string;
   bannedRole: string;
@@ -671,7 +665,7 @@ type AdminNotice = {
   tone?: "info" | "danger";
 };
 
-export function AdminConsolePolished() {
+export function AdminConsole() {
   const router = useRouter();
   const { toggleTheme } = useTheme();
   const { t } = useI18n();
@@ -1013,7 +1007,7 @@ export function AdminConsolePolished() {
           {activePanel === "oss-scans" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-scans", t)} endpoint="/api/v1/admin/oss/scans" /> : null}
           {activePanel === "oss-downloads" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-downloads", t)} endpoint="/api/v1/admin/oss/downloads" /> : null}
           {activePanel === "logs-system" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-system", t)} category="system" /> : null}
-          {activePanel === "logs-user" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-user", t)} category="user_interaction" /> : null}
+          {activePanel === "logs-user" ? <><LogsPanel token={auth.token} title={panelTitleV2("logs-user", t)} category="user_interaction" /><AdminActivityRetentionPanel token={auth.token} /></> : null}
           {activePanel === "logs-admin" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-admin", t)} category="admin_operation" /> : null}
           {activePanel === "logs-permission" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-permission", t)} category="permission_change" /> : null}
           {activePanel === "logs-login" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-login", t)} category="login_security" /> : null}
@@ -5806,7 +5800,7 @@ function withFallbackLocalizedText<T extends { name: string; description: string
 
 function buildNewPermissionPayload(code: string, nameInput: string, descriptionInput: string, preferredLocale: Locale) {
   const name = nameInput.trim() || code;
-  const description = descriptionInput.trim() || newPermissionDescription();
+  const description = descriptionInput.trim() || "New permission";
   const detectedLocale = detectTextLocale(`${nameInput} ${descriptionInput}`.trim(), preferredLocale);
   return {
     code,
@@ -5821,10 +5815,6 @@ function detectTextLocale(text: string, preferredLocale: Locale): Locale {
   if (/[\u3040-\u30ff]/.test(text)) return "ja-JP";
   if (/[\u3400-\u9fff]/.test(text)) return "zh-CN";
   return preferredLocale || "en-US";
-}
-
-function newPermissionDescription() {
-  return "New permission";
 }
 
 function cloneRole(role: Role): Role {

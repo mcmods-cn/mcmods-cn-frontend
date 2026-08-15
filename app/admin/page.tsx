@@ -1,5 +1,5 @@
-import { AdminConsolePolished } from "../_components/admin-console-polished";
+import { AdminConsole } from "../_components/admin-console";
 
 export default function AdminPage() {
-  return <AdminConsolePolished />;
+  return <AdminConsole />;
 }

@@ -22,7 +22,6 @@ import {
 } from "../_lib/mod-api";
 import {
   environmentOptions,
-  commonVersions,
   licenseOptions,
   loaderOptions,
   maintenanceOptions,
@@ -755,9 +754,8 @@ function validGitHubProjectPath(value: string) {
 }
 
 export function fallbackMinecraftConfig(): MinecraftVersionConfig {
-  const versions = [...new Set([...commonVersions])];
   return {
-    versions: versions.map((code) => ({ code, type: "release" as const })),
-    loaders: loaderOptions.map((code) => ({ code, name: code, versions: [...versions] })),
+    versions: [],
+    loaders: loaderOptions.map((code) => ({ code, name: code, versions: [] })),
   };
 }

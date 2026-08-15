@@ -7,25 +7,11 @@ import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { loadPublicPlayerProfiles, PlayerProfile, skinTextureURL } from "../_lib/skin-api";
+import { loadPublicUserProfile, type PublicUserProfile } from "../_lib/user-api";
 import { UserHome } from "./user-home";
 import { SkinPreview2D } from "./skin-preview";
 import { UserProfileOverview } from "./user-profile-overview";
-
-type PublicUserProfile = {
-  id: string;
-  username: string;
-  status: string;
-  createdAt: string;
-  followers: number;
-  following: number;
-  isOwn: boolean;
-  isFollowing: boolean;
-  canFollow: boolean;
-  canMessage: boolean;
-  avatarUrl: string;
-  signature: string;
-  profileBackgroundUrl: string;
-};
+import { UserAvatar } from "./user-avatar";
 
 export function UserProfile({ userId }: { userId: string }) {
   const { t } = useI18n();
@@ -42,7 +28,7 @@ export function UserProfile({ userId }: { userId: string }) {
     const timer = window.setTimeout(() => {
       setLoading(true);
       Promise.allSettled([
-        apiRequest<PublicUserProfile>(`/api/v1/users/${userId}/profile`, {}, token || undefined),
+        loadPublicUserProfile(userId, token || undefined),
         loadPublicPlayerProfiles(userId, token || undefined),
       ]).then(([profileResult, playersResult]) => {
         if (profileResult.status === "fulfilled") {
@@ -101,12 +87,7 @@ export function UserProfile({ userId }: { userId: string }) {
           ) : null}
           <div className="relative z-10 flex flex-wrap items-start justify-between gap-4">
             <div className="flex w-full min-w-0 items-center gap-4 sm:w-auto sm:flex-1">
-              <div className="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent)] text-3xl font-black text-white">
-                {profile.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img alt="" className="h-full w-full object-cover" src={profile.avatarUrl} />
-              ) : profile.username.slice(0, 1).toUpperCase()}
-              </div>
+              <UserAvatar avatarUrl={profile.avatarUrl} className="rounded-lg text-white" onlineStatus={profile.onlineStatus} size={80} username={profile.username} />
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-[var(--accent)]">{preview ? t("user.previewMode") : t("user.publicProfile")}</p>
               <h1 className="truncate text-2xl font-black">{profile.username}</h1>

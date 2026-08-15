@@ -1,5 +1,14 @@
 export const DRAWIO_ORIGIN = "https://embed.diagrams.net";
 
+export type DrawioEditorMessage = {
+  event?: string;
+  xml?: string;
+  data?: string;
+  error?: string;
+  modified?: boolean;
+  exit?: boolean;
+};
+
 export function parseDrawioMessage<T extends object>(raw: unknown): T | null {
   if (typeof raw === "object" && raw !== null) {
     return raw as T;

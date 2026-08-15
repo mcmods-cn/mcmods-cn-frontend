@@ -15,7 +15,7 @@ export const loadTagPickerPage: ResourcePageLoader = async (options, token) => {
     offset: page.offset,
     items: page.items.map((tag): CatalogResourceRef => ({
       publicId: tag.publicId,
-      id: tag.tagId,
+      id: tag.canonicalId,
       registry: tag.registry,
       kind: "tag",
       names: tag.name ? { "zh-CN": tag.name } : {},

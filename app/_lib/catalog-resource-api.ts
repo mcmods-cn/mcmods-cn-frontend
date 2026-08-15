@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import { apiRecord as record, apiText as text } from "./api-normalizers";
 import type { CatalogEditorLocalization } from "./catalog-editor-api";
 
 // These codes are the canonical values produced by the backend importer and
@@ -93,12 +94,4 @@ function localizations(value: unknown): CatalogEditorLocalization[] {
 
 function reviewStatus(value: unknown) {
   return value === "pending" || value === "approved" || value === "rejected" ? value : undefined;
-}
-
-function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function text(value: unknown) {
-  return typeof value === "string" ? value : "";
 }

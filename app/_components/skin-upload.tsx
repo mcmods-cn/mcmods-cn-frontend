@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
+import { createEmptyLocalizedContent, ensureLocalizedContent, updateLocalizedContent } from "../_lib/content-language";
 import { supportedLocales, useI18n, type Locale } from "../_lib/i18n-provider";
 import type { LocalizedContentFields, LocalizationVersion } from "../_lib/editor-types";
 import { createSkin, SkinKind, SkinModel, SkinVisibility } from "../_lib/skin-api";
@@ -21,7 +22,7 @@ export function SkinUpload() {
   const initialLocale = locale as Locale;
   const [selectedLocale, setSelectedLocale] = useState<Locale>(initialLocale);
   const [defaultLocale, setDefaultLocale] = useState<Locale>(initialLocale);
-  const [localizations, setLocalizations] = useState<LocalizationVersion<LocalizedContentFields>[]>(() => [emptyUploadLocalization(initialLocale)]);
+  const [localizations, setLocalizations] = useState<LocalizationVersion<LocalizedContentFields>[]>(() => [createEmptyLocalizedContent(initialLocale)]);
   const [kind, setKind] = useState<SkinKind>("skin");
   const [model, setModel] = useState<SkinModel>("default");
   const [visibility, setVisibility] = useState<SkinVisibility>("public");
@@ -30,8 +31,8 @@ export function SkinUpload() {
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
   const previewURL = useMemo(() => file ? URL.createObjectURL(file) : "", [file]);
-  const selected = localizations.find((item) => item.locale === selectedLocale) ?? emptyUploadLocalization(selectedLocale);
-  const defaultVersion = localizations.find((item) => item.locale === defaultLocale) ?? emptyUploadLocalization(defaultLocale);
+  const selected = localizations.find((item) => item.locale === selectedLocale) ?? createEmptyLocalizedContent(selectedLocale);
+  const defaultVersion = localizations.find((item) => item.locale === defaultLocale) ?? createEmptyLocalizedContent(defaultLocale);
 
   useEffect(() => () => { if (previewURL) URL.revokeObjectURL(previewURL); }, [previewURL]);
 
@@ -43,7 +44,7 @@ export function SkinUpload() {
       const size = await validateTexture(nextFile, kind, t);
       setFile(nextFile);
       setDimensions(`${size.width} × ${size.height}`);
-      if (!selected.fields.name.trim()) updateUploadLocalization(setLocalizations, selectedLocale, { name: nextFile.name.replace(/\.png$/i, "") });
+      if (!selected.fields.name.trim()) setLocalizations((items) => updateLocalizedContent(items, selectedLocale, { name: nextFile.name.replace(/\.png$/i, "") }));
     } catch (reason) {
       setFile(undefined);
       setError(reason instanceof Error ? reason.message : t("skins.invalidPng"));
@@ -100,7 +101,7 @@ export function SkinUpload() {
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_380px]">
         <section className="surface grid gap-5 rounded-lg p-5">
           <ContentLanguageSwitcher value={selectedLocale} versions={localizations} onChange={setSelectedLocale} />
-          <label className="text-sm font-black">{t("mods.submission.defaultLocale")}<select className="field mt-2" value={defaultLocale} onChange={(event) => { const next = event.target.value as Locale; setDefaultLocale(next); setLocalizations((items) => ensureUploadLocalization(items, next)); }}>
+          <label className="text-sm font-black">{t("mods.submission.defaultLocale")}<select className="field mt-2" value={defaultLocale} onChange={(event) => { const next = event.target.value as Locale; setDefaultLocale(next); setLocalizations((items) => ensureLocalizedContent(items, next)); }}>
             {supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
           </select></label>
           <label className="block text-sm font-black">{t("skins.textureFile")}
@@ -111,8 +112,8 @@ export function SkinUpload() {
             <label className="text-sm font-black">{t("skins.kind")}<select className="field mt-2" value={kind} onChange={(event) => { const next = event.target.value as SkinKind; setKind(next); if (file) void validateTexture(file, next, t).then((size) => setDimensions(`${size.width} × ${size.height}`)).catch((reason: unknown) => { setFile(undefined); setError(reason instanceof Error ? reason.message : t("skins.invalidPng")); }); }}><option value="skin">{t("skins.kindSkin")}</option><option value="cape">{t("skins.kindCape")}</option></select></label>
             <label className="text-sm font-black">{t("skins.model")}<select className="field mt-2" disabled={kind === "cape"} value={model} onChange={(event) => setModel(event.target.value as SkinModel)}><option value="default">{t("skins.modelDefault")}</option><option value="slim">{t("skins.modelSlim")}</option></select></label>
           </div>
-          <label className="text-sm font-black">{t("skins.name")} ({selectedLocale})<input className="field mt-2" maxLength={80} value={selected.fields.name} onChange={(event) => updateUploadLocalization(setLocalizations, selectedLocale, { name: event.target.value })} /></label>
-          <label className="text-sm font-black">{t("skins.description")} ({selectedLocale})<textarea className="field mt-2 min-h-32 resize-y" maxLength={1000} value={selected.fields.summary} onChange={(event) => updateUploadLocalization(setLocalizations, selectedLocale, { summary: event.target.value })} /></label>
+          <label className="text-sm font-black">{t("skins.name")} ({selectedLocale})<input className="field mt-2" maxLength={80} value={selected.fields.name} onChange={(event) => setLocalizations((items) => updateLocalizedContent(items, selectedLocale, { name: event.target.value }))} /></label>
+          <label className="text-sm font-black">{t("skins.description")} ({selectedLocale})<textarea className="field mt-2 min-h-32 resize-y" maxLength={1000} value={selected.fields.summary} onChange={(event) => setLocalizations((items) => updateLocalizedContent(items, selectedLocale, { summary: event.target.value }))} /></label>
           <label className="text-sm font-black">{t("skins.tags")}<input className="field mt-2" value={tags} placeholder={t("skins.tagInput")} onChange={(event) => setTags(event.target.value)} /><span className="mt-2 block text-xs font-normal text-[var(--muted)]">{t("skins.tagHint")}</span></label>
           <label className="text-sm font-black">{t("skins.visibility")}<select className="field mt-2" value={visibility} onChange={(event) => setVisibility(event.target.value as SkinVisibility)}><option value="public">{t("skins.visibilityPublic")}</option><option value="unlisted">{t("skins.visibilityUnlisted")}</option><option value="private">{t("skins.visibilityPrivate")}</option></select></label>
           {error ? <p className="rounded-lg border border-[var(--red)]/40 bg-[var(--red)]/10 p-3 text-sm font-bold text-[var(--red)]">{error}</p> : null}
@@ -132,26 +133,6 @@ export function SkinUpload() {
       </div>
     </main>
   );
-}
-
-function emptyUploadLocalization(locale: Locale): LocalizationVersion<LocalizedContentFields> {
-  return { locale, fields: { name: "", summary: "", contentMarkdown: "" }, provenance: "human", reviewStatus: "draft", editable: true };
-}
-
-function ensureUploadLocalization(items: LocalizationVersion<LocalizedContentFields>[], locale: Locale) {
-  return items.some((item) => item.locale === locale) ? items : [...items, emptyUploadLocalization(locale)];
-}
-
-function updateUploadLocalization(
-  setter: React.Dispatch<React.SetStateAction<LocalizationVersion<LocalizedContentFields>[]>>,
-  locale: Locale,
-  patch: Partial<LocalizedContentFields>,
-) {
-  setter((items) => {
-    const current = items.find((item) => item.locale === locale) ?? emptyUploadLocalization(locale);
-    const next = { ...current, fields: { ...current.fields, ...patch }, reviewStatus: "draft" as const };
-    return items.some((item) => item.locale === locale) ? items.map((item) => item.locale === locale ? next : item) : [...items, next];
-  });
 }
 
 async function validateTexture(file: File, kind: SkinKind, t: (key: string) => string) {

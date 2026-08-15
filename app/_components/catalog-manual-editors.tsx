@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   archiveCatalogRecipeType,
   archiveCatalogTag,
@@ -31,24 +31,15 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const initialLocale = toEditableContentLanguage(locale) ?? "zh-CN";
-  const [selectedLocale, setSelectedLocale] = useState<Locale>(initialLocale);
-  const [defaultLocale, setDefaultLocale] = useState<Locale>(initialLocale);
-  const [versions, setVersions] = useState<CatalogEditorLocalization[]>(() => [emptyLocalization(initialLocale)]);
-  const baselineVersions = useRef<CatalogEditorLocalization[]>([emptyLocalization(initialLocale)]);
-  const [dirtyLocales, setDirtyLocales] = useState<Set<Locale>>(() => new Set());
+  const {
+    selectedLocale, setSelectedLocale, defaultLocale, versions, publishedRevisionId, reviewStatus, reason, setReason,
+    loading, setLoading, busy, deleting, finished, error, setError, result, fields, canSubmit,
+    loadDocument, updateFields, chooseDefaultLocale, buildLocalizationPayload, runSave, runArchive,
+  } = useCatalogEditorState(mode, initialLocale);
   const [registry, setRegistry] = useState("minecraft:item");
   const [canonicalId, setCanonicalId] = useState("");
   const [members, setMembers] = useState<CatalogResourceRef[]>([]);
-  const [publishedRevisionId, setPublishedRevisionId] = useState<string>();
-  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>();
-  const [reason, setReason] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [loading, setLoading] = useState(mode === "edit");
-  const [busy, setBusy] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [finished, setFinished] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<EditResult>();
 
   useEffect(() => {
     if (mode !== "edit" || !publicId || !token) return;
@@ -58,87 +49,41 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
       const nextDefault = toEditableContentLanguage(document.defaultLocale) ?? initialLocale;
       setRegistry(document.registry);
       setCanonicalId(document.canonicalId);
-      setDefaultLocale(nextDefault);
-      setSelectedLocale(findBestEditorLocale(document.localizations, initialLocale, nextDefault));
-      setVersions(document.localizations.length ? document.localizations : [emptyLocalization(nextDefault)]);
-      baselineVersions.current = cloneLocalizations(document.localizations.length ? document.localizations : [emptyLocalization(nextDefault)]);
-      setDirtyLocales(new Set());
+      loadDocument(document, nextDefault);
       setMembers(document.members);
-      setPublishedRevisionId(document.publishedRevisionId);
-      setReviewStatus(document.reviewStatus === "approved" ? undefined : document.reviewStatus);
-      setError("");
     }).catch((reasonValue: unknown) => {
       if (!cancelled) setError(errorText(reasonValue));
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [initialLocale, locale, mode, publicId, token]);
+  }, [initialLocale, loadDocument, locale, mode, publicId, setError, setLoading, token]);
 
-  const fields = localizationFields(versions, selectedLocale);
-  const valid = Boolean(token && registry.trim() && canonicalId.trim() && hasDefaultLocalization(versions, defaultLocale) && !finished && reviewStatus !== "pending");
+  const valid = Boolean(token && registry.trim() && canonicalId.trim() && canSubmit);
 
   async function save() {
     if (!valid) {
       setError(t("catalogEditor.validationRequired"));
       return;
     }
-    setBusy(true);
-    setError("");
-    try {
+    await runSave(async () => {
       const payload = {
         ...(mode === "edit" ? { baseRevisionId: publishedRevisionId } : {}),
         reason: reason.trim(),
         defaultLocale,
-        localizations: localizationPayload(versions, mode === "create" ? new Set([...dirtyLocales, defaultLocale]) : dirtyLocales),
+        localizations: buildLocalizationPayload(),
         registry: registry.trim(),
         canonicalId: canonicalId.trim(),
         memberResourcePublicIds: members.map((member) => member.publicId),
       };
-      const next = mode === "create"
+      return mode === "create"
         ? await createCatalogTag(payload, token)
         : await updateCatalogTag(publicId, payload, token);
-      setResult(next);
-      setReviewStatus(next.reviewStatus);
-      setFinished(mode === "create" || next.reviewStatus === "pending");
-      if (next.reviewStatus === "approved") {
-        baselineVersions.current = cloneLocalizations(versions);
-        setDirtyLocales(new Set());
-        if (next.revisionId) setPublishedRevisionId(next.revisionId);
-      }
-    } catch (reasonValue) {
-      setError(errorText(reasonValue));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function updateFields(patch: Partial<LocalizedContentFields>) {
-    const nextFields = { ...localizationFields(versions, selectedLocale), ...patch };
-    const baselineFields = localizationFields(baselineVersions.current, selectedLocale);
-    setVersions((current) => updateLocalization(current, selectedLocale, patch));
-    setDirtyLocales((current) => withLocaleDirty(current, selectedLocale, !sameLocalizedFields(nextFields, baselineFields)));
-  }
-
-  function chooseDefaultLocale(next: Locale) {
-    setDefaultLocale(next);
-    setVersions((current) => findLocalizationVersion(current, next) ? current : [...current, emptyLocalization(next)]);
+    });
   }
 
   async function archive() {
-    if (!window.confirm(t("catalogEditor.archiveConfirm"))) return;
-    setDeleting(true);
-    setError("");
-    try {
-      const next = await archiveCatalogTag(publicId, publishedRevisionId, reason.trim(), token);
-      setResult(next);
-      setReviewStatus(next.reviewStatus);
-      setFinished(true);
-    } catch (reasonValue) {
-      setError(errorText(reasonValue));
-    } finally {
-      setDeleting(false);
-    }
+    await runArchive(t("catalogEditor.archiveConfirm"), () => archiveCatalogTag(publicId, publishedRevisionId, reason.trim(), token));
   }
 
   const loginNextPath = `/mods-tag?editor=${mode === "edit" ? "edit" : "create"}${publicId ? `&publicId=${encodeURIComponent(publicId)}` : ""}`;
@@ -217,25 +162,16 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const initialLocale = toEditableContentLanguage(locale) ?? "zh-CN";
-  const [selectedLocale, setSelectedLocale] = useState<Locale>(initialLocale);
-  const [defaultLocale, setDefaultLocale] = useState<Locale>(initialLocale);
-  const [versions, setVersions] = useState<CatalogEditorLocalization[]>(() => [emptyLocalization(initialLocale)]);
-  const baselineVersions = useRef<CatalogEditorLocalization[]>([emptyLocalization(initialLocale)]);
-  const [dirtyLocales, setDirtyLocales] = useState<Set<Locale>>(() => new Set());
+  const {
+    selectedLocale, setSelectedLocale, defaultLocale, versions, publishedRevisionId, reviewStatus, reason, setReason,
+    loading, setLoading, busy, deleting, finished, error, setError, result, fields, canSubmit,
+    loadDocument, updateFields, chooseDefaultLocale, buildLocalizationPayload, runSave, runArchive,
+  } = useCatalogEditorState(mode, initialLocale);
   const [canonicalId, setCanonicalId] = useState("");
   const [definition, setDefinition] = useState<Record<string, unknown>>({});
   const [catalysts, setCatalysts] = useState<CatalogResourceRef[]>([]);
   const [templateCount, setTemplateCount] = useState(0);
-  const [publishedRevisionId, setPublishedRevisionId] = useState<string>();
-  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>();
-  const [reason, setReason] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [loading, setLoading] = useState(mode === "edit");
-  const [busy, setBusy] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [finished, setFinished] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<EditResult>();
 
   useEffect(() => {
     if (mode !== "edit" || !publicId || !token) return;
@@ -244,89 +180,43 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
       if (cancelled) return;
       const nextDefault = toEditableContentLanguage(document.defaultLocale) ?? initialLocale;
       setCanonicalId(document.canonicalId);
-      setDefaultLocale(nextDefault);
-      setSelectedLocale(findBestEditorLocale(document.localizations, initialLocale, nextDefault));
-      setVersions(document.localizations.length ? document.localizations : [emptyLocalization(nextDefault)]);
-      baselineVersions.current = cloneLocalizations(document.localizations.length ? document.localizations : [emptyLocalization(nextDefault)]);
-      setDirtyLocales(new Set());
+      loadDocument(document, nextDefault);
       setDefinition(document.definition);
       setCatalysts(document.catalysts);
       setTemplateCount(document.templateCount);
-      setPublishedRevisionId(document.publishedRevisionId);
-      setReviewStatus(document.reviewStatus === "approved" ? undefined : document.reviewStatus);
-      setError("");
     }).catch((reasonValue: unknown) => {
       if (!cancelled) setError(errorText(reasonValue));
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [initialLocale, locale, mode, publicId, token]);
+  }, [initialLocale, loadDocument, locale, mode, publicId, setError, setLoading, token]);
 
-  const fields = localizationFields(versions, selectedLocale);
-  const valid = Boolean(token && canonicalId.trim() && hasDefaultLocalization(versions, defaultLocale) && !finished && reviewStatus !== "pending");
+  const valid = Boolean(token && canonicalId.trim() && canSubmit);
 
   async function save() {
     if (!valid) {
       setError(t("catalogEditor.validationRequired"));
       return;
     }
-    setBusy(true);
-    setError("");
-    try {
+    await runSave(async () => {
       const payload = {
         ...(mode === "edit" ? { baseRevisionId: publishedRevisionId } : {}),
         reason: reason.trim(),
         defaultLocale,
-        localizations: localizationPayload(versions, mode === "create" ? new Set([...dirtyLocales, defaultLocale]) : dirtyLocales),
+        localizations: buildLocalizationPayload(),
         canonicalId: canonicalId.trim(),
         definition,
         catalystResourcePublicIds: catalysts.map((catalyst) => catalyst.publicId),
       };
-      const next = mode === "create"
+      return mode === "create"
         ? await createCatalogRecipeType(payload, token)
         : await updateCatalogRecipeType(publicId, payload, token);
-      setResult(next);
-      setReviewStatus(next.reviewStatus);
-      setFinished(mode === "create" || next.reviewStatus === "pending");
-      if (next.reviewStatus === "approved") {
-        baselineVersions.current = cloneLocalizations(versions);
-        setDirtyLocales(new Set());
-        if (next.revisionId) setPublishedRevisionId(next.revisionId);
-      }
-    } catch (reasonValue) {
-      setError(errorText(reasonValue));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function updateFields(patch: Partial<LocalizedContentFields>) {
-    const nextFields = { ...localizationFields(versions, selectedLocale), ...patch };
-    const baselineFields = localizationFields(baselineVersions.current, selectedLocale);
-    setVersions((current) => updateLocalization(current, selectedLocale, patch));
-    setDirtyLocales((current) => withLocaleDirty(current, selectedLocale, !sameLocalizedFields(nextFields, baselineFields)));
-  }
-
-  function chooseDefaultLocale(next: Locale) {
-    setDefaultLocale(next);
-    setVersions((current) => findLocalizationVersion(current, next) ? current : [...current, emptyLocalization(next)]);
+    });
   }
 
   async function archive() {
-    if (!window.confirm(t("catalogEditor.archiveConfirm"))) return;
-    setDeleting(true);
-    setError("");
-    try {
-      const next = await archiveCatalogRecipeType(publicId, publishedRevisionId, reason.trim(), token);
-      setResult(next);
-      setReviewStatus(next.reviewStatus);
-      setFinished(true);
-    } catch (reasonValue) {
-      setError(errorText(reasonValue));
-    } finally {
-      setDeleting(false);
-    }
+    await runArchive(t("catalogEditor.archiveConfirm"), () => archiveCatalogRecipeType(publicId, publishedRevisionId, reason.trim(), token));
   }
 
   const loginNextPath = `/recipe-types?editor=${mode === "edit" ? "edit" : "create"}${publicId ? `&publicId=${encodeURIComponent(publicId)}` : ""}`;
@@ -394,6 +284,101 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
       onConfirm={(resources) => { setCatalysts(resources); setPickerOpen(false); }}
     />
   </>;
+}
+
+function useCatalogEditorState(mode: EditorMode, initialLocale: Locale) {
+  const [selectedLocale, setSelectedLocale] = useState<Locale>(initialLocale);
+  const [defaultLocale, setDefaultLocale] = useState<Locale>(initialLocale);
+  const [versions, setVersions] = useState<CatalogEditorLocalization[]>(() => [emptyLocalization(initialLocale)]);
+  const baselineVersions = useRef<CatalogEditorLocalization[]>([emptyLocalization(initialLocale)]);
+  const [dirtyLocales, setDirtyLocales] = useState<Set<Locale>>(() => new Set());
+  const [publishedRevisionId, setPublishedRevisionId] = useState<string>();
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>();
+  const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(mode === "edit");
+  const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [finished, setFinished] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState<EditResult>();
+
+  const loadDocument = useCallback((document: {
+    localizations: CatalogEditorLocalization[];
+    publishedRevisionId?: string;
+    reviewStatus: ReviewStatus;
+  }, nextDefault: Locale) => {
+    const nextVersions = document.localizations.length ? document.localizations : [emptyLocalization(nextDefault)];
+    setDefaultLocale(nextDefault);
+    setSelectedLocale(findBestEditorLocale(nextVersions, initialLocale, nextDefault));
+    setVersions(nextVersions);
+    baselineVersions.current = cloneLocalizations(nextVersions);
+    setDirtyLocales(new Set());
+    setPublishedRevisionId(document.publishedRevisionId);
+    setReviewStatus(document.reviewStatus === "approved" ? undefined : document.reviewStatus);
+    setError("");
+  }, [initialLocale]);
+
+  const fields = localizationFields(versions, selectedLocale);
+  const canSubmit = hasDefaultLocalization(versions, defaultLocale) && !finished && reviewStatus !== "pending";
+
+  function updateFields(patch: Partial<LocalizedContentFields>) {
+    const nextFields = { ...fields, ...patch };
+    const baselineFields = localizationFields(baselineVersions.current, selectedLocale);
+    setVersions((current) => updateLocalization(current, selectedLocale, patch));
+    setDirtyLocales((current) => withLocaleDirty(current, selectedLocale, !sameLocalizedFields(nextFields, baselineFields)));
+  }
+
+  function chooseDefaultLocale(next: Locale) {
+    setDefaultLocale(next);
+    setVersions((current) => findLocalizationVersion(current, next) ? current : [...current, emptyLocalization(next)]);
+  }
+
+  function buildLocalizationPayload() {
+    const locales = mode === "create" ? new Set([...dirtyLocales, defaultLocale]) : dirtyLocales;
+    return localizationPayload(versions, locales);
+  }
+
+  async function runSave(operation: () => Promise<EditResult>) {
+    setBusy(true);
+    setError("");
+    try {
+      const next = await operation();
+      setResult(next);
+      setReviewStatus(next.reviewStatus);
+      setFinished(mode === "create" || next.reviewStatus === "pending");
+      if (next.reviewStatus === "approved") {
+        baselineVersions.current = cloneLocalizations(versions);
+        setDirtyLocales(new Set());
+        if (next.revisionId) setPublishedRevisionId(next.revisionId);
+      }
+    } catch (reasonValue) {
+      setError(errorText(reasonValue));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runArchive(confirmMessage: string, operation: () => Promise<EditResult>) {
+    if (!window.confirm(confirmMessage)) return;
+    setDeleting(true);
+    setError("");
+    try {
+      const next = await operation();
+      setResult(next);
+      setReviewStatus(next.reviewStatus);
+      setFinished(true);
+    } catch (reasonValue) {
+      setError(errorText(reasonValue));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return {
+    selectedLocale, setSelectedLocale, defaultLocale, versions, publishedRevisionId, reviewStatus, reason, setReason,
+    loading, setLoading, busy, deleting, finished, error, setError, result, fields, canSubmit,
+    loadDocument, updateFields, chooseDefaultLocale, buildLocalizationPayload, runSave, runArchive,
+  };
 }
 
 function InvariantPanel({ children }: { children: React.ReactNode }) {

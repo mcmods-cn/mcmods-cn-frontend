@@ -7,7 +7,6 @@ type SkinReviewStatus = "pending" | "approved" | "rejected";
 
 type SkinOwner = {
   id: string;
-  publicId?: string;
   username: string;
 };
 
@@ -41,11 +40,6 @@ export type SkinListResponse = {
 export type SkinServiceInfo = {
   enabled?: boolean;
   name?: string;
-  serverName?: string;
-  baseUrl?: string;
-  serviceUrl?: string;
-  authServerUrl?: string;
-  yggdrasilUrl?: string;
   yggdrasilApiRoot?: string;
   profileLimit?: number;
   textureUploadEnabled?: boolean;
@@ -233,7 +227,7 @@ export function skinTextureURL(texture?: Pick<SkinTexture, "textureHash" | "text
 }
 
 export function launcherServiceURL(service?: SkinServiceInfo | null) {
-  const configured = service?.yggdrasilApiRoot || service?.authServerUrl || service?.yggdrasilUrl || service?.serviceUrl || service?.baseUrl;
+  const configured = service?.yggdrasilApiRoot;
   const value = configured ? absoluteAPIURL(configured) : `${API_BASE_URL}/api/yggdrasil`;
   return value.endsWith("/") ? value : `${value}/`;
 }

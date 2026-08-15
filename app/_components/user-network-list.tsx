@@ -5,15 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
+import { loadPublicUserProfile, type PublicUserProfile } from "../_lib/user-api";
 
 type NetworkType = "followers" | "following";
-
-type PublicUserProfile = {
-  id: string;
-  username: string;
-  followers: number;
-  following: number;
-};
 
 type UserConnection = {
   id: string;
@@ -41,7 +35,7 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
     if (!ready) return;
     let cancelled = false;
     void Promise.all([
-      apiRequest<PublicUserProfile>(`/api/v1/users/${userId}/profile`, {}, token || undefined),
+      loadPublicUserProfile(userId, token || undefined),
       apiRequest<UserConnectionsPayload>(`/api/v1/users/${userId}/${network}?page=${page}&pageSize=24`, {}, token || undefined),
     ]).then(([nextProfile, nextPayload]) => {
       if (cancelled) return;

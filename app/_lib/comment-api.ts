@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import type { OnlineStatus } from "./user-api";
 
 export type CommentTargetType = "mod" | "modpack" | "plugin" | "map" | "resource_pack" | "shader_pack" | "datapack" | "addon" | "mod_resource" | "blueprint" | "skin" | "creator" | "player_profile" | "tag" | "recipe_type" | "community_post";
 
@@ -29,6 +30,7 @@ export type CommentItem = {
     id: string;
     username: string;
     avatarUrl: string;
+	    onlineStatus: OnlineStatus;
     projectRole?: "owner" | "editor";
   };
   parent?: { id: string; authorName: string; bodySummary: string; deleted: boolean };

@@ -2,7 +2,7 @@ import { apiRequest } from "./api";
 
 export type ChangelogTargetType = "mod" | "modpack" | "plugin" | "map" | "resource_pack" | "shader_pack" | "datapack" | "addon" | "minecraft_server";
 
-export type ChangelogLocalization = { locale: string; bodyMarkdown: string };
+type ChangelogLocalization = { locale: string; bodyMarkdown: string };
 export type ChangelogCategory = { id: string; defaultLocale: string; names: Record<string, string>; name: string };
 export type ChangelogTarget = { type: ChangelogTargetType; id: string; name: string; url: string; canEdit: boolean };
 export type ChangelogItem = {

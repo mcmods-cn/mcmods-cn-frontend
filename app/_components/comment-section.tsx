@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
@@ -22,6 +21,7 @@ import {
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { UserCardAvatar } from "./user-avatar";
 
 const reactionOptions = [
   ["thumbs_up", "👍"], ["thumbs_down", "👎"], ["laugh", "😄"], ["hooray", "🎉"],
@@ -409,7 +409,7 @@ function CommentCard({
   return (
     <article className={`rounded-lg border bg-[var(--panel)] p-4 transition ${acceptedAnswer ? "border-[var(--accent)] ring-2 ring-[var(--accent-soft)]" : highlighted ? "border-[var(--accent)] ring-2 ring-[var(--accent-soft)]" : "border-[var(--line)]"}`}>
       <div className="flex gap-3">
-        {comment.author.avatarUrl ? <Image unoptimized alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" height={36} src={comment.author.avatarUrl} width={36} /> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[var(--accent)] font-black text-white">{authorName.slice(0, 1).toUpperCase()}</span>}
+        <UserCardAvatar avatarUrl={comment.author.avatarUrl} onlineStatus={comment.author.onlineStatus} size={36} userId={comment.author.id} username={authorName} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
             <Link className="font-black hover:text-[var(--accent)]" href={`/user/${comment.author.id}`}>{authorName}</Link>
@@ -481,7 +481,7 @@ function buildTree(items: CommentItem[], sort: string): TreeNode[] {
   const selectedOrder = sort === "oldest"
     ? chronological
     : sort === "hot"
-      ? (left: TreeNode, right: TreeNode) => score(right.item) - score(left.item)
+      ? (left: TreeNode, right: TreeNode) => right.item.heatScore - left.item.heatScore
       : sort === "replies"
         ? (left: TreeNode, right: TreeNode) => right.item.descendantCount - left.item.descendantCount
         : (left: TreeNode, right: TreeNode) => chronological(right, left);
@@ -535,10 +535,6 @@ function toggleSet(current: Set<string>, value: string) {
   if (next.has(value)) next.delete(value);
   else next.add(value);
   return next;
-}
-
-function score(item: CommentItem) {
-  return item.heatScore;
 }
 
 function currentPath() {

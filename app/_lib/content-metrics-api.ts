@@ -9,7 +9,7 @@ export type ContentMetricActor = {
   url: string;
 };
 
-export type ContentMetricDeveloper = {
+type ContentMetricDeveloper = {
   id: string;
   kind: "author" | "team";
   name: string;
@@ -18,7 +18,7 @@ export type ContentMetricDeveloper = {
   url: string;
 };
 
-export type ContentMetricEditor = {
+type ContentMetricEditor = {
   id: string;
   name: string;
   avatarUrl?: string;

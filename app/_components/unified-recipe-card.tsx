@@ -55,7 +55,7 @@ export function UnifiedRecipeCard({
   </article>;
 }
 
-export function mergeUnifiedRecipeMaterials(materials: UnifiedRecipeMaterial[]) {
+function mergeUnifiedRecipeMaterials(materials: UnifiedRecipeMaterial[]) {
   const merged: Array<{ material: UnifiedRecipeMaterial; amount?: number; unit?: string }> = [];
   const numericPositions = new Map<string, number>();
   for (const material of materials) {
@@ -119,16 +119,17 @@ function formatRecipeMaterialAmount(value: number, unit: string) {
 
 function recipeAlternativeIdentity(value: Record<string, unknown>) {
   const kind = firstRecipeIdentityString(
+    value.kind,
     value.kindCode,
     value.sourceRegistry,
     value.ingredient_kind,
     value.ingredient_type,
   );
   const resource = firstRecipeIdentityString(
+    value.id,
     value.item,
     value.resource_location,
     value.unique_id,
-    value.id,
   );
   const nbt = firstRecipeIdentityString(value.nbt_snbt);
   const variant = stableRecipeIdentityValue(value.components ?? value.component_data ?? value.metadata ?? value.damage);
