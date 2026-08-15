@@ -18,16 +18,31 @@ type ShowcaseItem = {
   updatedAt: string;
 };
 
+type ContributionActivity = {
+  id: string;
+  entityType: string;
+  action: "created" | "edited";
+  name: string;
+  href: string;
+  occurredAt: string;
+};
+
+type ContributionsPayload = {
+  year: number;
+  from: string;
+  to: string;
+  total: number;
+  days: Array<{ date: string; count: number }>;
+  years: number[];
+  recentActivity: ContributionActivity[];
+  recentActivityTruncated: boolean;
+};
+
 type ShowcasePayload = {
   projects: ShowcaseItem[];
   uploads: ShowcaseItem[];
   posts: ShowcaseItem[];
-  contributions: {
-    from: string;
-    to: string;
-    total: number;
-    days: Array<{ date: string; count: number }>;
-  };
+  contributions: ContributionsPayload;
 };
 
 export function UserProfileOverview({ userId, token }: { userId: string; token?: string }) {
@@ -36,6 +51,9 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
   const [collections, setCollections] = useState<FavoriteCollection[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
   const [favoriteItems, setFavoriteItems] = useState<FavoriteCollectionItem[]>([]);
+  const [contribution, setContribution] = useState<ContributionsPayload | null>(null);
+  const [contributionLoading, setContributionLoading] = useState(false);
+  const [contributionMessage, setContributionMessage] = useState("");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -47,6 +65,7 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
       if (cancelled) return;
       if (showcaseResult.status === "fulfilled") {
         setShowcase(showcaseResult.value);
+        setContribution(showcaseResult.value.contributions);
         setMessage("");
       } else {
         setMessage(showcaseResult.reason instanceof Error ? showcaseResult.reason.message : t("user.showcaseLoadFailed"));
@@ -70,6 +89,24 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
     return () => { cancelled = true; };
   }, [selectedCollection, token, userId]);
 
+  async function selectContributionYear(year: number) {
+    if (!contribution || contribution.year === year || contributionLoading) return;
+    setContributionLoading(true);
+    setContributionMessage("");
+    try {
+      const result = await apiRequest<ContributionsPayload>(
+        `/api/v1/users/${encodeURIComponent(userId)}/contributions?year=${year}`,
+        {},
+        token,
+      );
+      setContribution(result);
+    } catch (error) {
+      setContributionMessage(error instanceof Error ? error.message : t("user.contributionLoadFailed"));
+    } finally {
+      setContributionLoading(false);
+    }
+  }
+
   if (!showcase && !message) return <section className="surface p-5 text-sm text-[var(--muted)]">{t("common.loading")}</section>;
   if (!showcase) return <section className="surface p-5 text-sm text-[var(--danger)]">{message || t("user.showcaseLoadFailed")}</section>;
 
@@ -92,7 +129,12 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
           {favoriteItems.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{favoriteItems.map((item) => <FavoriteCard item={item} key={`${item.entityType}:${item.entityKey}`} />)}</div> : <p className="mt-4 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
         </section>
       ) : null}
-      <ContributionHeatmap contribution={showcase.contributions} />
+      <ContributionHeatmap
+        contribution={contribution ?? showcase.contributions}
+        loading={contributionLoading}
+        message={contributionMessage}
+        onYearChange={(year) => void selectContributionYear(year)}
+      />
     </div>
   );
 }
@@ -129,34 +171,92 @@ function FavoriteCard({ item }: { item: FavoriteCollectionItem }) {
   return <Link className="focus-ring flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)}><CatalogResourceIconValue className="h-11 w-11" fallbackName={name} value={item.metadata.iconUrl || ""} /><span className="min-w-0"><strong className="block truncate">{name}</strong><small className="mt-1 block truncate text-[var(--muted)]">{item.entityKey}</small></span></Link>;
 }
 
-function ContributionHeatmap({ contribution }: { contribution: ShowcasePayload["contributions"] }) {
+function ContributionHeatmap({ contribution, loading, message, onYearChange }: {
+  contribution: ContributionsPayload;
+  loading: boolean;
+  message: string;
+  onYearChange: (year: number) => void;
+}) {
   const { locale, t } = useI18n();
   const cells = useMemo(() => contributionCells(contribution), [contribution]);
   const active = cells.filter((cell) => cell.count > 0);
   const formatter = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "medium" }), [locale]);
+  const monthLabels = useMemo(() => contributionMonthLabels(contribution, locale), [contribution, locale]);
+  const activityGroups = useMemo(() => groupContributionActivities(contribution.recentActivity, locale), [contribution.recentActivity, locale]);
+  const weekCount = Math.ceil(cells.length / 7);
+  const chartWidth = Math.max(12, weekCount * 15 - 3);
+  const currentYear = new Date().getUTCFullYear();
+  const title = contribution.year === currentYear
+    ? t("user.contributionsInLastYear", { count: contribution.total })
+    : t("user.contributionsInYear", { count: contribution.total, year: contribution.year });
+  const chartLabel = contribution.year === currentYear
+    ? t("user.contributionChartLabel")
+    : t("user.contributionChartLabelYear", { year: contribution.year });
   return (
     <section className="surface p-5">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="text-xl font-black">{t("user.contributionsInLastYear", { count: contribution.total })}</h2>
+          <h2 className="text-xl font-black">{title}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{t("user.contributionsDescription")}</p>
         </div>
         <span className="text-xs font-bold text-[var(--muted)]">{contribution.from} – {contribution.to}</span>
       </div>
-      <div className="mt-5 overflow-x-auto pb-2" role="region" aria-label={t("user.contributionChartLabel")} tabIndex={0}>
-        <div className="grid w-max grid-flow-col grid-rows-7 gap-[3px]" style={{ gridAutoColumns: "12px" }}>
-          {cells.map((cell) => {
-            if (cell.padding) return <span aria-hidden="true" className="h-3 w-3" key={cell.key} />;
-            const label = t("user.contributionDateLabel", { count: cell.count, date: formatter.format(dateFromKey(cell.date)) });
-            if (cell.count > 0) return <button aria-label={label} className={`h-3 w-3 rounded-sm p-0 focus:outline-2 focus:outline-offset-1 focus:outline-[var(--accent)] ${contributionTone(cell.count)}`} key={cell.key} title={label} type="button" />;
-            return <span aria-hidden="true" className={`h-3 w-3 rounded-sm ${contributionTone(0)}`} key={cell.key} title={label} />;
-          })}
+      <div className="mt-5 grid items-start gap-4 lg:grid-cols-[112px_minmax(0,1fr)]">
+        <nav aria-label={t("user.contributionYears")} className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+          {contribution.years.map((year) => <button
+            aria-pressed={year === contribution.year}
+            className={`focus-ring min-w-24 rounded-lg px-3 py-2 text-left text-sm font-bold transition ${year === contribution.year ? "bg-[var(--accent)] text-white" : "text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]"}`}
+            disabled={loading}
+            key={year}
+            type="button"
+            onClick={() => onYearChange(year)}
+          >{year}</button>)}
+        </nav>
+        <div className="min-w-0">
+          {message ? <p className="mb-3 rounded-lg border border-[var(--danger)] px-3 py-2 text-sm text-[var(--danger)]">{message}</p> : null}
+          <div className={`overflow-x-auto pb-2 transition-opacity ${loading ? "opacity-50" : ""}`} role="region" aria-busy={loading} aria-label={chartLabel} tabIndex={0}>
+            <div className="w-max">
+              <div className="relative mb-2 h-5" style={{ width: `${chartWidth}px` }}>
+                {monthLabels.map((month) => <span className="absolute top-0 whitespace-nowrap text-xs font-semibold text-[var(--muted)]" key={month.key} style={{ left: `${month.week * 15}px` }}>{month.label}</span>)}
+              </div>
+              <div className="grid w-max grid-flow-col grid-rows-7 gap-[3px]" style={{ gridAutoColumns: "12px" }}>
+                {cells.map((cell) => {
+                  if (cell.padding) return <span aria-hidden="true" className="h-3 w-3" key={cell.key} />;
+                  const label = t("user.contributionDateLabel", { count: cell.count, date: formatter.format(dateFromKey(cell.date)) });
+                  if (cell.count > 0) return <button aria-label={label} className={`h-3 w-3 rounded-sm p-0 focus:outline-2 focus:outline-offset-1 focus:outline-[var(--accent)] ${contributionTone(cell.count)}`} key={cell.key} title={label} type="button" />;
+                  return <span aria-hidden="true" className={`h-3 w-3 rounded-sm ${contributionTone(0)}`} key={cell.key} title={label} />;
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="mt-3 flex items-center justify-end gap-2 text-xs text-[var(--muted)]"><span>{t("user.less")}</span>{[0, 1, 3, 5, 8].map((count) => <span aria-hidden="true" className={`h-3 w-3 rounded-sm ${contributionTone(count)}`} key={count} />)}<span>{t("user.more")}</span></div>
         </div>
       </div>
-      <div className="mt-3 flex items-center justify-end gap-2 text-xs text-[var(--muted)]"><span>{t("user.less")}</span>{[0, 1, 3, 5, 8].map((count) => <span aria-hidden="true" className={`h-3 w-3 rounded-sm ${contributionTone(count)}`} key={count} />)}<span>{t("user.more")}</span></div>
+      <div className="mt-8 border-t border-[var(--line)] pt-6">
+        <h3 className="text-lg font-black">{t("user.recentContributionActivity")}</h3>
+        <p className="mt-1 text-sm text-[var(--muted)]">{t("user.recentContributionActivityDescription")}</p>
+        {activityGroups.length ? <div className="mt-5 grid gap-6">{activityGroups.map((group) => <section key={group.key}>
+          <div className="flex items-center gap-4"><h4 className="shrink-0 text-sm font-black">{group.label}</h4><span aria-hidden="true" className="h-px flex-1 bg-[var(--line)]" /></div>
+          <div className="ml-3 mt-3 grid border-l-2 border-[var(--line)] pl-6">{group.items.map((item) => <ContributionActivityRow item={item} key={item.id} />)}</div>
+        </section>)}</div> : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("user.noRecentContributionActivity")}</p>}
+        {contribution.recentActivityTruncated ? <p className="mt-3 text-xs text-[var(--muted)]">{t("user.recentContributionActivityTruncated")}</p> : null}
+      </div>
       <ul className="sr-only">{active.map((cell) => <li key={cell.date}>{t("user.contributionDateLabel", { count: cell.count, date: formatter.format(dateFromKey(cell.date)) })}</li>)}</ul>
     </section>
   );
+}
+
+function ContributionActivityRow({ item }: { item: ContributionActivity }) {
+  const { locale, t } = useI18n();
+  const date = new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(item.occurredAt));
+  const name = item.href
+    ? <Link className="font-bold text-[var(--accent)] hover:underline" href={item.href}>{item.name}</Link>
+    : <strong>{item.name}</strong>;
+  return <div className="relative grid gap-1 border-b border-[var(--line)] py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+    <span aria-hidden="true" className="absolute -left-[35px] top-4 grid h-5 w-5 place-items-center rounded-full border-2 border-[var(--line)] bg-[var(--panel)] text-xs font-black text-[var(--accent)]">{item.action === "created" ? "+" : "✎"}</span>
+    <p className="min-w-0 text-sm"><span>{t(item.action === "created" ? "user.contributionCreated" : "user.contributionEdited")}</span>{" "}{name}<span className="ml-2 text-xs text-[var(--muted)]">{entityTypeLabel(item.entityType, t)}</span></p>
+    <time className="text-xs font-semibold text-[var(--muted)]" dateTime={item.occurredAt}>{date}</time>
+  </div>;
 }
 
 function contributionCells(contribution: ShowcasePayload["contributions"]) {
@@ -172,6 +272,42 @@ function contributionCells(contribution: ShowcasePayload["contributions"]) {
   return cells;
 }
 
+function contributionMonthLabels(contribution: ContributionsPayload, locale: string) {
+  const formatter = new Intl.DateTimeFormat(locale, { month: "short", timeZone: "UTC" });
+  const from = dateFromKey(contribution.from);
+  const to = dateFromKey(contribution.to);
+  const padding = from.getUTCDay();
+  const labels: Array<{ key: string; label: string; week: number }> = [];
+  let previousMonth = -1;
+  let dayIndex = 0;
+  for (let cursor = from; cursor <= to; cursor = new Date(cursor.getTime() + 86_400_000)) {
+    const month = cursor.getUTCMonth();
+    if (month !== previousMonth) {
+      labels.push({
+        key: cursor.toISOString().slice(0, 7),
+        label: formatter.format(cursor),
+        week: Math.floor((padding + dayIndex) / 7),
+      });
+      previousMonth = month;
+    }
+    dayIndex += 1;
+  }
+  return labels;
+}
+
+function groupContributionActivities(items: ContributionActivity[], locale: string) {
+  const formatter = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" });
+  const groups = new Map<string, { key: string; label: string; items: ContributionActivity[] }>();
+  for (const item of items) {
+    const date = new Date(item.occurredAt);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const group = groups.get(key) ?? { key, label: formatter.format(date), items: [] };
+    group.items.push(item);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
+
 function dateFromKey(value: string) {
   return new Date(`${value}T00:00:00Z`);
 }
@@ -184,8 +320,19 @@ function contributionTone(count: number) {
   return "bg-[var(--accent)]";
 }
 
+const showcaseTypeAliases: Record<string, string> = {
+  community_post: "communityPost",
+  minecraft_server: "server",
+  project_changelog: "changelog",
+  recipe_type: "recipeType",
+  recipe_template: "recipeTemplate",
+  resource_pack: "resourcePack",
+  shader_pack: "shaderPack",
+};
+const showcaseDirectTypes = new Set(["mod", "modpack", "plugin", "map", "datapack", "addon", "blueprint", "skin", "tutorial", "issue", "news", "discussion", "resource", "recipe", "tag"]);
+
 function entityTypeLabel(entityType: string, t: (key: string, params?: Record<string, string | number>) => string) {
-  const key = entityType === "resource_pack" ? "resourcePack" : entityType === "shader_pack" ? "shaderPack" : entityType;
+  const key = showcaseTypeAliases[entityType] ?? (showcaseDirectTypes.has(entityType) ? entityType : "other");
   return t(`user.showcaseTypes.${key}`);
 }
 
