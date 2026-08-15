@@ -54,9 +54,18 @@ export async function backendFetch(input: RequestInfo | URL, init?: RequestInit)
     reportBackendAvailability(![502, 503, 504].includes(response.status));
     return response;
   } catch (error) {
-    reportBackendAvailability(false);
+    // Effect cleanup and route changes intentionally abort obsolete requests.
+    // An AbortError says nothing about backend health and must not raise the
+    // global outage banner.
+    if (!isAbortError(error)) {
+      reportBackendAvailability(false);
+    }
     throw error;
   }
+}
+
+function isAbortError(error: unknown) {
+  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 }
 
 function clearExpiredAuth() {

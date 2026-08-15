@@ -41,24 +41,34 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
   const [queryDraft, setQueryDraft] = useState(searchParams.get("q") ?? "");
   const [notice, setNotice] = useState("");
   const paramsKey = searchParams.toString();
+  const defaultExpandedGroupsKey = JSON.stringify(options.defaultExpandedGroups);
+  const filterParamsKey = JSON.stringify(options.filterParams);
+  const sortOptionsKey = JSON.stringify(options.sortOptions);
 
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setPreferences(readCatalogPreferences(options.preferenceStorageKey, options.sortOptions, options.defaultSort));
-      setExpandedGroups(readStoredStringSet(options.expandedStorageKey, [...options.defaultExpandedGroups]));
+      setPreferences(readCatalogPreferences(
+        options.preferenceStorageKey,
+        JSON.parse(sortOptionsKey) as TSort[],
+        options.defaultSort,
+      ));
+      setExpandedGroups(readStoredStringSet(
+        options.expandedStorageKey,
+        JSON.parse(defaultExpandedGroupsKey) as string[],
+      ));
     });
     return () => { cancelled = true; };
-  }, [options.defaultExpandedGroups, options.defaultSort, options.expandedStorageKey, options.preferenceStorageKey, options.sortOptions]);
+  }, [defaultExpandedGroupsKey, options.defaultSort, options.expandedStorageKey, options.preferenceStorageKey, sortOptionsKey]);
 
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
-      if (!cancelled) setQueryDraft(searchParams.get("q") ?? "");
+      if (!cancelled) setQueryDraft(new URLSearchParams(paramsKey).get("q") ?? "");
     });
     return () => { cancelled = true; };
-  }, [paramsKey, searchParams]);
+  }, [paramsKey]);
 
   useEffect(() => {
     if (!mobileFiltersOpen) return;
@@ -74,24 +84,26 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
   }, [notice]);
 
   const replaceParams = useCallback((updates: Record<string, CatalogParamValue>, resetPage = true) => {
-    const next = new URLSearchParams(searchParams.toString());
+    const next = new URLSearchParams(paramsKey);
     for (const [key, value] of Object.entries(updates)) {
       if (value === null || value === "" || (Array.isArray(value) && value.length === 0)) next.delete(key);
       else next.set(key, Array.isArray(value) ? value.join(",") : String(value));
     }
     if (resetPage && !("page" in updates)) next.delete("page");
     const query = next.toString();
+    if (query === paramsKey) return;
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
-  }, [pathname, router, searchParams]);
+  }, [paramsKey, pathname, router]);
 
   const toggleListParam = useCallback((key: string, value: string) => {
-    const current = readCatalogList(searchParams, key);
+    const current = readCatalogList(new URLSearchParams(paramsKey), key);
     replaceParams({ [key]: current.includes(value) ? current.filter((item) => item !== value) : [...current, value] });
-  }, [replaceParams, searchParams]);
+  }, [paramsKey, replaceParams]);
 
   const clearFilters = useCallback(() => {
-    replaceParams(Object.fromEntries(options.filterParams.map((key) => [key, null])));
-  }, [options.filterParams, replaceParams]);
+    const filterParams = JSON.parse(filterParamsKey) as string[];
+    replaceParams(Object.fromEntries(filterParams.map((key) => [key, null])));
+  }, [filterParamsKey, replaceParams]);
 
   const submitSearch = useCallback((event: FormEvent) => {
     event.preventDefault();
