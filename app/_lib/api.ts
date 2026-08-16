@@ -5,17 +5,26 @@ export const API_BASE_URL =
 
 export class ApiError extends Error {
   status: number;
+  code: string;
+  retryAfter: number;
+  details?: unknown;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code = "", retryAfter = 0, details?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
+    this.retryAfter = retryAfter;
+    this.details = details;
   }
 }
 
 type ApiEnvelope<T> = {
   data?: T;
   error?: string;
+  code?: string;
+  retryAfter?: number;
+  details?: unknown;
 };
 
 export async function apiRequest<T>(
@@ -27,6 +36,10 @@ export async function apiRequest<T>(
   headers.set("Content-Type", "application/json");
   if (isBearerAccessToken(token)) {
     headers.set("Authorization", `Bearer ${token}`);
+  }
+  if (typeof window !== "undefined" && isMutation(options.method)) {
+    headers.set("X-Client-ID", browserClientID());
+    if (!headers.has("X-Request-ID")) headers.set("X-Request-ID", globalThis.crypto?.randomUUID?.() ?? `request-${Date.now()}`);
   }
 
   const response = await backendFetch(`${API_BASE_URL}${path}`, {
@@ -40,7 +53,7 @@ export async function apiRequest<T>(
     if (response.status === 401 && typeof window !== "undefined") {
       clearExpiredAuth();
     }
-    throw new ApiError(envelope.error ?? "请求失败", response.status);
+    throw new ApiError(envelope.error ?? "请求失败", response.status, envelope.code, envelope.retryAfter, envelope.details);
   }
   if (typeof envelope.data === "undefined") {
     throw new ApiError("接口响应为空", response.status);
@@ -62,6 +75,19 @@ export async function backendFetch(input: RequestInfo | URL, init?: RequestInit)
     }
     throw error;
   }
+}
+
+function isMutation(method?: string) {
+  return Boolean(method && !["GET", "HEAD", "OPTIONS"].includes(method.toUpperCase()));
+}
+
+function browserClientID() {
+  const storageKey = "mcmods-client-id";
+  const existing = window.localStorage.getItem(storageKey);
+  if (existing) return existing;
+  const value = globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  window.localStorage.setItem(storageKey, value);
+  return value;
 }
 
 function isAbortError(error: unknown) {

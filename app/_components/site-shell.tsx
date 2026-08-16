@@ -39,15 +39,15 @@ const navItems: HeaderNavItem[] = [
   { labelKey: "nav.maps", href: "/maps" },
   { labelKey: "nav.resourcePacks", href: "/resource-packs" },
   { labelKey: "nav.shaders", href: "/shaders" },
-  { labelKey: "nav.skins", href: "/skins" },
-  { labelKey: "nav.blueprints", href: "/blueprints" },
   { labelKey: "nav.authors", href: "/authors" },
   { labelKey: "nav.tutorials", href: "/tutorials" },
   { labelKey: "nav.issues", href: "/issues" },
   { labelKey: "nav.news", href: "/news" },
   { labelKey: "nav.discussions", href: "/discussions" },
-  { labelKey: "nav.tools", href: "/tools" },
   { labelKey: "nav.servers", href: "/servers" },
+  { labelKey: "nav.skins", href: "/skins" },
+  { labelKey: "nav.blueprints", href: "/blueprints" },
+  { labelKey: "nav.tools", href: "/tools" },
 ];
 
 export function SiteShell({ children }: SiteShellProps) {

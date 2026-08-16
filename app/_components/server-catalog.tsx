@@ -24,13 +24,13 @@ import {
   CatalogRadioList,
   CatalogPagination,
 } from "./catalog-list-ui";
+import { CatalogMinecraftVersionFilter } from "./catalog-minecraft-version-filter";
 import {
   modIdentifierFromResource,
   ModResourceSelectionField,
   unresolvedModResource,
 } from "./editor/mod-resource-picker";
 import { MinecraftLanguagePicker } from "./minecraft-language-picker";
-import { MinecraftVersionPicker } from "./minecraft-version-picker";
 
 const serverPageSizes = [20, 40, 60];
 const serverSortOptions = ["heat", "updated", "nameAsc", "nameDesc"] as const;
@@ -112,6 +112,7 @@ export function ServerCatalog() {
       tag: null,
       language: null,
       version: null,
+      versionMode: null,
       mods: null,
       modded: null,
       online: null,
@@ -278,6 +279,7 @@ function ServerFilters({
     ...(params.get("online") === "true" ? ["online"] : []),
     ...(params.get("modded") === "true" ? ["modded"] : []),
   ];
+  const selectedVersions = parseCatalogValues(params.get("version"));
   return (
     <CatalogFilterPanel
       clearLabel={t("servers.clearFilters")}
@@ -288,6 +290,14 @@ function ServerFilters({
       onClose={onClose}
       onShowResults={onClose}
     >
+      <CatalogFilterGroup label={t("servers.filters.version")}>
+        <CatalogMinecraftVersionFilter
+          values={selectedVersions}
+          versionMode={params.get("versionMode") === "all" ? "all" : "any"}
+          onChange={(versions) => onChange({ version: versions.length ? versions.join(",") : null })}
+          onVersionModeChange={(mode) => onChange({ versionMode: mode === "any" ? null : mode })}
+        />
+      </CatalogFilterGroup>
       <CatalogFilterGroup label={t("servers.filters.category")}>
         <CatalogRadioList
           options={["", ...serverPrimaryTags]}
@@ -302,13 +312,6 @@ function ServerFilters({
           selected={selectedStatuses}
           label={(status) => t(status === "online" ? "servers.online" : "servers.modded")}
           onToggle={(status) => onChange({ [status]: params.get(status) === "true" ? null : "true" })}
-        />
-      </CatalogFilterGroup>
-      <CatalogFilterGroup label={t("servers.filters.version")}>
-        <MinecraftVersionPicker
-          multiple={false}
-          values={params.get("version") ? [params.get("version") ?? ""] : []}
-          onChange={(versions) => onChange({ version: versions[0] || null })}
         />
       </CatalogFilterGroup>
       <CatalogFilterGroup label={t("servers.filters.mods")}>
@@ -403,5 +406,12 @@ function parseModIdentifiers(value: string | null) {
   return [...new Set((value ?? "")
     .split(",")
     .map((identifier) => identifier.trim().toLowerCase())
+    .filter(Boolean))];
+}
+
+function parseCatalogValues(value: string | null) {
+  return [...new Set((value ?? "")
+    .split(",")
+    .map((item) => item.trim())
     .filter(Boolean))];
 }

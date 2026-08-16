@@ -4,9 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
-import { communityPostCollection, communityPostCoverURL, loadCommunityPosts, type CommunityPost, type CommunityPostKind, type CommunityPostReference } from "../_lib/community-post-api";
+import { communityPostCollection, communityPostCoverURL, communityProjectTypes, loadCommunityPosts, type CommunityPost, type CommunityPostKind, type CommunityPostReference, type CommunityProjectType } from "../_lib/community-post-api";
 import { type CatalogPreferences, useCatalogControls } from "../_lib/catalog-state";
 import { catalogResourceIconURL } from "../_lib/editor-api";
+import type { CatalogResourceRef } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
 import { modExportAssetURL } from "../_lib/mod-export-api";
 import {
@@ -19,11 +20,12 @@ import {
   CatalogPagination,
   CatalogRadioList,
 } from "./catalog-list-ui";
-import { MinecraftVersionPicker } from "./minecraft-version-picker";
+import { CatalogMinecraftVersionFilter } from "./catalog-minecraft-version-filter";
+import { ModResourceSelectionField } from "./editor/mod-resource-picker";
 
 type CommunityCatalogSort = "latest" | "updated" | "oldest";
 const communityCatalogSorts: CommunityCatalogSort[] = ["latest", "updated", "oldest"];
-const communityFilterParams = ["category", "version"];
+const communityFilterParams = ["version", "versionMode", "project", "category"];
 
 export function CommunityPostCatalog({ kind }: { kind: CommunityPostKind }) {
   return <Suspense fallback={<CatalogPageFallback />}><CommunityPostCatalogContent kind={kind} /></Suspense>;
@@ -46,7 +48,7 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
     preferenceStorageKey: `mcmods-community-${kind}-catalog-preferences`,
     expandedStorageKey: `mcmods-community-${kind}-catalog-groups`,
     filterParams: communityFilterParams,
-    defaultExpandedGroups: ["category", "version"],
+    defaultExpandedGroups: ["version", "project", "category"],
     sortOptions: communityCatalogSorts,
     defaultSort: "latest",
     onPageChange: () => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
@@ -61,6 +63,8 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
       query: filters.query,
       category: filters.category,
       versions: filters.versions,
+      versionMode: filters.versionMode,
+      projects: filters.projects,
       sort: filters.sort,
       limit: filters.pageSize,
       offset: (filters.page - 1) * filters.pageSize,
@@ -76,7 +80,7 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
       .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : String(error)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [filters.category, filters.page, filters.pageSize, filters.query, filters.sort, filters.versions, kind, reload, token]);
+  }, [filters.category, filters.page, filters.pageSize, filters.projects, filters.query, filters.sort, filters.versionMode, filters.versions, kind, reload, token]);
 
   const pages = Math.max(1, Math.ceil(total / filters.pageSize));
   const canCreate = hasPermission(user, `community.${kind}.create`);
@@ -89,12 +93,24 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
     onClose={onClose}
     onShowResults={onClose}
   >
+    {kind !== "news" ? <CatalogFilterGroup label={t("communityPosts.fields.minecraftVersions")}>
+      <CatalogMinecraftVersionFilter
+        values={filters.versions}
+        versionMode={filters.versionMode}
+        onChange={(versions) => replaceParams({ version: versions })}
+        onVersionModeChange={(mode) => replaceParams({ versionMode: mode === "any" ? null : mode })}
+      />
+    </CatalogFilterGroup> : null}
+    <CatalogFilterGroup label={t("communityPosts.fields.projects")}>
+      <CommunityProjectCatalogFilter
+        projectRefs={filters.projects}
+        token={token}
+        onChange={(projects) => replaceParams({ project: projects })}
+      />
+    </CatalogFilterGroup>
     <CatalogFilterGroup label={t("communityPosts.fields.category")}>
       <CatalogRadioList options={["", ...categories]} selected={filters.category} label={(category) => category ? t(`communityPosts.categories.${kind}.${category}`) : t("common.all")} onChange={(category) => replaceParams({ category: category || null })} />
     </CatalogFilterGroup>
-    {kind !== "news" ? <CatalogFilterGroup label={t("communityPosts.fields.minecraftVersions")}>
-      <MinecraftVersionPicker values={filters.versions} onChange={(versions) => replaceParams({ version: versions })} />
-    </CatalogFilterGroup> : null}
   </CatalogFilterPanel>;
 
   return <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -126,9 +142,69 @@ function parseCommunityFilters(params: URLSearchParams, preferences: CatalogPref
     query: params.get("q")?.trim() ?? "",
     category: params.get("category") ?? "",
     versions: (params.get("version") ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+    versionMode: params.get("versionMode") === "all" ? "all" as const : "any" as const,
+    projects: parseCommunityProjectFilters(params.get("project")),
     sort: requestedSort && communityCatalogSorts.includes(requestedSort) ? requestedSort : preferences.sort,
     page: Math.max(1, Number(params.get("page")) || 1),
     pageSize: [20, 40, 60].includes(Number(params.get("size"))) ? Number(params.get("size")) : preferences.pageSize,
+  };
+}
+
+function parseCommunityProjectFilters(value: string | null) {
+  return [...new Set((value ?? "").split(",").map((item) => item.trim().toLowerCase()).filter((item) => {
+    const separator = item.indexOf(":");
+    if (separator <= 0 || separator === item.length - 1 || item.length > 80) return false;
+    return communityProjectTypes.includes(item.slice(0, separator) as CommunityProjectType);
+  }))].slice(0, 20);
+}
+
+function CommunityProjectCatalogFilter({ projectRefs, token, onChange }: { projectRefs: string[]; token: string; onChange: (values: string[]) => void }) {
+  const { t } = useI18n();
+  const projectRefsKey = projectRefs.join(",");
+  const [selectedProjects, setSelectedProjects] = useState<CatalogResourceRef[]>(() => projectRefs.map(projectFilterToResource));
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      const synchronizedRefs = projectRefsKey ? projectRefsKey.split(",") : [];
+      setSelectedProjects((current) => synchronizedRefs.map((projectRef) =>
+        current.find((resource) => resourceToProjectFilter(resource) === projectRef) ?? projectFilterToResource(projectRef)));
+    });
+    return () => { cancelled = true; };
+  }, [projectRefsKey]);
+
+  return <ModResourceSelectionField
+    buttonLabel={t("communityPosts.fields.selectProjects")}
+    emptyLabel={t("communityPosts.fields.projectsHint")}
+    projectTypes={communityProjectTypes}
+    token={token}
+    value={selectedProjects}
+    onChange={(resources) => {
+      setSelectedProjects(resources);
+      onChange(resources.map(resourceToProjectFilter).filter(Boolean));
+    }}
+  />;
+}
+
+function resourceToProjectFilter(resource: CatalogResourceRef) {
+  const type = communityProjectTypes.find((projectType) => projectType === resource.kind || projectType === resource.registry) ?? "mod";
+  const identity = (resource.unresolved ? resource.rawIdentifier || resource.id : resource.publicId || resource.id).trim().toLowerCase();
+  return identity ? `${type}:${identity}` : "";
+}
+
+function projectFilterToResource(projectRef: string): CatalogResourceRef {
+  const separator = projectRef.indexOf(":");
+  const type = projectRef.slice(0, separator) as CommunityProjectType;
+  const identity = projectRef.slice(separator + 1);
+  return {
+    publicId: identity,
+    id: identity,
+    registry: type,
+    kind: type,
+    names: {},
+    resolvedName: identity,
+    source: { publicId: identity, siteId: identity, name: identity },
   };
 }
 

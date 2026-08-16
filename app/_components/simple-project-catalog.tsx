@@ -35,8 +35,8 @@ import {
   CatalogPagination,
   CatalogRadioList,
 } from "./catalog-list-ui";
+import { CatalogMinecraftVersionFilter } from "./catalog-minecraft-version-filter";
 import { ProjectSubmissionModal } from "./project-submission-modal";
-import { MinecraftVersionPicker } from "./minecraft-version-picker";
 
 type CatalogSort = "relevance" | "heat" | "updated" | "nameAsc" | "nameDesc";
 type CatalogFilters = ReturnType<typeof parseFilters>;
@@ -44,7 +44,7 @@ const sortOptions: CatalogSort[] = ["relevance", "heat", "updated", "nameAsc", "
 const officialStatusOptions = ["active", "lowFrequency", "development", "discontinued", "archived"] as const;
 const sourceStatusOptions = ["open", "partial", "closed", "unknown"] as const;
 const updatedOptions = ["all", "week", "month", "quarter", "year", "stale"] as const;
-const filterParams = ["version", "loader", "category", "feature", "resolution", "performance", "mapSize", "parent", "status", "source", "license", "updated"];
+const filterParams = ["version", "versionMode", "loader", "category", "feature", "resolution", "performance", "mapSize", "parent", "status", "source", "license", "updated"];
 const defaultExpandedGroups = ["versions", "loaders", "categories", "selector", "features", "parentProjects", "status", "source", "updated"];
 
 export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProjectType }) {
@@ -260,7 +260,12 @@ function ProjectFilterPanel({ config, expandedGroups, filters, options, resultCo
     onShowResults={onClose ?? undefined}
   >
     <FilterGroup group="versions" label={t("largeProjects.fields.minecraftVersions")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <MinecraftVersionPicker values={filters.versions} onChange={(versions) => onParamChange({ version: versions })} />
+      <CatalogMinecraftVersionFilter
+        values={filters.versions}
+        versionMode={filters.versionMode}
+        onChange={(versions) => onParamChange({ version: versions })}
+        onVersionModeChange={(mode) => onParamChange({ versionMode: mode === "any" ? null : mode })}
+      />
     </FilterGroup>
     {options.loaders.length ? <FilterGroup group="loaders" label={t("largeProjects.fields.loaders")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
       <CatalogOptionList options={options.loaders} selected={filters.loaders} label={(value) => optionLabel(value, t)} onToggle={(value) => onToggleList("loader", value)} />
@@ -372,6 +377,7 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<C
   return {
     query: params.get("q")?.trim() ?? "",
     versions: readList(params, "version"),
+    versionMode: params.get("versionMode") === "all" ? "all" as const : "any" as const,
     loaders: readList(params, "loader"),
     categories: readList(params, "category"),
     features: readList(params, "feature"),

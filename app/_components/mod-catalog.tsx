@@ -44,7 +44,8 @@ import {
   CatalogPagination,
   CatalogRadioList,
 } from "./catalog-list-ui";
-import { MinecraftVersionPicker, useMinecraftVersionConfig } from "./minecraft-version-picker";
+import { CatalogMinecraftVersionFilter } from "./catalog-minecraft-version-filter";
+import { useMinecraftVersionConfig } from "./minecraft-version-picker";
 
 type CatalogFilters = ReturnType<typeof parseFilters>;
 
@@ -387,19 +388,13 @@ function FilterPanel({
     >
 
       <CatalogFilterGroup group="versions" label={t("mods.groups.versions")} expanded={expandedGroups.has("versions")} onToggle={onGroupToggle}>
-        <div className="mb-3 grid grid-cols-2 rounded-lg border border-[var(--line)] p-1">
-          {(["any", "all"] as const).map((mode) => (
-            <button key={mode} className={`focus-ring rounded-md px-2 py-1.5 text-xs font-bold ${filters.versionMode === mode ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`} type="button" onClick={() => onParamChange({ versionMode: mode === "any" ? null : mode })}>
-              {t(`mods.versionMode.${mode}`)}
-            </button>
-          ))}
-        </div>
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {(minecraftVersionConfig.commonVersions ?? []).map((version) => (
-            <button key={version} className={`focus-ring rounded-md border px-2 py-1 text-xs font-bold ${filters.versions.includes(version) ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--line)]"}`} type="button" onClick={() => onToggleList("version", version)}>{version}</button>
-          ))}
-        </div>
-        <MinecraftVersionPicker config={minecraftVersionConfig} values={filters.versions} onChange={(versions) => onParamChange({ version: versions })} />
+        <CatalogMinecraftVersionFilter
+          config={minecraftVersionConfig}
+          values={filters.versions}
+          versionMode={filters.versionMode}
+          onChange={(versions) => onParamChange({ version: versions })}
+          onVersionModeChange={(mode) => onParamChange({ versionMode: mode === "any" ? null : mode })}
+        />
       </CatalogFilterGroup>
 
       <CatalogFilterGroup group="loaders" label={t("mods.groups.loaders")} expanded={expandedGroups.has("loaders")} onToggle={onGroupToggle}>

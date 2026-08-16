@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
+import { ApiError } from "../_lib/api";
+import { challengeFromDetails, loadAntiAbuseFormToken, type AntiAbuseChallenge, type AntiAbuseFormToken } from "../_lib/anti-abuse-api";
 import {
   CommentItem,
   CommentTarget,
@@ -17,11 +19,13 @@ import {
   setCommentReaction,
   setCommentWatch,
   updateComment,
+  targetCommentsPath,
 } from "../_lib/comment-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { UserCardAvatar } from "./user-avatar";
+import { AntiAbuseChallengeDialog } from "./anti-abuse-challenge";
 
 const reactionOptions = [
   ["thumbs_up", "👍"], ["thumbs_down", "👎"], ["laugh", "😄"], ["hooray", "🎉"],
@@ -51,6 +55,40 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [canCreate, setCanCreate] = useState(false);
+  const [formTokens, setFormTokens] = useState<Partial<Record<"comment.create" | "comment.reply", AntiAbuseFormToken>>>({});
+  const [honeypot, setHoneypot] = useState("");
+  const [challenge, setChallenge] = useState<{ value: AntiAbuseChallenge; content: string; parentId?: string; idempotencyKey: string } | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+  const commentsPath = useMemo(() => targetCommentsPath(targetType, targetKey), [targetKey, targetType]);
+
+  const refreshFormToken = useCallback(async (action: "comment.create" | "comment.reply") => {
+    if (!token) return;
+    try {
+      const value = await loadAntiAbuseFormToken(action, commentsPath, token);
+      setFormTokens((current) => ({ ...current, [action]: value }));
+    } catch {
+      // A missing form token is a risk signal, not a hard dependency. The
+      // backend can still use account, rate, content and challenge signals.
+    }
+  }, [commentsPath, token]);
+
+  useEffect(() => {
+    if (!user || !canCreate) return;
+    const timer = window.setTimeout(() => void refreshFormToken("comment.create"), 0);
+    return () => window.clearTimeout(timer);
+  }, [canCreate, refreshFormToken, user]);
+
+  useEffect(() => {
+    if (!replyTo) return;
+    const timer = window.setTimeout(() => void refreshFormToken("comment.reply"), 0);
+    return () => window.clearTimeout(timer);
+  }, [refreshFormToken, replyTo]);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = window.setInterval(() => setCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldown]);
 
   const load = useCallback(async (cursor = "", append = false) => {
     setLoading(true);
@@ -74,18 +112,25 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
     return () => window.clearTimeout(timer);
   }, [load, ready]);
 
-  async function publish(event: FormEvent, content: string, parentId?: string) {
-    event.preventDefault();
+  async function submitComment(content: string, parentId?: string, challengeProof = "", idempotencyKey = globalThis.crypto?.randomUUID?.() || `comment-${Date.now()}-${Math.random()}`) {
     if (!token) {
       setMessage(t("mods.comments.loginRequired"));
       return;
     }
     setSubmitting(true);
     setMessage("");
+    const action = parentId ? "comment.reply" : "comment.create";
     try {
-      const result = await createComment(targetType, targetKey, content, parentId, token);
+      const result = await createComment(targetType, targetKey, content, parentId, token, {
+        idempotencyKey,
+        formToken: challengeProof ? undefined : formTokens[action]?.token,
+        honeypot,
+        challengeProof,
+      });
       if ("watchOnly" in result) {
         setMessage(t("mods.comments.cyWatched"));
+      } else if ("moderation" in result) {
+        setMessage("评论已提交并进入审核，通过后会公开显示。");
       } else {
         setItems((current) => appendPublishedComment(current, result));
         setTotal((current) => current + 1);
@@ -93,11 +138,28 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       setBody("");
       setReplyBody("");
       setReplyTo(null);
+      setChallenge(null);
+      setHoneypot("");
+      void refreshFormToken(action);
     } catch (error) {
+      if (error instanceof ApiError && error.code === "challenge_required") {
+        const value = challengeFromDetails(error.details);
+        if (value) {
+          setChallenge({ value, content, parentId, idempotencyKey });
+          setMessage("检测到异常提交节奏，需要先完成人机验证。你的内容已保留。");
+          return;
+        }
+      }
+      if (error instanceof ApiError && error.retryAfter > 0) setCooldown(error.retryAfter);
       setMessage(error instanceof Error ? error.message : t("mods.comments.publishFailed"));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function publish(event: FormEvent, content: string, parentId?: string) {
+    event.preventDefault();
+    await submitComment(content, parentId);
   }
 
   return (
@@ -121,9 +183,10 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       {user && canCreate ? (
         <form className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => void publish(event, body)}>
           <textarea className="field min-h-28 resize-y" maxLength={10000} required value={body} placeholder={t("mods.comments.placeholder")} onChange={(event) => setBody(event.target.value)} />
+          <input aria-hidden="true" autoComplete="off" className="absolute -left-[10000px] h-px w-px opacity-0" name={formTokens["comment.create"]?.fieldName || "contact_reference"} tabIndex={-1} value={honeypot} onChange={(event) => setHoneypot(event.target.value)} />
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span>
-            <button className="button-primary focus-ring" disabled={submitting} type="submit">{t("mods.comments.publish")}</button>
+            <button className="button-primary focus-ring" disabled={submitting || cooldown > 0} type="submit">{cooldown > 0 ? `${cooldown} 秒后重试` : t("mods.comments.publish")}</button>
           </div>
         </form>
       ) : !user ? (
@@ -131,6 +194,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       ) : <p className="mt-5 text-sm font-bold text-[var(--muted)]">{t("mods.comments.noCreatePermission")}</p>}
 
       {message ? <p className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-sm font-bold">{message}</p> : null}
+      {challenge ? <AntiAbuseChallengeDialog challenge={challenge.value} busy={submitting} onCancel={() => setChallenge(null)} onSubmit={(proof) => void submitComment(challenge.content, challenge.parentId, proof, challenge.idempotencyKey)} /> : null}
       <CommentTree
         items={items}
         loading={loading}

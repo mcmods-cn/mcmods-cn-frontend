@@ -11,11 +11,6 @@ const tools = [
     accent: "bg-emerald-500",
   },
   {
-    key: "drawio",
-    href: "/tools/drawio",
-    accent: "bg-sky-500",
-  },
-  {
     key: "permissions",
     href: "/permissions/compare",
     accent: "bg-amber-600",

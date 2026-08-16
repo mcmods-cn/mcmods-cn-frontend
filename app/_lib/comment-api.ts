@@ -74,7 +74,7 @@ export type CommentWatchListItem = {
   lastActivityAt: string;
 };
 
-function targetCommentsPath(targetType: CommentTargetType, targetKey: string) {
+export function targetCommentsPath(targetType: CommentTargetType, targetKey: string) {
   return `/api/v1/comment-targets/${encodeURIComponent(targetType)}/${encodeURIComponent(targetKey)}/comments`;
 }
 
@@ -97,14 +97,19 @@ export function createComment(
   body: string,
   parentId: string | undefined,
   token: string,
+  antiAbuse: { idempotencyKey: string; formToken?: string; honeypot?: string; challengeProof?: string },
 ) {
-  const idempotencyKey = globalThis.crypto?.randomUUID?.() || `comment-${Date.now()}-${Math.random()}`;
-  return apiRequest<CommentItem | { watchOnly: true; watch: CommentWatchState }>(
+  return apiRequest<CommentItem | { watchOnly: true; watch: CommentWatchState } | { id: string; status: "pending"; moderation: true }>(
     targetCommentsPath(targetType, targetKey),
     {
       method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify({ body, parentId, idempotencyKey }),
+      headers: {
+        "Idempotency-Key": antiAbuse.idempotencyKey,
+        ...(antiAbuse.formToken ? { "X-Anti-Abuse-Form": antiAbuse.formToken } : {}),
+        ...(antiAbuse.honeypot ? { "X-Anti-Abuse-Trap": antiAbuse.honeypot } : {}),
+        ...(antiAbuse.challengeProof ? { "X-Anti-Abuse-Challenge": antiAbuse.challengeProof } : {}),
+      },
+      body: JSON.stringify({ body, parentId, idempotencyKey: antiAbuse.idempotencyKey }),
     },
     token,
   );

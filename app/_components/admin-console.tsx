@@ -37,6 +37,7 @@ import { AdminDashboardPanel, type AdminDashboardData } from "./admin-dashboard-
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
 import { AdminActivityRetentionPanel } from "./admin-activity-retention-panel";
+import { AdminAntiAbusePanel } from "./admin-anti-abuse-panel";
 
 type PanelId =
   | "overview"
@@ -49,6 +50,7 @@ type PanelId =
   | "permission-settings"
   | "creator-claims"
   | "activity-monitor"
+  | "anti-abuse"
   | "economy-config"
   | "currencies"
   | "shop-items"
@@ -464,7 +466,7 @@ const adminNavGroups: Array<{
   {
     id: "monitoring",
     label: "",
-    items: [{ id: "activity-monitor", label: "", description: "" }],
+    items: [{ id: "activity-monitor", label: "", description: "" }, { id: "anti-abuse", label: "", description: "" }],
   },
   {
     id: "oss",
@@ -975,6 +977,7 @@ export function AdminConsole() {
           {activePanel === "permission-settings" ? <PermissionSettingsPanel catalog={catalog} token={auth.token} /> : null}
           {activePanel === "creator-claims" ? <CreatorClaimsPanel token={auth.token} /> : null}
           {activePanel === "activity-monitor" ? <ActivityMonitorPanel token={auth.token} /> : null}
+          {activePanel === "anti-abuse" ? <AdminAntiAbusePanel token={auth.token} /> : null}
           {activePanel === "economy-config" ? <EconomyConfigPanel token={auth.token} /> : null}
           {activePanel === "currencies" ? <CurrencyManagementPanel token={auth.token} /> : null}
           {activePanel === "shop-items" ? <ShopManagementPanel token={auth.token} /> : null}
@@ -5411,6 +5414,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "permission-settings": t("admin.permissionSettings.title"),
     "creator-claims": t("admin.community.creatorClaims"),
     "activity-monitor": t("admin.community.activity"),
+    "anti-abuse": "反机器人与反滥用",
     "economy-config": t("admin.community.economyConfig"),
     currencies: t("admin.community.currencies"),
     "shop-items": t("admin.community.shopItems"),
@@ -5489,6 +5493,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "permission-settings": t("admin.permissionSettings.navDescription"),
     "creator-claims": t("admin.community.creatorClaimsDescription"),
     "activity-monitor": t("admin.community.activityDescription"),
+    "anti-abuse": "风险事件、分层限流、用户限制和只读机器人规则",
     "economy-config": t("admin.community.economyConfigDescription"),
     currencies: t("admin.community.currenciesDescription"),
     "shop-items": t("admin.community.shopItemsDescription"),
