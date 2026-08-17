@@ -85,6 +85,7 @@ export type RecipeRecord = {
   templatePublicId: string;
   sourceVersionPublicId?: string;
   sourceVersion?: RecipeSourceVersionOption;
+  applicableVersionIds: string[];
   canonicalSourceId: string;
   definition?: Record<string, unknown>;
   bindings: Record<string, RecipeBinding>;
@@ -114,6 +115,7 @@ export type RecipeMutation = {
   recipeTypePublicId: string;
   templatePublicId: string;
   sourceVersionPublicId?: string;
+  applicableVersionIds: string[];
   canonicalSourceId: string;
   definition: Record<string, unknown>;
   bindings: Record<string, {

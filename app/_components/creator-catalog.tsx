@@ -4,14 +4,20 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
+import { type CatalogSortDirection, type CatalogSortField, coreCatalogSortFields } from "../_lib/catalog-sort";
 import { CreatorKind, CreatorSummary, creatorHref } from "../_lib/community-api";
 import { useI18n } from "../_lib/i18n-provider";
+import { CatalogHero, CatalogSortControl } from "./catalog-list-ui";
+
+const creatorSortFields: CatalogSortField[] = [...coreCatalogSortFields, "relevance", "name"];
 
 export function CreatorCatalog() {
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
   const [kind, setKind] = useState<"" | CreatorKind>("");
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<CatalogSortField>("name");
+  const [sortDirection, setSortDirection] = useState<CatalogSortDirection>("asc");
   const [items, setItems] = useState<CreatorSummary[]>([]);
   const [counts, setCounts] = useState({ author: 0, team: 0 });
   const [loading, setLoading] = useState(true);
@@ -24,6 +30,8 @@ export function CreatorCatalog() {
       const params = new URLSearchParams({ limit: "100" });
       if (kind) params.set("kind", kind);
       if (query.trim()) params.set("query", query.trim());
+      params.set("sort", sort);
+      params.set("order", sortDirection);
       apiRequest<{ items: CreatorSummary[]; counts?: { author: number; team: number } }>(`/api/v1/creators?${params}`, {}, token || undefined)
         .then((result) => {
           if (!cancelled) {
@@ -50,31 +58,28 @@ export function CreatorCatalog() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [kind, query, t, token]);
+  }, [kind, query, sort, sortDirection, t, token]);
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <section className="border-b border-[var(--line)] bg-[var(--panel)]">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-end justify-between gap-5 px-4 py-8">
-          <div>
-            <p className="text-sm font-black text-[var(--accent)]">{t("creators.kicker")}</p>
-            <h1 className="mt-2 text-3xl font-black">{t("creators.title")}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("creators.description")}</p>
+      <CatalogHero
+        actions={token ? <Link className="button-primary focus-ring" href="/authors/new">+ {t("creators.create")}</Link> : null}
+        description={t("creators.description")}
+        kicker={t("creators.kicker")}
+        title={t("creators.title")}
+      >
+          <div className="grid gap-2 lg:grid-cols-[auto_minmax(260px,1fr)_minmax(280px,auto)]">
+            <div className="flex h-12 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--background)] p-1">
+              <FilterButton active={kind === ""} onClick={() => setKind("")}>{t("creators.allKinds")}</FilterButton>
+              <FilterButton active={kind === "author"} onClick={() => setKind("author")}>{t("creators.kinds.author")} {counts.author}</FilterButton>
+              <FilterButton active={kind === "team"} onClick={() => setKind("team")}>{t("creators.kinds.team")} {counts.team}</FilterButton>
+            </div>
+            <input className="field h-12" value={query} placeholder={t("creators.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
+            <CatalogSortControl className="min-h-12 lg:flex-nowrap" direction={sortDirection} field={sort} fields={creatorSortFields} onDirectionChange={setSortDirection} onFieldChange={setSort} />
           </div>
-          {token ? <Link className="button-primary focus-ring" href="/authors/new">+ {t("creators.create")}</Link> : null}
-        </div>
-      </section>
+      </CatalogHero>
 
       <section className="mx-auto max-w-7xl px-4 py-6">
-        <div className="grid gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 md:grid-cols-[auto_minmax(260px,1fr)]">
-          <div className="flex overflow-x-auto rounded-lg border border-[var(--line)] p-1">
-            <FilterButton active={kind === ""} onClick={() => setKind("")}>{t("creators.allKinds")}</FilterButton>
-            <FilterButton active={kind === "author"} onClick={() => setKind("author")}>{t("creators.kinds.author")} {counts.author}</FilterButton>
-            <FilterButton active={kind === "team"} onClick={() => setKind("team")}>{t("creators.kinds.team")} {counts.team}</FilterButton>
-          </div>
-          <input className="field" value={query} placeholder={t("creators.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
-        </div>
-
         {message ? <p className="mt-4 rounded-lg border border-[var(--red)] p-4 font-bold text-[var(--red)]">{message}</p> : null}
         {loading ? <p className="py-16 text-center font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
         {!loading && !items.length ? <p className="py-16 text-center text-[var(--muted)]">{t("creators.noResults")}</p> : null}

@@ -95,3 +95,28 @@ function localizations(value: unknown): CatalogEditorLocalization[] {
 function reviewStatus(value: unknown) {
   return value === "pending" || value === "approved" || value === "rejected" ? value : undefined;
 }
+
+export type GlobalResourceBinding = {
+  resourceName: string;
+  projectId: string;
+  projectSiteId: string;
+  projectName: string;
+  projectType: string;
+  versionId: string;
+  versionLabel: string;
+  minecraftVersions: string[];
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function loadGlobalResourceBindings(publicId: string, token: string, options: { query?: string; status?: string; limit?: number; offset?: number } = {}, signal?: AbortSignal) {
+  const parameters = new URLSearchParams({ limit: String(options.limit ?? 50), offset: String(options.offset ?? 0) });
+  if (options.query?.trim()) parameters.set("q", options.query.trim());
+  if (options.status?.trim()) parameters.set("status", options.status.trim());
+  return apiRequest<{ items: GlobalResourceBinding[]; total: number; limit: number; offset: number }>(
+    `/api/v1/admin/global-resources/${encodeURIComponent(publicId)}/bindings?${parameters}`,
+    { signal },
+    token,
+  );
+}

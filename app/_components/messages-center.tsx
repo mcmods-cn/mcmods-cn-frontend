@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
 import type { AITokenBalance, OnlineStatus } from "../_lib/user-api";
@@ -35,6 +35,7 @@ type Conversation = {
   lastMessage: string;
   lastAt?: string;
   unreadCount: number;
+  canMessage: boolean;
 };
 
 type DirectMessage = {
@@ -71,6 +72,9 @@ export function MessagesCenter() {
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [aiBalance, setAIBalance] = useState<AITokenBalance | null>(null);
   const [status, setStatus] = useState("");
+  const lastMessageIDRef = useRef("");
+  const messagesLoadingRef = useRef(false);
+  const conversationsLoadingRef = useRef(false);
 
   const selectedConversation = conversations.find((item) => item.id === selectedConversationID) ?? null;
 
@@ -82,14 +86,17 @@ export function MessagesCenter() {
 
   const loadUnreadNotifications = useCallback(async () => {
     if (!token) return;
-    const result = await apiRequest<{ notifications: number }>("/api/v1/notifications/unread", {}, token);
+    const result = await apiRequest<{ notifications: number }>("/api/v1/me/unread-summary", {}, token);
     setUnreadNotifications(result.notifications);
   }, [token]);
 
   const loadConversations = useCallback(async () => {
-    if (!token) return;
-    const result = await apiRequest<Conversation[]>("/api/v1/messages/conversations", {}, token);
-    setConversations(result);
+    if (!token || conversationsLoadingRef.current) return;
+    conversationsLoadingRef.current = true;
+    try {
+      const result = await apiRequest<Conversation[]>("/api/v1/messages/conversations", {}, token);
+      setConversations(result);
+    } finally { conversationsLoadingRef.current = false; }
   }, [token]);
 
   const loadBalance = useCallback(async () => {
@@ -98,11 +105,21 @@ export function MessagesCenter() {
   }, [token]);
 
   const loadMessages = useCallback(async (conversationID: string) => {
-    if (!token) return;
-    const result = await apiRequest<DirectMessage[]>(`/api/v1/messages/conversations/${conversationID}`, {}, token);
-    setMessages(result);
-    await apiRequest(`/api/v1/messages/conversations/${conversationID}/presence`, { method: "PUT" }, token);
-    window.dispatchEvent(new Event("mcmods-unread-change"));
+    if (!token || messagesLoadingRef.current) return;
+    messagesLoadingRef.current = true;
+    try {
+      const after = lastMessageIDRef.current ? `?after=${encodeURIComponent(lastMessageIDRef.current)}` : "";
+      const result = await apiRequest<DirectMessage[]>(`/api/v1/messages/conversations/${conversationID}${after}`, {}, token);
+      if (result.length > 0) {
+        lastMessageIDRef.current = result[result.length - 1].id;
+        setMessages((current) => {
+          if (!after) return result;
+          const existing = new Set(current.map((item) => item.id));
+          return [...current, ...result.filter((item) => !existing.has(item.id))];
+        });
+      } else if (!after) setMessages([]);
+      window.dispatchEvent(new Event("mcmods-unread-change"));
+    } finally { messagesLoadingRef.current = false; }
   }, [token]);
 
   useEffect(() => {
@@ -114,6 +131,19 @@ export function MessagesCenter() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadBalance, loadConversations, loadNotifications, loadUnreadNotifications, t, token]);
+
+  useEffect(() => {
+    if (!token) return;
+    const receive = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      if (detail?.type?.startsWith("notification.")) {
+        void Promise.all([loadNotifications(), loadUnreadNotifications()]);
+      }
+      if (detail?.type === "message.created") void loadConversations();
+    };
+    window.addEventListener("mcmods-realtime", receive);
+    return () => window.removeEventListener("mcmods-realtime", receive);
+  }, [loadConversations, loadNotifications, loadUnreadNotifications, token]);
 
   useEffect(() => {
     if (!token || !targetUserID || targetUserID === user?.id) return;
@@ -135,16 +165,31 @@ export function MessagesCenter() {
 
   useEffect(() => {
     if (!selectedConversationID || !token) return;
+    lastMessageIDRef.current = "";
     const initialTimer = window.setTimeout(() => {
+      setMessages([]);
       void loadMessages(selectedConversationID).catch((error) => setStatus(error instanceof Error ? error.message : t("messages.loadFailed")));
     }, 0);
-    const timer = window.setInterval(() => {
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
       void loadMessages(selectedConversationID);
       void loadConversations();
-    }, 5000);
+    };
+    const timer = window.setInterval(refresh, 60_000);
+    const presence = window.setInterval(() => {
+      if (document.visibilityState === "visible") void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token);
+    }, 20_000);
+    const realtime = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      if (detail?.type === "message.created" || detail?.type === "unread.changed") refresh();
+    };
+    window.addEventListener("mcmods-realtime", realtime);
+    void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token);
     return () => {
       window.clearTimeout(initialTimer);
       window.clearInterval(timer);
+      window.clearInterval(presence);
+      window.removeEventListener("mcmods-realtime", realtime);
     };
   }, [loadConversations, loadMessages, selectedConversationID, t, token]);
 
@@ -208,7 +253,7 @@ export function MessagesCenter() {
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !selectedConversationID || !messageDraft.trim()) return;
+    if (!token || !selectedConversationID || !selectedConversation?.canMessage || !messageDraft.trim()) return;
     try {
       const result = await apiRequest<{ message: DirectMessage }>(
         `/api/v1/messages/conversations/${selectedConversationID}`,
@@ -337,10 +382,12 @@ export function MessagesCenter() {
                   <div className="flex-1 space-y-3 overflow-y-auto bg-[var(--background)] p-4">
                     {messages.map((item) => <MessageBubble key={item.id} item={item} own={item.senderId === user.id} />)}
                   </div>
-                  <form className="flex gap-3 border-t border-[var(--line)] p-4" onSubmit={sendMessage}>
-                    <textarea className="field min-h-16 flex-1 resize-none" maxLength={4000} value={messageDraft} placeholder={t("messages.messagePlaceholder")} onChange={(event) => setMessageDraft(event.target.value)} />
-                    <button className="button-primary focus-ring self-end" type="submit">{t("messages.send")}</button>
-                  </form>
+                  {selectedConversation.canMessage ? (
+                    <form className="flex gap-3 border-t border-[var(--line)] p-4" onSubmit={sendMessage}>
+                      <textarea className="field min-h-16 flex-1 resize-none" maxLength={4000} value={messageDraft} placeholder={t("messages.messagePlaceholder")} onChange={(event) => setMessageDraft(event.target.value)} />
+                      <button className="button-primary focus-ring self-end" type="submit">{t("messages.send")}</button>
+                    </form>
+                  ) : <p className="border-t border-[var(--line)] p-4 text-sm text-[var(--muted)]">{t("messages.blockedConversation")}</p>}
                 </>
               ) : <MessageState text={t("messages.selectConversation")} />}
             </section>

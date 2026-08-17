@@ -7,7 +7,7 @@ import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { loadPublicUserProfile, type PublicUserProfile } from "../_lib/user-api";
 
-type NetworkType = "followers" | "following";
+type NetworkType = "followers" | "following" | "blocked";
 
 type UserConnection = {
   id: string;
@@ -34,19 +34,45 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
-    void Promise.all([
-      loadPublicUserProfile(userId, token || undefined),
-      apiRequest<UserConnectionsPayload>(`/api/v1/users/${userId}/${network}?page=${page}&pageSize=24`, {}, token || undefined),
-    ]).then(([nextProfile, nextPayload]) => {
-      if (cancelled) return;
-      setProfile(nextProfile);
-      setPayload(nextPayload);
-      setMessage("");
-    }).catch((error) => {
-      if (!cancelled) setMessage(error instanceof Error ? error.message : t("user.networkLoadFailed"));
-    });
+    void (async () => {
+      try {
+        const nextProfile = await loadPublicUserProfile(userId, token || undefined);
+        if (cancelled) return;
+        setProfile(nextProfile);
+        if (network === "blocked" && !nextProfile.isOwn) {
+          setPayload(null);
+          setMessage(t("user.blacklistPrivate"));
+          return;
+        }
+        const endpoint = network === "blocked"
+          ? `/api/v1/users/me/blocks?page=${page}&pageSize=24`
+          : `/api/v1/users/${encodeURIComponent(userId)}/${network}?page=${page}&pageSize=24`;
+        const nextPayload = await apiRequest<UserConnectionsPayload>(endpoint, {}, token || undefined);
+        if (cancelled) return;
+        setPayload(nextPayload);
+        setMessage("");
+      } catch (error) {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : t("user.networkLoadFailed"));
+      }
+    })();
     return () => { cancelled = true; };
   }, [network, page, ready, t, token, userId]);
+
+  async function unblockUser(item: UserConnection) {
+    if (!token) return;
+    try {
+      await apiRequest<{ blocked: boolean }>(`/api/v1/users/${encodeURIComponent(item.id)}/block`, { method: "DELETE" }, token);
+      setPayload((current) => current ? {
+        ...current,
+        items: current.items.filter((value) => value.id !== item.id),
+        total: Math.max(0, current.total - 1),
+      } : current);
+      setProfile((current) => current ? { ...current, blocked: Math.max(0, current.blocked - 1) } : current);
+      setMessage(t("user.unblockSucceeded"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("user.unblockFailed"));
+    }
+  }
 
   const pages = useMemo(() => Math.max(1, Math.ceil((payload?.total || 0) / (payload?.pageSize || 24))), [payload]);
   const profileHref = `/user/${encodeURIComponent(userId)}`;
@@ -56,16 +82,17 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
         <Link className="focus-ring w-fit font-bold text-[var(--accent)] hover:underline" href={profileHref}>← {t("user.backToProfile")}</Link>
         <section className="surface p-5 sm:p-6">
           <p className="text-sm font-bold text-[var(--accent)]">{profile?.username || t("common.loading")}</p>
-          <h1 className="mt-1 text-2xl font-black">{t(network === "followers" ? "user.followersTitle" : "user.followingTitle")}</h1>
+          <h1 className="mt-1 text-2xl font-black">{t(networkTitleKey(network))}</h1>
           <nav className="mt-5 flex overflow-x-auto border-b border-[var(--line)]" aria-label={t("user.networkTabs")}>
             <NetworkTab active={network === "followers"} count={profile?.followers} href={`${profileHref}/followers`} label={t("user.followers")} />
             <NetworkTab active={network === "following"} count={profile?.following} href={`${profileHref}/following`} label={t("user.following")} />
+            {profile?.isOwn ? <NetworkTab active={network === "blocked"} count={profile.blocked} href={`${profileHref}/blocked`} label={t("user.blocked")} /> : null}
           </nav>
           {message ? <p className="mt-5 rounded-lg border border-[var(--danger)] px-4 py-3 text-sm text-[var(--danger)]">{message}</p> : !payload ? <p className="mt-5 text-sm text-[var(--muted)]">{t("common.loading")}</p> : payload.items.length ? (
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {payload.items.map((item) => <UserConnectionCard item={item} key={item.id} />)}
+              {payload.items.map((item) => <UserConnectionCard item={item} key={item.id} onUnblock={network === "blocked" ? unblockUser : undefined} />)}
             </div>
-          ) : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t(network === "followers" ? "user.noFollowers" : "user.noFollowing")}</p>}
+          ) : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t(networkEmptyKey(network))}</p>}
           {payload && pages > 1 ? (
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
               <button className="button-secondary focus-ring" disabled={page <= 1} type="button" onClick={() => { setPayload(null); setPage((value) => Math.max(1, value - 1)); }}>{t("common.previous")}</button>
@@ -83,20 +110,36 @@ function NetworkTab({ active, count, href, label }: { active: boolean; count?: n
   return <Link className={`focus-ring whitespace-nowrap border-b-2 px-5 py-3 font-black ${active ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"}`} href={href}>{label} {count ?? "-"}</Link>;
 }
 
-function UserConnectionCard({ item }: { item: UserConnection }) {
+function UserConnectionCard({ item, onUnblock }: { item: UserConnection; onUnblock?: (item: UserConnection) => void }) {
+  const { t } = useI18n();
   return (
-    <Link className="focus-ring flex min-w-0 items-center gap-4 rounded-lg border border-[var(--line)] p-4 transition hover:-translate-y-0.5 hover:border-[var(--accent)]" href={`/user/${encodeURIComponent(item.id)}`}>
-      <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent)] text-xl font-black text-white">
-        {item.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img alt="" className="h-full w-full object-cover" src={item.avatarUrl} />
-        ) : item.username.slice(0, 1).toUpperCase()}
-      </span>
-      <span className="min-w-0">
-        <strong className="block truncate text-lg">{item.username}</strong>
-        <small className="mt-1 block truncate text-[var(--muted)]">ID {item.id}</small>
-        {item.signature ? <span className="mt-2 line-clamp-2 block text-sm leading-6 text-[var(--muted)]">{item.signature}</span> : null}
-      </span>
-    </Link>
+    <article className="flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-4 transition hover:border-[var(--accent)]">
+      <Link className="focus-ring flex min-w-0 flex-1 items-center gap-4" href={`/user/${encodeURIComponent(item.id)}`}>
+        <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent)] text-xl font-black text-white">
+          {item.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img alt="" className="h-full w-full object-cover" src={item.avatarUrl} />
+          ) : item.username.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="min-w-0">
+          <strong className="block truncate text-lg">{item.username}</strong>
+          <small className="mt-1 block truncate text-[var(--muted)]">ID {item.id}</small>
+          {item.signature ? <span className="mt-2 line-clamp-2 block text-sm leading-6 text-[var(--muted)]">{item.signature}</span> : null}
+        </span>
+      </Link>
+      {onUnblock ? <button className="button-secondary focus-ring shrink-0" type="button" onClick={() => onUnblock(item)}>{t("user.unblock")}</button> : null}
+    </article>
   );
+}
+
+function networkTitleKey(network: NetworkType) {
+  if (network === "followers") return "user.followersTitle";
+  if (network === "following") return "user.followingTitle";
+  return "user.blockedTitle";
+}
+
+function networkEmptyKey(network: NetworkType) {
+  if (network === "followers") return "user.noFollowers";
+  if (network === "following") return "user.noFollowing";
+  return "user.noBlocked";
 }

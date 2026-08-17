@@ -35,6 +35,7 @@ type MarkdownRendererProps = {
   config?: Partial<MarkdownRendererConfig>;
   emptyText: string;
   referencePath?: readonly string[];
+  commentFloorLinks?: boolean;
 };
 
 type TocItem = {
@@ -76,6 +77,7 @@ type Element = {
 
 type MdastNode = {
   type: string;
+  url?: string;
   name?: string;
   label?: string;
   value?: string;
@@ -84,6 +86,7 @@ type MdastNode = {
 };
 
 type MdastParent = {
+  type?: string;
   children: MdastNode[];
 };
 
@@ -116,7 +119,7 @@ const recipeMarkerStart = "\uE000MCRECIPE_";
 const customMarkerEnd = "\uE001";
 let mainlandChinaRequest: Promise<boolean> | null = null;
 
-export function MarkdownRenderer({ markdown, config, emptyText, referencePath = [] }: MarkdownRendererProps) {
+export function MarkdownRenderer({ markdown, config, emptyText, referencePath = [], commentFloorLinks = false }: MarkdownRendererProps) {
   const { t } = useI18n();
   const [isMainlandChina, setIsMainlandChina] = useState(true);
   const normalized = normalizeMarkdownConfig(config);
@@ -124,6 +127,7 @@ export function MarkdownRenderer({ markdown, config, emptyText, referencePath = 
   const abbreviations = normalized.abbreviations ? extractAbbreviations(source) : new Map<string, string>();
   const tocItems = normalized.toc ? extractToc(source, normalized) : [];
   const remarkPlugins = [
+    commentFloorLinks ? () => remarkCommentFloorLinks() : null,
     normalized.enhancedTables || normalized.taskLists || normalized.footnotes ? remarkGfm : null,
     normalized.collapsibleBlocks ? remarkDirective : null,
     normalized.collapsibleBlocks ? () => remarkDetailsDirective() : null,
@@ -175,6 +179,33 @@ export function MarkdownRenderer({ markdown, config, emptyText, referencePath = 
       <MarkdownBody markdown={protectCustomSyntax(stripAbbreviationDefinitions(source))} referencePath={referencePath} rehypePlugins={rehypePlugins} remarkPlugins={remarkPlugins} />
     </div>
   );
+}
+
+function remarkCommentFloorLinks() {
+  return (tree: MdastNode) => {
+    visitMarkdownTree(tree, "text", (node, index, parent) => {
+      if (!parent || index === undefined || typeof node.value !== "string") return;
+      if (["link", "linkReference", "code", "inlineCode"].includes(parent.type ?? "")) return;
+      const pattern = /(^|[^\d])([1-9]\d{0,8})楼/g;
+      const children: MdastNode[] = [];
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(node.value))) {
+        const numberStart = match.index + match[1].length;
+        if (numberStart > lastIndex) children.push({ type: "text", value: node.value.slice(lastIndex, numberStart) });
+        children.push({
+          type: "link",
+          url: `#floor-${match[2]}`,
+          data: { hProperties: { className: ["comment-floor-link"] } },
+          children: [{ type: "text", value: `${match[2]}楼` }],
+        });
+        lastIndex = pattern.lastIndex;
+      }
+      if (!children.length) return;
+      if (lastIndex < node.value.length) children.push({ type: "text", value: node.value.slice(lastIndex) });
+      parent.children.splice(index, 1, ...children);
+    });
+  };
 }
 
 function MarkdownBody({
@@ -385,7 +416,7 @@ function contentReferenceHref(entityType: string, publicId: string) {
     case "skin": return `/skins/${encodeURIComponent(publicId)}`;
     case "tag": return `/mods-tag?publicId=${encodeURIComponent(publicId)}`;
     case "recipe_type": return `/recipe-types?publicId=${encodeURIComponent(publicId)}`;
-    case "resource": return `/catalog/resources?publicId=${encodeURIComponent(publicId)}`;
+    case "resource": return `/admin/global-resources?publicId=${encodeURIComponent(publicId)}`;
     default: return `/content/${encodeURIComponent(publicId)}`;
   }
 }

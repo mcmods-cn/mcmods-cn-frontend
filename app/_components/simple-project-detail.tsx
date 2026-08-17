@@ -19,6 +19,8 @@ import { ProjectChangelog } from "./project-changelog";
 import { ReviewAwareEditAction } from "./review-edit-lock";
 import { RatingPanel } from "./rating-panel";
 import { ContentMetricsPanel } from "./content-metrics-panel";
+import { ProjectAutoUpdateSettings } from "./project-auto-update-settings";
+import { UnifiedReportButton, type ReportTargetType } from "./unified-report-dialog";
 
 type ProjectTab = "introduction" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
@@ -52,7 +54,7 @@ function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
 
   return <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
     <header className="border-b border-[var(--line)] bg-[var(--panel)]"><div className="mx-auto max-w-[1440px] px-4 py-7 lg:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={config.path}>← {t("largeProjects.detail.back")}</Link><div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`${config.path}/${record.siteId}/history`}>{t("mods.detail.history")}</Link><ReviewAwareEditAction canEdit={Boolean(record.canEdit)} editHref={`${config.path}/${record.siteId}/edit`} entityType={record.projectType} publicId={record.id} /></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={config.path}>← {t("largeProjects.detail.back")}</Link><div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`${config.path}/${record.siteId}/history`}>{t("mods.detail.history")}</Link><UnifiedReportButton targetAuthor={record.authors.map((item) => item.name).filter(Boolean).join("、")} targetId={record.id} targetSummary={name} targetType={reportTypeForProject(record.projectType)} /><ReviewAwareEditAction canEdit={Boolean(record.canEdit)} editHref={`${config.path}/${record.siteId}/edit`} entityType={record.projectType} publicId={record.id} /></div></div>
       <div className="mt-5 flex flex-col gap-5 sm:flex-row"><ProjectIcon icon={simpleProjectIconURL(record)} name={name} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black sm:text-3xl">{record.abbreviation ? `[${record.abbreviation}] ` : ""}{name}</h1>{record.reviewStatus === "pending" ? <span className="rounded border border-[var(--warning)] px-2 py-1 text-xs font-black text-[var(--warning)]">{t("mods.detail.pendingReview")}</span> : null}</div><p className="mt-2 font-mono text-xs text-[var(--muted)]">{record.id} · {record.siteId}</p><p className="mt-4 max-w-4xl text-sm leading-7 text-[var(--muted)] sm:text-base">{localization.summary}</p></div></div>
     </div></header>
     <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
@@ -75,6 +77,7 @@ function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
       </aside></div>
       <ContentMetricsPanel publicId={record.id} />
       <RatingPanel targetId={record.id} targetName={name} targetType={record.projectType} />
+      {record.canEdit && token ? <ProjectAutoUpdateSettings projectId={record.id} projectType={record.projectType} token={token} /> : null}
       <CommentSection targetKey={record.id} targetType={record.projectType} />
     </div>
   </main>;
@@ -86,6 +89,10 @@ function projectInformation(record: SimpleProjectRecord) {
   if (record.performance) result.push({ label: "largeProjects.fields.performance", values: [record.performance] });
   if (record.mapSize) result.push({ label: "largeProjects.fields.mapSize", values: [record.mapSize] });
   return result;
+}
+
+function reportTypeForProject(projectType: SimpleProjectType): ReportTargetType {
+  return projectType === "shader_pack" ? "shader" : projectType;
 }
 
 function ProjectIcon({ icon, name }: { icon: string; name: string }) { return icon ? <Image unoptimized alt="" className="h-24 w-24 shrink-0 rounded-xl border border-[var(--line)] object-contain sm:h-28 sm:w-28" height={112} src={icon} width={112} /> : <span className="grid h-24 w-24 shrink-0 place-items-center rounded-xl bg-[var(--accent-soft)] text-2xl font-black text-[var(--accent)] sm:h-28 sm:w-28">{[...name].slice(0, 2).join("")}</span>; }

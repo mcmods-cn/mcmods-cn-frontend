@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { type CatalogSortDirection, type CatalogSortField } from "../_lib/catalog-sort";
+import { useI18n } from "../_lib/i18n-provider";
 
 type CatalogFilterPanelProps = {
   title: string;
@@ -23,6 +25,83 @@ type CatalogPaginationLabels = {
 
 export function CatalogPageFallback() {
   return <main className="min-h-screen bg-[var(--background)]" />;
+}
+
+export function CatalogSortControl({
+  field,
+  direction,
+  fields,
+  onFieldChange,
+  onDirectionChange,
+  className = "",
+}: {
+  field: CatalogSortField;
+  direction: CatalogSortDirection;
+  fields: readonly CatalogSortField[];
+  onFieldChange: (field: CatalogSortField) => void;
+  onDirectionChange: (direction: CatalogSortDirection) => void;
+  className?: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className={`flex min-w-0 flex-wrap items-center gap-2 ${className}`}>
+      <label className="min-w-36 flex-1 sm:flex-none">
+        <span className="sr-only">{t("catalogSort.fieldLabel")}</span>
+        <select
+          aria-label={t("catalogSort.fieldLabel")}
+          className="field h-10 py-0"
+          value={field}
+          onChange={(event) => onFieldChange(event.target.value as CatalogSortField)}
+        >
+          {fields.map((item) => <option key={item} value={item}>{t(`catalogSort.fields.${item}`)}</option>)}
+        </select>
+      </label>
+      <label className="min-w-28 flex-1 sm:flex-none">
+        <span className="sr-only">{t("catalogSort.directionLabel")}</span>
+        <select
+          aria-label={t("catalogSort.directionLabel")}
+          className="field h-10 py-0"
+          value={direction}
+          onChange={(event) => onDirectionChange(event.target.value as CatalogSortDirection)}
+        >
+          {(["desc", "asc"] as const).map((item) => <option key={item} value={item}>{t(`catalogSort.directions.${item}`)}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+export function CatalogHero({
+  kicker,
+  title,
+  total,
+  description,
+  actions,
+  children,
+}: {
+  kicker: React.ReactNode;
+  title: React.ReactNode;
+  total?: React.ReactNode;
+  description: React.ReactNode;
+  actions?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <section className="border-b border-[var(--line)] bg-[var(--panel)]">
+      <div className="mx-auto max-w-7xl px-4 py-7 lg:py-9">
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold text-[var(--accent)]">{kicker}</p>
+            <h1 className="mt-1 text-3xl font-black md:text-4xl">{title}</h1>
+            {total ? <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{total}</p> : null}
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{description}</p>
+          </div>
+          {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+        </header>
+        {children ? <div className="mt-6">{children}</div> : null}
+      </div>
+    </section>
+  );
 }
 
 export function CatalogFilterSidebar({ children }: { children: React.ReactNode }) {

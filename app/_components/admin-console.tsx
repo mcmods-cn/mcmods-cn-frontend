@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-import { canAccessAdmin, clearAuth, useAuthSnapshot } from "../_lib/auth";
+import { canAccessAdmin, clearAuth, hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { ApiError, apiRequest } from "../_lib/api";
 import { isBackendUnavailable } from "../_lib/backend-status";
 import type { LevelConfig, RoleTrack } from "../_lib/community-api";
@@ -28,7 +28,7 @@ import {
   ShopManagementPanel,
   TaskManagementPanel,
 } from "./admin-community-panels";
-import { CommentReportReviewPanel, MinecraftVersionConfigPanel, ModReviewQueuePanel } from "./admin-mod-panels";
+import { MinecraftVersionConfigPanel, ModReviewQueuePanel } from "./admin-mod-panels";
 import { ServerReviewQueuePanel, ServerSettingsPanel } from "./admin-server-panels";
 import { AdminUnresolvedReferences } from "./admin-unresolved-references";
 import { AdminContentAttributePanel } from "./admin-content-attribute-panel";
@@ -38,6 +38,7 @@ import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
 import { AdminActivityRetentionPanel } from "./admin-activity-retention-panel";
 import { AdminAntiAbusePanel } from "./admin-anti-abuse-panel";
+import { AboutAdminPanel, BanAdminPanel, ProjectAutomationAdminPanel, SeedCrawlerAdminPanel, SiteChangelogAdminPanel, UnifiedReportAdminPanel } from "./admin-governance-automation-panels";
 
 type PanelId =
   | "overview"
@@ -60,7 +61,8 @@ type PanelId =
   | "reviews-content"
   | "reviews-editor"
   | "reviews-server"
-  | "reviews-comments"
+  | "reports"
+  | "bans"
   | "review-settings"
   | "server-settings"
   | "notifications"
@@ -92,7 +94,11 @@ type PanelId =
   | "ai-models"
   | "ai-task-models"
   | "ai-costs"
-  | "ai-task-logs";
+  | "ai-task-logs"
+  | "site-about"
+  | "site-changelogs"
+  | "seed-crawler"
+  | "project-auto-updates";
 
 type User = {
   id: string;
@@ -420,10 +426,28 @@ const adminNavGroups: Array<{
       { id: "reviews-content", label: "", description: "" },
       { id: "reviews-editor", label: "", description: "" },
       { id: "reviews-server", label: "", description: "" },
-      { id: "reviews-comments", label: "", description: "" },
+      { id: "reports", label: "", description: "" },
+      { id: "bans", label: "", description: "" },
       { id: "creator-claims", label: "", description: "" },
       { id: "review-settings", label: "", description: "" },
       { id: "server-settings", label: "", description: "" },
+    ],
+  },
+  {
+    id: "automation",
+    label: "",
+    items: [
+      { id: "seed-crawler", label: "", description: "" },
+      { id: "project-auto-updates", label: "", description: "" },
+      { id: "mod-import-settings", label: "", description: "" },
+    ],
+  },
+  {
+    id: "site-affairs",
+    label: "",
+    items: [
+      { id: "site-about", label: "", description: "" },
+      { id: "site-changelogs", label: "", description: "" },
     ],
   },
   {
@@ -431,7 +455,6 @@ const adminNavGroups: Array<{
     label: "",
     items: [
       { id: "resource-attributes", label: "", description: "" },
-      { id: "mod-import-settings", label: "", description: "" },
       { id: "unresolved-references", label: "", description: "" },
     ],
   },
@@ -683,6 +706,8 @@ export function AdminConsole() {
     "economy",
     "progression",
     "monitoring",
+    "automation",
+    "site-affairs",
     "oss",
     "logs",
     "ai",
@@ -887,6 +912,11 @@ export function AdminConsole() {
 
             <nav className={`${mobileNavigationOpen ? "block" : "hidden"} min-h-0 flex-1 overflow-y-auto p-3 lg:block`}>
               {adminNavGroups.map((group) => {
+                const visibleItems = group.items.filter((item) => {
+                  const required = panelPermission(item.id);
+                  return !required || hasPermission(auth.user, required);
+                });
+                if (visibleItems.length === 0) return null;
                 const open = expanded.includes(group.id);
                 return (
                   <section key={group.id} className="mb-2">
@@ -901,7 +931,7 @@ export function AdminConsole() {
                     </button>
                     {open ? (
                       <div className="mt-1 grid gap-1 pl-2">
-                        {group.items.map((item) => (
+                        {visibleItems.map((item) => (
                           <button
                             key={item.id}
                             data-admin-panel={item.id}
@@ -991,7 +1021,8 @@ export function AdminConsole() {
           {activePanel === "reviews-content" ? <ModReviewQueuePanel kind="content" token={auth.token} /> : null}
           {activePanel === "reviews-editor" ? <ModReviewQueuePanel kind="editor" token={auth.token} /> : null}
           {activePanel === "reviews-server" ? <ServerReviewQueuePanel token={auth.token} /> : null}
-          {activePanel === "reviews-comments" ? <CommentReportReviewPanel token={auth.token} /> : null}
+          {activePanel === "reports" ? <UnifiedReportAdminPanel token={auth.token} /> : null}
+          {activePanel === "bans" ? <BanAdminPanel token={auth.token} /> : null}
           {activePanel === "review-settings" ? <ReviewSettingsPanel token={auth.token} /> : null}
           {activePanel === "server-settings" ? <ServerSettingsPanel token={auth.token} /> : null}
           {activePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
@@ -1001,6 +1032,10 @@ export function AdminConsole() {
           {activePanel === "minecraft-versions" ? <MinecraftVersionConfigPanel token={auth.token} /> : null}
           {activePanel === "resource-attributes" ? <AdminContentAttributePanel token={auth.token} /> : null}
           {activePanel === "mod-import-settings" ? <ModImportConfigPanel token={auth.token} /> : null}
+          {activePanel === "seed-crawler" ? <SeedCrawlerAdminPanel token={auth.token} /> : null}
+          {activePanel === "project-auto-updates" ? <ProjectAutomationAdminPanel token={auth.token} /> : null}
+          {activePanel === "site-about" ? <AboutAdminPanel token={auth.token} /> : null}
+          {activePanel === "site-changelogs" ? <SiteChangelogAdminPanel token={auth.token} /> : null}
           {activePanel === "unresolved-references" ? <AdminUnresolvedReferences token={auth.token} /> : null}
           {activePanel === "nats" ? <NATSConfigPanel token={auth.token} /> : null}
           {activePanel === "i18n" ? <TranslationManagerPanel token={auth.token} /> : null}
@@ -5424,7 +5459,8 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "reviews-content": t("admin.reviews.contentTitle"),
     "reviews-editor": t("admin.reviews.editorTitle"),
     "reviews-server": t("admin.serverReviews.title"),
-    "reviews-comments": t("admin.reviews.commentReportsTitle"),
+    reports: t("admin.governance.reports"),
+    bans: t("admin.governance.bans"),
     "review-settings": t("admin.reviewSettings.title"),
     "server-settings": t("admin.serverSettings.title"),
     notifications: t("admin.notifications.title"),
@@ -5457,8 +5493,34 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "ai-task-models": t("admin.panels.aiTaskModels"),
     "ai-costs": t("admin.panels.aiCosts"),
     "ai-task-logs": t("admin.panels.aiTaskLogs"),
+    "site-about": t("admin.governance.about"),
+    "site-changelogs": t("admin.governance.changelogs"),
+    "seed-crawler": t("admin.automation.seedCrawler"),
+    "project-auto-updates": t("admin.automation.projectUpdates"),
   };
   return titles[panel];
+}
+
+function panelPermission(panel: PanelId) {
+  const permissions: Partial<Record<PanelId, string>> = {
+    reports: "report.review",
+    bans: "ban.view_internal",
+    "site-about": "site_affairs.about.manage",
+    "site-changelogs": "site_affairs.changelog.manage",
+    "seed-crawler": "seed_crawler.view",
+    "project-auto-updates": "project.auto_update.view_logs",
+    "reviews-content": "project.review",
+    "reviews-editor": "project.review",
+    "reviews-server": "server.review",
+    roles: "permission.read",
+    "user-roles": "permission.read",
+    "permission-list": "permission.read",
+    "permission-settings": "permission.read",
+    users: "user.read",
+    "anti-abuse": "security.anti-abuse.read",
+    "oss-files": "oss.file.read",
+  };
+  return permissions[panel];
 }
 
 function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, params?: Record<string, string | number>) => string) {
@@ -5466,6 +5528,8 @@ function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, 
     workbench: t("admin.workbench"),
     content: t("admin.modImport.group"),
     reviews: t("admin.reviews.group"),
+    automation: t("admin.automation.group"),
+    "site-affairs": t("admin.governance.siteAffairsGroup"),
     permission: t("admin.permission"),
     economy: t("admin.community.nav.economy"),
     progression: t("admin.community.nav.progression"),
@@ -5503,7 +5567,8 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "reviews-content": t("admin.reviews.contentDescription"),
     "reviews-editor": t("admin.reviews.editorDescription"),
     "reviews-server": t("admin.serverReviews.navDescription"),
-    "reviews-comments": t("admin.reviews.commentReportsDescription"),
+    reports: t("admin.governance.reportsDescription"),
+    bans: t("admin.governance.bansDescription"),
     "review-settings": t("admin.reviewSettings.navDescription"),
     "server-settings": t("admin.serverSettings.navDescription"),
     notifications: t("admin.notifications.navDescription"),
@@ -5536,6 +5601,10 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "ai-task-models": t("admin.nav.aiTaskModelsDesc"),
     "ai-costs": t("admin.nav.aiCostsDesc"),
     "ai-task-logs": t("admin.nav.aiTaskLogsDesc"),
+    "site-about": t("admin.governance.aboutDescription"),
+    "site-changelogs": t("admin.governance.changelogsDescription"),
+    "seed-crawler": t("admin.automation.seedCrawlerDescription"),
+    "project-auto-updates": t("admin.automation.projectUpdatesDescription"),
   };
   return descriptions[panel] ?? fallback;
 }

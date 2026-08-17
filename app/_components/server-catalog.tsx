@@ -6,7 +6,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
-import type { CatalogResourceRef } from "../_lib/editor-types";
+import { type CatalogSortField, normalizeCatalogSortDirection, normalizeCatalogSortField } from "../_lib/catalog-sort";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatMinecraftLanguages } from "../_lib/minecraft-languages";
 import {
@@ -16,6 +16,7 @@ import {
 } from "../_lib/server-api";
 import {
   CatalogEmptyState,
+  CatalogHero,
   CatalogFilterGroup,
   CatalogFilterPanel,
   CatalogFilterSidebar,
@@ -23,17 +24,14 @@ import {
   CatalogOptionList,
   CatalogRadioList,
   CatalogPagination,
+  CatalogSortControl,
 } from "./catalog-list-ui";
 import { CatalogMinecraftVersionFilter } from "./catalog-minecraft-version-filter";
-import {
-  modIdentifierFromResource,
-  ModResourceSelectionField,
-  unresolvedModResource,
-} from "./editor/mod-resource-picker";
+import { CatalogContainedModFilter } from "./catalog-contained-mod-filter";
 import { MinecraftLanguagePicker } from "./minecraft-language-picker";
 
 const serverPageSizes = [20, 40, 60];
-const serverSortOptions = ["heat", "updated", "nameAsc", "nameDesc"] as const;
+const serverSortFields: CatalogSortField[] = ["published", "updated", "heat", "views", "name"];
 
 export function ServerCatalog() {
   const { t } = useI18n();
@@ -49,6 +47,10 @@ export function ServerCatalog() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const requestedPageSize = Number(searchParams.get("size"));
   const pageSize = serverPageSizes.includes(requestedPageSize) ? requestedPageSize : serverPageSizes[0];
+  const rawSort = searchParams.get("sort");
+  const normalizedSort = normalizeCatalogSortField(rawSort, "heat");
+  const sort = serverSortFields.includes(normalizedSort) ? normalizedSort : "heat";
+  const sortDirection = normalizeCatalogSortDirection(searchParams.get("order"), "desc", rawSort);
 
   const canCreate = ready && hasPermission(user, "server.create");
   const activeFilterCount = useMemo(
@@ -66,6 +68,8 @@ export function ServerCatalog() {
     });
     const query = new URLSearchParams(paramsKey);
     query.delete("size");
+    query.set("sort", sort);
+    query.set("order", sortDirection);
     query.set("limit", String(pageSize));
     apiRequest<ServerCatalogResponse>(`/api/v1/servers?${query.toString()}`, {}, token)
       .then((response) => {
@@ -81,7 +85,7 @@ export function ServerCatalog() {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [pageSize, paramsKey, t, token]);
+  }, [pageSize, paramsKey, sort, sortDirection, t, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -133,26 +137,13 @@ export function ServerCatalog() {
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <section className="border-b border-[var(--line)] bg-[var(--panel)]">
-        <div className="mx-auto max-w-7xl px-4 py-7 lg:py-9">
-          <header className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-bold text-[var(--accent)]">{t("servers.kicker")}</p>
-              <h1 className="mt-1 text-3xl font-black md:text-4xl">{t("servers.title")}</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("servers.intro")}</p>
-            </div>
-            {canCreate ? (
-              <Link
-                className="button-primary focus-ring"
-                href="/servers/new"
-                rel="noopener noreferrer"
-                target="_blank"
-              >
-                {t("servers.addServer")}
-              </Link>
-            ) : null}
-          </header>
-          <form className="mt-6 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
+      <CatalogHero
+        actions={canCreate ? <Link className="button-primary focus-ring" href="/servers/new" rel="noopener noreferrer" target="_blank">{t("servers.addServer")}</Link> : null}
+        description={t("servers.intro")}
+        kicker={t("servers.kicker")}
+        title={t("servers.title")}
+      >
+          <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
             <label className="sr-only" htmlFor="server-search">{t("servers.search")}</label>
             <input
               className="field h-12"
@@ -163,8 +154,7 @@ export function ServerCatalog() {
             />
             <button className="button-primary focus-ring h-12 px-6" type="submit">{t("common.search")}</button>
           </form>
-        </div>
-      </section>
+      </CatalogHero>
 
       <div className="mx-auto max-w-7xl px-4 py-6">
         <div className="mb-4 flex items-center justify-between gap-3 lg:hidden">
@@ -186,11 +176,8 @@ export function ServerCatalog() {
                     ? t("servers.queryResults", { query: searchParams.get("q") ?? "", count: result?.total ?? 0 })
                     : t("servers.resultCount", { count: result?.total ?? 0 })}
                 </h2>
-                <div className="flex items-center gap-2">
-                  <label className="sr-only" htmlFor="server-catalog-sort">{t("servers.sortLabel")}</label>
-                  <select className="field h-10 min-w-36 py-0" id="server-catalog-sort" value={searchParams.get("sort") ?? "heat"} onChange={(event) => replaceParams({ sort: event.target.value })}>
-                    {serverSortOptions.map((sort) => <option key={sort} value={sort}>{t(`servers.sort.${sort}`)}</option>)}
-                  </select>
+                <div className="flex flex-wrap items-center gap-2">
+                  <CatalogSortControl direction={sortDirection} field={sort} fields={serverSortFields} onDirectionChange={(order) => replaceParams({ order })} onFieldChange={(nextSort) => replaceParams({ sort: nextSort })} />
                   {!canCreate && ready ? <p className="text-xs text-[var(--muted)]">{t(user ? "servers.permissionRequired" : "servers.loginToSubmit")}</p> : null}
                 </div>
               </div>
@@ -262,19 +249,6 @@ function ServerFilters({
   const { t } = useI18n();
   const modFilterValue = params.get("mods") ?? "";
   const modIdentifiers = parseModIdentifiers(modFilterValue);
-  const [selectedMods, setSelectedMods] = useState<CatalogResourceRef[]>(
-    () => modIdentifiers.map(unresolvedModResource),
-  );
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setSelectedMods((current) => parseModIdentifiers(modFilterValue).map((identifier) =>
-        current.find((resource) => modIdentifierFromResource(resource) === identifier)
-        ?? unresolvedModResource(identifier)));
-    });
-    return () => { cancelled = true; };
-  }, [modFilterValue]);
   const selectedStatuses = [
     ...(params.get("online") === "true" ? ["online"] : []),
     ...(params.get("modded") === "true" ? ["modded"] : []),
@@ -315,16 +289,11 @@ function ServerFilters({
         />
       </CatalogFilterGroup>
       <CatalogFilterGroup label={t("servers.filters.mods")}>
-        <ModResourceSelectionField
+        <CatalogContainedModFilter
           buttonLabel={t("servers.filters.selectMods")}
           emptyLabel={t("servers.filters.noMods")}
-          token=""
-          value={selectedMods}
-          onChange={(resources) => {
-            setSelectedMods(resources);
-            const identifiers = resources.map(modIdentifierFromResource).filter(Boolean);
-            onChange({ mods: identifiers.length ? identifiers.join(",") : null });
-          }}
+          values={modIdentifiers}
+          onChange={(identifiers) => onChange({ mods: identifiers.length ? identifiers.join(",") : null })}
         />
       </CatalogFilterGroup>
       <CatalogFilterGroup label={t("servers.filters.language")}>

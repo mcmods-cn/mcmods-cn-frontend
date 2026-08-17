@@ -177,4 +177,3 @@ export const sourceOptions: ModSourceStatus[] = ["open", "partial", "closed", "u
 export const licenseOptions = ["MIT", "GPL-3.0", "LGPL-3.0", "Apache-2.0", "ARR", "Custom"] as const;
 export const updatedOptions = ["all", "week", "month", "quarter", "year", "stale"] as const;
 export const advancedOptions: ModFeature[] = ["tutorials", "items", "gallery", "downloads", "reviewed", "claimed", "serverSupport", "modpackAllowed", "severeIssues"];
-export const sortOptions: string[] = ["relevance", "heat", "updated", "collected", "downloads", "favorites", "rating", "views", "comments", "nameAsc", "nameDesc"];

@@ -15,6 +15,7 @@ import { ServerSubmissionWizard } from "./server-submission-wizard";
 import { RatingPanel } from "./rating-panel";
 import { ContentMetricsPanel } from "./content-metrics-panel";
 import { ProjectChangelog } from "./project-changelog";
+import { UnifiedReportButton } from "./unified-report-dialog";
 
 type HistoryRange = ServerHistory["range"];
 const ranges: HistoryRange[] = ["24h", "7d", "30d", "90d"];
@@ -91,6 +92,7 @@ export function ServerDetail({ serverId }: { serverId: string }) {
             <p className="mt-2 font-mono text-sm">{record.address}</p>
           </div>
           <div>
+            <UnifiedReportButton className="button-secondary focus-ring mb-3 w-full" targetId={record.id} targetSummary={record.name} targetType="server" />
             {record.canEdit ? <button className="button-secondary focus-ring mb-3 w-full" type="button" onClick={() => setEditOpen(true)}>{t("common.edit")}</button> : null}
             <div className="grid grid-cols-2 gap-5 text-center sm:grid-cols-1 sm:text-right">
             <span><strong className="block text-2xl">{record.online ? `${record.playersOnline}/${record.playersMax}` : "—"}</strong><small className="text-[var(--muted)]">{t("servers.players")}</small></span>

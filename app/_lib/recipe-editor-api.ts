@@ -92,6 +92,7 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
     templatePublicId,
     sourceVersionPublicId: stringValue(row.sourceVersionPublicId) || undefined,
     sourceVersion: normalizeRecipeSourceVersion(row.sourceVersion),
+    applicableVersionIds: arrayValue(row.applicableVersions).map((value) => stringValue(objectValue(value).id) || stringValue(value)).filter(Boolean),
     canonicalSourceId: stringValue(row.canonicalSourceId),
     definition: objectValue(row.definition),
     bindings: Object.fromEntries(Object.entries(bindingRows).map(([slotKey, value]) => {

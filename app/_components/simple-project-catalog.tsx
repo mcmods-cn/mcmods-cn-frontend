@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { KeyboardEvent, MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
+import { type CatalogSortField, normalizeCatalogSortDirection, normalizeCatalogSortField } from "../_lib/catalog-sort";
 import {
   readCatalogList as readList,
   type CatalogFilterChip as FilterChip,
@@ -27,6 +28,7 @@ import {
 } from "../_lib/simple-project-api";
 import {
   CatalogEmptyState,
+  CatalogHero,
   CatalogFilterGroup,
   CatalogFilterPanel,
   CatalogFilterSidebar,
@@ -34,13 +36,13 @@ import {
   CatalogOptionList,
   CatalogPagination,
   CatalogRadioList,
+  CatalogSortControl,
 } from "./catalog-list-ui";
 import { CatalogMinecraftVersionFilter } from "./catalog-minecraft-version-filter";
 import { ProjectSubmissionModal } from "./project-submission-modal";
 
-type CatalogSort = "relevance" | "heat" | "updated" | "nameAsc" | "nameDesc";
 type CatalogFilters = ReturnType<typeof parseFilters>;
-const sortOptions: CatalogSort[] = ["relevance", "heat", "updated", "nameAsc", "nameDesc"];
+const sortFields: CatalogSortField[] = ["published", "updated", "heat", "views", "relevance", "name"];
 const officialStatusOptions = ["active", "lowFrequency", "development", "discontinued", "archived"] as const;
 const sourceStatusOptions = ["open", "partial", "closed", "unknown"] as const;
 const updatedOptions = ["all", "week", "month", "quarter", "year", "stale"] as const;
@@ -63,12 +65,12 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
     paramsKey, preferences, expandedGroups, mobileFiltersOpen, setMobileFiltersOpen,
     queryDraft, setQueryDraft, notice, setNotice, replaceParams, toggleListParam, clearFilters,
     submitSearch, changePreference, toggleGroup, changePage,
-  } = useCatalogControls<CatalogSort>({
+  } = useCatalogControls<CatalogSortField>({
     preferenceStorageKey,
     expandedStorageKey,
     filterParams,
     defaultExpandedGroups,
-    sortOptions,
+    sortOptions: sortFields,
     defaultSort: "relevance",
     onPageChange: () => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
   });
@@ -89,6 +91,8 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
       requestParams.delete("page");
       requestParams.delete("size");
       requestParams.delete("view");
+      requestParams.set("sort", filters.sort);
+      requestParams.set("order", filters.sortDirection);
       requestParams.set("limit", String(filters.pageSize));
       requestParams.set("offset", String((filters.page - 1) * filters.pageSize));
       const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?${requestParams}`, {}, token);
@@ -102,7 +106,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
     } finally {
       setLoading(false);
     }
-  }, [filters.page, filters.pageSize, paramsKey, projectType, ready, t, token]);
+  }, [filters.page, filters.pageSize, filters.sort, filters.sortDirection, paramsKey, projectType, ready, t, token]);
 
   useEffect(() => {
     const task = window.setTimeout(() => void load(), 0);
@@ -125,23 +129,18 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <section className="border-b border-[var(--line)] bg-[var(--panel)]">
-        <div className="mx-auto max-w-7xl px-4 py-7 lg:py-9">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-bold text-[var(--accent)]">{t("largeProjects.kicker")}</p>
-              <h1 className="mt-1 text-3xl font-black md:text-4xl">{t(`largeProjects.types.${projectType}`)}</h1>
-              <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{t("largeProjects.catalog.total", { count: backendTotal })}</p>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t(`largeProjects.descriptions.${projectType}`)}</p>
-            </div>
-            <button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>+ {t("largeProjects.catalog.create")}</button>
-          </div>
-          <form className="mt-6 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
+      <CatalogHero
+        actions={<button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>+ {t("largeProjects.catalog.create")}</button>}
+        description={t(`largeProjects.descriptions.${projectType}`)}
+        kicker={t("largeProjects.kicker")}
+        title={t(`largeProjects.types.${projectType}`)}
+        total={t("largeProjects.catalog.total", { count: backendTotal })}
+      >
+          <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
             <input className="field h-12" value={queryDraft} placeholder={t("largeProjects.catalog.searchPlaceholder")} onChange={(event) => setQueryDraft(event.target.value)} />
             <button className="button-primary focus-ring h-12 px-6" type="submit">{t("common.search")}</button>
           </form>
-        </div>
-      </section>
+      </CatalogHero>
 
       <div className="mx-auto max-w-7xl px-4 py-6">
         <div className="mb-4 flex items-center justify-between gap-3 lg:hidden">
@@ -171,12 +170,13 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-xl font-black">{filters.query ? t("largeProjects.catalog.queryResults", { query: filters.query, count: backendTotal }) : t("largeProjects.catalog.results", { count: backendTotal })}</h2>
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2 text-sm font-bold">
-                    <span className="sr-only">{t("largeProjects.catalog.sortLabel")}</span>
-                    <select className="field h-10 min-w-36 py-0" value={filters.sort} onChange={(event) => changePreference({ sort: event.target.value as CatalogSort })}>
-                      {sortOptions.map((option) => <option key={option} value={option}>{t(`largeProjects.catalog.sort.${option}`)}</option>)}
-                    </select>
-                  </label>
+                  <CatalogSortControl
+                    direction={filters.sortDirection}
+                    field={filters.sort}
+                    fields={sortFields}
+                    onDirectionChange={(sortDirection) => changePreference({ sortDirection })}
+                    onFieldChange={(sort) => changePreference({ sort })}
+                  />
                   <div className="grid grid-cols-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-1" aria-label={t("largeProjects.catalog.viewLabel")}>
                     {(["list", "grid"] as const).map((view) => <button key={view} className={`focus-ring min-w-16 rounded-md px-3 py-1.5 text-sm font-bold ${filters.view === view ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`} type="button" onClick={() => changePreference({ view })}>{t(`largeProjects.catalog.view.${view}`)}</button>)}
                   </div>
@@ -369,11 +369,13 @@ function CardMeta({ label, value }: { label: string; value: string }) {
   return <div><dt className="text-[10px] font-bold text-[var(--muted)]">{label}</dt><dd className="font-black">{value}</dd></div>;
 }
 
-function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<CatalogSort>, config: SimpleProjectConfig) {
+function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<CatalogSortField>, config: SimpleProjectConfig) {
   const pageSize = [20, 40, 60].includes(Number(params.get("size"))) ? Number(params.get("size")) : preferences.pageSize;
   const view = params.get("view") === "grid" || params.get("view") === "list" ? params.get("view") as CatalogView : preferences.view;
-  const requestedSort = params.get("sort") as CatalogSort | null;
-  const sort = requestedSort && sortOptions.includes(requestedSort) ? requestedSort : preferences.sort;
+  const rawSort = params.get("sort");
+  const normalizedSort = normalizeCatalogSortField(rawSort, preferences.sort);
+  const sort = sortFields.includes(normalizedSort) ? normalizedSort : preferences.sort;
+  const sortDirection = normalizeCatalogSortDirection(params.get("order"), preferences.sortDirection, rawSort);
   return {
     query: params.get("q")?.trim() ?? "",
     versions: readList(params, "version"),
@@ -388,6 +390,7 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<C
     licenses: readList(params, "license"),
     updated: params.get("updated") ?? "",
     sort,
+    sortDirection,
     view,
     page: Math.max(1, Number(params.get("page")) || 1),
     pageSize,

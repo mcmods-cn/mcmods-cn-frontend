@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
+import { type CatalogSortDirection, type CatalogSortField } from "../_lib/catalog-sort";
 import { useI18n } from "../_lib/i18n-provider";
 import { loadSkins, SkinKind, SkinListResponse, SkinModel, skinTextureURL, SkinTexture } from "../_lib/skin-api";
 import { SkinPreview2D } from "./skin-preview";
+import { CatalogHero, CatalogSortControl } from "./catalog-list-ui";
 
 const pageSize = 36;
+const skinSortFields: CatalogSortField[] = ["published", "updated", "heat", "views", "downloads", "name"];
 
 export function SkinLibrary() {
   const { locale, t } = useI18n();
@@ -16,7 +19,8 @@ export function SkinLibrary() {
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [kind, setKind] = useState<"" | SkinKind>("");
   const [model, setModel] = useState<"" | SkinModel>("");
-  const [sort, setSort] = useState("latest");
+  const [sort, setSort] = useState<CatalogSortField>("published");
+  const [sortDirection, setSortDirection] = useState<CatalogSortDirection>("desc");
   const [offset, setOffset] = useState(0);
   const [records, setRecords] = useState<SkinListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -26,12 +30,12 @@ export function SkinLibrary() {
     if (!ready) return;
     let cancelled = false;
     queueMicrotask(() => { if (!cancelled) { setLoading(true); setError(""); } });
-    loadSkins({ q: submittedQuery, kind, model: kind === "cape" ? "" : model, sort, limit: pageSize, offset }, token || undefined)
+    loadSkins({ q: submittedQuery, kind, model: kind === "cape" ? "" : model, sort, order: sortDirection, limit: pageSize, offset }, token || undefined)
       .then((result) => { if (!cancelled) setRecords(result); })
       .catch((reason: unknown) => { if (!cancelled) setError(reason instanceof Error ? reason.message : t("skins.loadFailed")); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [kind, model, offset, ready, sort, submittedQuery, t, token]);
+  }, [kind, model, offset, ready, sort, sortDirection, submittedQuery, t, token]);
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -45,45 +49,33 @@ export function SkinLibrary() {
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <section className="border-b border-[var(--line)] bg-[var(--panel)]">
-        <div className="mx-auto max-w-7xl px-4 py-8">
-          <p className="text-sm font-bold text-[var(--accent)]">{t("skins.kicker")}</p>
-          <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-black">{t("skins.title")}</h1>
-              <p className="mt-2 max-w-3xl text-[var(--muted)]">{t("skins.subtitle")}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {token ? <Link className="button-secondary focus-ring" href="/user?section=players">{t("skins.manageProfiles")}</Link> : null}
-              <Link className="button-primary focus-ring" href={token ? "/skins/upload" : "/login?next=/skins/upload"}>{t("skins.upload")}</Link>
-            </div>
-          </div>
-          <form className="mt-6 grid gap-3 lg:grid-cols-[minmax(240px,1fr)_170px_170px_170px_auto]" onSubmit={search}>
-            <input className="field" value={query} placeholder={t("skins.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
-            <select className="field" value={kind} onChange={(event) => { setKind(event.target.value as "" | SkinKind); setOffset(0); }}>
+      <CatalogHero
+        actions={<>{token ? <Link className="button-secondary focus-ring" href="/user?section=players">{t("skins.manageProfiles")}</Link> : null}<Link className="button-primary focus-ring" href={token ? "/skins/upload" : "/login?next=/skins/upload"}>{t("skins.upload")}</Link></>}
+        description={t("skins.subtitle")}
+        kicker={t("skins.kicker")}
+        title={t("skins.title")}
+      >
+          <form className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_150px_150px_minmax(280px,auto)_auto]" onSubmit={search}>
+            <input className="field h-12" value={query} placeholder={t("skins.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
+            <select className="field h-12" value={kind} onChange={(event) => { setKind(event.target.value as "" | SkinKind); setOffset(0); }}>
               <option value="">{t("skins.allKinds")}</option>
               <option value="skin">{t("skins.kindSkin")}</option>
               <option value="cape">{t("skins.kindCape")}</option>
             </select>
-            <select className="field" disabled={kind === "cape"} value={model} onChange={(event) => { setModel(event.target.value as "" | SkinModel); setOffset(0); }}>
+            <select className="field h-12" disabled={kind === "cape"} value={model} onChange={(event) => { setModel(event.target.value as "" | SkinModel); setOffset(0); }}>
               <option value="">{t("skins.allModels")}</option>
               <option value="default">{t("skins.modelDefault")}</option>
               <option value="slim">{t("skins.modelSlim")}</option>
             </select>
-            <select className="field" value={sort} onChange={(event) => { setSort(event.target.value); setOffset(0); }}>
-              <option value="latest">{t("skins.sortLatest")}</option>
-              <option value="downloads">{t("skins.sortDownloads")}</option>
-              <option value="name">{t("skins.sortName")}</option>
-            </select>
-            <button className="button-secondary focus-ring" type="submit">{t("home.searchAction")}</button>
+            <CatalogSortControl className="min-h-12 lg:flex-nowrap" direction={sortDirection} field={sort} fields={skinSortFields} onDirectionChange={(value) => { setSortDirection(value); setOffset(0); }} onFieldChange={(value) => { setSort(value); setOffset(0); }} />
+            <button className="button-primary focus-ring h-12 px-6" type="submit">{t("home.searchAction")}</button>
           </form>
-        </div>
-      </section>
+      </CatalogHero>
 
       <section className="mx-auto max-w-7xl px-4 py-7">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--muted)]">
           <span>{t("skins.results", { start, end, total })}</span>
-          <button className="font-bold text-[var(--accent)] hover:underline" type="button" onClick={() => { setOffset(0); setSubmittedQuery(""); setQuery(""); setKind(""); setModel(""); setSort("latest"); }}>{t("skins.resetFilters")}</button>
+          <button className="font-bold text-[var(--accent)] hover:underline" type="button" onClick={() => { setOffset(0); setSubmittedQuery(""); setQuery(""); setKind(""); setModel(""); setSort("published"); setSortDirection("desc"); }}>{t("skins.resetFilters")}</button>
         </div>
         {error ? <p className="surface rounded-lg border border-[var(--red)]/40 bg-[var(--red)]/10 p-4 text-sm font-bold text-[var(--red)]">{error}</p> : null}
         {loading ? <p className="py-20 text-center font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}

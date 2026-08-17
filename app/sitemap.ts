@@ -7,6 +7,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "", "/mods", "/modpacks", "/plugins", "/maps", "/servers", "/addons",
     "/resource-packs", "/shaders", "/datapacks", "/news", "/tutorials",
     "/issues", "/discussions", "/blueprints", "/skins", "/authors", "/tools",
+    "/site-affairs/about", "/site-affairs/changelogs", "/site-affairs/blackroom",
   ];
   return routes.map((route, index) => ({
     url: `${siteURL}${route}`,

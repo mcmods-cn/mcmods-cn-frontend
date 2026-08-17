@@ -19,6 +19,7 @@ import type {
   RecipeTypeOption,
 } from "../../_lib/recipe-editor-types";
 import { supportedLocales, type Locale, useI18n } from "../../_lib/i18n-provider";
+import { MinecraftVersionPicker } from "../minecraft-version-picker";
 import { ContentLanguageSwitcher } from "./content-language-switcher";
 import { ResourcePickerDialog, type ResourcePickerLabels } from "./resource-picker-dialog";
 import { CatalogResourceIdentity } from "./selected-resource-list";
@@ -335,6 +336,12 @@ export function RecipeEditor({
         <label className="grid gap-2 text-sm font-bold">{labels.template}<select className="field" disabled={!draft.recipeTypePublicId || loadingTemplates} value={draft.templatePublicId} onChange={(event) => changeTemplate(event.target.value)}><option value="">{loadingTemplates ? labels.loadingTemplates : labels.selectTemplate}</option>{templates.map((item) => <option key={item.publicId || item.templateKey} value={item.publicId}>{item.templateKey}</option>)}</select>{draft.recipeTypePublicId && !loadingTemplates && !templates.length ? <small className="text-[var(--muted)]">{labels.noTemplates}</small> : null}</label>
       </div>
       <label className="grid gap-2 text-sm font-bold">{labels.sourceVersion}<select className="field" disabled={loadingSourceVersions} value={draft.sourceVersionPublicId ?? ""} onChange={(event) => setDraft((current) => ({ ...current, sourceVersionPublicId: event.target.value || undefined }))}><option value="">{loadingSourceVersions ? labels.loadingSourceVersions : labels.noSourceVersion}</option>{sourceVersionGroups(sourceVersions).map((group) => <optgroup key={group.key} label={group.label}>{group.items.map((item) => <option key={item.publicId} value={item.publicId}>{sourceVersionOptionLabel(item)}</option>)}</optgroup>)}</select><small className="text-[var(--muted)]">{!loadingSourceVersions && !sourceVersions.length ? labels.noSourceVersions : labels.sourceVersionHint}</small></label>
+      <label className="grid gap-2 text-sm font-bold">
+        <span>适用 Minecraft 版本</span>
+        <MinecraftVersionPicker values={draft.applicableVersionIds} onChange={(applicableVersionIds) => setDraft((current) => ({ ...current, applicableVersionIds }))} />
+        <small className="text-[var(--muted)]">保存时会展开为明确版本；以后新增同分类版本不会自动加入。</small>
+      </label>
+      {draft.applicableVersionIds.length > 1 ? <p className="rounded-lg border border-amber-500/50 bg-amber-50 p-3 text-sm font-bold text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">此合成表同时绑定多个版本，修改合成内容将影响这些版本。</p> : null}
       <label className="grid gap-2 text-sm font-bold">{labels.canonicalSourceId}<input className="field font-mono" required value={draft.canonicalSourceId} onChange={(event) => setDraft((current) => ({ ...current, canonicalSourceId: event.target.value }))} /></label>
     </section>
 
@@ -404,8 +411,8 @@ function CandidateEditor({ candidate, role, index, labels, onChange, onRemove }:
 }
 
 function initialRecipe(value?: RecipeRecord): RecipeRecord {
-  if (value) return { ...value, sourceVersion: value.sourceVersion ? { ...value.sourceVersion } : undefined, definition: { ...value.definition }, bindings: Object.fromEntries(Object.entries(value.bindings).map(([key, binding]) => [key, { ...binding, candidates: binding.candidates.map((candidate) => ({ ...candidate, resource: { ...candidate.resource }, definition: { ...candidate.definition } })) }])) };
-  return { recipeTypePublicId: "", templatePublicId: "", canonicalSourceId: "", definition: {}, bindings: {} };
+  if (value) return { ...value, applicableVersionIds: [...value.applicableVersionIds], sourceVersion: value.sourceVersion ? { ...value.sourceVersion } : undefined, definition: { ...value.definition }, bindings: Object.fromEntries(Object.entries(value.bindings).map(([key, binding]) => [key, { ...binding, candidates: binding.candidates.map((candidate) => ({ ...candidate, resource: { ...candidate.resource }, definition: { ...candidate.definition } })) }])) };
+  return { recipeTypePublicId: "", templatePublicId: "", applicableVersionIds: [], canonicalSourceId: "", definition: {}, bindings: {} };
 }
 
 function initialRecipeLocalizations(value: RecipeRecord | undefined, locale: Locale) {
@@ -432,6 +439,7 @@ function recipeMutation(draft: RecipeRecord, template: RecipeTemplateRecord, ver
     recipeTypePublicId: draft.recipeTypePublicId,
     templatePublicId: draft.templatePublicId,
     sourceVersionPublicId: draft.sourceVersionPublicId || undefined,
+    applicableVersionIds: draft.applicableVersionIds,
     canonicalSourceId: draft.canonicalSourceId.trim(),
     definition,
     bindings: Object.fromEntries(Object.entries(draft.bindings).filter(([, binding]) => binding.candidates.length > 0).map(([slotKey, binding]) => {
@@ -498,6 +506,7 @@ function validateRecipe(
   if (!defaultName) errors.push(`${labels.localizedName}: ${labels.required}`);
   if (!draft.recipeTypePublicId) errors.push(`${labels.recipeType}: ${labels.required}`);
   if (!draft.templatePublicId || !template) errors.push(`${labels.template}: ${labels.required}`);
+  if (!draft.applicableVersionIds.length) errors.push("至少选择一个适用 Minecraft 版本。");
   if (!draft.canonicalSourceId.trim()) errors.push(`${labels.canonicalSourceId}: ${labels.required}`);
   if (!template) return [...new Set(errors)];
   const outputCandidates = template.slots

@@ -12,9 +12,9 @@ import {
   createComment,
   deleteComment,
   loadCommentReplies,
+  loadCommentFloor,
   loadComments,
   loadCommentThread,
-  reportComment,
   setCommentPinned,
   setCommentReaction,
   setCommentWatch,
@@ -23,9 +23,11 @@ import {
 } from "../_lib/comment-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
+import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { UserCardAvatar } from "./user-avatar";
 import { AntiAbuseChallengeDialog } from "./anti-abuse-challenge";
+import { UnifiedReportButton } from "./unified-report-dialog";
 
 const reactionOptions = [
   ["thumbs_up", "👍"], ["thumbs_down", "👎"], ["laugh", "😄"], ["hooray", "🎉"],
@@ -57,8 +59,10 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
   const [canCreate, setCanCreate] = useState(false);
   const [formTokens, setFormTokens] = useState<Partial<Record<"comment.create" | "comment.reply", AntiAbuseFormToken>>>({});
   const [honeypot, setHoneypot] = useState("");
-  const [challenge, setChallenge] = useState<{ value: AntiAbuseChallenge; content: string; parentId?: string; idempotencyKey: string } | null>(null);
+  const [challenge, setChallenge] = useState<{ value: AntiAbuseChallenge; content: string; parentId?: string; idempotencyKey: string; attachmentFileIds: string[] } | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const [floorInput, setFloorInput] = useState("");
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const commentsPath = useMemo(() => targetCommentsPath(targetType, targetKey), [targetKey, targetType]);
 
   const refreshFormToken = useCallback(async (action: "comment.create" | "comment.reply") => {
@@ -112,7 +116,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
     return () => window.clearTimeout(timer);
   }, [load, ready]);
 
-  async function submitComment(content: string, parentId?: string, challengeProof = "", idempotencyKey = globalThis.crypto?.randomUUID?.() || `comment-${Date.now()}-${Math.random()}`) {
+  async function submitComment(content: string, parentId?: string, challengeProof = "", idempotencyKey = globalThis.crypto?.randomUUID?.() || `comment-${Date.now()}-${Math.random()}`, attachmentFileIds: string[] = []) {
     if (!token) {
       setMessage(t("mods.comments.loginRequired"));
       return;
@@ -126,7 +130,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
         formToken: challengeProof ? undefined : formTokens[action]?.token,
         honeypot,
         challengeProof,
-      });
+      }, attachmentFileIds);
       if ("watchOnly" in result) {
         setMessage(t("mods.comments.cyWatched"));
       } else if ("moderation" in result) {
@@ -140,12 +144,13 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       setReplyTo(null);
       setChallenge(null);
       setHoneypot("");
+      setAttachmentFiles([]);
       void refreshFormToken(action);
     } catch (error) {
       if (error instanceof ApiError && error.code === "challenge_required") {
         const value = challengeFromDetails(error.details);
         if (value) {
-          setChallenge({ value, content, parentId, idempotencyKey });
+          setChallenge({ value, content, parentId, idempotencyKey, attachmentFileIds });
           setMessage("检测到异常提交节奏，需要先完成人机验证。你的内容已保留。");
           return;
         }
@@ -159,8 +164,52 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
 
   async function publish(event: FormEvent, content: string, parentId?: string) {
     event.preventDefault();
-    await submitComment(content, parentId);
+    const attachmentFileIds: string[] = [];
+    if (!parentId && attachmentFiles.length) {
+      try {
+        for (const file of attachmentFiles) {
+          const lowerName = file.name.normalize("NFC").toLowerCase();
+          if (!lowerName.endsWith(".log") && !(lowerName.endsWith(".zip") && file.name.normalize("NFC").includes("错误报告"))) {
+            throw new Error(`${file.name} 不属于自动日志附件；普通 ZIP 不会自动关联日志工具。`);
+          }
+          const uploaded = await uploadUserFileToOSS(file, token, "log_share");
+          attachmentFileIds.push(uploaded.id);
+        }
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "日志附件上传失败。");
+        return;
+      }
+    }
+    await submitComment(content, parentId, "", undefined, attachmentFileIds);
   }
+
+  const jumpToFloor = useCallback(async (rawFloor: string) => {
+    const floor = Number(rawFloor);
+    if (!Number.isInteger(floor) || floor <= 0 || floor > 1_000_000_000) {
+      setMessage("请输入有效的正整数楼层。");
+      return;
+    }
+    try {
+      const result = await loadCommentFloor(targetType, targetKey, floor, token || undefined);
+      setItems((current) => mergeComments(current, [result.comment]));
+      window.history.replaceState(null, "", `#floor-${floor}`);
+      window.setTimeout(() => document.getElementById(`floor-${floor}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "未找到该楼层。");
+    }
+  }, [targetKey, targetType, token]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const locateHashFloor = () => {
+      const match = window.location.hash.match(/^#floor-([1-9]\d{0,8})$/);
+      if (match) void jumpToFloor(match[1]);
+    };
+    locateHashFloor();
+    window.addEventListener("hashchange", locateHashFloor);
+    return () => window.removeEventListener("hashchange", locateHashFloor);
+  }, [jumpToFloor, ready]);
 
   return (
     <section className={`mt-10 border-t border-[var(--line)] pt-8 ${className}`} aria-labelledby={`comments-${targetType}-${targetKey}`}>
@@ -169,20 +218,28 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
           <h2 className="text-2xl font-black" id={`comments-${targetType}-${targetKey}`}>{t("mods.comments.title")}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{t("mods.comments.count", { count: total })}</p>
         </div>
-        <label className="flex items-center gap-2 text-sm font-bold text-[var(--muted)]">
-          <span>{t("mods.comments.sort")}</span>
-          <select className="field min-w-32 py-2" value={sort} onChange={(event) => setSort(event.target.value)}>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <form className="flex items-center gap-2" onSubmit={(event) => { event.preventDefault(); void jumpToFloor(floorInput); }}>
+            <label className="sr-only" htmlFor={`comment-floor-${targetType}-${targetKey}`}>跳转楼层</label>
+            <input id={`comment-floor-${targetType}-${targetKey}`} className="field w-24 py-2" inputMode="numeric" min={1} max={1_000_000_000} placeholder="楼层" type="number" value={floorInput} onChange={(event) => setFloorInput(event.target.value)} />
+            <button className="button-secondary focus-ring py-2" type="submit">跳转</button>
+          </form>
+          <label className="flex items-center gap-2 text-sm font-bold text-[var(--muted)]">
+            <span>{t("mods.comments.sort")}</span>
+            <select className="field min-w-32 py-2" value={sort} onChange={(event) => setSort(event.target.value)}>
             <option value="latest">{t("mods.comments.sortLatest")}</option>
             <option value="oldest">{t("mods.comments.sortOldest")}</option>
             <option value="hot">{t("mods.comments.sortHot")}</option>
             <option value="replies">{t("mods.comments.sortReplies")}</option>
-          </select>
-        </label>
+            </select>
+          </label>
+        </div>
       </div>
 
       {user && canCreate ? (
         <form className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => void publish(event, body)}>
           <textarea className="field min-h-28 resize-y" maxLength={10000} required value={body} placeholder={t("mods.comments.placeholder")} onChange={(event) => setBody(event.target.value)} />
+          <label className="mt-3 grid gap-1.5 text-sm font-bold">日志附件（可选）<input accept=".log,.zip" className="field" multiple type="file" onChange={(event) => setAttachmentFiles(Array.from(event.target.files ?? []).slice(0, 5))} /><small className="text-[var(--muted)]">.log 与文件名包含“错误报告”的 ZIP 会自动进入脱敏日志查看器；普通 ZIP 保持普通附件行为。</small></label>
           <input aria-hidden="true" autoComplete="off" className="absolute -left-[10000px] h-px w-px opacity-0" name={formTokens["comment.create"]?.fieldName || "contact_reference"} tabIndex={-1} value={honeypot} onChange={(event) => setHoneypot(event.target.value)} />
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span>
@@ -194,7 +251,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       ) : <p className="mt-5 text-sm font-bold text-[var(--muted)]">{t("mods.comments.noCreatePermission")}</p>}
 
       {message ? <p className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-sm font-bold">{message}</p> : null}
-      {challenge ? <AntiAbuseChallengeDialog challenge={challenge.value} busy={submitting} onCancel={() => setChallenge(null)} onSubmit={(proof) => void submitComment(challenge.content, challenge.parentId, proof, challenge.idempotencyKey)} /> : null}
+      {challenge ? <AntiAbuseChallengeDialog challenge={challenge.value} busy={submitting} onCancel={() => setChallenge(null)} onSubmit={(proof) => void submitComment(challenge.content, challenge.parentId, proof, challenge.idempotencyKey, challenge.attachmentFileIds)} /> : null}
       <CommentTree
         items={items}
         loading={loading}
@@ -249,10 +306,13 @@ function CommentTree(props: CommentTreeProps) {
   const visible = useMemo(() => flattenTree(tree, collapsed), [collapsed, tree]);
 
   useEffect(() => {
-    const id = window.location.hash.startsWith("#comment-") ? window.location.hash.slice("#comment-".length) : "";
+    const floor = window.location.hash.match(/^#floor-(\d+)$/)?.[1];
+    const id = floor
+      ? props.items.find((item) => item.floorNumber === Number(floor))?.id || ""
+      : window.location.hash.startsWith("#comment-") ? window.location.hash.slice("#comment-".length) : "";
     if (!id || !props.items.some((item) => item.id === id)) return;
     const timer = window.setTimeout(() => {
-      document.getElementById(`comment-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+      document.querySelector<HTMLElement>(`[data-comment-id='${CSS.escape(id)}']`)?.scrollIntoView({ behavior: "smooth", block: "center" });
       setHighlighted(id);
       window.setTimeout(() => setHighlighted((current) => current === id ? "" : current), 2000);
     }, 50);
@@ -264,7 +324,7 @@ function CommentTree(props: CommentTreeProps) {
       const visibleElement = document.querySelector<HTMLElement>("[data-comment-visible='true']");
       setReturnTo(visibleElement?.id.replace("comment-", "") || "");
     }
-    document.getElementById(`comment-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    document.querySelector<HTMLElement>(`[data-comment-id='${CSS.escape(id)}']`)?.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlighted(id);
     window.setTimeout(() => setHighlighted((current) => current === id ? "" : current), 2000);
   }
@@ -326,21 +386,6 @@ function CommentTree(props: CommentTreeProps) {
     }
   }
 
-  async function report(comment: CommentItem) {
-    if (!props.token) {
-      props.onMessage(t("mods.comments.loginRequired"));
-      return;
-    }
-    const detail = window.prompt(t("mods.comments.reportPrompt"));
-    if (detail === null) return;
-    try {
-      await reportComment(comment.id, "user_report", detail.trim(), props.token);
-      props.onMessage(t("mods.comments.reported"));
-    } catch (error) {
-      props.onMessage(error instanceof Error ? error.message : t("mods.comments.reportFailed"));
-    }
-  }
-
   async function pin(comment: CommentItem) {
     if (!props.token) return;
     try {
@@ -377,6 +422,7 @@ function CommentTree(props: CommentTreeProps) {
       {visible.map(({ item, visualDepth, hasChildren }) => (
         <div
           className="relative transition"
+          data-comment-id={item.id}
           data-comment-visible="true"
           id={`comment-${item.id}`}
           key={item.id}
@@ -389,6 +435,7 @@ function CommentTree(props: CommentTreeProps) {
             "--comment-mobile-depth": Math.min(2, visualDepth),
           } as CSSProperties}
         >
+          {item.floorNumber ? <span aria-hidden="true" className="absolute" id={`floor-${item.floorNumber}`} /> : null}
           <div className="ml-[calc(var(--comment-depth)*1.5rem)] max-sm:ml-[calc(var(--comment-mobile-depth)*0.75rem)]">
             {visualDepth > 0 ? (
               <button
@@ -408,7 +455,6 @@ function CommentTree(props: CommentTreeProps) {
               onJumpParent={(id) => jumpTo(id)}
               onReact={(reaction) => void react(item, reaction)}
               onReply={() => props.onReply(item)}
-              onReport={() => void report(item)}
               onPin={() => void pin(item)}
               onShare={() => void copyBranch(item)}
               onToggleCollapse={hasChildren ? () => setCollapsed((current) => toggleSet(current, item.id)) : undefined}
@@ -444,7 +490,6 @@ function CommentCard({
   onJumpParent,
   onReact,
   onReply,
-  onReport,
   onPin,
   onShare,
   onToggleCollapse,
@@ -460,7 +505,6 @@ function CommentCard({
   onJumpParent: (id: string) => void;
   onReact: (reaction: string) => void;
   onReply: () => void;
-  onReport: () => void;
   onPin: () => void;
   onShare: () => void;
   onToggleCollapse?: () => void;
@@ -478,12 +522,14 @@ function CommentCard({
           <div className="flex flex-wrap items-baseline gap-x-2">
             <Link className="font-black hover:text-[var(--accent)]" href={`/user/${comment.author.id}`}>{authorName}</Link>
             {comment.author.projectRole ? <span className="rounded-md border border-[var(--accent)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t(`mods.comments.projectRoles.${comment.author.projectRole}`)}</span> : null}
+            {comment.floorNumber ? <a className="text-xs font-black text-[var(--accent)] hover:underline" href={`#floor-${comment.floorNumber}`}>{comment.floorNumber}楼</a> : null}
             {comment.pinned ? <span className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs font-bold text-[var(--muted)]">{t("mods.comments.pinnedBadge")}</span> : null}
             {acceptedAnswer ? <span className="rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t("communityPosts.bounty.acceptedAnswer")}</span> : null}
             <time className="text-xs text-[var(--muted)]">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time>
           </div>
           {comment.parent ? <button className="mt-2 block max-w-full truncate rounded border-l-2 border-[var(--accent)] bg-[var(--panel-subtle)] px-3 py-2 text-left text-xs text-[var(--muted)] hover:text-[var(--accent)]" type="button" onClick={() => onJumpParent(comment.parent!.id)}>@{comment.parent.authorName} · {comment.parent.deleted ? t("mods.comments.deleted") : comment.parent.bodySummary}</button> : null}
-          {comment.deleted ? <p className="mt-3 text-sm italic text-[var(--muted)]">{t("mods.comments.deleted")}</p> : <div className="markdown-preview mt-3 text-sm leading-7"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={comment.body} /></div>}
+          {comment.deleted ? <p className="mt-3 text-sm italic text-[var(--muted)]">{t("mods.comments.deleted")}</p> : <div className="markdown-preview mt-3 text-sm leading-7"><MarkdownRenderer commentFloorLinks config={defaultMarkdownConfig} emptyText="" markdown={comment.body} /></div>}
+          {comment.logAttachments?.length ? <div className="mt-3 flex flex-wrap gap-2">{comment.logAttachments.map((attachment) => attachment.url ? <Link className="rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold text-[var(--accent)] hover:border-[var(--accent)]" href={attachment.url} key={attachment.fileId}>日志 · {attachment.fileName}</Link> : <span className="rounded-md border border-[var(--line)] px-3 py-2 text-sm text-[var(--muted)]" key={attachment.fileId}>日志分享已失效 · {attachment.fileName}</span>)}</div> : null}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {reactionOptions.map(([reaction, emoji]) => {
               const count = comment.reactions[reaction] || 0;
@@ -497,7 +543,7 @@ function CommentCard({
             {comment.canPin ? <button className="text-xs font-bold text-[var(--accent)] hover:underline" type="button" onClick={onPin}>{t(comment.pinned ? "mods.comments.unpin" : "mods.comments.pin")}</button> : null}
             {comment.canEdit ? <button className="text-xs font-bold text-[var(--muted)] hover:underline" type="button" onClick={onEdit}>{t("common.edit")}</button> : null}
             {comment.canDelete ? <button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onDelete}>{t("common.delete")}</button> : null}
-            {comment.canReport ? <button className="text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={onReport}>{t("mods.comments.report")}</button> : null}
+            {comment.canReport ? <UnifiedReportButton className="text-xs font-bold text-[var(--red)] hover:underline" label={t("mods.comments.report")} targetAuthor={comment.author.username} targetId={comment.id} targetSummary={comment.body.slice(0, 180) || t("mods.comments.deleted")} targetType="comment" /> : null}
             {canAcceptAnswer && onAcceptAnswer ? <button className="text-xs font-black text-[var(--accent)] hover:underline" type="button" onClick={onAcceptAnswer}>{t("communityPosts.bounty.acceptAnswer")}</button> : null}
           </div>
         </div>

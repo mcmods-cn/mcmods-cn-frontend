@@ -12,6 +12,7 @@ import { UserHome } from "./user-home";
 import { SkinPreview2D } from "./skin-preview";
 import { UserProfileOverview } from "./user-profile-overview";
 import { UserAvatar } from "./user-avatar";
+import { UnifiedReportButton } from "./unified-report-dialog";
 
 export function UserProfile({ userId }: { userId: string }) {
   const { t } = useI18n();
@@ -58,6 +59,23 @@ export function UserProfile({ userId }: { userId: string }) {
       });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("user.followFailed"));
+    }
+  }
+
+  async function toggleBlock() {
+    if (!token || !profile || !profile.canBlock) return;
+    if (!profile.isBlocked && !window.confirm(t("user.blockConfirm", { name: profile.username }))) return;
+    try {
+      await apiRequest<{ blocked: boolean }>(
+        `/api/v1/users/${profile.id}/block`,
+        { method: profile.isBlocked ? "DELETE" : "PUT" },
+        token,
+      );
+      const nextProfile = await loadPublicUserProfile(profile.id, token);
+      setProfile(nextProfile);
+      setMessage(t(profile.isBlocked ? "user.unblockSucceeded" : "user.blockSucceeded"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t(profile.isBlocked ? "user.unblockFailed" : "user.blockFailed"));
     }
   }
 
@@ -109,6 +127,12 @@ export function UserProfile({ userId }: { userId: string }) {
                   <Link className={`button-secondary focus-ring ${profile.canMessage ? "" : "pointer-events-none opacity-50"}`} href={`/messages?user=${profile.id}`}>
                     {t("user.privateMessage")}
                   </Link>
+                  {profile.canBlock ? (
+                    <button className="button-secondary focus-ring text-[var(--danger)]" type="button" onClick={() => void toggleBlock()}>
+                      {profile.isBlocked ? t("user.unblock") : t("user.block")}
+                    </button>
+                  ) : null}
+                  <UnifiedReportButton targetAuthor={profile.username} targetId={profile.id} targetSummary={profile.username} targetType="user" />
                 </>
               ) : (
                 <Link className="button-primary focus-ring w-full justify-center sm:w-auto" href={`/login?next=/user/${profile.id}`}>

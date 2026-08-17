@@ -54,6 +54,7 @@ type ProfileSettings = {
 type UserOverview = {
   followers: number;
   following: number;
+  blocked: number;
   aiBalance: AITokenBalance;
 };
 
@@ -351,9 +352,10 @@ export function UserHome() {
                   {t("user.previewAsVisitor")}
                 </Link> : <button className="button-secondary focus-ring" disabled type="button">{t("user.previewAsVisitor")}</button>}
               </div>
-              <div className="relative z-10 mt-5 grid border-y border-[var(--line)] sm:grid-cols-3">
+              <div className="relative z-10 mt-5 grid border-y border-[var(--line)] sm:grid-cols-4">
                 <AccountMetric href={profile?.publicId ? `/user/${encodeURIComponent(profile.publicId)}/following` : undefined} label={t("user.myFollowing")} value={overview ? formatTokenCount(overview.following, locale) : "-"} />
-                <AccountMetric className="sm:border-x sm:border-[var(--line)]" href={profile?.publicId ? `/user/${encodeURIComponent(profile.publicId)}/followers` : undefined} label={t("user.myFollowers")} value={overview ? formatTokenCount(overview.followers, locale) : "-"} />
+                <AccountMetric className="sm:border-l sm:border-[var(--line)]" href={profile?.publicId ? `/user/${encodeURIComponent(profile.publicId)}/followers` : undefined} label={t("user.myFollowers")} value={overview ? formatTokenCount(overview.followers, locale) : "-"} />
+                <AccountMetric className="sm:border-x sm:border-[var(--line)]" href={profile?.publicId ? `/user/${encodeURIComponent(profile.publicId)}/blocked` : undefined} label={t("user.myBlocked")} value={overview ? formatTokenCount(overview.blocked, locale) : "-"} />
                 <AIBalanceMetric balance={overview?.aiBalance ?? null} locale={locale} />
               </div>
             </div>

@@ -20,6 +20,7 @@ import {
   CreateModPayload,
   MinecraftVersionConfig,
 } from "../_lib/mod-api";
+import { loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
 import {
   environmentOptions,
   licenseOptions,
@@ -32,6 +33,7 @@ import {
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import type { Locale } from "../_lib/i18n-provider";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
+import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { CreatorPicker } from "./creator-picker";
 import { ToolsPlayground } from "./tools-playground";
@@ -132,7 +134,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest<MinecraftVersionConfig>("/api/v1/minecraft/versions")
+    loadMinecraftVersionConfig()
       .then((config) => { if (!cancelled) setMinecraftConfig(config); })
       .catch(() => undefined);
     return () => { cancelled = true; };
@@ -332,7 +334,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
 
         <FormSection title={t("mods.submission.sections.identity")} description={t("mods.submission.sections.identityHint")}>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label={t("mods.submission.fields.siteId")} required hint={t("mods.submission.hints.siteId")}><input className="field font-mono" required maxLength={100} pattern="[a-z0-9](?:[a-z0-9_-]{0,98}[a-z0-9])?" value={draft.siteId} onChange={(event) => setDraft({ ...draft, siteId: normalizeSiteIdInput(event.target.value) })} /></Field>
+            <Field label={t("mods.submission.fields.siteId")} required hint={t("mods.submission.hints.siteId")}><input className="field font-mono" required maxLength={100} pattern="[a-z0-9](?:[a-z0-9_-]{0,98}[a-z0-9])?" value={draft.siteId} onChange={(event) => setDraft({ ...draft, siteId: normalizeProjectSiteIdInput(event.target.value) })} /></Field>
             {uniqueId ? <Field label={t("mods.submission.fields.uniqueId")} hint={t("mods.submission.hints.uniqueId")}><input className="field font-mono" readOnly value={uniqueId} /></Field> : null}
             <Field label={t("mods.submission.fields.primaryName")} required hint={t("mods.submission.hints.primaryName")}><input className="field" required maxLength={160} value={draft.primaryName} onChange={(event) => setDraft({ ...draft, primaryName: event.target.value })} /></Field>
             <Field label={`${t("mods.submission.fields.secondaryName")} (${selectedLocale})`} hint={t("mods.submission.hints.secondaryName")}><input className="field" maxLength={160} value={localized.name} onChange={(event) => setDraft(updateModLocalization(draft, selectedLocale, { name: event.target.value }))} /></Field>
@@ -668,10 +670,6 @@ function apiAssetURL(value?: string) {
   if (!value) return "";
   if (value.startsWith("/")) return `${API_BASE_URL}${value}`;
   return value;
-}
-
-function normalizeSiteIdInput(value: string) {
-  return value.trimStart().toLowerCase().replace(/[^a-z0-9_-]/g, "");
 }
 
 function toggleArray(values: string[], value: string) {

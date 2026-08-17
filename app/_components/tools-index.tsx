@@ -6,6 +6,11 @@ import { IconFont } from "./iconfont";
 
 const tools = [
   {
+    key: "logs",
+    href: "/tools/logs",
+    accent: "bg-sky-600",
+  },
+  {
     key: "playground",
     href: "/tools/playground",
     accent: "bg-emerald-500",

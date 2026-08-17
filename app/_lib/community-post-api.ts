@@ -1,4 +1,5 @@
 import { API_BASE_URL, apiRequest } from "./api";
+import type { CatalogSortDirection, CatalogSortField } from "./catalog-sort";
 
 export type CommunityPostKind = "tutorial" | "issue" | "news" | "discussion";
 export type CommunityPostSeverity = "client" | "harmless" | "minor" | "harmful" | "severe" | "fatal";
@@ -90,7 +91,7 @@ export function communityPostCollection(kind: CommunityPostKind) {
   }
 }
 
-export async function loadCommunityPosts(kind: CommunityPostKind, options: { query?: string; category?: string; versions?: string[]; versionMode?: "any" | "all"; projects?: string[]; sort?: "latest" | "updated" | "oldest"; modId?: string; resourceId?: string; limit?: number; offset?: number } = {}, token = "", signal?: AbortSignal) {
+export async function loadCommunityPosts(kind: CommunityPostKind, options: { query?: string; category?: string; versions?: string[]; versionMode?: "any" | "all"; projects?: string[]; sort?: CatalogSortField; order?: CatalogSortDirection; modId?: string; resourceId?: string; limit?: number; offset?: number } = {}, token = "", signal?: AbortSignal) {
   const parameters = new URLSearchParams({ kind, limit: String(options.limit ?? 24), offset: String(options.offset ?? 0) });
   if (options.query) parameters.set("q", options.query);
   if (options.category) parameters.set("category", options.category);
@@ -98,6 +99,7 @@ export async function loadCommunityPosts(kind: CommunityPostKind, options: { que
   if (options.versionMode === "all") parameters.set("versionMode", "all");
   if (options.projects?.length) parameters.set("project", options.projects.join(","));
   if (options.sort) parameters.set("sort", options.sort);
+  if (options.order) parameters.set("order", options.order);
   if (options.modId) parameters.set("modId", options.modId);
   if (options.resourceId) parameters.set("resourceId", options.resourceId);
   const result = await apiRequest<{ items: CommunityPostResponse[] | null; total: number; limit: number; offset: number; categories?: string[] }>(`/api/v1/community/posts?${parameters}`, { cache: "no-store", signal }, token || undefined);

@@ -3,6 +3,7 @@ import { apiRecord as record, apiText as text } from "./api-normalizers";
 import type {
   CatalogResourcePage,
   CatalogResourceQuery,
+  CatalogResourceRef,
   ContentTranslationTask,
   LocalizedContentFields,
   LocalizationVersion,
@@ -17,6 +18,8 @@ export function loadCatalogResources(query: CatalogResourceQuery, token = "", si
   if (query.locale?.trim()) parameters.set("locale", query.locale.trim());
   if (query.kind?.trim()) parameters.set("kindCode", query.kind.trim());
 	if (query.registry?.trim()) parameters.set("registry", query.registry.trim());
+  if (query.status) parameters.set("status", query.status);
+  if (query.hasBindings) parameters.set("hasBindings", query.hasBindings);
   parameters.set("limit", String(Math.max(1, Math.min(100, query.limit ?? 40))));
   parameters.set("offset", String(Math.max(0, query.offset ?? 0)));
   return apiRequest<{
@@ -39,11 +42,12 @@ export function loadCatalogResources(query: CatalogResourceQuery, token = "", si
 		type?: string;
 		version?: string;
 	  };
+	  bindingCount?: number;
     }>;
     total: number;
     limit: number;
     offset: number;
-  }>(`/api/v1/catalog/resources?${parameters}`, { signal }, token || undefined).then((page): CatalogResourcePage => ({
+  }>(`${query.admin ? "/api/v1/admin/global-resources" : "/api/v1/catalog/resources"}?${parameters}`, { signal }, token || undefined).then((page): CatalogResourcePage => ({
     ...page,
 	items: page.items.map((item) => ({
       publicId: item.publicId,
@@ -55,6 +59,7 @@ export function loadCatalogResources(query: CatalogResourceQuery, token = "", si
 	  resolvedLocale: item.locale,
 	  iconUrl: item.iconUrl || (item.iconFileId ? `/api/v1/catalog/resources/${encodeURIComponent(item.publicId)}/icon` : undefined),
 	  source: item.source,
+	  bindingCount: item.bindingCount,
     })),
   }));
 }
@@ -188,4 +193,27 @@ function normalizeTranslationState(value: unknown): ResolvedContentDocument["tra
   return candidate === "queued" || candidate === "running" || candidate === "retrying" || candidate === "completed"
     || candidate === "ready" || candidate === "failed" || candidate === "request_required" || candidate === "unavailable"
     || candidate === "no_source" ? candidate : "not_required";
+}
+
+export function loadCatalogResourcePresentation(reference: string, locale = "", signal?: AbortSignal) {
+  const parameters = new URLSearchParams({ ref: reference.trim() });
+  if (locale.trim()) parameters.set("locale", locale.trim());
+  return apiRequest<{
+    publicId: string;
+    kind: string;
+    id: string;
+    registry?: string;
+    locale?: string;
+    name?: string;
+    iconUrl?: string;
+  }>(`/api/v1/catalog/resource-presentation?${parameters}`, { signal }).then((item): CatalogResourceRef => ({
+    publicId: item.publicId,
+    id: item.id,
+    registry: item.registry || item.id.split(":", 1)[0] || "minecraft",
+    kind: item.kind,
+    names: item.name ? { [item.locale || locale || "en-US"]: item.name } : {},
+    resolvedName: item.name,
+    resolvedLocale: item.locale,
+    iconUrl: item.iconUrl,
+  }));
 }

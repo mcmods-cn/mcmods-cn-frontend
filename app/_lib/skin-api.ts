@@ -1,4 +1,5 @@
 import { API_BASE_URL, apiRequest } from "./api";
+import type { CatalogSortDirection, CatalogSortField } from "./catalog-sort";
 
 export type SkinKind = "skin" | "cape";
 export type SkinModel = "default" | "slim";
@@ -79,7 +80,8 @@ export type SkinQuery = {
   q?: string;
   kind?: "" | SkinKind;
   model?: "" | SkinModel;
-  sort?: string;
+  sort?: CatalogSortField;
+  order?: CatalogSortDirection;
   limit?: number;
   offset?: number;
 };
@@ -115,6 +117,7 @@ export function loadSkins(query: SkinQuery, token?: string) {
   if (query.kind) params.set("kind", query.kind);
   if (query.model) params.set("model", query.model);
   if (query.sort) params.set("sort", query.sort);
+  if (query.order) params.set("order", query.order);
   params.set("limit", String(query.limit ?? 36));
   params.set("offset", String(query.offset ?? 0));
   return apiRequest<SkinListResponse>(`/api/v1/skins?${params}`, {}, token);

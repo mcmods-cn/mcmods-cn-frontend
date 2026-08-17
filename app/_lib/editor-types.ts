@@ -77,6 +77,7 @@ export type CatalogResourceRef = {
   rawIdentifier?: string;
   source?: CatalogResourceSource;
   versions?: CatalogResourceVersion[];
+  bindingCount?: number;
 };
 
 export type CatalogResourceVersion = {
@@ -127,6 +128,9 @@ export type CatalogResourceQuery = {
   locale?: ContentLanguageTag;
   kind?: string;
   registry?: string;
+  status?: "active" | "pending" | "archived";
+  hasBindings?: "" | "true" | "false";
+  admin?: boolean;
   limit?: number;
   offset?: number;
 };

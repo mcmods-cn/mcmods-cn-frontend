@@ -20,6 +20,7 @@ export function UnifiedRecipeCard({
   recipeTypeHref,
   source,
   sourceHref,
+  applicableVersions,
   technicalInfo,
   editAction,
   labels,
@@ -33,6 +34,7 @@ export function UnifiedRecipeCard({
   recipeTypeHref?: string;
   source?: string;
   sourceHref?: string;
+  applicableVersions?: string[];
   technicalInfo: Record<string, string>;
   editAction?: React.ReactNode;
   labels: { materials: string; note: string; noNote: string; technical: string; recipeId: string; recipeType: string; source: string };
@@ -51,6 +53,7 @@ export function UnifiedRecipeCard({
     <footer className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-[var(--line)] px-4 py-3 text-xs">
       {recipeType ? <span><strong className="mr-2 text-[var(--muted)]">{labels.recipeType}</strong>{recipeTypeHref ? <Link className="font-mono font-bold text-[var(--accent)] hover:underline" href={recipeTypeHref}>{recipeType}</Link> : <code>{recipeType}</code>}</span> : null}
       {source ? <span><strong className="mr-2 text-[var(--muted)]">{labels.source}</strong>{sourceHref ? <Link className="font-mono font-bold text-[var(--accent)] hover:underline" href={sourceHref}>{source}</Link> : <code>{source}</code>}</span> : null}
+      {applicableVersions?.length ? <span><strong className="mr-2 text-[var(--muted)]">适用版本</strong><span className="font-mono font-bold">{applicableVersions.join(" / ")}</span></span> : null}
     </footer>
   </article>;
 }

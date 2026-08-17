@@ -6,14 +6,18 @@ import { FormEvent, useEffect, useState } from "react";
 import { API_BASE_URL, apiRequest, backendFetch, isBearerAccessToken } from "../_lib/api";
 import { BlueprintListResponse, type BlueprintRequiredMod } from "../_lib/blueprint-api";
 import { useAuthSnapshot } from "../_lib/auth";
+import { type CatalogSortDirection, type CatalogSortField, coreCatalogSortFields } from "../_lib/catalog-sort";
 import { useI18n } from "../_lib/i18n-provider";
 import { notifySite } from "../_lib/site-notice";
+import { CatalogHero, CatalogSortControl } from "./catalog-list-ui";
 
 export function BlueprintLibrary() {
   const { t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
+  const [sort, setSort] = useState<CatalogSortField>("updated");
+  const [sortDirection, setSortDirection] = useState<CatalogSortDirection>("desc");
   const [records, setRecords] = useState<BlueprintListResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -21,12 +25,13 @@ export function BlueprintLibrary() {
     if (!ready) return;
     let cancelled = false;
     queueMicrotask(() => { if (!cancelled) setLoading(true); });
-    apiRequest<BlueprintListResponse>(`/api/v1/blueprints?limit=60&q=${encodeURIComponent(submittedQuery)}`, {}, token)
+    const params = new URLSearchParams({ limit: "60", q: submittedQuery, sort, order: sortDirection });
+    apiRequest<BlueprintListResponse>(`/api/v1/blueprints?${params}`, {}, token)
       .then((result) => { if (!cancelled) setRecords(result); })
       .catch((error) => { if (!cancelled) notifySite(cleanError(error), t("blueprints.title"), "danger"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [ready, submittedQuery, t, token]);
+  }, [ready, sort, sortDirection, submittedQuery, t, token]);
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -35,20 +40,18 @@ export function BlueprintLibrary() {
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <section className="border-b border-[var(--line)] bg-[var(--panel)]">
-        <div className="mx-auto max-w-7xl px-4 py-8">
-          <p className="text-sm font-bold text-[var(--accent)]">{t("blueprints.kicker")}</p>
-          <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-            <div><h1 className="text-3xl font-black">{t("blueprints.title")}</h1><p className="mt-2 max-w-3xl text-[var(--muted)]">{t("blueprints.subtitle")}</p></div>
-            <Link className="button-primary focus-ring" href={token ? "/blueprints/upload" : "/login?next=/blueprints/upload"}>{t("blueprints.upload")}</Link>
-          </div>
-          <p className="mt-3 text-sm text-[var(--muted)]">{t("blueprints.uploadHint")}</p>
-          <form className="mt-6 flex max-w-3xl gap-2" onSubmit={search}>
-            <input className="field" value={query} placeholder={t("blueprints.search")} onChange={(event) => setQuery(event.target.value)} />
-            <button className="button-secondary focus-ring shrink-0" type="submit">{t("globalCatalog.searchAction")}</button>
+      <CatalogHero
+        actions={<Link className="button-primary focus-ring" href={token ? "/blueprints/upload" : "/login?next=/blueprints/upload"}>{t("blueprints.upload")}</Link>}
+        description={<>{t("blueprints.subtitle")}<span className="mt-1 block">{t("blueprints.uploadHint")}</span></>}
+        kicker={t("blueprints.kicker")}
+        title={t("blueprints.title")}
+      >
+          <form className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_minmax(280px,auto)_auto]" onSubmit={search}>
+            <input className="field h-12" value={query} placeholder={t("blueprints.search")} onChange={(event) => setQuery(event.target.value)} />
+            <CatalogSortControl className="min-h-12 lg:flex-nowrap" direction={sortDirection} field={sort} fields={coreCatalogSortFields} onDirectionChange={setSortDirection} onFieldChange={setSort} />
+            <button className="button-primary focus-ring h-12 shrink-0 px-6" type="submit">{t("globalCatalog.searchAction")}</button>
           </form>
-        </div>
-      </section>
+      </CatalogHero>
 
       <section className="mx-auto max-w-7xl px-4 py-7">
         {loading ? <p className="py-16 text-center text-[var(--muted)]">{t("common.loading")}</p> : null}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { loadCatalogResources, catalogResourceIconURL } from "../_lib/editor-api";
+import { loadCatalogResourcePresentation, catalogResourceIconURL } from "../_lib/editor-api";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
 import { ResourcePickerDialog } from "./editor/resource-picker-dialog";
@@ -144,10 +144,7 @@ function resolveCatalogResource(reference: CatalogIconReference, locale: string)
   const key = `${query}\u0000${locale}`;
   let request = resourceCache.get(key);
   if (!request) {
-    request = loadCatalogResources({ query, locale, limit: 40, offset: 0 })
-      .then((page) => page.items.find((resource) => reference.publicId
-        ? resource.publicId.toLowerCase() === reference.publicId
-        : resource.id.toLowerCase() === reference.identifier) ?? null)
+    request = loadCatalogResourcePresentation(query, locale)
       .catch((reason) => {
         resourceCache.delete(key);
         throw reason;

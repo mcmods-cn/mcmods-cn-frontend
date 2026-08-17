@@ -6,9 +6,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type WheelEvent as ReactWheelEvent, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { apiRequest } from "../_lib/api";
-import { canAccessAdmin, clearAuth, type AuthUser, useAuthSnapshot } from "../_lib/auth";
-import { reportBackendAvailability } from "../_lib/backend-status";
+import { API_BASE_URL, apiRequest } from "../_lib/api";
+import { canAccessAdmin, canAccessReviewQueue, clearAuth, type AuthUser, useAuthSnapshot } from "../_lib/auth";
+import { isBackendUnavailable, reportBackendAvailability } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
@@ -20,6 +20,7 @@ type SiteShellProps = {
 type HeaderNavItem = {
   labelKey: string;
   href: string;
+  external?: boolean;
   children?: HeaderNavItem[];
 };
 
@@ -48,6 +49,16 @@ const navItems: HeaderNavItem[] = [
   { labelKey: "nav.skins", href: "/skins" },
   { labelKey: "nav.blueprints", href: "/blueprints" },
   { labelKey: "nav.tools", href: "/tools" },
+  {
+    labelKey: "nav.siteAffairs",
+    href: "/site-affairs/about",
+    children: [
+      { labelKey: "nav.aboutSite", href: "/site-affairs/about" },
+      { labelKey: "nav.siteChangelogs", href: "/site-affairs/changelogs" },
+      { labelKey: "nav.blackroom", href: "/site-affairs/blackroom" },
+      { labelKey: "nav.externalWiki", href: "https://wiki.mcmods.cn", external: true },
+    ],
+  },
 ];
 
 export function SiteShell({ children }: SiteShellProps) {
@@ -56,11 +67,62 @@ export function SiteShell({ children }: SiteShellProps) {
   return (
     <>
       <SitePresence />
+      <RealtimeBridge />
       {admin ? <BackendStatusBanner /> : <SiteHeader />}
       {children}
       <SiteNoticeDialog />
     </>
   );
+}
+
+function RealtimeBridge() {
+  const { token } = useAuthSnapshot();
+
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    let source: EventSource | null = null;
+    let timer: number | null = null;
+    let retryIndex = 0;
+    const seenEventIds = new Set<string>();
+    const delays = [2_000, 5_000, 10_000, 30_000] as const;
+    const eventTypes = ["message.created", "notification.created", "notification.changed", "unread.changed"];
+    const close = () => { source?.close(); source = null; if (timer !== null) window.clearTimeout(timer); timer = null; };
+    const connect = () => {
+      close();
+      if (cancelled || document.visibilityState !== "visible") return;
+      source = new EventSource(`${API_BASE_URL}/api/v1/realtime/events`, { withCredentials: true });
+      source.onopen = () => { retryIndex = 0; };
+      for (const type of eventTypes) {
+        source.addEventListener(type, (event) => {
+          const message = event as MessageEvent<string>;
+          if (message.lastEventId) {
+            if (seenEventIds.has(message.lastEventId)) return;
+            seenEventIds.add(message.lastEventId);
+            if (seenEventIds.size > 200) {
+              const oldest = seenEventIds.values().next().value;
+              if (oldest) seenEventIds.delete(oldest);
+            }
+          }
+          let data: unknown = null;
+          try { data = JSON.parse(message.data); } catch { data = message.data; }
+          window.dispatchEvent(new CustomEvent("mcmods-realtime", { detail: { id: message.lastEventId, type, data } }));
+          window.dispatchEvent(new Event("mcmods-unread-change"));
+        });
+      }
+      source.onerror = () => {
+        source?.close(); source = null;
+        const delay = delays[Math.min(retryIndex++, delays.length - 1)];
+        timer = window.setTimeout(connect, delay);
+      };
+    };
+    const visibility = () => { if (document.visibilityState === "visible") connect(); else close(); };
+    connect();
+    document.addEventListener("visibilitychange", visibility);
+    return () => { cancelled = true; close(); document.removeEventListener("visibilitychange", visibility); };
+  }, [token]);
+
+  return null;
 }
 
 const presenceStorageKey = "mcmods.presence.visitor";
@@ -102,37 +164,73 @@ type SiteNotice = { message: string; title?: string; tone?: "danger" | "success"
 
 function BackendStatusBanner() {
   const { t } = useI18n();
-  const [available, setAvailable] = useState(true);
+  const [available, setAvailable] = useState(() => !isBackendUnavailable());
 
   useEffect(() => {
     let cancelled = false;
+    let unavailable = isBackendUnavailable();
+    let retryIndex = 0;
+    let timer: number | null = null;
+    const delays = [5_000, 10_000, 20_000, 30_000] as const;
+
+    const clearRetry = () => {
+      if (timer !== null) window.clearTimeout(timer);
+      timer = null;
+    };
+    const schedule = () => {
+      clearRetry();
+      if (cancelled || !unavailable || document.visibilityState !== "visible") return;
+      const delay = delays[Math.min(retryIndex, delays.length - 1)];
+      timer = window.setTimeout(check, delay);
+    };
+    const update = (nextAvailable: boolean) => {
+      unavailable = !nextAvailable;
+      setAvailable(nextAvailable);
+      if (nextAvailable) {
+        retryIndex = 0;
+        clearRetry();
+      } else {
+        schedule();
+      }
+    };
     const receive = (event: Event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
-      if (typeof detail?.available === "boolean") setAvailable(detail.available);
+      if (typeof detail?.available === "boolean") update(detail.available);
     };
-    const check = () => {
-      void apiRequest<{ status: "ok" | "error" }>("/health", { cache: "no-store" })
+    function check() {
+      clearRetry();
+      if (cancelled || document.visibilityState !== "visible" || !unavailable) return;
+      void apiRequest<{ status: "ready" | "not_ready" }>("/ready", { cache: "no-store" })
         .then((health) => {
           if (cancelled) return;
-          const nextAvailable = health.status === "ok";
-          setAvailable(nextAvailable);
+          const nextAvailable = health.status === "ready";
           reportBackendAvailability(nextAvailable);
+          update(nextAvailable);
         })
         .catch(() => {
           if (cancelled) return;
-          setAvailable(false);
+          retryIndex = Math.min(retryIndex + 1, delays.length - 1);
           reportBackendAvailability(false);
+          update(false);
         });
+    }
+    const checkAfterOnline = () => {
+      if (unavailable) check();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") schedule();
+      else clearRetry();
     };
     window.addEventListener("mcmods-backend-status", receive);
-    window.addEventListener("online", check);
-    check();
-    const timer = window.setInterval(check, 5_000);
+    window.addEventListener("online", checkAfterOnline);
+    document.addEventListener("visibilitychange", handleVisibility);
+    if (unavailable) schedule();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      clearRetry();
       window.removeEventListener("mcmods-backend-status", receive);
-      window.removeEventListener("online", check);
+      window.removeEventListener("online", checkAfterOnline);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -182,14 +280,15 @@ function SiteHeader() {
     if (!token) return;
     let cancelled = false;
     const load = () => {
-      void apiRequest<{ total: number }>("/api/v1/notifications/unread", {}, token)
+      if (document.visibilityState !== "visible") return;
+      void apiRequest<{ total: number }>("/api/v1/me/unread-summary", {}, token)
         .then((result) => {
           if (!cancelled) setUnread(result.total);
         })
         .catch(() => undefined);
     };
     load();
-    const timer = window.setInterval(load, 20_000);
+    const timer = window.setInterval(load, 300_000);
     window.addEventListener("mcmods-unread-change", load);
     return () => {
       cancelled = true;
@@ -321,6 +420,7 @@ function SiteHeader() {
                       <ProfileMenuLink href="/user?section=economy">{t("user.economyAndProgression")}</ProfileMenuLink>
                       <ProfileMenuLink href="/user?section=players">{t("skins.playerProfiles")}</ProfileMenuLink>
                       <ProfileMenuLink href="/user?section=settings">{t("user.settings")}</ProfileMenuLink>
+                      {canAccessReviewQueue(user) ? <ProfileMenuLink href="/reviews">{t("admin.reviews.projectQueueTitle")}</ProfileMenuLink> : null}
                       {canAccessAdmin(user) ? <ProfileMenuLink href="/admin">{t("common.admin")}</ProfileMenuLink> : null}
                     </nav>
                     <div className="border-t border-[var(--line)] p-2">
@@ -494,9 +594,8 @@ function HeaderNavMenu({ item }: { item: HeaderNavItem }) {
               {t(item.labelKey)}
             </Link>
             {item.children?.map((child) => (
-              <Link key={child.href} className="rounded-md px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]" href={child.href} role="menuitem" onClick={closeMenu}>
-                {t(child.labelKey)}
-              </Link>
+              child.external ? <a key={child.href} className="rounded-md px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]" href={child.href} rel="noopener noreferrer external" role="menuitem" target="_blank" onClick={closeMenu}>{t(child.labelKey)} ↗</a>
+                : <Link key={child.href} className="rounded-md px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]" href={child.href} role="menuitem" onClick={closeMenu}>{t(child.labelKey)}</Link>
             ))}
           </div>
         </div>,

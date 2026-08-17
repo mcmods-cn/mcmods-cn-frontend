@@ -2,6 +2,7 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { type CatalogSortDirection, normalizeCatalogSortDirection } from "./catalog-sort";
 
 export type CatalogView = "list" | "grid";
 
@@ -9,6 +10,7 @@ export type CatalogPreferences<TSort extends string = string> = {
   view: CatalogView;
   pageSize: number;
   sort: TSort;
+  sortDirection: CatalogSortDirection;
 };
 
 export type CatalogTranslation = (key: string, params?: Record<string, string | number>) => string;
@@ -28,6 +30,7 @@ type CatalogControlOptions<TSort extends string> = {
   defaultExpandedGroups: readonly string[];
   sortOptions: readonly TSort[];
   defaultSort: TSort;
+  defaultSortDirection?: CatalogSortDirection;
   onPageChange: () => void;
 };
 
@@ -35,7 +38,12 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [preferences, setPreferences] = useState<CatalogPreferences<TSort>>({ view: "list", pageSize: 20, sort: options.defaultSort });
+  const [preferences, setPreferences] = useState<CatalogPreferences<TSort>>({
+    view: "list",
+    pageSize: 20,
+    sort: options.defaultSort,
+    sortDirection: options.defaultSortDirection ?? "desc",
+  });
   const [expandedGroups, setExpandedGroups] = useState(() => new Set(options.defaultExpandedGroups));
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [queryDraft, setQueryDraft] = useState(searchParams.get("q") ?? "");
@@ -53,6 +61,7 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
         options.preferenceStorageKey,
         JSON.parse(sortOptionsKey) as TSort[],
         options.defaultSort,
+        options.defaultSortDirection ?? "desc",
       ));
       setExpandedGroups(readStoredStringSet(
         options.expandedStorageKey,
@@ -60,7 +69,7 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
       ));
     });
     return () => { cancelled = true; };
-  }, [defaultExpandedGroupsKey, options.defaultSort, options.expandedStorageKey, options.preferenceStorageKey, sortOptionsKey]);
+  }, [defaultExpandedGroupsKey, options.defaultSort, options.defaultSortDirection, options.expandedStorageKey, options.preferenceStorageKey, sortOptionsKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +127,7 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
       ...(next.view ? { view: next.view } : {}),
       ...(next.pageSize ? { size: next.pageSize } : {}),
       ...(next.sort ? { sort: next.sort } : {}),
+      ...(next.sortDirection ? { order: next.sortDirection } : {}),
     });
   }, [options.preferenceStorageKey, preferences, replaceParams]);
 
@@ -165,6 +175,7 @@ function readCatalogPreferences<TSort extends string>(
   storageKey: string,
   sortOptions: readonly TSort[],
   defaultSort: TSort,
+  defaultSortDirection: CatalogSortDirection,
 ): CatalogPreferences<TSort> {
   try {
     const value = JSON.parse(window.localStorage.getItem(storageKey) ?? "{}") as Partial<CatalogPreferences<TSort>>;
@@ -173,9 +184,10 @@ function readCatalogPreferences<TSort extends string>(
       view: value.view === "grid" ? "grid" : "list",
       pageSize: [20, 40, 60].includes(Number(value.pageSize)) ? Number(value.pageSize) : 20,
       sort,
+      sortDirection: normalizeCatalogSortDirection(value.sortDirection, defaultSortDirection, value.sort),
     };
   } catch {
-    return { view: "list", pageSize: 20, sort: defaultSort };
+    return { view: "list", pageSize: 20, sort: defaultSort, sortDirection: defaultSortDirection };
   }
 }
 
@@ -188,18 +200,4 @@ export function readStoredStringSet(key: string, fallback: string[] = []) {
   } catch {
     return new Set(fallback);
   }
-}
-
-export function matchesCatalogUpdatedRange(updatedAt: string, range: string, now = Date.now()) {
-  const days = Math.max(0, (now - Date.parse(updatedAt)) / 86_400_000);
-  if (range === "week") return days <= 7;
-  if (range === "month") return days <= 30;
-  if (range === "quarter") return days <= 90;
-  if (range === "year") return days <= 365;
-  if (range === "stale") return days > 365;
-  return true;
-}
-
-export function normalizeCatalogSearch(value: string) {
-  return value.trim().toLocaleLowerCase().replace(/[\s_-]+/g, " ");
 }

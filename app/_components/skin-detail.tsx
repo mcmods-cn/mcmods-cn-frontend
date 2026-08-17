@@ -21,6 +21,7 @@ import {
 import { notifySite } from "../_lib/site-notice";
 import { SkinPreview2D } from "./skin-preview";
 import { CommentSection } from "./comment-section";
+import { UnifiedReportButton } from "./unified-report-dialog";
 
 const SkinViewerCanvas = dynamic(
   () => import("@/components/minecraft-skin/SkinViewerCanvas").then((module) => module.SkinViewerCanvas),
@@ -173,6 +174,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
               <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                 <a className="button-primary focus-ring text-center" download href={textureURL} target="_blank" rel="noopener noreferrer">{t("skins.download")}</a>
                 {token ? <button className="button-secondary focus-ring" disabled={busy === "wardrobe"} type="button" onClick={() => void toggleWardrobe()}>{texture.inWardrobe ? t("skins.removeWardrobe") : t("skins.addWardrobe")}</button> : <Link className="button-secondary focus-ring text-center" href={`/login?next=/skins/${texture.publicId}`}>{t("skins.loginToUse")}</Link>}
+                <UnifiedReportButton targetAuthor={ownerName} targetId={texture.publicId} targetSummary={texture.name} targetType="skin" />
               </div>
             </section>
 

@@ -6,7 +6,8 @@ import { apiRequest } from "../_lib/api";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import type { BackendModCompatibility, BackendModRecord, MinecraftVersionConfig } from "../_lib/mod-api";
-import { MinecraftVersionPicker } from "./minecraft-version-picker";
+import { loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
+import { MinecraftVersionPicker, summarizeMinecraftVersions } from "./minecraft-version-picker";
 import {
   archiveModContentSection,
   createModContentSection,
@@ -58,6 +59,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
   const [versionDraft, setVersionDraft] = useState<VersionDraft>(emptyVersion);
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const saveVersionInFlight = useRef(false);
   const [activeImportSource, setActiveImportSource] = useState<ImportSource | null>(null);
   const [message, setMessage] = useState("");
   const importBusy = activeImportSource !== null;
@@ -78,7 +80,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
       loadModContentTemplates(siteId, token),
       loadModContentSections(siteId, token),
       apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}/editor`, {}, token),
-      apiRequest<MinecraftVersionConfig>("/api/v1/minecraft/versions"),
+      loadMinecraftVersionConfig(),
     ]);
     setVersions(nextVersions);
     setTemplates(nextTemplates);
@@ -158,6 +160,8 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
   }
 
   async function saveVersion() {
+    if (saveVersionInFlight.current) return;
+    saveVersionInFlight.current = true;
     setBusy(true);
     setMessage("");
     try {
@@ -177,6 +181,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
     } catch (reason) {
       setMessage(errorText(reason));
     } finally {
+      saveVersionInFlight.current = false;
       setBusy(false);
     }
   }
@@ -241,13 +246,27 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
     }
   }
 
-  return <section className="grid min-h-[680px] overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] lg:grid-cols-[270px_minmax(0,1fr)]">
-    <aside className="border-b border-[var(--line)] bg-[var(--panel-subtle)] p-4 lg:border-b-0 lg:border-r"><h2 className="font-black">{t("modContent.versionEditor.versionList")}</h2><p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("modContent.versionEditor.versionListHint")}</p><div className="mt-4 grid gap-2">{versions.map((version) => <button className={`focus-ring rounded-lg border p-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${version.publicId === selectedVersionId && !addingVersion ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"}`} disabled={importBusy} key={version.publicId} type="button" onClick={() => selectVersion(version.publicId)}><strong className="block truncate">{version.label}</strong><small className="mt-1 block truncate text-[var(--muted)]">{version.minecraftVersions.join(", ")} · {version.loaders.join(", ")}</small>{version.status !== "active" ? <span className="mt-2 inline-block rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--warning)]">{version.status}</span> : null}</button>)}</div><button aria-label={t("modContent.entry.addVersion")} className={`focus-ring mt-3 grid h-11 w-full place-items-center rounded-lg border border-dashed text-2xl font-black disabled:cursor-not-allowed disabled:opacity-60 ${addingVersion ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)]"}`} disabled={importBusy} type="button" onClick={startNewVersion}>+</button></aside>
+  return <section className="grid min-h-[680px] min-w-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] lg:grid-cols-[270px_minmax(0,1fr)]">
+    <aside className="min-w-0 max-w-full overflow-hidden border-b border-[var(--line)] bg-[var(--panel-subtle)] p-4 lg:border-b-0 lg:border-r">
+      <h2 className="font-black">{t("modContent.versionEditor.versionList")}</h2>
+      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("modContent.versionEditor.versionListHint")}</p>
+      <div className="mt-4 grid min-w-0 gap-2">
+        {versions.map((version) => {
+          const fullCompatibility = `${version.minecraftVersions.join(", ")} · ${version.loaders.join(", ")}`;
+          return <button className={`focus-ring min-w-0 max-w-full overflow-hidden rounded-lg border p-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${version.publicId === selectedVersionId && !addingVersion ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"}`} disabled={importBusy} key={version.publicId} title={fullCompatibility} type="button" onClick={() => selectVersion(version.publicId)}>
+            <strong className="block min-w-0 truncate">{version.label}</strong>
+            <small className="mt-1 block min-w-0 truncate text-[var(--muted)]">{summarizeMinecraftVersions(version.minecraftVersions, 2)} · {summarizeList(version.loaders, 1)}</small>
+            {version.status !== "active" ? <span className="mt-2 inline-block rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--warning)]">{version.status}</span> : null}
+          </button>;
+        })}
+      </div>
+      <button aria-label={t("modContent.entry.addVersion")} className={`focus-ring mt-3 grid h-11 w-full place-items-center rounded-lg border border-dashed text-2xl font-black disabled:cursor-not-allowed disabled:opacity-60 ${addingVersion ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)]"}`} disabled={importBusy} type="button" onClick={startNewVersion}>+</button>
+    </aside>
     <div className="min-w-0 p-5 lg:p-7">
       {message ? <p className="mb-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm font-bold">{message}</p> : null}
       {addingVersion || !selectedVersion ? <VersionForm busy={busy} compatibilities={compatibilities} draft={versionDraft} editing={false} minecraftConfig={minecraftConfig} usingGlobalCompatibility={usingGlobalCompatibility} onCancel={selectedVersion ? () => setAddingVersion(false) : undefined} onChange={setVersionDraft} onSave={() => void saveVersion()} /> : <>
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5">
-          <div><h2 className="text-2xl font-black">{selectedVersion.label}</h2><p className="mt-2 text-sm text-[var(--muted)]">{selectedVersion.minecraftVersions.join(", ")} · {selectedVersion.loaders.join(", ")}{selectedVersion.modVersion ? ` · ${selectedVersion.modVersion}` : ""}</p></div>
+          <div className="min-w-0"><h2 className="text-2xl font-black">{selectedVersion.label}</h2><p className="mt-2 max-w-full break-words text-sm text-[var(--muted)] [overflow-wrap:anywhere]">{selectedVersion.minecraftVersions.join(", ")} · {selectedVersion.loaders.join(", ")}{selectedVersion.modVersion ? ` · ${selectedVersion.modVersion}` : ""}</p></div>
           <div className="flex flex-wrap gap-2">
             <button className={workspaceModeButton(editingVersion)} style={workspaceModeStyle(editingVersion)} disabled={importBusy} type="button" onClick={startVersionEdit}>{t("modContent.versionEditor.editVersion")}</button>
             <button className={workspaceModeButton(!editingVersion && importSource === "")} style={workspaceModeStyle(!editingVersion && importSource === "")} disabled={selectedVersion.status !== "active" || importBusy} type="button" onClick={() => selectWorkspaceMode("")}>{t("modContent.versionEditor.manualAdd")}</button>
@@ -575,6 +594,7 @@ function UploadProgressDetails({ progress }: { progress: ModExportUploadProgress
 
 function localizedName(values: ModContentLocalization[], locale: string) { return values.find((item) => item.locale === locale)?.name || values.find((item) => normalizeContentLanguage(item.locale) === "en-US")?.name || values[0]?.name || ""; }
 function uniqueValues(values: string[]) { return [...new Set(values.map((item) => item.trim()).filter(Boolean))]; }
+function summarizeList(values: readonly string[], visibleCount: number) { return values.length <= visibleCount ? values.join(", ") : `${values.slice(0, visibleCount).join(", ")} +${values.length - visibleCount}`; }
 function toggleValue(values: string[], value: string) { return values.includes(value) ? values.filter((item) => item !== value) : [...values, value]; }
 function versionLabel(versions: string[], loaders: string[]) { return versions.length && loaders.length ? `${versions.join(", ")} / ${loaders.join(", ")}` : ""; }
 function errorText(value: unknown) { return value instanceof Error ? value.message : String(value); }

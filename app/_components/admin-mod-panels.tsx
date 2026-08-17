@@ -4,13 +4,16 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { BackendModApplication, MinecraftVersionConfig } from "../_lib/mod-api";
+import { cacheMinecraftVersionConfig, loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { formatBytes } from "../_lib/oss-upload";
+import { useAuthSnapshot } from "../_lib/auth";
+import { LoginRequiredState } from "./page-feedback";
 
 type ModContentReviewItem = {
   id: string;
-  source: "revision" | "entry" | "catalog" | "blueprint" | "creator" | "tutorial" | "issue" | "news" | "discussion" | "modpack" | "plugin" | "map" | "resource_pack" | "shader_pack" | "datapack" | "addon" | "export";
+  source: string;
   modSiteId: string;
   modName: string;
   userId?: string;
@@ -19,26 +22,19 @@ type ModContentReviewItem = {
   summary: string;
   createdAt: string;
   reviewUrl: string;
+  category: string;
+  operation: string;
+  aggregateType: string;
+  projectType?: string;
+  projectId?: string;
+  reviewerScope: "global" | "project";
 };
 
-type CommentReportStatus = "pending" | "resolved" | "dismissed";
-
-type AdminCommentReport = {
-  id: string;
-  commentId: string;
-  commentBody: string;
-  commentStatus: string;
-  commentUrl: string;
-  authorId: string;
-  authorName: string;
-  reporterId: string;
-  reporterName: string;
-  reason: string;
-  detail: string;
-  status: CommentReportStatus;
-  resolutionNote: string;
-  createdAt: string;
-  resolvedAt?: string;
+type ReviewQueueFacet = { value: string; count: number };
+type ReviewQueueResponse = {
+  items: ModContentReviewItem[];
+  total: number;
+  facets: { categories: ReviewQueueFacet[]; operations: ReviewQueueFacet[]; projectTypes: ReviewQueueFacet[] };
 };
 
 function versionSourceName(sourceUrl: string) {
@@ -62,7 +58,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    apiRequest<MinecraftVersionConfig>("/api/v1/minecraft/versions")
+    loadMinecraftVersionConfig({ refresh: true })
       .then((result) => { if (!cancelled) setConfig(result); })
       .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("admin.minecraftVersions.loadFailed")); });
     return () => { cancelled = true; };
@@ -101,6 +97,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
     setMessage("");
     try {
       const saved = await apiRequest<MinecraftVersionConfig>("/api/v1/admin/config/minecraft-versions", { method: "PUT", body: JSON.stringify(config) }, token);
+      cacheMinecraftVersionConfig(saved);
       setConfig(saved);
       setMessage(t("admin.minecraftVersions.saved"));
     } catch (error) {
@@ -115,6 +112,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
     setMessage("");
     try {
       const synced = await apiRequest<MinecraftVersionConfig>("/api/v1/admin/config/minecraft-versions/sync", { method: "POST" }, token);
+      cacheMinecraftVersionConfig(synced);
       setConfig(synced);
       const failedCount = synced.loaderSyncs?.filter((item) => item.status === "failed").length ?? 0;
       setMessage(failedCount > 0 ? t("admin.minecraftVersions.syncedPartial", { count: failedCount }) : t("admin.minecraftVersions.synced"));
@@ -176,15 +174,36 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "develo
   const [items, setItems] = useState<Array<ModContentReviewItem | BackendModApplication>>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
-  const endpoint = kind === "content" ? "/api/v1/admin/mod-content-reviews" : `/api/v1/admin/mod-applications?kind=${kind}`;
+  const [category, setCategory] = useState("");
+  const [operation, setOperation] = useState("");
+  const [projectType, setProjectType] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [facets, setFacets] = useState<ReviewQueueResponse["facets"]>({ categories: [], operations: [], projectTypes: [] });
+  const pageSize = 50;
+  const contentSearch = new URLSearchParams();
+  if (category) contentSearch.set("category", category);
+  if (operation) contentSearch.set("operation", operation);
+  if (projectType) contentSearch.set("projectType", projectType);
+  if (search) contentSearch.set("q", search);
+  contentSearch.set("limit", String(pageSize));
+  contentSearch.set("offset", String(page * pageSize));
+  const endpoint = kind === "content" ? `/api/v1/reviews/content?${contentSearch}` : `/api/v1/admin/mod-applications?kind=${kind}`;
   const load = useCallback(async () => {
     try {
-      const result = await apiRequest<{ items: Array<ModContentReviewItem | BackendModApplication> }>(endpoint, {}, token);
+      const result = await apiRequest<{ items: Array<ModContentReviewItem | BackendModApplication>; total?: number; facets?: ReviewQueueResponse["facets"] }>(endpoint, {}, token);
       setItems(result.items);
+      if (kind === "content") {
+        if (result.facets) setFacets(result.facets);
+        setTotal(result.total ?? result.items.length);
+      }
+      setMessage("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.reviews.loadFailed"));
     }
-  }, [endpoint, t, token]);
+  }, [endpoint, kind, t, token]);
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
 
   async function review(item: ModContentReviewItem | BackendModApplication, status: "approved" | "rejected") {
@@ -206,13 +225,47 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "develo
     }
   }
 
-return <section><p className="text-sm text-[var(--muted)]">{t(`admin.reviews.${kind}Description`)}</p>{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}<div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t(`admin.reviews.applicationKinds.${item.kind}`); const summary = content ? item.summary : item.proof; const name = item.username; const historyHref = content ? contentReviewHistoryHref(item) : ""; return <article key={`${content ? item.source : item.kind}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-black">{item.modName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p></div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && item.source === "blueprint" ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div></section>;
+return <section>
+  <p className="text-sm text-[var(--muted)]">{t(`admin.reviews.${kind}Description`)}</p>
+  {kind === "content" ? <form className="surface mt-4 grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-[minmax(180px,1fr)_repeat(3,minmax(150px,210px))_auto]" onSubmit={(event) => { event.preventDefault(); setPage(0); setSearch(searchInput.trim()); }}>
+    <input className="field" type="search" value={searchInput} placeholder={t("admin.reviews.searchPlaceholder")} onChange={(event) => setSearchInput(event.target.value)} />
+    <select className="field" value={category} onChange={(event) => { setPage(0); setCategory(event.target.value); }}>
+      <option value="">{t("admin.reviews.allCategories")}</option>
+      {facets.categories.map((facet) => <option key={facet.value} value={facet.value}>{reviewFacetLabel(t, "categories", facet.value)} ({facet.count})</option>)}
+    </select>
+    <select className="field" value={operation} onChange={(event) => { setPage(0); setOperation(event.target.value); }}>
+      <option value="">{t("admin.reviews.allOperations")}</option>
+      {facets.operations.map((facet) => <option key={facet.value} value={facet.value}>{reviewFacetLabel(t, "operations", facet.value)} ({facet.count})</option>)}
+    </select>
+    <select className="field" value={projectType} onChange={(event) => { setPage(0); setProjectType(event.target.value); }}>
+      <option value="">{t("admin.reviews.allProjectTypes")}</option>
+      {facets.projectTypes.map((facet) => <option key={facet.value} value={facet.value}>{reviewFacetLabel(t, "categories", facet.value)} ({facet.count})</option>)}
+    </select>
+    <div className="flex gap-2"><button className="button-primary focus-ring" type="submit">{t("common.search")}</button><button className="button-secondary focus-ring" type="button" onClick={() => { setPage(0); setCategory(""); setOperation(""); setProjectType(""); setSearchInput(""); setSearch(""); }}>{t("common.clear")}</button></div>
+  </form> : null}
+  {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
+  <div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t(`admin.reviews.applicationKinds.${item.kind}`); const summary = content ? item.summary : item.proof; const name = item.username; const historyHref = content ? contentReviewHistoryHref(item) : ""; return <article key={`${content ? item.source : item.kind}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="mb-2 flex flex-wrap gap-2">{content ? <><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{reviewFacetLabel(t, "categories", item.category)}</span><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold">{reviewFacetLabel(t, "operations", item.operation)}</span>{item.reviewerScope === "project" ? <span className="rounded-full border border-[var(--accent)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{t("admin.reviews.projectScoped")}</span> : null}</> : null}</div><h3 className="break-words text-lg font-black">{item.modName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>{content && item.projectId ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.projectType}: {item.projectId}</p> : null}</div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && (item.source === "blueprint" || item.source === "skin") ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div>
+  {kind === "content" && total > pageSize ? <nav className="mt-5 flex items-center justify-between gap-3" aria-label={t("admin.reviews.paginationLabel")}><button className="button-secondary focus-ring" disabled={page === 0} type="button" onClick={() => setPage((current) => Math.max(0, current - 1))}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("admin.reviews.pageSummary", { page: page + 1, pages: Math.max(1, Math.ceil(total / pageSize)), total })}</span><button className="button-secondary focus-ring" disabled={(page + 1) * pageSize >= total} type="button" onClick={() => setPage((current) => current + 1)}>{t("common.next")}</button></nav> : null}
+</section>;
+}
+export function ProjectReviewQueuePage() {
+  const { ready, token } = useAuthSnapshot();
+  const { t } = useI18n();
+  if (!ready) return <section className="surface p-6 font-bold text-[var(--muted)]">{t("common.loading")}</section>;
+  if (!token) return <LoginRequiredState nextPath="/reviews" description={t("admin.reviews.loginRequired")} />;
+  return <section className="mx-auto w-full max-w-[1280px] px-4 py-8 sm:px-6"><header className="mb-6"><p className="text-sm font-black text-[var(--accent)]">{t("admin.reviews.projectQueueKicker")}</p><h1 className="mt-1 text-3xl font-black">{t("admin.reviews.projectQueueTitle")}</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("admin.reviews.projectQueueDescription")}</p></header><ModReviewQueuePanel kind="content" token={token} /></section>;
+}
+
+function reviewFacetLabel(t: (key: string, values?: Record<string, string | number>) => string, group: "categories" | "operations", value: string) {
+  return t(`admin.reviews.${group}.${value}`);
 }
 
 function contentReviewHistoryHref(item: ModContentReviewItem) {
   if (!item.modSiteId) return "";
   switch (item.source) {
     case "blueprint": return `/blueprints/${item.modSiteId}`;
+    case "skin": return `/skins/${item.modSiteId}`;
+    case "changelog": return item.modSiteId ? `${item.modSiteId}?tab=changelog` : "";
     case "tutorial": return `/tutorials/${item.modSiteId}`;
     case "issue": return `/issues/${item.modSiteId}`;
     case "news": return `/news/${item.modSiteId}`;
@@ -226,88 +279,4 @@ function contentReviewHistoryHref(item: ModContentReviewItem) {
     case "addon": return `/addons/${item.modSiteId}/history`;
     default: return `/mods/${item.modSiteId}/history`;
   }
-}
-
-export function CommentReportReviewPanel({ token }: { token: string }) {
-  const { locale, t } = useI18n();
-  const [status, setStatus] = useState<CommentReportStatus>("pending");
-  const [items, setItems] = useState<AdminCommentReport[]>([]);
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState("");
-  const [busyID, setBusyID] = useState("");
-
-  const load = useCallback(async () => {
-    try {
-      const result = await apiRequest<{ items: AdminCommentReport[] }>(
-        `/api/v1/admin/comment-reports?status=${encodeURIComponent(status)}`,
-        {},
-        token,
-      );
-      setItems(result.items);
-      setMessage("");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("admin.reviews.commentReportsLoadFailed"));
-    }
-  }, [status, t, token]);
-
-  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
-
-  async function review(item: AdminCommentReport, action: "hide" | "dismiss") {
-    setBusyID(item.id);
-    try {
-      await apiRequest(
-        `/api/v1/admin/comment-reports/${encodeURIComponent(item.id)}`,
-        { method: "PATCH", body: JSON.stringify({ action, note: notes[item.id] ?? "" }) },
-        token,
-      );
-      await load();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("admin.reviews.commentReportsReviewFailed"));
-    } finally {
-      setBusyID("");
-    }
-  }
-
-  return <section>
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <p className="text-sm text-[var(--muted)]">{t("admin.reviews.commentReportsDescription")}</p>
-      <select className="field w-auto min-w-40" value={status} onChange={(event) => setStatus(event.target.value as CommentReportStatus)}>
-        <option value="pending">{t("admin.reviews.reportStatuses.pending")}</option>
-        <option value="resolved">{t("admin.reviews.reportStatuses.resolved")}</option>
-        <option value="dismissed">{t("admin.reviews.reportStatuses.dismissed")}</option>
-      </select>
-    </div>
-    {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
-    <div className="mt-5 grid gap-4">
-      {items.map((item) => <article key={item.id} className="surface p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="text-lg font-black">{t("admin.reviews.reportBy", { reporter: item.reporterName })}</h3>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}
-            </p>
-          </div>
-          <Link className="button-secondary focus-ring" href={item.commentUrl} target="_blank">{t("admin.reviews.openComment")}</Link>
-        </div>
-        <div className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
-          <p className="text-xs font-bold text-[var(--muted)]">
-            {t("admin.reviews.commentAuthor")}: <Link className="text-[var(--accent)] hover:underline" href={`/user/${encodeURIComponent(item.authorId)}`}>{item.authorName}</Link>
-          </p>
-          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{item.commentBody}</p>
-        </div>
-        <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
-          <div><dt className="font-bold text-[var(--muted)]">{t("admin.reviews.reportReason")}</dt><dd className="mt-1 break-words">{item.reason}</dd></div>
-          <div><dt className="font-bold text-[var(--muted)]">{t("admin.reviews.reportDetail")}</dt><dd className="mt-1 whitespace-pre-wrap break-words">{item.detail || t("admin.reviews.noDescription")}</dd></div>
-        </dl>
-        {item.status === "pending" ? <>
-          <textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} />
-          <div className="mt-3 flex flex-wrap justify-end gap-2">
-            <button className="button-secondary focus-ring" disabled={busyID === item.id} type="button" onClick={() => void review(item, "dismiss")}>{t("admin.reviews.dismissReport")}</button>
-            <button className="button-primary focus-ring" disabled={busyID === item.id} type="button" onClick={() => void review(item, "hide")}>{t("admin.reviews.hideComment")}</button>
-          </div>
-        </> : item.resolutionNote ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm"><strong>{t("admin.reviews.resolutionNote")}:</strong> {item.resolutionNote}</p> : null}
-      </article>)}
-      {items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.commentReportsEmpty")}</div> : null}
-    </div>
-  </section>;
 }

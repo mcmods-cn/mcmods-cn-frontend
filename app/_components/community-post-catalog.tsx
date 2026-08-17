@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { communityPostCollection, communityPostCoverURL, communityProjectTypes, loadCommunityPosts, type CommunityPost, type CommunityPostKind, type CommunityPostReference, type CommunityProjectType } from "../_lib/community-post-api";
 import { type CatalogPreferences, useCatalogControls } from "../_lib/catalog-state";
+import { type CatalogSortField, coreCatalogSortFields, normalizeCatalogSortDirection, normalizeCatalogSortField } from "../_lib/catalog-sort";
 import { catalogResourceIconURL } from "../_lib/editor-api";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
@@ -19,12 +20,12 @@ import {
   CatalogPageFallback,
   CatalogPagination,
   CatalogRadioList,
+  CatalogSortControl,
 } from "./catalog-list-ui";
 import { CatalogMinecraftVersionFilter } from "./catalog-minecraft-version-filter";
 import { ModResourceSelectionField } from "./editor/mod-resource-picker";
 
-type CommunityCatalogSort = "latest" | "updated" | "oldest";
-const communityCatalogSorts: CommunityCatalogSort[] = ["latest", "updated", "oldest"];
+const communityCatalogSorts: CatalogSortField[] = [...coreCatalogSortFields];
 const communityFilterParams = ["version", "versionMode", "project", "category"];
 
 export function CommunityPostCatalog({ kind }: { kind: CommunityPostKind }) {
@@ -44,13 +45,13 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
   const {
     paramsKey, preferences, mobileFiltersOpen, setMobileFiltersOpen, queryDraft, setQueryDraft,
     replaceParams, clearFilters, submitSearch, changePreference, changePage,
-  } = useCatalogControls<CommunityCatalogSort>({
+  } = useCatalogControls<CatalogSortField>({
     preferenceStorageKey: `mcmods-community-${kind}-catalog-preferences`,
     expandedStorageKey: `mcmods-community-${kind}-catalog-groups`,
     filterParams: communityFilterParams,
     defaultExpandedGroups: ["version", "project", "category"],
     sortOptions: communityCatalogSorts,
-    defaultSort: "latest",
+    defaultSort: "published",
     onPageChange: () => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
   });
   const filters = useMemo(() => parseCommunityFilters(new URLSearchParams(paramsKey), preferences), [paramsKey, preferences]);
@@ -66,6 +67,7 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
       versionMode: filters.versionMode,
       projects: filters.projects,
       sort: filters.sort,
+      order: filters.sortDirection,
       limit: filters.pageSize,
       offset: (filters.page - 1) * filters.pageSize,
     }, token, controller.signal)
@@ -80,7 +82,7 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
       .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : String(error)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [filters.category, filters.page, filters.pageSize, filters.projects, filters.query, filters.sort, filters.versionMode, filters.versions, kind, reload, token]);
+  }, [filters.category, filters.page, filters.pageSize, filters.projects, filters.query, filters.sort, filters.sortDirection, filters.versionMode, filters.versions, kind, reload, token]);
 
   const pages = Math.max(1, Math.ceil(total / filters.pageSize));
   const canCreate = hasPermission(user, `community.${kind}.create`);
@@ -123,7 +125,7 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
       <div className="grid gap-6 lg:grid-cols-[272px_minmax(0,1fr)]">
         <CatalogFilterSidebar>{filterPanel()}</CatalogFilterSidebar>
         <section className="min-w-0" ref={resultsTopRef}>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-4"><h2 className="text-xl font-black">{t("communityPosts.catalog.results", { count: total })}</h2><select className="field h-10 min-w-36 py-0" aria-label={t("communityPosts.catalog.sortLabel")} value={filters.sort} onChange={(event) => changePreference({ sort: event.target.value as CommunityCatalogSort })}>{communityCatalogSorts.map((sort) => <option key={sort} value={sort}>{t(`communityPosts.catalog.sort.${sort}`)}</option>)}</select></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-4"><h2 className="text-xl font-black">{t("communityPosts.catalog.results", { count: total })}</h2><CatalogSortControl direction={filters.sortDirection} field={filters.sort} fields={communityCatalogSorts} onDirectionChange={(sortDirection) => changePreference({ sortDirection })} onFieldChange={(sort) => changePreference({ sort })} /></div>
           {message ? <div className="mt-4 rounded-lg border border-[var(--red)] bg-[var(--panel)] p-5"><p className="font-bold text-[var(--red)]">{message}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => setReload((value) => value + 1)}>{t("communityPosts.catalog.retry")}</button></div> : null}
           {loading ? <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label={t("common.loading")}>{Array.from({ length: 6 }, (_, index) => <div className="h-72 animate-pulse rounded-xl border border-[var(--line)] bg-[var(--panel)]" key={index} />)}</div> : null}
           {!loading && !message && items.length ? <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <CommunityPostCard item={item} key={item.id} />)}</div> : null}
@@ -136,15 +138,18 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
   </main>;
 }
 
-function parseCommunityFilters(params: URLSearchParams, preferences: CatalogPreferences<CommunityCatalogSort>) {
-  const requestedSort = params.get("sort") as CommunityCatalogSort | null;
+function parseCommunityFilters(params: URLSearchParams, preferences: CatalogPreferences<CatalogSortField>) {
+  const rawSort = params.get("sort");
+  const normalizedSort = normalizeCatalogSortField(rawSort, preferences.sort);
+  const sort = communityCatalogSorts.includes(normalizedSort) ? normalizedSort : preferences.sort;
   return {
     query: params.get("q")?.trim() ?? "",
     category: params.get("category") ?? "",
     versions: (params.get("version") ?? "").split(",").map((value) => value.trim()).filter(Boolean),
     versionMode: params.get("versionMode") === "all" ? "all" as const : "any" as const,
     projects: parseCommunityProjectFilters(params.get("project")),
-    sort: requestedSort && communityCatalogSorts.includes(requestedSort) ? requestedSort : preferences.sort,
+    sort,
+    sortDirection: normalizeCatalogSortDirection(params.get("order"), preferences.sortDirection, rawSort),
     page: Math.max(1, Number(params.get("page")) || 1),
     pageSize: [20, 40, 60].includes(Number(params.get("size"))) ? Number(params.get("size")) : preferences.pageSize,
   };

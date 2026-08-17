@@ -132,6 +132,16 @@ export function canAccessAdmin(user: AuthUser | null) {
   return hasPermission(user, "admin.access");
 }
 
+export function canAccessReviewQueue(user: AuthUser | null) {
+  if (hasPermission(user, "content.review") || hasPermission(user, "project.review")) return true;
+  return user?.permissionRules.some((rule) => {
+    const code = rule.code.toLowerCase().trim();
+    return code.startsWith("project.review.")
+      && !/[<>*\[\]]/.test(code)
+      && hasPermission(user, code);
+  }) === true;
+}
+
 export function hasPermission(user: AuthUser | null | undefined, required: string) {
   if (!user) return false;
   let selected: AuthPermissionRule | undefined;

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
+import { type CatalogSortField, normalizeCatalogSortDirection, normalizeCatalogSortField } from "../_lib/catalog-sort";
 import {
   readCatalogList as readList,
   readStoredStringSet as readStringSet,
@@ -25,7 +26,6 @@ import {
   ModCatalogEntry,
   ModFeature,
   primaryCategoryOptions,
-  sortOptions,
   sourceOptions,
   tagOptions,
   updatedOptions,
@@ -36,6 +36,7 @@ import { FavoritePickerModal } from "./favorite-picker-modal";
 import { ProjectSubmissionModal } from "./project-submission-modal";
 import {
   CatalogEmptyState,
+  CatalogHero,
   CatalogFilterGroup,
   CatalogFilterPanel,
   CatalogFilterSidebar,
@@ -43,16 +44,19 @@ import {
   CatalogOptionList,
   CatalogPagination,
   CatalogRadioList,
+  CatalogSortControl,
 } from "./catalog-list-ui";
 import { CatalogMinecraftVersionFilter } from "./catalog-minecraft-version-filter";
+import { CatalogContainedModFilter } from "./catalog-contained-mod-filter";
 import { useMinecraftVersionConfig } from "./minecraft-version-picker";
 
 type CatalogFilters = ReturnType<typeof parseFilters>;
 
-const filterParams = ["version", "versionMode", "loader", "primary", "tag", "environment", "status", "source", "license", "updated", "feature"];
-const defaultExpandedGroups = ["versions", "loaders", "primary", "tags", "environment", "status", "source", "updated"];
+const filterParams = ["version", "versionMode", "loader", "primary", "tag", "mods", "environment", "status", "source", "license", "updated", "feature"];
+const defaultExpandedGroups = ["versions", "containedMods", "loaders", "primary", "tags", "environment", "status", "source", "updated"];
 const expandedStorageKey = "mcmods-mod-filter-groups";
 const catalogReferenceTime = Date.now();
+const modSortFields: CatalogSortField[] = ["published", "updated", "heat", "views", "relevance", "downloads", "favorites", "rating", "comments", "name"];
 
 export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "modpack" }) {
   const { locale, t } = useI18n();
@@ -76,17 +80,17 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
     paramsKey, preferences, expandedGroups, mobileFiltersOpen, setMobileFiltersOpen,
     queryDraft, setQueryDraft, notice, setNotice, replaceParams, toggleListParam, clearFilters,
     submitSearch, changePreference, toggleGroup, changePage,
-  } = useCatalogControls({
+  } = useCatalogControls<CatalogSortField>({
     preferenceStorageKey,
     expandedStorageKey,
     filterParams,
     defaultExpandedGroups,
-    sortOptions,
+    sortOptions: modSortFields,
     defaultSort: "relevance",
     onPageChange: () => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
   });
 
-  const filters = useMemo(() => parseFilters(new URLSearchParams(paramsKey), preferences), [paramsKey, preferences]);
+  const filters = useMemo(() => parseFilters(new URLSearchParams(paramsKey), preferences, isModpack), [isModpack, paramsKey, preferences]);
   const totalPages = Math.max(1, Math.ceil(backendTotal / filters.pageSize));
   const currentPage = Math.min(filters.page, totalPages);
   const pageStart = (currentPage - 1) * filters.pageSize;
@@ -121,6 +125,8 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
 	requestParams.delete("page");
 	requestParams.delete("size");
 	requestParams.delete("view");
+	requestParams.set("sort", filters.sort);
+	requestParams.set("order", filters.sortDirection);
 	requestParams.set("limit", String(filters.pageSize));
 	requestParams.set("offset", String((filters.page - 1) * filters.pageSize));
 	apiRequest<BackendModList | BackendModpackList>(`${isModpack ? "/api/v1/modpacks" : "/api/v1/mods"}?${requestParams}`, {}, token)
@@ -144,7 +150,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
     return () => {
       cancelled = true;
     };
-	}, [filters.page, filters.pageSize, isModpack, paramsKey, reload, t, token]);
+	}, [filters.page, filters.pageSize, filters.sort, filters.sortDirection, isModpack, paramsKey, reload, t, token]);
 
   function toggleFavorite(siteId: string) {
     if (token) {
@@ -177,21 +183,14 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <section className="border-b border-[var(--line)] bg-[var(--panel)]">
-        <div className="mx-auto max-w-7xl px-4 py-7 lg:py-9">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-bold text-[var(--accent)]">{t(isModpack ? "modpacks.kicker" : "mods.kicker")}</p>
-              <h1 className="mt-1 text-3xl font-black md:text-4xl">{t(isModpack ? "modpacks.title" : "mods.title")}</h1>
-              <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{t(isModpack ? "modpacks.total" : "mods.total", { count: backendTotal })}</p>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t(isModpack ? "modpacks.description" : "mods.description")}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {!isModpack ? <><Link className="button-secondary focus-ring" href="/mods-tag">{t("globalCatalog.tags.short")}</Link><Link className="button-secondary focus-ring" href="/recipe-types">{t("globalCatalog.recipeTypes.short")}</Link></> : null}
-              <button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>{t(isModpack ? "modpacks.submit" : "mods.submit")}</button>
-            </div>
-          </div>
-          <form className="mt-6 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
+      <CatalogHero
+        actions={<>{!isModpack ? <><Link className="button-secondary focus-ring" href="/mods-tag">{t("globalCatalog.tags.short")}</Link><Link className="button-secondary focus-ring" href="/recipe-types">{t("globalCatalog.recipeTypes.short")}</Link></> : null}<button className="button-primary focus-ring" type="button" onClick={() => setSubmissionOpen(true)}>{t(isModpack ? "modpacks.submit" : "mods.submit")}</button></>}
+        description={t(isModpack ? "modpacks.description" : "mods.description")}
+        kicker={t(isModpack ? "modpacks.kicker" : "mods.kicker")}
+        title={t(isModpack ? "modpacks.title" : "mods.title")}
+        total={t(isModpack ? "modpacks.total" : "mods.total", { count: backendTotal })}
+      >
+          <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
             <input
               className="field h-12"
               value={queryDraft}
@@ -200,8 +199,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
             />
             <button className="button-primary focus-ring h-12 px-6" type="submit">{t("mods.search")}</button>
           </form>
-        </div>
-      </section>
+      </CatalogHero>
 
       <div className="mx-auto max-w-7xl px-4 py-6">
         <div className="mb-4 flex items-center justify-between gap-3 lg:hidden">
@@ -218,6 +216,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
               filters={filters}
               minecraftVersionConfig={minecraftVersionConfig}
               isModpack={isModpack}
+              token={token}
               resultCount={backendTotal}
               t={t}
               onClear={clearFilters}
@@ -239,12 +238,13 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
                   </h2>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <label className="flex items-center gap-2 text-sm font-bold">
-                    <span className="sr-only">{t("mods.sortLabel")}</span>
-                    <select className="field h-10 min-w-36 py-0" value={filters.sort} onChange={(event) => changePreference({ sort: event.target.value })}>
-                      {sortOptions.map((option) => <option key={option} value={option}>{t(`mods.sort.${option}`)}</option>)}
-                    </select>
-                  </label>
+                  <CatalogSortControl
+                    direction={filters.sortDirection}
+                    field={filters.sort}
+                    fields={modSortFields}
+                    onDirectionChange={(sortDirection) => changePreference({ sortDirection })}
+                    onFieldChange={(sort) => changePreference({ sort })}
+                  />
                   <div className="grid grid-cols-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-1" aria-label={t("mods.viewLabel")}>
                     {(["list", "grid"] as const).map((view) => (
                       <button
@@ -330,6 +330,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
           filters={filters}
           minecraftVersionConfig={minecraftVersionConfig}
           isModpack={isModpack}
+          token={token}
           resultCount={backendTotal}
           t={t}
           onClear={clearFilters}
@@ -356,6 +357,7 @@ function FilterPanel({
   filters,
   minecraftVersionConfig,
   isModpack,
+  token,
   resultCount,
   t,
   onClear,
@@ -368,6 +370,7 @@ function FilterPanel({
   filters: CatalogFilters;
   minecraftVersionConfig: MinecraftVersionConfig;
   isModpack: boolean;
+  token: string;
   resultCount: number;
   t: Translation;
   onClear: () => void;
@@ -396,6 +399,16 @@ function FilterPanel({
           onVersionModeChange={(mode) => onParamChange({ versionMode: mode === "any" ? null : mode })}
         />
       </CatalogFilterGroup>
+
+      {isModpack ? <CatalogFilterGroup group="containedMods" label={t("modpacks.filters.containedMods")} expanded={expandedGroups.has("containedMods")} onToggle={onGroupToggle}>
+        <CatalogContainedModFilter
+          buttonLabel={t("modpacks.filters.selectMods")}
+          emptyLabel={t("modpacks.filters.noMods")}
+          token={token}
+          values={filters.mods}
+          onChange={(mods) => onParamChange({ mods })}
+        />
+      </CatalogFilterGroup> : null}
 
       <CatalogFilterGroup group="loaders" label={t("mods.groups.loaders")} expanded={expandedGroups.has("loaders")} onToggle={onGroupToggle}>
         <CatalogOptionList
@@ -548,15 +561,19 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 
-function parseFilters(params: URLSearchParams, preferences: CatalogPreferences) {
+function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<CatalogSortField>, isModpack: boolean) {
   const pageSize = [20, 40, 60].includes(Number(params.get("size"))) ? Number(params.get("size")) : preferences.pageSize;
   const view = params.get("view") === "grid" || params.get("view") === "list" ? params.get("view") as CatalogView : preferences.view;
-  const sort = sortOptions.includes(params.get("sort") ?? "") ? params.get("sort") ?? preferences.sort : preferences.sort;
+  const rawSort = params.get("sort");
+  const normalizedSort = normalizeCatalogSortField(rawSort, preferences.sort);
+  const sort = modSortFields.includes(normalizedSort) ? normalizedSort : preferences.sort;
+  const sortDirection = normalizeCatalogSortDirection(params.get("order"), preferences.sortDirection, rawSort);
   return {
     query: params.get("q")?.trim() ?? "",
     versions: readList(params, "version"),
     versionMode: params.get("versionMode") === "all" ? "all" as const : "any" as const,
     loaders: readList(params, "loader"),
+    mods: isModpack ? readList(params, "mods") : [],
     primaryCategories: readList(params, "primary").slice(0, 1),
     tags: readList(params, "tag"),
     environments: readList(params, "environment"),
@@ -566,6 +583,7 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences) 
     updated: params.get("updated") ?? "",
     features: readList(params, "feature") as ModFeature[],
     sort,
+    sortDirection,
     view,
     page: Math.max(1, Number(params.get("page")) || 1),
     pageSize,
@@ -578,6 +596,7 @@ function buildFilterChips(filters: CatalogFilters, t: Translation, isModpack: bo
     ["loader", filters.loaders, (value) => value],
     ["primary", filters.primaryCategories, (value) => t(`mods.categories.${value}`)],
     ["tag", filters.tags, (value) => t(isModpack ? `modpacks.categories.${value}` : `mods.tags.${value}`)],
+    ...(isModpack ? [["mods", filters.mods, (value: string) => t("modpacks.filters.containedModChip", { mod: value })] as [string, string[], (value: string) => string]] : []),
     ["environment", filters.environments, (value) => t(`mods.environments.${value}`)],
     ["status", filters.statuses, (value) => t(`mods.statuses.${value}`)],
     ["source", filters.sources, (value) => t(`mods.sources.${value}`)],
@@ -590,7 +609,7 @@ function buildFilterChips(filters: CatalogFilters, t: Translation, isModpack: bo
 }
 
 function countSelectedFilters(filters: CatalogFilters) {
-  return filters.versions.length + filters.loaders.length + filters.primaryCategories.length + filters.tags.length + filters.environments.length + filters.statuses.length + filters.sources.length + filters.licenses.length + filters.features.length + (filters.updated ? 1 : 0);
+  return filters.versions.length + filters.loaders.length + filters.primaryCategories.length + filters.tags.length + filters.mods.length + filters.environments.length + filters.statuses.length + filters.sources.length + filters.licenses.length + filters.features.length + (filters.updated ? 1 : 0);
 }
 
 function toggleSet(current: Set<string>, value: string) {

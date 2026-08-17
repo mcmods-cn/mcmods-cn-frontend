@@ -9,8 +9,11 @@ export type PublicUserProfile = {
   createdAt: string;
   followers: number;
   following: number;
+  blocked: number;
   isOwn: boolean;
   isFollowing: boolean;
+  isBlocked: boolean;
+  canBlock: boolean;
   canFollow: boolean;
   canMessage: boolean;
   avatarUrl: string;

@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { backendFetch, isBearerAccessToken } from "../_lib/api";
-import { useAuthSnapshot } from "../_lib/auth";
+import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { contentLanguageCandidates, normalizeContentLanguage } from "../_lib/content-language";
 import { catalogRegistryForKind } from "../_lib/catalog-resource-identifiers";
 import type { CatalogResourceVersion } from "../_lib/editor-types";
@@ -145,7 +145,7 @@ function ResourcePresentation({
   schemaDefinition?: ModContentTemplateDefinition;
 }) {
   const { locale, t } = useI18n();
-  const { token } = useAuthSnapshot();
+  const { token, user } = useAuthSnapshot();
   const [loadedDetail, setLoadedDetail] = useState<{ key: string; detail?: ModExportEntryDetail; error?: string }>();
   const [display3D, setDisplay3D] = useState(false);
   const registry = current.registry || catalogRegistryForKind(kindCode) || "";
@@ -210,6 +210,7 @@ function ResourcePresentation({
       <dl className="mt-4 grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-sm">
         <dt className="font-bold text-[var(--muted)]">{t("resourceEditor.kind")}</dt><dd>{kindCode}</dd>
         <dt className="font-bold text-[var(--muted)]">ID</dt><dd className="break-all font-mono">{canonicalId}</dd>
+        {hasPermission(user, "global_resource.view") ? <><dt className="font-bold text-[var(--muted)]">全局资源</dt><dd><Link className="font-bold text-[var(--accent)] hover:underline" href={`/admin/global-resources?publicId=${encodeURIComponent(resourceId)}`}>查看绑定的全局资源</Link></dd></> : null}
       </dl>
       <CollapsibleResourceProperties data={definition} entryType={schemaEntryType} registry={registry} />
     </aside>

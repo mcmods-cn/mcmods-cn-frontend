@@ -1,7 +1,7 @@
 import { apiRequest } from "./api";
 import type { OnlineStatus } from "./user-api";
 
-export type CommentTargetType = "mod" | "modpack" | "plugin" | "map" | "resource_pack" | "shader_pack" | "datapack" | "addon" | "mod_resource" | "blueprint" | "skin" | "creator" | "player_profile" | "tag" | "recipe_type" | "community_post";
+export type CommentTargetType = "mod" | "modpack" | "plugin" | "map" | "resource_pack" | "shader_pack" | "datapack" | "addon" | "mod_resource" | "blueprint" | "skin" | "creator" | "player_profile" | "tag" | "recipe_type" | "community_post" | "ban_record";
 
 export type CommentTarget = {
   type: CommentTargetType;
@@ -21,6 +21,7 @@ export type CommentWatchState = {
 
 export type CommentItem = {
   id: string;
+  floorNumber: number | null;
   parentId?: string;
   rootId?: string;
   depth: number;
@@ -52,6 +53,7 @@ export type CommentItem = {
   canWatch: boolean;
   createdAt: string;
   updatedAt: string;
+  logAttachments: Array<{ fileId: string; fileName: string; publicCode?: string; status: string; url?: string }>;
 };
 
 export type CommentPage = {
@@ -91,6 +93,14 @@ export function loadComments(
   return apiRequest<CommentPage>(`${targetCommentsPath(targetType, targetKey)}?${query}`, {}, token);
 }
 
+export function loadCommentFloor(targetType: CommentTargetType, targetKey: string, floor: number, token?: string) {
+  return apiRequest<{ comment: CommentItem; target: CommentTarget }>(
+    `${targetCommentsPath(targetType, targetKey)}/floors/${floor}`,
+    {},
+    token,
+  );
+}
+
 export function createComment(
   targetType: CommentTargetType,
   targetKey: string,
@@ -98,6 +108,7 @@ export function createComment(
   parentId: string | undefined,
   token: string,
   antiAbuse: { idempotencyKey: string; formToken?: string; honeypot?: string; challengeProof?: string },
+  attachmentFileIds: string[] = [],
 ) {
   return apiRequest<CommentItem | { watchOnly: true; watch: CommentWatchState } | { id: string; status: "pending"; moderation: true }>(
     targetCommentsPath(targetType, targetKey),
@@ -109,7 +120,7 @@ export function createComment(
         ...(antiAbuse.honeypot ? { "X-Anti-Abuse-Trap": antiAbuse.honeypot } : {}),
         ...(antiAbuse.challengeProof ? { "X-Anti-Abuse-Challenge": antiAbuse.challengeProof } : {}),
       },
-      body: JSON.stringify({ body, parentId, idempotencyKey: antiAbuse.idempotencyKey }),
+      body: JSON.stringify({ body, parentId, idempotencyKey: antiAbuse.idempotencyKey, attachmentFileIds }),
     },
     token,
   );
@@ -166,14 +177,6 @@ export function setCommentPinned(commentId: string, pinned: boolean, token: stri
   return apiRequest<CommentItem>(
     `/api/v1/comments/${encodeURIComponent(commentId)}/pin`,
     { method: pinned ? "PUT" : "DELETE" },
-    token,
-  );
-}
-
-export function reportComment(commentId: string, reason: string, detail: string, token: string) {
-  return apiRequest(
-    `/api/v1/comments/${encodeURIComponent(commentId)}/reports`,
-    { method: "POST", body: JSON.stringify({ reason, detail }) },
     token,
   );
 }
