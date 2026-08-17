@@ -64,7 +64,14 @@ export async function apiRequest<T>(
 export async function backendFetch(input: RequestInfo | URL, init?: RequestInit) {
   try {
     const response = await fetch(input, init);
-    reportBackendAvailability(![502, 503, 504].includes(response.status));
+    // A structured JSON 502/503/504 is an API response from our backend, not
+    // proof that the whole backend is offline. Optional dependencies (OSS,
+    // mail, NATS, import providers, and others) deliberately use these status
+    // codes while the synchronous API remains healthy. Infrastructure gateway
+    // errors normally have no MCMods JSON response, so only those should raise
+    // the global outage banner. The feature that failed still receives and
+    // displays its ApiError below.
+    reportBackendAvailability(!isUnstructuredGatewayFailure(response));
     return response;
   } catch (error) {
     // Effect cleanup and route changes intentionally abort obsolete requests.
@@ -75,6 +82,14 @@ export async function backendFetch(input: RequestInfo | URL, init?: RequestInit)
     }
     throw error;
   }
+}
+
+export function isUnstructuredGatewayFailure(response: Pick<Response, "status" | "headers">) {
+  if (![502, 503, 504].includes(response.status)) return false;
+  if (response.headers.get("x-mcmods-api-response") === "1") return false;
+  // Keep the JSON fallback during rolling deployments while older backend
+  // instances may not have the explicit response marker yet.
+  return !response.headers.get("content-type")?.toLowerCase().includes("application/json");
 }
 
 function isMutation(method?: string) {

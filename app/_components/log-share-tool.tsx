@@ -5,8 +5,11 @@ import { useEffect, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { createFileLogShares, createPastedLogShare, deleteLogShare, loadMyLogShares, logShareURL, type CreatedLogShare, type LogShareHistoryItem } from "../_lib/log-share-api";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
+import { FileDropZone } from "./file-drop-zone";
 
 const retentionOptions = [1, 3, 7, 30, 90, 365, 1095];
+const maximumLogFiles = 10;
+const logFileAccept = ".zip,.log,.txt,application/zip,text/plain";
 
 export function LogShareTool() {
   const { token, user } = useAuthSnapshot();
@@ -55,9 +58,13 @@ export function LogShareTool() {
     } catch (error) { setMessage(errorText(error)); } finally { setBusy(false); }
   }
 
+  function addFiles(selected: File[]) {
+    setFiles((current) => mergeUniqueFiles(current, selected, maximumLogFiles));
+  }
+
   async function submitFiles() {
     if (!token || !user) { setMessage("文件模式仅供已登录用户使用。"); return; }
-    if (!files.length || files.length > 10) { setMessage("请选择 1 至 10 个 .zip、.log 或 .txt 文件。"); return; }
+    if (!files.length || files.length > maximumLogFiles) { setMessage(`请选择 1 至 ${maximumLogFiles} 个 .zip、.log 或 .txt 文件。`); return; }
     setBusy(true); setMessage(""); setResults([]);
     try {
       const uploadedIds: string[] = [];
@@ -93,7 +100,52 @@ export function LogShareTool() {
       <section className="surface mt-4 grid gap-4 rounded-lg border border-[var(--line)] p-5">
         <label className="grid gap-2 text-sm font-bold">标题（可选）<input className="field" maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} /></label>
         <label className="grid gap-2 text-sm font-bold">保留时间<select className="field" value={retentionDays} onChange={(event) => setRetentionDays(Number(event.target.value))}>{retentionOptions.map((days) => <option key={days} value={days}>{days === 1095 ? "3 年" : days === 365 ? "1 年" : `${days} 天`}</option>)}</select></label>
-        {mode === "paste" ? <label className="grid gap-2 text-sm font-bold">日志内容<textarea className="field min-h-80 font-mono text-xs leading-5" maxLength={1_000_000} placeholder="一次粘贴一条日志" value={content} onChange={(event) => setContent(event.target.value)} /></label> : <label className="grid gap-2 text-sm font-bold">日志文件<input accept=".zip,.log,.txt" className="field" disabled={!token} multiple type="file" onChange={(event) => setFiles(Array.from(event.target.files ?? []))} /><small className="text-[var(--muted)]">文件模式需要登录；原文件占用个人额度，脱敏衍生副本不重复计费。</small></label>}
+        {mode === "paste" ? (
+          <label className="grid gap-2 text-sm font-bold">
+            日志内容
+            <textarea
+              className="field min-h-80 font-mono text-xs leading-5"
+              maxLength={1_000_000}
+              placeholder="一次粘贴一条日志"
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+            />
+          </label>
+        ) : (
+          <div className="grid gap-2 text-sm font-bold">
+            <span>日志文件</span>
+            <FileDropZone
+              accept={logFileAccept}
+              className="min-h-44 p-6"
+              disabled={!token || busy}
+              hint={token ? `支持批量选择，单次最多 ${maximumLogFiles} 个文件` : "登录后可以拖动或选择日志文件"}
+              multiple
+              title={files.length ? `已选择 ${files.length} 个文件，可继续拖入或点击添加` : "拖动 .zip、.log 或 .txt 到这里，或点击选择"}
+              onFiles={addFiles}
+            />
+            {files.length ? (
+              <ul className="grid gap-2" aria-label="已选择的日志文件">
+                {files.map((file, index) => (
+                  <li
+                    className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2"
+                    key={fileIdentity(file)}
+                  >
+                    <span className="min-w-0 truncate font-medium">{file.name}</span>
+                    <button
+                      className="shrink-0 text-[var(--red)] hover:underline"
+                      disabled={busy}
+                      type="button"
+                      onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                    >
+                      移除
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <small className="text-[var(--muted)]">文件模式需要登录；原文件占用个人额度，脱敏衍生副本不重复计费。</small>
+          </div>
+        )}
         <p className="rounded-lg border border-amber-500/40 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">系统会自动隐藏常见敏感信息，但自动识别无法保证覆盖所有自定义敏感内容，请在分享前检查脱敏预览。</p>
         <button className="button-primary focus-ring" disabled={busy || (mode === "file" && !token)} type="button" onClick={() => void (mode === "paste" ? submitPaste() : submitFiles())}>{busy ? "正在处理…" : "脱敏并保存"}</button>
         {message ? <p className="text-sm font-bold" role="status">{message}</p> : null}
@@ -108,3 +160,13 @@ export function LogShareTool() {
 
 function errorText(error: unknown) { return error instanceof Error ? error.message : String(error); }
 function formatDate(value: string) { return value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-"; }
+
+function mergeUniqueFiles(current: File[], selected: File[], limit: number) {
+  const unique = new Map(current.map((file) => [fileIdentity(file), file]));
+  for (const file of selected) unique.set(fileIdentity(file), file);
+  return Array.from(unique.values()).slice(0, limit);
+}
+
+function fileIdentity(file: File) {
+  return `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
+}

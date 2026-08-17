@@ -76,7 +76,10 @@ export function FileDropZone({
           event.currentTarget.value = "";
         }}
       />
-      <span><strong className="block text-lg">{title}</strong><small className="mt-2 block text-[var(--muted)]">{hint}</small></span>
+      <span>
+        <strong className="block text-lg">{title}</strong>
+        <small className="mt-2 block text-[var(--muted)]">{hint}</small>
+      </span>
     </label>
   );
 }
