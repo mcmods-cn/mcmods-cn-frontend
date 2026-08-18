@@ -16,6 +16,7 @@ import { RatingPanel } from "./rating-panel";
 import { ContentMetricsPanel } from "./content-metrics-panel";
 import { ProjectChangelog } from "./project-changelog";
 import { UnifiedReportButton } from "./unified-report-dialog";
+import { ProjectFollowButton } from "./project-follow-button";
 
 type HistoryRange = ServerHistory["range"];
 const ranges: HistoryRange[] = ["24h", "7d", "30d", "90d"];
@@ -92,6 +93,7 @@ export function ServerDetail({ serverId }: { serverId: string }) {
             <p className="mt-2 font-mono text-sm">{record.address}</p>
           </div>
           <div>
+            <ProjectFollowButton publicId={record.id} />
             <UnifiedReportButton className="button-secondary focus-ring mb-3 w-full" targetId={record.id} targetSummary={record.name} targetType="server" />
             {record.canEdit ? <button className="button-secondary focus-ring mb-3 w-full" type="button" onClick={() => setEditOpen(true)}>{t("common.edit")}</button> : null}
             <div className="grid grid-cols-2 gap-5 text-center sm:grid-cols-1 sm:text-right">

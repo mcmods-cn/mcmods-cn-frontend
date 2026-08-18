@@ -28,6 +28,8 @@ import {
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { ModExportImportModal } from "./mod-catalog-data";
 import {
+  cancelModExportJob,
+  confirmModExportMODIDMismatch,
   retryCatalogImportJob,
   type CatalogImportSource,
   type ModExportJob,
@@ -35,6 +37,7 @@ import {
   uploadEmbeddedIconCatalog,
   waitForCatalogImportJob,
 } from "../_lib/mod-export-api";
+import { MODIDConfirmationCard } from "./modid-confirmation-card";
 import { CustomContentTemplateSettings } from "./custom-content-template-settings";
 import { FileDropZone } from "./file-drop-zone";
 
@@ -500,6 +503,10 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
     polling.current?.abort();
     polling.current = new AbortController();
     const completed = await waitForCatalogImportJob(siteId, initialJob.id, token, setJob, polling.current.signal);
+    if (completed.status === "confirmation_required") {
+      setMessage("");
+      return;
+    }
     if (completed.status === "failed") throw new Error(String(completed.errorDetail.message || completed.errorCode || t("modContent.catalogImport.failed")));
     if (completed.status === "cancelled") throw new Error(t("modContent.catalogImport.cancelled"));
     await onImported();
@@ -542,6 +549,32 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
     }
   }
 
+  async function confirmMODIDMismatch() {
+    if (!job?.modidConfirmationRequired) return;
+    setBusy(true); setMessage("");
+    try {
+      await monitor(await confirmModExportMODIDMismatch(siteId, job, token));
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) setMessage(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelMODIDMismatch() {
+    if (!job) return;
+    setBusy(true); setMessage("");
+    try {
+      await cancelModExportJob(siteId, job.id, token);
+      setJob(null);
+      setMessage(t("modContent.catalogImport.cancelled"));
+    } catch (reason) {
+      setMessage(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const progress = job?.progress ?? upload?.percent ?? 0;
   const phase = job ? t(`modContent.catalogImport.stages.${job.currentStage || job.status}`) : upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : "";
   return <section className="mt-6">
@@ -557,7 +590,7 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
       title={busy ? t("modContent.catalogImport.processing") : t("modContent.catalogImport.choose", { importer: importerName })}
       onFiles={(files) => void uploadFile(files)}
     />
-    {job ? <div className="mt-4"><div className="flex justify-between text-sm font-bold"><span>{phase}</span><span>{progress}%</span></div><div className="mt-2 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div></div> : upload ? <UploadProgressDetails progress={upload} /> : null}
+    {job ? <div className="mt-4"><div className="flex justify-between text-sm font-bold"><span>{phase}</span><span>{progress}%</span></div><div className="mt-2 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div>{job.status === "confirmation_required" ? <MODIDConfirmationCard busy={busy} job={job} onCancel={() => void cancelMODIDMismatch()} onConfirm={() => void confirmMODIDMismatch()} /> : null}</div> : upload ? <UploadProgressDetails progress={upload} /> : null}
     {message ? <div className="mt-4 flex items-center gap-3 rounded-lg border border-[var(--line)] p-3 text-sm font-bold"><p className="min-w-0 flex-1">{message}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retry()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
   </section>;
 }

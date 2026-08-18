@@ -15,13 +15,18 @@ export type ModExportJob = {
   packageId: string;
   targetVersionPublicId: string;
   overwriteExistingImportData: boolean;
-  status: "queued" | "validating" | "importing" | "ready" | "partial" | "failed" | "cancelled";
+  status: "queued" | "validating" | "confirmation_required" | "importing" | "ready" | "partial" | "failed" | "cancelled";
   progress: number;
   currentStage: string;
   errorCode: string;
   errorDetail: Record<string, unknown>;
   deduplicated: boolean;
   reviewRequired: boolean;
+  configuredModids: string[];
+  detectedModids: Array<{ id: string; count: number; ratio: number }>;
+  primaryDetectedModid: string;
+  modidConfirmationRequired: boolean;
+  modidAnalysisHash?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -271,7 +276,7 @@ export async function waitForModExportJob(siteId: string, jobId: string, token: 
     if (signal?.aborted) throw new DOMException("Polling aborted", "AbortError");
     const job = await apiRequest<ModExportJob>(path, { signal }, token);
     onProgress(job);
-    if (["ready", "partial", "failed", "cancelled"].includes(job.status)) return job;
+    if (["confirmation_required", "ready", "partial", "failed", "cancelled"].includes(job.status)) return job;
     await abortableDelay(1200, signal);
   }
 }
@@ -282,7 +287,7 @@ export async function waitForCatalogImportJob(siteId: string, jobId: string, tok
     if (signal?.aborted) throw new DOMException("Polling aborted", "AbortError");
     const job = await apiRequest<ModExportJob>(path, { signal }, token);
     onProgress(job);
-    if (["ready", "partial", "failed", "cancelled"].includes(job.status)) return job;
+    if (["confirmation_required", "ready", "partial", "failed", "cancelled"].includes(job.status)) return job;
     await abortableDelay(1200, signal);
   }
 }
@@ -290,6 +295,13 @@ export async function waitForCatalogImportJob(siteId: string, jobId: string, tok
 export function retryModExportJob(siteId: string, jobId: string, token: string) {
   return apiRequest<ModExportJob>(`/api/v1/mods/${encodeURIComponent(siteId)}/export-imports/${encodeURIComponent(jobId)}/retry`, {
     method: "POST",
+  }, token);
+}
+
+export function confirmModExportMODIDMismatch(siteId: string, job: ModExportJob, token: string) {
+  return apiRequest<ModExportJob>(`/api/v1/mods/${encodeURIComponent(siteId)}/export-imports/${encodeURIComponent(job.id)}/confirm-modid`, {
+    method: "POST",
+    body: JSON.stringify({ confirmModidMismatch: true, analysisHash: job.modidAnalysisHash }),
   }, token);
 }
 

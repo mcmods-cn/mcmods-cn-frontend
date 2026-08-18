@@ -23,6 +23,7 @@ import { ProjectChangelog } from "./project-changelog";
 import { ContentMetricsPanel } from "./content-metrics-panel";
 import { ProjectAutoUpdateSettings } from "./project-auto-update-settings";
 import { UnifiedReportButton } from "./unified-report-dialog";
+import { ProjectFollowButton } from "./project-follow-button";
 
 type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
@@ -45,6 +46,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
         <div className="mx-auto max-w-[1440px] px-4 py-7 lg:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link className="text-sm font-bold text-[var(--accent)] hover:underline" href="/mods">{t("mods.detail.back")}</Link>
+            <ProjectFollowButton publicId={mod.uniqueId} />
             <div className="flex w-full flex-wrap gap-2 sm:w-auto"><Link className="button-secondary focus-ring" href={`/mods/${mod.siteId}/history`}>{t("mods.detail.history")}</Link><UnifiedReportButton targetAuthor={mod.authors.join("、")} targetId={mod.uniqueId} targetSummary={displayName} targetType="mod" />{!canEdit ? user ? <><button className="button-secondary focus-ring" type="button" onClick={() => setApplicationKind("editor")}>{t("mods.applications.applyEditor")}</button><button className="button-secondary focus-ring" type="button" onClick={() => setApplicationKind("developer")}>{t("mods.applications.iAmDeveloper")}</button></> : <><Link className="button-secondary focus-ring" href={`/login?next=/mods/${mod.siteId}`}>{t("mods.applications.applyEditor")}</Link><Link className="button-secondary focus-ring" href={`/login?next=/mods/${mod.siteId}`}>{t("mods.applications.iAmDeveloper")}</Link></> : null}<ReviewAwareEditAction canEdit={canEdit} editHref={`/mods/${mod.siteId}/edit`} entityType="mod" publicId={mod.uniqueId} /></div>
           </div>
           <div className="mt-5 flex flex-col gap-5 sm:flex-row">

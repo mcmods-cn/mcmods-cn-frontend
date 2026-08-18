@@ -10,6 +10,7 @@ import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
 import { markdownForUploadedFile, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
+import { StickerPicker } from "./sticker-picker";
 
 type ViewMode = "edit" | "preview";
 type DrawioEditSession = {
@@ -586,6 +587,9 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
               onInsertMedia={openMediaDialog}
               onUploadBlueprint={() => blueprintInputRef.current?.click()}
             />
+            <div className="flex items-center border-b border-[var(--line)] px-3 py-2">
+              <StickerPicker inputRef={textareaRef} value={markdown} onChange={setMarkdown} />
+            </div>
             <input
               ref={blueprintInputRef}
               className="hidden"

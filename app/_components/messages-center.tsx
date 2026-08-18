@@ -24,6 +24,7 @@ type NotificationItem = {
   actors: Array<{ id: string; username: string }>;
   createdAt: string;
   updatedAt: string;
+	translationAllowed: boolean;
 };
 
 type Conversation = {
@@ -125,12 +126,12 @@ export function MessagesCenter() {
   useEffect(() => {
     if (!token) return;
     const timer = window.setTimeout(() => {
-      void Promise.all([loadNotifications(), loadUnreadNotifications(), loadConversations(), loadBalance()]).catch((error) => {
+      void Promise.all([loadNotifications(), loadUnreadNotifications(), loadConversations()]).catch((error) => {
         setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [loadBalance, loadConversations, loadNotifications, loadUnreadNotifications, t, token]);
+  }, [loadConversations, loadNotifications, loadUnreadNotifications, t, token]);
 
   useEffect(() => {
     if (!token) return;
@@ -229,7 +230,7 @@ export function MessagesCenter() {
   }
 
   async function translate(item: NotificationItem) {
-    if (!token || translatingID) return;
+	if (!token || translatingID || !item.translationAllowed) return;
     setTranslatingID(item.id);
     setStatus("");
     try {
@@ -296,7 +297,7 @@ export function MessagesCenter() {
                   </button>
                 ))}
               </nav>
-              {aiBalance ? <AIBalanceCard balance={aiBalance} /> : null}
+			  {notifications.some((item) => item.translationAllowed) && aiBalance ? <AIBalanceCard balance={aiBalance} /> : null}
             </aside>
             <section className="grid content-start gap-3">
               <div className="flex justify-end">
@@ -346,9 +347,9 @@ export function MessagesCenter() {
                             {t("messages.openRelatedContent")}
                           </Link>
                         ) : null}
-                        <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={translatingID !== null || item.sourceLocale === locale} type="button" onClick={(event) => { event.stopPropagation(); void translate(item); }}>
-                          {translatingID === item.id ? t("messages.translating") : t("messages.aiTranslate")}
-                        </button>
+						{item.translationAllowed ? <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={translatingID !== null || item.sourceLocale === locale} type="button" onClick={(event) => { event.stopPropagation(); void translate(item); }}>
+						  {translatingID === item.id ? t("messages.translating") : t("messages.aiTranslate")}
+						</button> : null}
                       </div>
                     </div>
                   </article>

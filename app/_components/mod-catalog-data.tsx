@@ -6,6 +6,7 @@ import { normalizeContentLanguage } from "../_lib/content-language";
 import {
   cancelModExportJob,
   cancelModExportUpload,
+  confirmModExportMODIDMismatch,
   getActiveModExportJob,
   getModExportJob,
   ModExportJob,
@@ -26,6 +27,7 @@ import { loadModContentSections, loadModContentTemplates, loadModContentVersions
 import { formatBytes } from "../_lib/oss-upload";
 import { useI18n } from "../_lib/i18n-provider";
 import { IconFont } from "./iconfont";
+import { MODIDConfirmationCard } from "./modid-confirmation-card";
 
 type Props = {
   siteId: string;
@@ -290,6 +292,11 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
     polling.current?.abort();
     polling.current = new AbortController();
     const completed = await waitForModExportJob(siteId, initialJob.id, token, setJob, polling.current.signal);
+    if (completed.status === "confirmation_required") {
+      setError("");
+      setBusy(false);
+      return;
+    }
     if (completed.status === "failed") {
       const key = `mods.exportImport.jobErrors.${completed.errorCode}`;
       const translated = t(key);
@@ -388,6 +395,16 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
     } finally { setBusy(false); }
   }
 
+  async function confirmMODIDMismatch() {
+    if (!job?.modidConfirmationRequired) return;
+    setBusy(true); setError("");
+    try {
+      await monitorJob(await confirmModExportMODIDMismatch(siteId, job, token));
+    } catch (reason) {
+      if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.retry")));
+    } finally { setBusy(false); }
+  }
+
   async function cancelImport() {
     const currentTask = activeTask.current;
     if (!currentTask && !job) return;
@@ -422,7 +439,7 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
   const form = <><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><input className="mt-1 h-4 w-4 accent-[var(--accent)]" type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} /><span><strong className="block">{t("mods.exportImport.overwriteExisting")}</strong><small className="mt-1 block leading-5 text-[var(--muted)]">{t("mods.exportImport.overwriteExistingHint")}</small></span></label>
     <label className={`mt-5 grid min-h-48 place-items-center rounded-lg border border-dashed p-6 text-center ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${dragging ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel-subtle)]"}`} onDragEnter={(event) => { event.preventDefault(); if (!disabled) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { if (disabled) { event.preventDefault(); return; } drop(event); }}><input className="sr-only" type="file" accept=".zip,application/zip" disabled={busy || disabled} onChange={(event: ChangeEvent<HTMLInputElement>) => void importFile(event.target.files?.[0])} /><span><strong className="block text-lg">{upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : t("mods.exportImport.drop")}</strong><small className="mt-2 block text-[var(--muted)]">{t("mods.exportImport.dropHint")}</small></span></label>
     {upload && !job ? <Progress label={t(`mods.exportImport.uploadPhases.${upload.phase}`)} percent={upload.percent} upload={upload} /> : null}
-    {job ? <><p className="mt-4 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("mods.exportImport.importInBackground")}</p><Progress label={t(`mods.exportImport.stages.${job.currentStage || job.status}`)} percent={job.progress} />{job.reviewRequired ? <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p> : null}</> : null}
+    {job ? <><p className="mt-4 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("mods.exportImport.importInBackground")}</p><Progress label={t(`mods.exportImport.stages.${job.currentStage || job.status}`)} percent={job.progress} />{job.status === "confirmation_required" ? <MODIDConfirmationCard busy={busy} job={job} onCancel={() => void cancelImport()} onConfirm={() => void confirmMODIDMismatch()} /> : null}{job.reviewRequired ? <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p> : null}</> : null}
     {(busy || activeTask.current) && !["ready", "partial", "failed", "cancelled"].includes(job?.status || "") ? <div className="mt-4 flex justify-end"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void cancelImport()}>{t("common.cancel")}</button></div> : null}
     {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : !job && activeTask.current ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void resumeUpload()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
   </>;

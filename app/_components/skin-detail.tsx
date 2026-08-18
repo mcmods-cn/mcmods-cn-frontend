@@ -22,6 +22,7 @@ import { notifySite } from "../_lib/site-notice";
 import { SkinPreview2D } from "./skin-preview";
 import { CommentSection } from "./comment-section";
 import { UnifiedReportButton } from "./unified-report-dialog";
+import { ProjectFollowButton } from "./project-follow-button";
 
 const SkinViewerCanvas = dynamic(
   () => import("@/components/minecraft-skin/SkinViewerCanvas").then((module) => module.SkinViewerCanvas),
@@ -197,6 +198,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
             ) : null}
           </aside>
         </div>
+        <div className="mb-4"><ProjectFollowButton publicId={publicId} /></div>
         <CommentSection targetKey={publicId} targetType="skin" />
       </article>
     </main>

@@ -21,6 +21,7 @@ import { RatingPanel } from "./rating-panel";
 import { ContentMetricsPanel } from "./content-metrics-panel";
 import { ProjectAutoUpdateSettings } from "./project-auto-update-settings";
 import { UnifiedReportButton, type ReportTargetType } from "./unified-report-dialog";
+import { ProjectFollowButton } from "./project-follow-button";
 
 type ProjectTab = "introduction" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
@@ -58,6 +59,7 @@ function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
       <div className="mt-5 flex flex-col gap-5 sm:flex-row"><ProjectIcon icon={simpleProjectIconURL(record)} name={name} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black sm:text-3xl">{record.abbreviation ? `[${record.abbreviation}] ` : ""}{name}</h1>{record.reviewStatus === "pending" ? <span className="rounded border border-[var(--warning)] px-2 py-1 text-xs font-black text-[var(--warning)]">{t("mods.detail.pendingReview")}</span> : null}</div><p className="mt-2 font-mono text-xs text-[var(--muted)]">{record.id} · {record.siteId}</p><p className="mt-4 max-w-4xl text-sm leading-7 text-[var(--muted)] sm:text-base">{localization.summary}</p></div></div>
     </div></header>
     <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
+      <div className="mb-4"><ProjectFollowButton publicId={record.id} /></div>
       <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("mods.detail.compatibility")}</h2><div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Detail label={t("largeProjects.fields.minecraftVersions")} value={record.minecraftVersions.join("、")} /><Detail label={t("largeProjects.fields.loaders")} value={record.loaders.map((value) => t(`largeProjects.options.${value}`)).join("、")} />{information.map((item) => <Detail key={item.label} label={t(item.label)} value={item.values.map((value) => t(`largeProjects.options.${value}`)).join("、")} />)}</div></section>
       <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("largeProjects.detail.sections")}>{(["introduction", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as ProjectTab[]).map((item) => <button className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} key={item} type="button" onClick={() => setSelectedTab(item)}><strong className="block whitespace-nowrap">{t(`largeProjects.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0">

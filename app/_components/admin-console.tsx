@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { canAccessAdmin, clearAuth, hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { ApiError, apiRequest } from "../_lib/api";
 import { isBackendUnavailable } from "../_lib/backend-status";
@@ -33,15 +33,17 @@ import { ServerReviewQueuePanel, ServerSettingsPanel } from "./admin-server-pane
 import { AdminUnresolvedReferences } from "./admin-unresolved-references";
 import { AdminContentAttributePanel } from "./admin-content-attribute-panel";
 import { AdminYggdrasilPanel, defaultAdminYggdrasilConfig, type AdminYggdrasilConfig } from "./admin-yggdrasil-panel";
-import { AdminDashboardPanel, type AdminDashboardData } from "./admin-dashboard-panel";
+import { AdminDashboardPanel, AdminProjectWorkbenchPanel, type AdminDashboardData } from "./admin-dashboard-panel";
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
 import { AdminActivityRetentionPanel } from "./admin-activity-retention-panel";
 import { AdminAntiAbusePanel } from "./admin-anti-abuse-panel";
 import { AboutAdminPanel, BanAdminPanel, ProjectAutomationAdminPanel, SeedCrawlerAdminPanel, SiteChangelogAdminPanel, UnifiedReportAdminPanel } from "./admin-governance-automation-panels";
+import { AdminStickerPanel } from "./admin-sticker-panel";
 
 type PanelId =
   | "overview"
+  | "projects"
   | "general-settings"
   | "yggdrasil"
   | "roles"
@@ -83,7 +85,7 @@ type PanelId =
   | "oss-scans"
   | "oss-downloads"
   | "logs-system"
-  | "logs-user"
+  | "logs-cleanup"
   | "logs-admin"
   | "logs-permission"
   | "logs-login"
@@ -98,7 +100,8 @@ type PanelId =
   | "site-about"
   | "site-changelogs"
   | "seed-crawler"
-  | "project-auto-updates";
+  | "project-auto-updates"
+  | "stickers";
 
 type User = {
   id: string;
@@ -342,6 +345,20 @@ type OSSFile = {
 
 type LogRow = Record<string, string | number | boolean | null | Record<string, unknown>>;
 
+type RuntimeLogEntry = {
+  id: number;
+  createdAt: string;
+  level: "info" | "warn" | "error";
+  line: string;
+};
+
+type RuntimeLogResponse = {
+  items: RuntimeLogEntry[];
+  lastId: number;
+  oldestId: number;
+  resetNeeded: boolean;
+};
+
 type LogRetentionConfig = {
   enabled: boolean;
   defaultDays: number;
@@ -417,7 +434,10 @@ const adminNavGroups: Array<{
   {
     id: "workbench",
     label: "",
-    items: [{ id: "overview", label: "", description: "" }],
+    items: [
+      { id: "overview", label: "", description: "" },
+      { id: "projects", label: "", description: "" },
+    ],
   },
   {
     id: "reviews",
@@ -456,6 +476,7 @@ const adminNavGroups: Array<{
     items: [
       { id: "resource-attributes", label: "", description: "" },
       { id: "unresolved-references", label: "", description: "" },
+      { id: "stickers", label: "", description: "" },
     ],
   },
   {
@@ -507,7 +528,7 @@ const adminNavGroups: Array<{
     label: "",
     items: [
       { id: "logs-system", label: "", description: "" },
-      { id: "logs-user", label: "", description: "" },
+      { id: "logs-cleanup", label: "", description: "" },
       { id: "logs-admin", label: "", description: "" },
       { id: "logs-permission", label: "", description: "" },
       { id: "logs-login", label: "", description: "" },
@@ -566,6 +587,7 @@ const emptyDashboard: AdminDashboardData = {
   overview: {
     onlineUsers: 0, monthlyActiveUsers: 0, totalUsers: 0, totalProjects: 0,
     approvedProjects: 0, pendingReviews: 0, viewsToday: 0, actionsToday: 0,
+    oss: { activeFiles: 0, storedBytes: 0, sourceBytes: 0, pendingScans: 0, quarantinedFiles: 0, uploadsToday: 0 },
     trend: [], updatedAt: "",
   },
 };
@@ -698,23 +720,7 @@ export function AdminConsole() {
   const auth = useAuthSnapshot();
   const [activePanel, setActivePanel] = useState<PanelId>("overview");
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
-  const [expanded, setExpanded] = useState([
-    "workbench",
-    "content",
-    "permission",
-    "creators",
-    "economy",
-    "progression",
-    "monitoring",
-    "automation",
-    "site-affairs",
-    "oss",
-    "logs",
-    "ai",
-    "infrastructure",
-    "users",
-    "system",
-  ]);
+  const [expanded, setExpanded] = useState(["workbench"]);
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [config, setConfig] = useState(emptyConfig);
   const [catalog, setCatalog] = useState(emptyCatalog);
@@ -985,6 +991,7 @@ export function AdminConsole() {
           </div>
 
           {activePanel === "overview" ? <AdminDashboardPanel initialData={dashboard} token={auth.token} features={config.features} /> : null}
+          {activePanel === "projects" ? <AdminProjectWorkbenchPanel token={auth.token} /> : null}
           {activePanel === "general-settings" ? <GeneralSettingsPanel initialConfig={config.general ?? emptyConfig.general} token={auth.token} /> : null}
           {activePanel === "yggdrasil" ? <AdminYggdrasilPanel initialConfig={config.yggdrasil ?? emptyConfig.yggdrasil} token={auth.token} /> : null}
           {activePanel === "roles" ? (
@@ -1006,7 +1013,7 @@ export function AdminConsole() {
           ) : null}
           {activePanel === "permission-settings" ? <PermissionSettingsPanel catalog={catalog} token={auth.token} /> : null}
           {activePanel === "creator-claims" ? <CreatorClaimsPanel token={auth.token} /> : null}
-          {activePanel === "activity-monitor" ? <ActivityMonitorPanel token={auth.token} /> : null}
+          {activePanel === "activity-monitor" ? <><ActivityMonitorPanel token={auth.token} />{hasPermission(auth.user, "log.read") ? <AdminActivityRetentionPanel token={auth.token} /> : null}</> : null}
           {activePanel === "anti-abuse" ? <AdminAntiAbusePanel token={auth.token} /> : null}
           {activePanel === "economy-config" ? <EconomyConfigPanel token={auth.token} /> : null}
           {activePanel === "currencies" ? <CurrencyManagementPanel token={auth.token} /> : null}
@@ -1037,6 +1044,7 @@ export function AdminConsole() {
           {activePanel === "site-about" ? <AboutAdminPanel token={auth.token} /> : null}
           {activePanel === "site-changelogs" ? <SiteChangelogAdminPanel token={auth.token} /> : null}
           {activePanel === "unresolved-references" ? <AdminUnresolvedReferences token={auth.token} /> : null}
+          {activePanel === "stickers" ? <AdminStickerPanel token={auth.token} /> : null}
           {activePanel === "nats" ? <NATSConfigPanel token={auth.token} /> : null}
           {activePanel === "i18n" ? <TranslationManagerPanel token={auth.token} /> : null}
           {activePanel === "oss-config" ? <OSSConfigPanelV2 initialConfig={config.oss ?? emptyConfig.oss!} token={auth.token} /> : null}
@@ -1044,8 +1052,8 @@ export function AdminConsole() {
           {activePanel === "oss-uploads" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-uploads", t)} endpoint="/api/v1/admin/oss/uploads" /> : null}
           {activePanel === "oss-scans" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-scans", t)} endpoint="/api/v1/admin/oss/scans" /> : null}
           {activePanel === "oss-downloads" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-downloads", t)} endpoint="/api/v1/admin/oss/downloads" /> : null}
-          {activePanel === "logs-system" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-system", t)} category="system" /> : null}
-          {activePanel === "logs-user" ? <><LogsPanel token={auth.token} title={panelTitleV2("logs-user", t)} category="user_interaction" /><AdminActivityRetentionPanel token={auth.token} /></> : null}
+          {activePanel === "logs-system" ? <RuntimeLogsPanel token={auth.token} title={panelTitleV2("logs-system", t)} /> : null}
+          {activePanel === "logs-cleanup" ? <LogCleanupPanel token={auth.token} /> : null}
           {activePanel === "logs-admin" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-admin", t)} category="admin_operation" /> : null}
           {activePanel === "logs-permission" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-permission", t)} category="permission_change" /> : null}
           {activePanel === "logs-login" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-login", t)} category="login_security" /> : null}
@@ -5072,12 +5080,6 @@ function LogsPanel({ token, title, category }: { token: string; title: string; c
   const [level, setLevel] = useState("");
   const [status, setStatus] = useState("");
   const [limit, setLimit] = useState(100);
-  const [showRetention, setShowRetention] = useState(false);
-  const [retention, setRetention] = useState<LogRetentionConfig>({
-    enabled: true,
-    defaultDays: 180,
-    categoryDays: {},
-  });
   const displayTitle = logCategoryTitle(category, t) || title;
 
   const load = useCallback(async () => {
@@ -5118,28 +5120,6 @@ function LogsPanel({ token, title, category }: { token: string; title: string; c
     return () => window.clearTimeout(timer);
   }, [loadInitial]);
 
-  useEffect(() => {
-    apiRequest<LogRetentionConfig>("/api/v1/admin/logs/config", {}, token)
-      .then(setRetention)
-      .catch(() => undefined);
-  }, [token]);
-
-  async function saveRetention() {
-    try {
-      const result = await apiRequest<{ config: LogRetentionConfig; deleted: Record<string, number> }>(
-        "/api/v1/admin/logs/config",
-        { method: "PUT", body: JSON.stringify(retention) },
-        token,
-      );
-      setRetention(result.config);
-      const deletedCount = Object.values(result.deleted ?? {}).reduce((sum, value) => sum + Number(value || 0), 0);
-      setMessage(t("admin.logs.policySaved", { count: deletedCount }));
-      await load();
-    } catch (error) {
-      setMessage(cleanError(error));
-    }
-  }
-
   return (
     <section className="surface rounded-lg p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -5147,14 +5127,9 @@ function LogsPanel({ token, title, category }: { token: string; title: string; c
           <h2 className="text-lg font-bold">{displayTitle}</h2>
           <p className="text-sm text-[var(--muted)]">{t("admin.logs.titleDesc")}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button className="button-secondary focus-ring" type="button" onClick={() => setShowRetention((current) => !current)}>
-            {t("admin.logs.cleanupPolicy")}
-          </button>
-          <button className="button-primary focus-ring" type="button" onClick={load}>
-            {t("admin.logs.query")}
-          </button>
-        </div>
+        <button className="button-primary focus-ring" type="button" onClick={load}>
+          {t("admin.logs.query")}
+        </button>
       </div>
 
       <div className="mb-4 grid gap-3 lg:grid-cols-[1.4fr_repeat(5,minmax(120px,0.6fr))]">
@@ -5171,58 +5146,202 @@ function LogsPanel({ token, title, category }: { token: string; title: string; c
         <input className="field" min={1} max={500} type="number" value={limit} onChange={(event) => setLimit(Number(event.target.value))} />
       </div>
 
-      {showRetention ? (
-        <div className="mb-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="font-bold">{t("admin.logs.rollingCleanup")}</h3>
-              <p className="text-sm text-[var(--muted)]">{t("admin.logs.rollingCleanupDesc")}</p>
-            </div>
-            <button className="button-primary focus-ring" type="button" onClick={saveRetention}>
-              {t("admin.logs.saveCleanupPolicy")}
-            </button>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3">
-              <input
-                checked={retention.enabled}
-                type="checkbox"
-                onChange={(event) => setRetention((current) => ({ ...current, enabled: event.target.checked }))}
-              />
-              {t("admin.logs.enableRollingCleanup")}
-            </label>
-            <label className="grid gap-1 text-sm font-semibold">
-              {t("admin.logs.defaultRetentionDays")}
-              <input
-                className="field"
-                min={1}
-                max={3650}
-                type="number"
-                value={retention.defaultDays}
-                onChange={(event) => setRetention((current) => ({ ...current, defaultDays: Number(event.target.value) }))}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-semibold">
-              {t("admin.logs.categoryRetentionDays")}
-              <input
-                className="field"
-                min={1}
-                max={3650}
-                type="number"
-                value={retention.categoryDays?.[category] ?? retention.defaultDays}
-                onChange={(event) =>
-                  setRetention((current) => ({
-                    ...current,
-                    categoryDays: { ...(current.categoryDays ?? {}), [category]: Number(event.target.value) },
-                  }))
-                }
-              />
-            </label>
-          </div>
-        </div>
-      ) : null}
-
       <RowsPanel title={displayTitle} rows={rows} message={message} />
+    </section>
+  );
+}
+
+function RuntimeLogsPanel({ token, title }: { token: string; title: string }) {
+  const { t } = useI18n();
+  const [entries, setEntries] = useState<RuntimeLogEntry[]>([]);
+  const [message, setMessage] = useState("");
+  const [query, setQuery] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [level, setLevel] = useState("");
+  const [limit, setLimit] = useState(300);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [followTail, setFollowTail] = useState(true);
+  const [lastId, setLastId] = useState(0);
+  const outputRef = useRef<HTMLDivElement>(null);
+
+  const request = useCallback(async (afterId = 0) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (afterId > 0) params.set("afterId", String(afterId));
+    if (query.trim()) params.set("q", query.trim());
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    if (level) params.set("level", level);
+    return apiRequest<RuntimeLogResponse>(`/api/v1/admin/runtime-logs?${params.toString()}`, {}, token);
+  }, [from, level, limit, query, to, token]);
+
+  const replaceEntries = useCallback(async () => {
+    try {
+      const result = await request();
+      setEntries(result.items);
+      setLastId(result.lastId);
+      setMessage("");
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }, [request]);
+
+  const appendEntries = useCallback(async () => {
+    try {
+      const result = await request(lastId);
+      if (result.resetNeeded) {
+        setEntries(result.items);
+      } else if (result.items.length) {
+        setEntries((current) => [...current, ...result.items].slice(-limit));
+      }
+      setLastId(result.lastId);
+      setMessage("");
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }, [lastId, limit, request]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void replaceEntries(), 300);
+    return () => window.clearTimeout(timer);
+  }, [replaceEntries]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const timer = window.setInterval(() => void appendEntries(), 2500);
+    return () => window.clearInterval(timer);
+  }, [appendEntries, autoRefresh]);
+
+  useEffect(() => {
+    if (!followTail || !outputRef.current) return;
+    outputRef.current.scrollTop = outputRef.current.scrollHeight;
+  }, [entries, followTail]);
+
+  async function copyVisibleLogs() {
+    try {
+      await navigator.clipboard.writeText(entries.map((entry) => entry.line).join("\n"));
+      setMessage(t("admin.runtimeLogs.copied"));
+    } catch (error) {
+      setMessage(cleanError(error));
+    }
+  }
+
+  return (
+    <section className="surface rounded-lg p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold">{title}</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.runtimeLogs.description")}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="button-secondary focus-ring" type="button" onClick={() => void copyVisibleLogs()}>{t("admin.runtimeLogs.copy")}</button>
+          <button className="button-primary focus-ring" type="button" onClick={() => void replaceEntries()}>{t("admin.runtimeLogs.refresh")}</button>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1.5fr_repeat(4,minmax(130px,0.6fr))]">
+        <input className="field" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("admin.runtimeLogs.searchPlaceholder")} />
+        <input className="field" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+        <input className="field" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+        <select className="field" value={level} onChange={(event) => setLevel(event.target.value)}>
+          <option value="">{t("admin.logs.allLevels")}</option>
+          <option value="info">info</option>
+          <option value="warn">warn</option>
+          <option value="error">error</option>
+        </select>
+        <input aria-label={t("admin.runtimeLogs.limit")} className="field" min={50} max={1000} type="number" value={limit} onChange={(event) => setLimit(Math.min(1000, Math.max(50, Number(event.target.value) || 300)))} />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex flex-wrap gap-4">
+          <label className="flex items-center gap-2 font-semibold"><input checked={autoRefresh} type="checkbox" onChange={(event) => setAutoRefresh(event.target.checked)} />{t("admin.runtimeLogs.autoRefresh")}</label>
+          <label className="flex items-center gap-2 font-semibold"><input checked={followTail} type="checkbox" onChange={(event) => setFollowTail(event.target.checked)} />{t("admin.runtimeLogs.followTail")}</label>
+        </div>
+        <span className="text-[var(--muted)]">{t("admin.logs.records", { count: entries.length })}</span>
+      </div>
+
+      {message ? <div className="mt-3"><InlineMessage text={message} /></div> : null}
+      <div ref={outputRef} className="mt-4 h-[min(65vh,760px)] overflow-auto rounded-lg border border-black/40 bg-[#111814] p-4 font-mono text-[13px] leading-6 text-[#d7e1da]" role="log" aria-live="polite">
+        {entries.length ? entries.map((entry) => (
+          <div className={entry.level === "error" ? "text-[#ff8d8d]" : entry.level === "warn" ? "text-[#ffd47a]" : "text-[#d7e1da]"} key={entry.id}>
+            <span className="select-none pr-3 text-[#718078]">{entry.id}</span>{entry.line}
+          </div>
+        )) : <p className="text-[#8d9a92]">{t("admin.runtimeLogs.empty")}</p>}
+      </div>
+      <p className="mt-3 text-xs leading-5 text-[var(--muted)]">{t("admin.runtimeLogs.scopeHint")}</p>
+    </section>
+  );
+}
+
+function LogCleanupPanel({ token }: { token: string }) {
+  const { t } = useI18n();
+  const [retention, setRetention] = useState<LogRetentionConfig | null>(null);
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<LogRetentionConfig>("/api/v1/admin/logs/config", {}, token)
+      .then((value) => { if (!cancelled) setRetention(value); })
+      .catch((error) => { if (!cancelled) setMessage(cleanError(error)); });
+    return () => { cancelled = true; };
+  }, [token]);
+
+  const categories = useMemo(() => retention ? Object.keys(retention.categoryDays).sort() : [], [retention]);
+
+  async function saveRetention() {
+    if (!retention) return;
+    setSaving(true);
+    setMessage("");
+    try {
+      const result = await apiRequest<{ config: LogRetentionConfig; deleted: Record<string, number> }>(
+        "/api/v1/admin/logs/config",
+        { method: "PUT", body: JSON.stringify(retention) },
+        token,
+      );
+      setRetention(result.config);
+      const deletedCount = Object.values(result.deleted ?? {}).reduce((sum, value) => sum + Number(value || 0), 0);
+      setMessage(t("admin.logs.policySaved", { count: deletedCount }));
+    } catch (error) {
+      setMessage(cleanError(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!retention) {
+    return <section className="surface rounded-lg p-5 text-sm text-[var(--muted)]">{message || t("common.loading")}</section>;
+  }
+
+  return (
+    <section className="surface rounded-lg p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-black">{t("admin.logCleanup.title")}</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.logCleanup.description")}</p>
+        </div>
+        <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void saveRetention()}>
+          {saving ? t("common.saving") : t("common.save")}
+        </button>
+      </div>
+      {message ? <div className="mt-4"><InlineMessage text={message} /></div> : null}
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <label className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4 font-bold">
+          <input checked={retention.enabled} type="checkbox" onChange={(event) => setRetention({ ...retention, enabled: event.target.checked })} />
+          {t("admin.logs.enableRollingCleanup")}
+        </label>
+        <label className="grid gap-1 text-sm font-semibold">
+          {t("admin.logs.defaultRetentionDays")}
+          <input className="field" min={1} max={3650} type="number" value={retention.defaultDays} onChange={(event) => setRetention({ ...retention, defaultDays: Number(event.target.value) })} />
+        </label>
+      </div>
+      <div className="mt-5 overflow-x-auto">
+        <table className="w-full min-w-[560px] text-left text-sm">
+          <thead><tr className="text-[var(--muted)]"><th className="border-b border-[var(--line)] p-3">{t("admin.logCleanup.category")}</th><th className="border-b border-[var(--line)] p-3">{t("admin.logCleanup.retentionDays")}</th></tr></thead>
+          <tbody>{categories.map((category) => <tr key={category}><th className="border-b border-[var(--line)] p-3 font-semibold">{logCategoryTitle(category, t)}</th><td className="border-b border-[var(--line)] p-3"><input className="field max-w-52" min={1} max={3650} type="number" value={retention.categoryDays[category] ?? retention.defaultDays} onChange={(event) => setRetention({ ...retention, categoryDays: { ...retention.categoryDays, [category]: Number(event.target.value) } })} /></td></tr>)}</tbody>
+        </table>
+      </div>
+      <p className="mt-4 text-xs leading-5 text-[var(--muted)]">{t("admin.logCleanup.saveEffect")}</p>
     </section>
   );
 }
@@ -5440,6 +5559,7 @@ function AdminNoticeDialog({ notice, onClose }: { notice: AdminNotice | null; on
 function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, string | number>) => string) {
   const titles: Record<PanelId, string> = {
     overview: t("admin.overview"),
+    projects: t("admin.projectList"),
     "general-settings": t("admin.generalSettings.title"),
     yggdrasil: t("admin.yggdrasil.title"),
     roles: t("admin.roles"),
@@ -5481,7 +5601,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "oss-scans": t("admin.panels.ossScans"),
     "oss-downloads": t("admin.panels.ossDownloads"),
     "logs-system": t("admin.panels.logsSystem"),
-    "logs-user": t("admin.panels.logsUser"),
+    "logs-cleanup": t("admin.panels.logsCleanup"),
     "logs-admin": t("admin.panels.logsAdmin"),
     "logs-permission": t("admin.panels.logsPermission"),
     "logs-login": t("admin.panels.logsLogin"),
@@ -5497,6 +5617,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "site-changelogs": t("admin.governance.changelogs"),
     "seed-crawler": t("admin.automation.seedCrawler"),
     "project-auto-updates": t("admin.automation.projectUpdates"),
+    stickers: t("admin.stickers.title"),
   };
   return titles[panel];
 }
@@ -5517,8 +5638,11 @@ function panelPermission(panel: PanelId) {
     "permission-list": "permission.read",
     "permission-settings": "permission.read",
     users: "user.read",
+    "activity-monitor": "activity.read",
+    "logs-cleanup": "log.read",
     "anti-abuse": "security.anti-abuse.read",
     "oss-files": "oss.file.read",
+    stickers: "sticker.manage",
   };
   return permissions[panel];
 }
@@ -5548,6 +5672,7 @@ function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, 
 function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: string, params?: Record<string, string | number>) => string) {
   const descriptions: Partial<Record<PanelId, string>> = {
     overview: t("admin.overviewDesc"),
+    projects: t("admin.projectListDesc"),
     "general-settings": t("admin.generalSettings.description"),
     yggdrasil: t("admin.yggdrasil.navDescription"),
     roles: t("admin.rolesDesc"),
@@ -5589,7 +5714,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "oss-scans": t("admin.nav.ossScansDesc"),
     "oss-downloads": t("admin.nav.ossDownloadsDesc"),
     "logs-system": t("admin.nav.logsSystemDesc"),
-    "logs-user": t("admin.nav.logsUserDesc"),
+    "logs-cleanup": t("admin.nav.logsCleanupDesc"),
     "logs-admin": t("admin.nav.logsAdminDesc"),
     "logs-permission": t("admin.nav.logsPermissionDesc"),
     "logs-login": t("admin.nav.logsLoginDesc"),
@@ -5605,6 +5730,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "site-changelogs": t("admin.governance.changelogsDescription"),
     "seed-crawler": t("admin.automation.seedCrawlerDescription"),
     "project-auto-updates": t("admin.automation.projectUpdatesDescription"),
+    stickers: t("admin.stickers.description"),
   };
   return descriptions[panel] ?? fallback;
 }
@@ -5642,12 +5768,14 @@ function displayCell(value: unknown) {
 function logCategoryTitle(category: string, t: (key: string, params?: Record<string, string | number>) => string) {
   const titles: Record<string, string> = {
     system: t("admin.panels.logsSystem"),
-    user_interaction: t("admin.panels.logsUser"),
+    user_interaction: t("admin.logCleanup.categories.userInteraction"),
     admin_operation: t("admin.panels.logsAdmin"),
     permission_change: t("admin.panels.logsPermission"),
     login_security: t("admin.panels.logsLogin"),
     api_access: t("admin.panels.logsApi"),
     file_upload: t("admin.panels.logsFileUpload"),
+    file_scan: t("admin.logCleanup.categories.fileScan"),
+    download: t("admin.logCleanup.categories.download"),
     ai_call: t("admin.panels.logsAi"),
   };
   return titles[category] ?? category;

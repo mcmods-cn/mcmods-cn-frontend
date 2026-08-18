@@ -70,6 +70,7 @@ export type ModContentSectionResource = {
   iconPath?: string;
   iconFileId?: string;
   names?: Record<string, string>;
+  hasDetailDescription: boolean;
   definition: Record<string, unknown>;
 };
 

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
+import { formatBytes } from "../_lib/oss-upload";
 
 type SiteMetricPoint = {
   date: string;
@@ -25,6 +26,14 @@ export type AdminDashboardData = {
     pendingReviews: number;
     viewsToday: number;
     actionsToday: number;
+    oss: {
+      activeFiles: number;
+      storedBytes: number;
+      sourceBytes: number;
+      pendingScans: number;
+      quarantinedFiles: number;
+      uploadsToday: number;
+    };
     trend: SiteMetricPoint[];
     updatedAt: string;
   };
@@ -72,6 +81,14 @@ const emptyOverview: AdminDashboardData["overview"] = {
   pendingReviews: 0,
   viewsToday: 0,
   actionsToday: 0,
+  oss: {
+    activeFiles: 0,
+    storedBytes: 0,
+    sourceBytes: 0,
+    pendingScans: 0,
+    quarantinedFiles: 0,
+    uploadsToday: 0,
+  },
   trend: [],
   updatedAt: "",
 };
@@ -86,16 +103,6 @@ export function AdminDashboardPanel({ initialData, token, features }: {
   const { locale, t } = useI18n();
   const [refreshedDashboard, setRefreshedDashboard] = useState<AdminDashboardData | null>(null);
   const [siteMetric, setSiteMetric] = useState<SiteMetric>("activeUsers");
-  const [projects, setProjects] = useState<ProjectList>({ items: [], total: 0, limit: 30, offset: 0 });
-  const [query, setQuery] = useState("");
-  const [projectType, setProjectType] = useState("");
-  const [projectOffset, setProjectOffset] = useState(0);
-  const [selectedID, setSelectedID] = useState("");
-  const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null);
-  const [projectMetric, setProjectMetric] = useState<ProjectMetric>("heat");
-  const [days, setDays] = useState(30);
-  const [loadingProjects, setLoadingProjects] = useState(true);
-  const [error, setError] = useState("");
   const [clock, setClock] = useState(0);
 
   useEffect(() => {
@@ -121,6 +128,83 @@ export function AdminDashboardPanel({ initialData, token, features }: {
       document.removeEventListener("visibilitychange", refresh);
     };
   }, [token]);
+
+  const dashboard = refreshedDashboard ?? initialData;
+  const overview = dashboard.overview ?? emptyOverview;
+  const siteMetrics: Array<{ key: SiteMetric; label: string }> = [
+    { key: "activeUsers", label: t("admin.dashboard.activeUsers") },
+    { key: "views", label: t("admin.dashboard.views") },
+    { key: "actions", label: t("admin.dashboard.actions") },
+    { key: "newUsers", label: t("admin.dashboard.newUsers") },
+  ];
+  const updatedAt = overview.updatedAt ? new Date(overview.updatedAt) : null;
+  const stale = clock > 0 && updatedAt ? clock - updatedAt.getTime() > 120_000 : false;
+
+  return (
+    <div className="grid gap-5">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <DashboardCard icon="●" label={t("admin.dashboard.onlineUsers")} value={overview.onlineUsers} hint={t("admin.dashboard.onlineHint")} tone="green" locale={locale} />
+        <DashboardCard icon="↗" label={t("admin.dashboard.monthlyActiveUsers")} value={overview.monthlyActiveUsers} hint={t("admin.dashboard.monthlyActiveHint")} tone="blue" locale={locale} />
+        <DashboardCard icon="◆" label={t("admin.dashboard.totalProjects")} value={overview.totalProjects} hint={t("admin.dashboard.approvedProjects", { count: overview.approvedProjects })} tone="violet" locale={locale} />
+        <DashboardCard icon="!" label={t("admin.dashboard.pendingReviews")} value={overview.pendingReviews} hint={t("admin.dashboard.reviewHint")} tone="red" locale={locale} />
+        <DashboardCard icon="◎" label={t("admin.dashboard.totalUsers")} value={overview.totalUsers} hint={t("admin.dashboard.siteTotal")} tone="blue" locale={locale} />
+        <DashboardCard icon="◉" label={t("admin.dashboard.viewsToday")} value={overview.viewsToday} hint={t("admin.dashboard.today")} tone="green" locale={locale} />
+        <DashboardCard icon="⌁" label={t("admin.dashboard.actionsToday")} value={overview.actionsToday} hint={t("admin.dashboard.today")} tone="violet" locale={locale} />
+        <div className="surface rounded-xl p-4">
+          <p className="text-sm font-black">{t("admin.dashboard.systemState")}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {Object.entries(features).slice(0, 8).map(([key, enabled]) => <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${enabled ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`} key={key}>{key}</span>)}
+          </div>
+        </div>
+      </section>
+
+      <section className="surface rounded-xl p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 className="text-xl font-black">{t("admin.dashboard.siteTrend")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.dashboard.lastThirtyDays")}</p></div>
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${stale ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{stale ? t("admin.dashboard.dataStale") : t("admin.dashboard.liveData")}{updatedAt ? ` · ${updatedAt.toLocaleTimeString(locale)}` : ""}</span>
+        </div>
+        <MetricTabs items={siteMetrics} value={siteMetric} onChange={(value) => setSiteMetric(value as SiteMetric)} />
+        <LineChart interactionHint={t("admin.dashboard.chartInteractionHint")} points={overview.trend.map((point) => ({ date: point.date, value: point[siteMetric] }))} label={siteMetrics.find((item) => item.key === siteMetric)?.label ?? ""} locale={locale} />
+      </section>
+
+      <section className="surface rounded-xl p-4 sm:p-5">
+        <div>
+          <h2 className="text-xl font-black">{t("admin.dashboard.ossOverview")}</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.dashboard.ossOverviewDescription")}</p>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <MiniMetric label={t("admin.dashboard.ossActiveFiles")} value={formatNumber(overview.oss.activeFiles, locale)} />
+          <MiniMetric label={t("admin.dashboard.ossStoredBytes")} value={formatBytes(overview.oss.storedBytes)} />
+          <MiniMetric label={t("admin.dashboard.ossSourceBytes")} value={formatBytes(overview.oss.sourceBytes)} />
+          <MiniMetric label={t("admin.dashboard.ossPendingScans")} value={formatNumber(overview.oss.pendingScans, locale)} />
+          <MiniMetric label={t("admin.dashboard.ossQuarantinedFiles")} value={formatNumber(overview.oss.quarantinedFiles, locale)} />
+          <MiniMetric label={t("admin.dashboard.ossUploadsToday")} value={formatNumber(overview.oss.uploadsToday, locale)} />
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function AdminProjectWorkbenchPanel({ token }: { token: string }) {
+  const { locale, t } = useI18n();
+  const [projects, setProjects] = useState<ProjectList>({ items: [], total: 0, limit: 30, offset: 0 });
+  const [query, setQuery] = useState("");
+  const [projectType, setProjectType] = useState("");
+  const [projectOffset, setProjectOffset] = useState(0);
+  const [selectedID, setSelectedID] = useState("");
+  const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null);
+  const [projectMetric, setProjectMetric] = useState<ProjectMetric>("heat");
+  const [days, setDays] = useState(30);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [error, setError] = useState("");
+  const projectMetrics: Array<{ key: ProjectMetric; label: string }> = [
+    { key: "heat", label: t("admin.dashboard.heat") },
+    { key: "views", label: t("admin.dashboard.dailyViews") },
+    { key: "favorites", label: t("admin.dashboard.favorites") },
+    { key: "comments", label: t("admin.dashboard.comments") },
+    { key: "ratings", label: t("admin.dashboard.ratings") },
+    { key: "downloads", label: t("admin.dashboard.downloads") },
+  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -162,52 +246,7 @@ export function AdminDashboardPanel({ initialData, token, features }: {
     return () => window.clearTimeout(timer);
   }, []);
 
-  const dashboard = refreshedDashboard ?? initialData;
-  const overview = dashboard.overview ?? emptyOverview;
-  const siteMetrics: Array<{ key: SiteMetric; label: string }> = [
-    { key: "activeUsers", label: t("admin.dashboard.activeUsers") },
-    { key: "views", label: t("admin.dashboard.views") },
-    { key: "actions", label: t("admin.dashboard.actions") },
-    { key: "newUsers", label: t("admin.dashboard.newUsers") },
-  ];
-  const projectMetrics: Array<{ key: ProjectMetric; label: string }> = [
-    { key: "heat", label: t("admin.dashboard.heat") },
-    { key: "views", label: t("admin.dashboard.dailyViews") },
-    { key: "favorites", label: t("admin.dashboard.favorites") },
-    { key: "comments", label: t("admin.dashboard.comments") },
-    { key: "ratings", label: t("admin.dashboard.ratings") },
-    { key: "downloads", label: t("admin.dashboard.downloads") },
-  ];
-  const updatedAt = overview.updatedAt ? new Date(overview.updatedAt) : null;
-  const stale = clock > 0 && updatedAt ? clock - updatedAt.getTime() > 120_000 : false;
-
   return (
-    <div className="grid gap-5">
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <DashboardCard icon="●" label={t("admin.dashboard.onlineUsers")} value={overview.onlineUsers} hint={t("admin.dashboard.onlineHint")} tone="green" locale={locale} />
-        <DashboardCard icon="↗" label={t("admin.dashboard.monthlyActiveUsers")} value={overview.monthlyActiveUsers} hint={t("admin.dashboard.monthlyActiveHint")} tone="blue" locale={locale} />
-        <DashboardCard icon="◆" label={t("admin.dashboard.totalProjects")} value={overview.totalProjects} hint={t("admin.dashboard.approvedProjects", { count: overview.approvedProjects })} tone="violet" locale={locale} />
-        <DashboardCard icon="!" label={t("admin.dashboard.pendingReviews")} value={overview.pendingReviews} hint={t("admin.dashboard.reviewHint")} tone="red" locale={locale} />
-        <DashboardCard icon="◎" label={t("admin.dashboard.totalUsers")} value={overview.totalUsers} hint={t("admin.dashboard.siteTotal")} tone="blue" locale={locale} />
-        <DashboardCard icon="◉" label={t("admin.dashboard.viewsToday")} value={overview.viewsToday} hint={t("admin.dashboard.today")} tone="green" locale={locale} />
-        <DashboardCard icon="⌁" label={t("admin.dashboard.actionsToday")} value={overview.actionsToday} hint={t("admin.dashboard.today")} tone="violet" locale={locale} />
-        <div className="surface rounded-xl p-4">
-          <p className="text-sm font-black">{t("admin.dashboard.systemState")}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {Object.entries(features).slice(0, 8).map(([key, enabled]) => <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${enabled ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`} key={key}>{key}</span>)}
-          </div>
-        </div>
-      </section>
-
-      <section className="surface rounded-xl p-4 sm:p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div><h2 className="text-xl font-black">{t("admin.dashboard.siteTrend")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.dashboard.lastThirtyDays")}</p></div>
-          <span className={`rounded-full px-3 py-1 text-xs font-bold ${stale ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"}`}>{stale ? t("admin.dashboard.dataStale") : t("admin.dashboard.liveData")}{updatedAt ? ` · ${updatedAt.toLocaleTimeString(locale)}` : ""}</span>
-        </div>
-        <MetricTabs items={siteMetrics} value={siteMetric} onChange={(value) => setSiteMetric(value as SiteMetric)} />
-        <LineChart points={overview.trend.map((point) => ({ date: point.date, value: point[siteMetric] }))} label={siteMetrics.find((item) => item.key === siteMetric)?.label ?? ""} locale={locale} />
-      </section>
-
       <section className="grid min-h-[560px] gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
         <div className="surface min-w-0 rounded-xl p-4">
           <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("admin.dashboard.projects")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.dashboard.projectCount", { count: projects.total })}</p></div></div>
@@ -232,7 +271,6 @@ export function AdminDashboardPanel({ initialData, token, features }: {
           {!selectedID || !projectDetail ? <div className="grid min-h-80 place-items-center text-center text-sm font-bold text-[var(--muted)]">{t("admin.dashboard.selectProject")}</div> : <ProjectAnalytics detail={projectDetail} days={days} metric={projectMetric} metrics={projectMetrics} locale={locale} onDaysChange={setDays} onMetricChange={(value) => setProjectMetric(value as ProjectMetric)} t={t} />}
         </div>
       </section>
-    </div>
   );
 }
 
@@ -251,7 +289,7 @@ function ProjectAnalytics({ detail, days, metric, metrics, locale, onDaysChange,
     <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs font-black uppercase tracking-wide text-[var(--accent)]">{t(`admin.dashboard.projectTypes.${project.type}`)}</p><h2 className="mt-1 truncate text-2xl font-black">{project.name}</h2><p className="mt-1 font-mono text-xs text-[var(--muted)]">{project.id} · {project.reviewStatus}</p></div><Link className="button-secondary focus-ring" href={project.url}>{t("admin.dashboard.openProject")}</Link></div>
     <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-4"><MiniMetric label={t("admin.dashboard.totalViews")} value={formatNumber(project.views, locale)} /><MiniMetric label={t("admin.dashboard.heat")} value={formatNumber(project.heat, locale)} /><MiniMetric label={t("admin.dashboard.editCount")} value={formatNumber(project.editCount, locale)} /><MiniMetric label={t("admin.dashboard.rating")} value={project.rating ? project.rating.toFixed(2) : "—"} /></div>
     <div className="mt-5 flex flex-wrap items-center justify-between gap-3"><MetricTabs items={metrics} value={metric} onChange={onMetricChange} compact /><select className="field w-auto min-w-32" value={days} onChange={(event) => onDaysChange(Number(event.target.value))}>{[7, 30, 90, 365].map((value) => <option value={value} key={value}>{t("admin.dashboard.days", { count: value })}</option>)}</select></div>
-    <LineChart points={detail.trend.map((point) => ({ date: point.date, value: point[metric] }))} label={metrics.find((item) => item.key === metric)?.label ?? ""} locale={locale} />
+    <LineChart interactionHint={t("admin.dashboard.chartInteractionHint")} points={detail.trend.map((point) => ({ date: point.date, value: point[metric] }))} label={metrics.find((item) => item.key === metric)?.label ?? ""} locale={locale} />
     <p className="mt-3 text-xs text-[var(--muted)]">{t("admin.dashboard.projectUpdated", { time: new Date(project.updatedAt).toLocaleString(locale) })}</p>
   </div>;
 }
@@ -269,7 +307,14 @@ function MetricTabs({ items, value, onChange, compact = false }: { items: Array<
   return <div className={`${compact ? "" : "mt-4"} flex max-w-full gap-1 overflow-x-auto rounded-lg bg-[var(--panel-subtle)] p-1`} role="tablist">{items.map((item) => <button aria-selected={value === item.key} className={`focus-ring whitespace-nowrap rounded-md px-3 py-2 text-xs font-black ${value === item.key ? "bg-[var(--panel)] text-[var(--accent)] shadow-sm" : "text-[var(--muted)]"}`} key={item.key} role="tab" type="button" onClick={() => onChange(item.key)}>{item.label}</button>)}</div>;
 }
 
-function LineChart({ points, label, locale }: { points: Array<{ date: string; value: number }>; label: string; locale: string }) {
+function LineChart({ points, label, locale, interactionHint }: {
+  points: Array<{ date: string; value: number }>;
+  label: string;
+  locale: string;
+  interactionHint: string;
+}) {
+  const [activeDate, setActiveDate] = useState<string | null>(null);
+  const draggingPointer = useRef<number | null>(null);
   const geometry = useMemo(() => {
     const width = 900;
     const height = 260;
@@ -286,15 +331,92 @@ function LineChart({ points, label, locale }: { points: Array<{ date: string; va
     return { width, height, padding, maximum, minimum, coordinates, path: coordinates.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ") };
   }, [points]);
   if (points.length === 0) return <div className="mt-4 grid h-64 place-items-center text-sm font-bold text-[var(--muted)]">—</div>;
-  const last = geometry.coordinates.at(-1)!;
-  return <div className="mt-4 overflow-x-auto"><svg className="h-auto min-w-[620px] w-full" role="img" aria-label={label} viewBox={`0 0 ${geometry.width} ${geometry.height}`}>
+  const matchingIndex = activeDate ? geometry.coordinates.findIndex((point) => point.date === activeDate) : -1;
+  const selectedIndex = matchingIndex >= 0 ? matchingIndex : geometry.coordinates.length - 1;
+  const selected = geometry.coordinates[selectedIndex];
+  const tooltipWidth = 190;
+  const tooltipX = Math.min(
+    geometry.width - geometry.padding.right - tooltipWidth,
+    Math.max(geometry.padding.left, selected.x - tooltipWidth / 2),
+  );
+  const tooltipY = selected.y < 76 ? selected.y + 14 : selected.y - 52;
+  const selectedDate = formatChartDate(selected.date, locale, true);
+  const updateFromPointer = (event: PointerEvent<SVGSVGElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const chartX = ((event.clientX - bounds.left) / bounds.width) * geometry.width;
+    const plotWidth = geometry.width - geometry.padding.left - geometry.padding.right;
+    const ratio = Math.min(1, Math.max(0, (chartX - geometry.padding.left) / plotWidth));
+    setActiveDate(points[Math.round(ratio * (points.length - 1))].date);
+  };
+  const finishPointerDrag = (event: PointerEvent<SVGSVGElement>) => {
+    if (draggingPointer.current !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    draggingPointer.current = null;
+  };
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    let nextIndex = selectedIndex;
+    if (event.key === "ArrowLeft" || event.key === "ArrowDown") nextIndex -= 1;
+    else if (event.key === "ArrowRight" || event.key === "ArrowUp") nextIndex += 1;
+    else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = points.length - 1;
+    else return;
+    event.preventDefault();
+    setActiveDate(points[Math.min(points.length - 1, Math.max(0, nextIndex))].date);
+  };
+  const accessibleValue = `${selectedDate}，${label}：${formatNumber(selected.value, locale)}`;
+  return <div className="mt-4">
+    <div
+      aria-label={`${label}。${interactionHint}`}
+      aria-orientation="horizontal"
+      aria-valuemax={points.length}
+      aria-valuemin={1}
+      aria-valuenow={selectedIndex + 1}
+      aria-valuetext={accessibleValue}
+      className="focus-ring rounded-lg"
+      role="slider"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+    >
+      <svg
+        aria-hidden="true"
+        className="h-auto w-full cursor-col-resize select-none"
+        style={{ touchAction: "pan-y" }}
+        viewBox={`0 0 ${geometry.width} ${geometry.height}`}
+        onPointerCancel={finishPointerDrag}
+        onPointerDown={(event) => {
+          draggingPointer.current = event.pointerId;
+          event.currentTarget.setPointerCapture(event.pointerId);
+          updateFromPointer(event);
+        }}
+        onPointerMove={(event) => {
+          if (event.pointerType === "mouse" || draggingPointer.current === event.pointerId) updateFromPointer(event);
+        }}
+        onPointerUp={finishPointerDrag}
+      >
+    <rect fill="transparent" height={geometry.height} width={geometry.width} x="0" y="0" />
     {[0, 0.5, 1].map((ratio) => { const y = geometry.padding.top + ratio * (geometry.height - geometry.padding.top - geometry.padding.bottom); const value = geometry.maximum - ratio * (geometry.maximum - geometry.minimum); return <g key={ratio}><line stroke="var(--line)" strokeDasharray="4 6" x1={geometry.padding.left} x2={geometry.width - geometry.padding.right} y1={y} y2={y} /><text fill="var(--muted)" fontSize="12" textAnchor="end" x={geometry.padding.left - 9} y={y + 4}>{formatNumber(value, locale)}</text></g>; })}
-    <path d={`${geometry.path} L${last.x},${geometry.height - geometry.padding.bottom} L${geometry.coordinates[0].x},${geometry.height - geometry.padding.bottom} Z`} fill="var(--accent-soft)" opacity="0.55" />
+    <path d={`${geometry.path} L${geometry.coordinates.at(-1)!.x},${geometry.height - geometry.padding.bottom} L${geometry.coordinates[0].x},${geometry.height - geometry.padding.bottom} Z`} fill="var(--accent-soft)" opacity="0.55" />
     <path d={geometry.path} fill="none" stroke="var(--accent)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />
-    {geometry.coordinates.map((point, index) => index % Math.max(1, Math.ceil(points.length / 6)) === 0 || index === points.length - 1 ? <text fill="var(--muted)" fontSize="11" key={point.date} textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"} x={point.x} y={geometry.height - 14}>{new Date(`${point.date}T00:00:00Z`).toLocaleDateString(locale, { month: "short", day: "numeric" })}</text> : null)}
-    <circle cx={last.x} cy={last.y} fill="var(--panel)" r="5" stroke="var(--accent)" strokeWidth="3" />
-    <g transform={`translate(${Math.max(geometry.padding.left, last.x - 150)},${Math.max(4, last.y - 28)})`}><rect fill="var(--foreground)" height="24" rx="6" width="145" /><text fill="var(--background)" fontSize="12" fontWeight="700" x="8" y="16">{label}: {formatNumber(last.value, locale)}</text></g>
-  </svg></div>;
+    {geometry.coordinates.map((point, index) => index % Math.max(1, Math.ceil(points.length / 6)) === 0 || index === points.length - 1 ? <text fill="var(--muted)" fontSize="11" key={point.date} textAnchor={index === 0 ? "start" : index === points.length - 1 ? "end" : "middle"} x={point.x} y={geometry.height - 14}>{formatChartDate(point.date, locale)}</text> : null)}
+    <line stroke="var(--accent)" strokeDasharray="3 4" strokeWidth="1.5" x1={selected.x} x2={selected.x} y1={geometry.padding.top} y2={geometry.height - geometry.padding.bottom} />
+    <circle cx={selected.x} cy={selected.y} fill="var(--panel)" r="6" stroke="var(--accent)" strokeWidth="3" />
+    <g pointerEvents="none" transform={`translate(${tooltipX},${tooltipY})`}>
+      <rect fill="var(--foreground)" height="42" rx="7" width={tooltipWidth} />
+      <text fill="var(--background)" fontSize="10" fontWeight="600" x="9" y="15">{selectedDate}</text>
+      <text fill="var(--background)" fontSize="12" fontWeight="700" x="9" y="32">{label}: {formatNumber(selected.value, locale)}</text>
+    </g>
+      </svg>
+    </div>
+    <p className="mt-2 text-center text-xs text-[var(--muted)]">{interactionHint}</p>
+  </div>;
+}
+
+function formatChartDate(value: string, locale: string, includeYear = false) {
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString(locale, {
+    day: "numeric",
+    month: "short",
+    ...(includeYear ? { year: "numeric" as const } : {}),
+  });
 }
 
 function formatNumber(value: number, locale: string) {

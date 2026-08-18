@@ -19,6 +19,7 @@ import { ReviewAwareEditAction } from "./review-edit-lock";
 import { RatingPanel } from "./rating-panel";
 import { ProjectChangelog } from "./project-changelog";
 import { ContentMetricsPanel } from "./content-metrics-panel";
+import { ProjectFollowButton } from "./project-follow-button";
 
 type ModpackTab = "introduction" | "mods" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
@@ -58,6 +59,7 @@ function ModpackDetail({ record }: { record: BackendModpackRecord }) {
       <div className="mt-5 flex flex-col gap-5 sm:flex-row"><ProjectIcon icon={modpackIconURL(record)} name={displayName} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black sm:text-3xl">{record.abbreviation ? `[${record.abbreviation}] ` : ""}{displayName}</h1>{record.reviewStatus === "pending" ? <Badge>{t("mods.detail.pendingReview")}</Badge> : null}</div>{secondaryName && secondaryName !== displayName ? <p className="mt-1 font-semibold text-[var(--muted)]">{secondaryName}</p> : null}<p className="mt-4 max-w-4xl text-sm leading-7 text-[var(--muted)] sm:text-base">{record.summary}</p></div></div>
     </div></header>
     <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
+      <div className="mb-4"><ProjectFollowButton publicId={record.id} /></div>
       <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("mods.detail.compatibility")}</h2><div className="mt-4 grid gap-4 md:grid-cols-3"><Detail label={t("mods.card.loaders")} value={loaders.join("、")} /><Detail label={t("mods.card.versions")} value={versions.join("、")} /><Detail label={t("mods.card.environment")} value={t(`mods.environments.${record.environment}`)} /><Detail label={t("modpacks.editor.packType")} value={t(`modpacks.packTypes.${record.packType || "native"}`)} /><Detail label={t("modpacks.editor.packagingMethod")} value={t(`modpacks.packagingMethods.${record.packagingMethod || "other"}`)} /><Detail label={t("modpacks.editor.categories")} value={record.tags.map((category) => t(`modpacks.categories.${category}`)).join("、")} /></div></section>
       <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("modpacks.detail.sections")}>{(["introduction", "mods", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as ModpackTab[]).map((item) => <button key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setSelectedTab(item)}><strong className="block whitespace-nowrap">{t(`modpacks.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0">

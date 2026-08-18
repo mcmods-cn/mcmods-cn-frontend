@@ -159,12 +159,14 @@ function SectionResourceCollection({ siteId, section, resources, locale, compact
 }
 
 function SectionResourceLink({ siteId, section, resource, locale, compact = false }: { siteId: string; section: ModContentSection; resource: ModContentSectionResource; locale: string; compact?: boolean }) {
+  const { t } = useI18n();
   const name = localizedResourceName(resource, locale, section.defaultLocale) || resource.canonicalId || resource.resourcePublicId;
   const href = `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resource.resourcePublicId)}?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`;
   const iconURLs = sectionResourceIconURLs(resource);
-  return <Link className={`focus-ring flex min-w-0 items-center bg-[var(--panel)] hover:bg-[var(--panel-subtle)] ${compact ? "max-w-80 gap-2 rounded-lg border border-[var(--line)] px-2 py-1.5" : "min-h-24 gap-4 p-4"}`} href={href}>
+  const detailState = resource.hasDetailDescription ? undefined : t("modContent.sectionPage.missingDetailDescription");
+  return <Link aria-label={detailState ? `${name}，${detailState}` : name} className={`focus-ring flex min-w-0 items-center bg-[var(--panel)] hover:bg-[var(--panel-subtle)] ${compact ? "max-w-80 gap-2 rounded-lg border border-[var(--line)] px-2 py-1.5" : "min-h-24 gap-4 p-4"}`} href={href} title={detailState}>
     <SectionResourceIcon compact={compact} sources={iconURLs} />
-    <span className="min-w-0"><strong className="block truncate">{name}</strong><code className="mt-1 block truncate text-xs text-[var(--muted)]">{resource.canonicalId}</code></span>
+    <span className="min-w-0"><strong className={`block truncate ${resource.hasDetailDescription ? "text-[var(--accent)]" : "text-[var(--red)]"}`}>{name}</strong>{detailState ? <span className="mt-0.5 block text-[10px] font-bold text-[var(--red)]">{t("modContent.sectionPage.missingDetailBadge")}</span> : null}<code className="mt-1 block truncate text-xs text-[var(--muted)]">{resource.canonicalId}</code></span>
   </Link>;
 }
 

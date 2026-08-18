@@ -433,3 +433,14 @@ article.markdown-preview::-webkit-scrollbar {
   height: 1.1em;
   image-rendering: pixelated;
 }
+
+.markdown-preview .markdown-sticker {
+  display: inline-block;
+  height: var(--sticker-display-height, 2.2em);
+  width: auto;
+  max-width: 4.5em;
+  border: 0;
+  border-radius: 0;
+  object-fit: contain;
+  vertical-align: middle;
+}

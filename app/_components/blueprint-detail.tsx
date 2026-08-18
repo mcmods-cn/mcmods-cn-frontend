@@ -19,6 +19,7 @@ import { FavoritePickerModal } from "./favorite-picker-modal";
 import { CommentSection } from "./comment-section";
 import { blueprintMaterialDetailsURL, BlueprintViewer } from "./blueprint-viewer";
 import { UnifiedReportButton } from "./unified-report-dialog";
+import { ProjectFollowButton } from "./project-follow-button";
 
 export function BlueprintDetail({ publicId }: { publicId: string }) {
   const { locale, t } = useI18n();
@@ -136,7 +137,7 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
         </section>
 <section><h2 className="text-xl font-black">{t("blueprints.uploader")}</h2><Link className="mt-3 block border-y border-[var(--line)] py-4 font-bold text-[var(--accent)]" href={`/user/${record.uploader.id}`}>{record.uploader.username}<span className="mt-1 block text-xs font-normal text-[var(--muted)]">{t("blueprints.viewUploader")}</span></Link></section>
       </aside></div>
-    <div className="mx-auto max-w-7xl px-4 pb-10"><CommentSection targetKey={publicId} targetType="blueprint" /></div>
+    <div className="mx-auto max-w-7xl px-4 pb-10"><div className="mb-4"><ProjectFollowButton publicId={publicId} /></div><CommentSection targetKey={publicId} targetType="blueprint" /></div>
 
     {materialsOpen ? <div className="fixed inset-0 z-[95] grid place-items-center bg-black/55 p-4" role="dialog" aria-modal="true"><section className="flex max-h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-[var(--panel)] shadow-2xl"><header className="flex items-center justify-between gap-3 border-b border-[var(--line)] p-4"><div><h2 className="text-xl font-black">{t("blueprints.materials")}</h2><p className="text-sm text-[var(--muted)]">{t("blueprints.materialKinds", { count: record.materials.length })}</p></div><button className="button-secondary focus-ring" type="button" onClick={() => setMaterialsOpen(false)}>{t("common.close")}</button></header><div className="min-h-0 overflow-y-auto p-4"><MaterialList items={record.materials} /></div></section></div> : null}
     {favoriteOpen && token ? <FavoritePickerModal entityType="blueprint" entityKey={publicId} title={record.title} token={token} onClose={() => setFavoriteOpen(false)} onSaved={(selected) => { setFavorited(selected); setFavoriteOpen(false); notifySite(t(selected ? "mods.notices.favorited" : "mods.notices.unfavorited"), t("blueprints.title"), "success"); }} /> : null}

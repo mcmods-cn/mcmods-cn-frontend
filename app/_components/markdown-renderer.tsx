@@ -25,6 +25,7 @@ import { useI18n } from "../_lib/i18n-provider";
 import { MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
 import { minecraftLocale } from "../_lib/mod-export-api";
 import { loadRecipe, loadRecipeTemplate } from "../_lib/recipe-editor-api";
+import { loadStickerCatalog, stickerCatalogKey, type StickerCatalogItem } from "../_lib/sticker-api";
 import { BlueprintViewer } from "./blueprint-viewer";
 import { CanonicalRecipeCard } from "./canonical-recipe-card";
 import { GlobalRecipeCard } from "./global-recipe-card";
@@ -80,6 +81,8 @@ type MdastNode = {
   url?: string;
   name?: string;
   label?: string;
+  alt?: string;
+  title?: string;
   value?: string;
   data?: Record<string, unknown>;
   children?: MdastNode[];
@@ -120,13 +123,15 @@ const customMarkerEnd = "\uE001";
 let mainlandChinaRequest: Promise<boolean> | null = null;
 
 export function MarkdownRenderer({ markdown, config, emptyText, referencePath = [], commentFloorLinks = false }: MarkdownRendererProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [isMainlandChina, setIsMainlandChina] = useState(true);
+  const [stickers, setStickers] = useState<Map<string, StickerCatalogItem>>(new Map());
   const normalized = normalizeMarkdownConfig(config);
   const source = normalized.expandTabs ? markdown.replaceAll("\t", " ".repeat(normalized.tabSize)) : markdown;
   const abbreviations = normalized.abbreviations ? extractAbbreviations(source) : new Map<string, string>();
   const tocItems = normalized.toc ? extractToc(source, normalized) : [];
   const remarkPlugins = [
+    () => remarkStickerTokens(stickers),
     commentFloorLinks ? () => remarkCommentFloorLinks() : null,
     normalized.enhancedTables || normalized.taskLists || normalized.footnotes ? remarkGfm : null,
     normalized.collapsibleBlocks ? remarkDirective : null,
@@ -158,6 +163,21 @@ export function MarkdownRenderer({ markdown, config, emptyText, referencePath = 
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void loadStickerCatalog(locale).then((catalog) => {
+      if (cancelled) return;
+      const next = new Map<string, StickerCatalogItem>();
+      for (const pack of catalog.packs) {
+        for (const sticker of pack.stickers) next.set(stickerCatalogKey(pack.code, sticker.code), sticker);
+      }
+      setStickers(next);
+    }).catch(() => {
+      if (!cancelled) setStickers(new Map());
+    });
+    return () => { cancelled = true; };
+  }, [locale]);
+
   if (!source.trim()) return <p className="text-[var(--muted)]">{emptyText}</p>;
 
   return (
@@ -181,18 +201,49 @@ export function MarkdownRenderer({ markdown, config, emptyText, referencePath = 
   );
 }
 
+function remarkStickerTokens(stickers: Map<string, StickerCatalogItem>) {
+  return (tree: MdastNode) => {
+    let tokenCount = 0;
+    replaceMarkdownTextNodes(tree, (value) => {
+      if (tokenCount >= 50) return null;
+      const pattern = /\[sticker:([a-z0-9][a-z0-9_-]{0,47}):([a-z0-9][a-z0-9_-]{0,47})]/g;
+      const children: MdastNode[] = [];
+      let lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while (tokenCount < 50 && (match = pattern.exec(value))) {
+        if (match.index > lastIndex) children.push({ type: "text", value: value.slice(lastIndex, match.index) });
+        const sticker = stickers.get(stickerCatalogKey(match[1], match[2]));
+        if (sticker) {
+          children.push({
+            type: "image",
+            url: sticker.imageURL,
+            alt: sticker.name,
+            title: sticker.name,
+            data: { hProperties: { className: ["markdown-sticker"], title: sticker.name, loading: "lazy" } },
+          });
+        } else {
+          children.push({ type: "text", value: "[表情不可用]" });
+        }
+        tokenCount += 1;
+        lastIndex = pattern.lastIndex;
+      }
+      if (!children.length) return null;
+      if (lastIndex < value.length) children.push({ type: "text", value: value.slice(lastIndex) });
+      return children;
+    });
+  };
+}
+
 function remarkCommentFloorLinks() {
   return (tree: MdastNode) => {
-    visitMarkdownTree(tree, "text", (node, index, parent) => {
-      if (!parent || index === undefined || typeof node.value !== "string") return;
-      if (["link", "linkReference", "code", "inlineCode"].includes(parent.type ?? "")) return;
+    replaceMarkdownTextNodes(tree, (value) => {
       const pattern = /(^|[^\d])([1-9]\d{0,8})楼/g;
       const children: MdastNode[] = [];
       let lastIndex = 0;
       let match: RegExpExecArray | null;
-      while ((match = pattern.exec(node.value))) {
+      while ((match = pattern.exec(value))) {
         const numberStart = match.index + match[1].length;
-        if (numberStart > lastIndex) children.push({ type: "text", value: node.value.slice(lastIndex, numberStart) });
+        if (numberStart > lastIndex) children.push({ type: "text", value: value.slice(lastIndex, numberStart) });
         children.push({
           type: "link",
           url: `#floor-${match[2]}`,
@@ -201,11 +252,27 @@ function remarkCommentFloorLinks() {
         });
         lastIndex = pattern.lastIndex;
       }
-      if (!children.length) return;
-      if (lastIndex < node.value.length) children.push({ type: "text", value: node.value.slice(lastIndex) });
-      parent.children.splice(index, 1, ...children);
+      if (!children.length) return null;
+      if (lastIndex < value.length) children.push({ type: "text", value: value.slice(lastIndex) });
+      return children;
     });
   };
+}
+
+function replaceMarkdownTextNodes(node: MdastNode, replace: (value: string) => MdastNode[] | null) {
+  if (["link", "linkReference", "code", "inlineCode"].includes(node.type ?? "") || !node.children) return;
+  for (let index = 0; index < node.children.length; index += 1) {
+    const child = node.children[index];
+    if (child.type === "text" && typeof child.value === "string") {
+      const replacement = replace(child.value);
+      if (replacement) {
+        node.children.splice(index, 1, ...replacement);
+        index += replacement.length - 1;
+      }
+      continue;
+    }
+    replaceMarkdownTextNodes(child, replace);
+  }
 }
 
 function MarkdownBody({
@@ -281,6 +348,10 @@ function MarkdownBody({
           const safeSrc = typeof src === "string" ? src : "";
           const renderedSrc = markdownAssetURL(safeSrc);
           const isMcIcon = safeSrc.startsWith("/mc-icons/") || String(className ?? "").includes("mc-icon-image");
+          const isSticker = String(className ?? "").includes("markdown-sticker");
+          if (isSticker) {
+            return isSafeHref(safeSrc) ? <img alt={typeof alt === "string" ? alt : ""} className="markdown-sticker" loading="lazy" src={renderedSrc} title={typeof alt === "string" ? alt : ""} /> : <span>[表情不可用]</span>;
+          }
           if (isMcIcon) {
             return isSafeHref(safeSrc) ? (
               <img alt={typeof alt === "string" ? alt : ""} className="mc-icon-image" src={renderedSrc} />

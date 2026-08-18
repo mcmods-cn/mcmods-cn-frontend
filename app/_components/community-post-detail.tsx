@@ -14,6 +14,7 @@ import { MarkdownRenderer } from "./markdown-renderer";
 import { RotatingResourceIcon } from "./community-post-catalog";
 import { ReviewAwareEditAction } from "./review-edit-lock";
 import { UnifiedReportButton, type ReportTargetType } from "./unified-report-dialog";
+import { ProjectFollowButton } from "./project-follow-button";
 
 export function CommunityPostDetail({ id }: { id: string }) {
   const { locale, t } = useI18n();
@@ -87,6 +88,7 @@ export function CommunityPostDetail({ id }: { id: string }) {
     <section className="mt-6 flex flex-wrap gap-2">{post.projects.map((project) => project.publicId && project.siteId ? <Link className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 font-bold hover:border-[var(--accent)] hover:text-[var(--accent)]" href={largeProjectPath(project.type || "mod", project.siteId)} key={`${project.type}:${project.publicId}`}>{project.name || project.identifier}</Link> : <span className="rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2 font-bold" key={`${project.type}:${project.identifier}`}>? {project.identifier}</span>)}</section>
     <section className="markdown-preview mt-8 min-w-0"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={body} /></section>
     {message ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{message}</p> : null}
+    <div className="mt-6"><ProjectFollowButton publicId={post.id} /></div>
     <CommentSection acceptedCommentId={post.acceptedCommentId} canAcceptAnswer={post.canResolve} targetKey={post.id} targetType="community_post" onAcceptAnswer={acceptAnswer} />
   </article></main>;
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { ApiError } from "../_lib/api";
 import { challengeFromDetails, loadAntiAbuseFormToken, type AntiAbuseChallenge, type AntiAbuseFormToken } from "../_lib/anti-abuse-api";
@@ -28,6 +28,7 @@ import { MarkdownRenderer } from "./markdown-renderer";
 import { UserCardAvatar } from "./user-avatar";
 import { AntiAbuseChallengeDialog } from "./anti-abuse-challenge";
 import { UnifiedReportButton } from "./unified-report-dialog";
+import { StickerPicker } from "./sticker-picker";
 
 const reactionOptions = [
   ["thumbs_up", "👍"], ["thumbs_down", "👎"], ["laugh", "😄"], ["hooray", "🎉"],
@@ -63,6 +64,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
   const [cooldown, setCooldown] = useState(0);
   const [floorInput, setFloorInput] = useState("");
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const commentInput = useRef<HTMLTextAreaElement>(null);
   const commentsPath = useMemo(() => targetCommentsPath(targetType, targetKey), [targetKey, targetType]);
 
   const refreshFormToken = useCallback(async (action: "comment.create" | "comment.reply") => {
@@ -238,11 +240,11 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
 
       {user && canCreate ? (
         <form className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => void publish(event, body)}>
-          <textarea className="field min-h-28 resize-y" maxLength={10000} required value={body} placeholder={t("mods.comments.placeholder")} onChange={(event) => setBody(event.target.value)} />
+          <textarea ref={commentInput} className="field min-h-28 resize-y" maxLength={10000} required value={body} placeholder={t("mods.comments.placeholder")} onChange={(event) => setBody(event.target.value)} />
           <label className="mt-3 grid gap-1.5 text-sm font-bold">日志附件（可选）<input accept=".log,.zip" className="field" multiple type="file" onChange={(event) => setAttachmentFiles(Array.from(event.target.files ?? []).slice(0, 5))} /><small className="text-[var(--muted)]">.log 与文件名包含“错误报告”的 ZIP 会自动进入脱敏日志查看器；普通 ZIP 保持普通附件行为。</small></label>
           <input aria-hidden="true" autoComplete="off" className="absolute -left-[10000px] h-px w-px opacity-0" name={formTokens["comment.create"]?.fieldName || "contact_reference"} tabIndex={-1} value={honeypot} onChange={(event) => setHoneypot(event.target.value)} />
           <div className="mt-3 flex items-center justify-between gap-3">
-            <span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span>
+            <div className="flex items-center gap-2"><StickerPicker inputRef={commentInput} value={body} onChange={setBody} /><span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span></div>
             <button className="button-primary focus-ring" disabled={submitting || cooldown > 0} type="submit">{cooldown > 0 ? `${cooldown} 秒后重试` : t("mods.comments.publish")}</button>
           </div>
         </form>
@@ -296,6 +298,7 @@ type CommentTreeProps = {
 };
 
 function CommentTree(props: CommentTreeProps) {
+  const replyInput = useRef<HTMLTextAreaElement>(null);
   const { t } = useI18n();
   const { user } = useAuthSnapshot();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -465,11 +468,14 @@ function CommentTree(props: CommentTreeProps) {
             {props.replyTo?.id === item.id ? (
               <form className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => props.onReplySubmit(event, item)}>
 <p className="mb-2 text-sm font-bold text-[var(--muted)]">{t("mods.comments.replyingTo", { name: item.author.username })}</p>
-                <textarea className="field min-h-24 resize-y" maxLength={10000} required value={props.replyBody} onChange={(event) => props.onReplyBodyChange(event.target.value)} />
+                <textarea ref={replyInput} className="field min-h-24 resize-y" maxLength={10000} required value={props.replyBody} onChange={(event) => props.onReplyBodyChange(event.target.value)} />
                 <p className="mt-2 text-xs text-[var(--muted)]">{t("mods.comments.cyHint")}</p>
-                <div className="mt-2 flex justify-end gap-2">
+                <div className="mt-2 flex justify-between gap-2">
+                  <StickerPicker inputRef={replyInput} value={props.replyBody} onChange={props.onReplyBodyChange} />
+                  <div className="flex gap-2">
                   <button className="button-secondary focus-ring" type="button" onClick={props.onReplyCancel}>{t("common.cancel")}</button>
                   <button className="button-primary focus-ring" disabled={props.submitting} type="submit">{t("mods.comments.reply")}</button>
+                  </div>
                 </div>
               </form>
             ) : null}

@@ -18,6 +18,8 @@ import { UserDraftsPanel } from "./user-drafts-panel";
 import { UserProfileOverview } from "./user-profile-overview";
 import { UserAvatar } from "./user-avatar";
 import { UserStatisticsPanel } from "./user-statistics-panel";
+import { FavoriteModpackExport } from "./favorite-modpack-export";
+import { ProjectFollowsPanel } from "./project-follows-panel";
 
 type FileQuota = {
   daily: QuotaItem;
@@ -68,6 +70,7 @@ export function UserHome() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [emailNotifications, setEmailNotifications] = useState(false);
+  const [projectUpdateNotifications, setProjectUpdateNotifications] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [profile, setProfile] = useState<ProfileSettings | null>(null);
   const [username, setUsername] = useState("");
@@ -82,13 +85,16 @@ export function UserHome() {
     if (!token) return;
     let cancelled = false;
     Promise.allSettled([
-      apiRequest<{ emailEnabled: boolean }>("/api/v1/users/me/notification-settings", {}, token),
+      apiRequest<{ emailEnabled: boolean; projectUpdatesEnabled: boolean }>("/api/v1/users/me/notification-settings", {}, token),
       apiRequest<ProfileSettings>("/api/v1/users/me/profile-settings", {}, token),
       apiRequest<UserOverview>("/api/v1/users/me/overview", {}, token),
     ])
       .then(([notificationResult, profileResult, overviewResult]) => {
         if (cancelled) return;
-        if (notificationResult.status === "fulfilled") setEmailNotifications(notificationResult.value.emailEnabled);
+        if (notificationResult.status === "fulfilled") {
+          setEmailNotifications(notificationResult.value.emailEnabled);
+          setProjectUpdateNotifications(notificationResult.value.projectUpdatesEnabled);
+        }
         if (profileResult.status === "fulfilled") {
           setProfile(profileResult.value);
           setUsername(profileResult.value.username);
@@ -298,12 +304,32 @@ export function UserHome() {
     if (!token) return;
     setSavingSettings(true);
     try {
-      const settings = await apiRequest<{ emailEnabled: boolean }>(
+      const settings = await apiRequest<{ emailEnabled: boolean; projectUpdatesEnabled: boolean }>(
         "/api/v1/users/me/notification-settings",
         { method: "PUT", body: JSON.stringify({ emailEnabled: enabled }) },
         token,
       );
       setEmailNotifications(settings.emailEnabled);
+      setProjectUpdateNotifications(settings.projectUpdatesEnabled);
+      setMessage(t("user.notificationSettingsSaved"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("user.notificationSettingsFailed"));
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  async function updateProjectNotifications(enabled: boolean) {
+    if (!token) return;
+    setSavingSettings(true);
+    try {
+      const settings = await apiRequest<{ emailEnabled: boolean; projectUpdatesEnabled: boolean }>(
+        "/api/v1/users/me/notification-settings",
+        { method: "PUT", body: JSON.stringify({ projectUpdatesEnabled: enabled }) },
+        token,
+      );
+      setEmailNotifications(settings.emailEnabled);
+      setProjectUpdateNotifications(settings.projectUpdatesEnabled);
       setMessage(t("user.notificationSettingsSaved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("user.notificationSettingsFailed"));
@@ -366,6 +392,7 @@ export function UserHome() {
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "settings" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=settings", { scroll: false })}>{t("user.settings")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "drafts" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=drafts", { scroll: false })}>{t("drafts.title")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "favorites" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=favorites", { scroll: false })}>{t("favorites.title")}</button>
+              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "project-follows" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=project-follows", { scroll: false })}>{t("projectFollows.title")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "comment-watches" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=comment-watches", { scroll: false })}>{t("commentWatches.title")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "files" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=files", { scroll: false })}>{t("user.fileManager")}</button>
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "economy" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=economy", { scroll: false })}>{t("user.economyAndProgression")}</button>
@@ -478,7 +505,14 @@ export function UserHome() {
                   onChange={(event) => void updateEmailNotifications(event.target.checked)}
                 />
               </label>
-            </section> : activeSection === "statistics" ? <UserStatisticsPanel token={token} /> : activeSection === "drafts" ? <UserDraftsPanel token={token} /> : activeSection === "favorites" ? <FavoriteCollectionsPanel token={token} /> : null}
+              <label className="mt-3 flex items-center justify-between gap-4 rounded-lg border border-[var(--line)] p-4">
+                <span>
+                  <span className="block font-semibold">{t("user.projectUpdateNotifications")}</span>
+                  <span className="mt-1 block text-sm text-[var(--muted)]">{t("user.projectUpdateNotificationsDescription")}</span>
+                </span>
+                <input checked={projectUpdateNotifications} disabled={savingSettings} type="checkbox" onChange={(event) => void updateProjectNotifications(event.target.checked)} />
+              </label>
+            </section> : activeSection === "statistics" ? <UserStatisticsPanel token={token} /> : activeSection === "drafts" ? <UserDraftsPanel token={token} /> : activeSection === "favorites" ? <FavoriteCollectionsPanel token={token} /> : activeSection === "project-follows" ? <ProjectFollowsPanel token={token} /> : null}
 
             {activeSection === "files" ? (
               <section className="surface rounded-lg p-4">
@@ -558,14 +592,15 @@ export function UserHome() {
   );
 }
 
-type AccountSection = "overview" | "statistics" | "settings" | "drafts" | "favorites" | "comment-watches" | "files" | "economy" | "players";
+type AccountSection = "overview" | "statistics" | "settings" | "drafts" | "favorites" | "project-follows" | "comment-watches" | "files" | "economy" | "players";
 
 function accountSection(value: string | null): AccountSection {
-  return value === "statistics" || value === "settings" || value === "drafts" || value === "favorites" || value === "comment-watches" || value === "files" || value === "economy" || value === "players" ? value : "overview";
+  return value === "statistics" || value === "settings" || value === "drafts" || value === "favorites" || value === "project-follows" || value === "comment-watches" || value === "files" || value === "economy" || value === "players" ? value : "overview";
 }
 
 function FavoriteCollectionsPanel({ token }: { token: string }) {
   const { t } = useI18n();
+  const exportTaskId = useSearchParams().get("exportTask") ?? "";
   const [collections, setCollections] = useState<FavoriteCollection[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [items, setItems] = useState<FavoriteCollectionItem[]>([]);
@@ -694,7 +729,7 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
         <section className="min-w-0 rounded-lg border border-[var(--line)] p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-black">{selected?.isDefault ? t("favorites.defaultFolder") : selected?.name ?? t("favorites.title")}</h3>
-            {selected ? <span className="rounded-full border border-[var(--line)] px-2 py-1 text-xs font-bold">{selected.isPublic ? t("favorites.public") : t("favorites.private")}</span> : null}
+            {selected ? <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-[var(--line)] px-2 py-1 text-xs font-bold">{selected.isPublic ? t("favorites.public") : t("favorites.private")}</span><FavoriteModpackExport collectionId={selected.id} collectionName={selected.isDefault ? t("favorites.defaultFolder") : selected.name} initialTaskId={exportTaskId} token={token} /></div> : null}
           </div>
           {items.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item) => <Link className="focus-ring rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)} key={`${item.entityType}:${item.entityKey}`}><span className="block truncate font-bold">{item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityKey}</span><span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.entityType} · {item.entityKey}</span></Link>)}</div> : <p className="py-12 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
         </section>
