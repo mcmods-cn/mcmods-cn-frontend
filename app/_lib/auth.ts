@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { API_BASE_URL, backendFetch, isBearerAccessToken } from "./api";
+import { API_BASE_URL, backendFetch, isBearerAccessToken, rememberAuthorizationVersion } from "./api";
 
 type AuthPermissionRule = {
   code: string;
@@ -16,6 +16,8 @@ export type AuthUser = {
   email: string;
   roleCodes: string[];
   permissionRules: AuthPermissionRule[];
+  permissionVersion: number;
+  rbacVersion: number;
   avatarUrl?: string;
   signature?: string;
 };
@@ -42,6 +44,7 @@ let bootstrapRequest: Promise<AuthUser | null> | null = null;
 export function saveAuth(result: AuthResult) {
   activeToken = result.token || cookieSessionToken;
   activeUser = normalizeAuthUser(result.user);
+  rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
   broadcastAuthChange("login");
   window.dispatchEvent(new Event("mcmods-auth-change"));
 }
@@ -50,6 +53,7 @@ export function clearAuth() {
   const logoutToken = activeToken;
   activeToken = "";
   activeUser = null;
+  rememberAuthorizationVersion();
   bootstrapRequest = null;
   broadcastAuthChange("logout");
   window.dispatchEvent(new Event("mcmods-auth-change"));
@@ -83,7 +87,11 @@ export function useAuthSnapshot(): AuthSnapshot {
       activeToken = "";
       activeUser = null;
       bootstrapRequest = null;
+      rememberAuthorizationVersion();
       publish();
+    };
+    const refreshPermissions = () => {
+      void bootstrapAuth(true).then(() => publish());
     };
     const syncAcrossTabs = (event: StorageEvent) => {
       if (event.key !== authSyncKey) return;
@@ -101,11 +109,13 @@ export function useAuthSnapshot(): AuthSnapshot {
     window.addEventListener("storage", syncAcrossTabs);
     window.addEventListener("mcmods-auth-change", refresh);
     window.addEventListener("mcmods-auth-expired", expire);
+    window.addEventListener("mcmods-permissions-changed", refreshPermissions);
     return () => {
       cancelled = true;
       window.removeEventListener("storage", syncAcrossTabs);
       window.removeEventListener("mcmods-auth-change", refresh);
       window.removeEventListener("mcmods-auth-expired", expire);
+      window.removeEventListener("mcmods-permissions-changed", refreshPermissions);
     };
   }, []);
 
@@ -166,8 +176,8 @@ function permissionSpecificity(rule: string, required: string) {
   return -1;
 }
 
-async function bootstrapAuth() {
-  if (activeUser) return activeUser;
+async function bootstrapAuth(force = false) {
+  if (activeUser && !force) return activeUser;
   if (bootstrapRequest) return bootstrapRequest;
   bootstrapRequest = backendFetch(`${API_BASE_URL}/api/v1/auth/me`, {
     credentials: "include",
@@ -179,6 +189,7 @@ async function bootstrapAuth() {
       if (!envelope.data) return null;
       activeToken = cookieSessionToken;
       activeUser = normalizeAuthUser(envelope.data);
+      rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
       return activeUser;
     })
     .catch(() => null)
@@ -193,6 +204,8 @@ function normalizeAuthUser(user: AuthUser): AuthUser {
     ...user,
     roleCodes: Array.isArray(user.roleCodes) ? user.roleCodes : [],
     permissionRules: Array.isArray(user.permissionRules) ? user.permissionRules : [],
+    permissionVersion: Number.isSafeInteger(user.permissionVersion) && user.permissionVersion > 0 ? user.permissionVersion : 1,
+    rbacVersion: Number.isSafeInteger(user.rbacVersion) && user.rbacVersion > 0 ? user.rbacVersion : 1,
   };
 }
 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
-import { ApiError } from "../_lib/api";
+import { API_BASE_URL, ApiError } from "../_lib/api";
 import { challengeFromDetails, loadAntiAbuseFormToken, type AntiAbuseChallenge, type AntiAbuseFormToken } from "../_lib/anti-abuse-api";
 import {
   CommentItem,
@@ -23,17 +23,18 @@ import {
 } from "../_lib/comment-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
-import { uploadUserFileToOSS } from "../_lib/oss-upload";
+import { formatBytes } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { UserCardAvatar } from "./user-avatar";
 import { AntiAbuseChallengeDialog } from "./anti-abuse-challenge";
 import { UnifiedReportButton } from "./unified-report-dialog";
-import { StickerPicker } from "./sticker-picker";
+import { CommentMarkdownEditor, type CommentEditorAttachment } from "./comment-markdown-editor";
 
 const reactionOptions = [
   ["thumbs_up", "👍"], ["thumbs_down", "👎"], ["laugh", "😄"], ["hooray", "🎉"],
   ["confused", "😕"], ["heart", "❤️"], ["rocket", "🚀"], ["eyes", "👀"],
 ] as const;
+const apiBaseURL = API_BASE_URL.replace(/\/$/, "");
 
 type CommentSectionProps = {
   targetType: CommentTargetType;
@@ -63,7 +64,8 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
   const [challenge, setChallenge] = useState<{ value: AntiAbuseChallenge; content: string; parentId?: string; idempotencyKey: string; attachmentFileIds: string[] } | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const [floorInput, setFloorInput] = useState("");
-  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachments, setAttachments] = useState<CommentEditorAttachment[]>([]);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const commentInput = useRef<HTMLTextAreaElement>(null);
   const commentsPath = useMemo(() => targetCommentsPath(targetType, targetKey), [targetKey, targetType]);
 
@@ -146,7 +148,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       setReplyTo(null);
       setChallenge(null);
       setHoneypot("");
-      setAttachmentFiles([]);
+      setAttachments([]);
       void refreshFormToken(action);
     } catch (error) {
       if (error instanceof ApiError && error.code === "challenge_required") {
@@ -164,24 +166,8 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
     }
   }
 
-  async function publish(event: FormEvent, content: string, parentId?: string) {
+  async function publish(event: FormEvent, content: string, parentId?: string, attachmentFileIds: string[] = []) {
     event.preventDefault();
-    const attachmentFileIds: string[] = [];
-    if (!parentId && attachmentFiles.length) {
-      try {
-        for (const file of attachmentFiles) {
-          const lowerName = file.name.normalize("NFC").toLowerCase();
-          if (!lowerName.endsWith(".log") && !(lowerName.endsWith(".zip") && file.name.normalize("NFC").includes("错误报告"))) {
-            throw new Error(`${file.name} 不属于自动日志附件；普通 ZIP 不会自动关联日志工具。`);
-          }
-          const uploaded = await uploadUserFileToOSS(file, token, "log_share");
-          attachmentFileIds.push(uploaded.id);
-        }
-      } catch (error) {
-        setMessage(error instanceof Error ? error.message : "日志附件上传失败。");
-        return;
-      }
-    }
     await submitComment(content, parentId, "", undefined, attachmentFileIds);
   }
 
@@ -239,13 +225,12 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       </div>
 
       {user && canCreate ? (
-        <form className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => void publish(event, body)}>
-          <textarea ref={commentInput} className="field min-h-28 resize-y" maxLength={10000} required value={body} placeholder={t("mods.comments.placeholder")} onChange={(event) => setBody(event.target.value)} />
-          <label className="mt-3 grid gap-1.5 text-sm font-bold">日志附件（可选）<input accept=".log,.zip" className="field" multiple type="file" onChange={(event) => setAttachmentFiles(Array.from(event.target.files ?? []).slice(0, 5))} /><small className="text-[var(--muted)]">.log 与文件名包含“错误报告”的 ZIP 会自动进入脱敏日志查看器；普通 ZIP 保持普通附件行为。</small></label>
+        <form className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => void publish(event, body, undefined, attachments.map((item) => item.id))}>
+          <CommentMarkdownEditor attachments={attachments} inputRef={commentInput} maxLength={10000} onAttachmentsChange={setAttachments} onChange={setBody} onError={setMessage} onUploadingChange={setUploadingAttachments} placeholder={t("mods.comments.placeholder")} token={token} value={body} />
           <input aria-hidden="true" autoComplete="off" className="absolute -left-[10000px] h-px w-px opacity-0" name={formTokens["comment.create"]?.fieldName || "contact_reference"} tabIndex={-1} value={honeypot} onChange={(event) => setHoneypot(event.target.value)} />
           <div className="mt-3 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2"><StickerPicker inputRef={commentInput} value={body} onChange={setBody} /><span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span></div>
-            <button className="button-primary focus-ring" disabled={submitting || cooldown > 0} type="submit">{cooldown > 0 ? `${cooldown} 秒后重试` : t("mods.comments.publish")}</button>
+            <span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span>
+            <button className="button-primary focus-ring" disabled={!body.trim() || submitting || uploadingAttachments || cooldown > 0} type="submit">{uploadingAttachments ? t("mods.comments.editor.uploading") : cooldown > 0 ? `${cooldown} 秒后重试` : t("mods.comments.publish")}</button>
           </div>
         </form>
       ) : !user ? (
@@ -267,7 +252,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
         onReply={(comment) => { setReplyTo(comment); setReplyBody(""); }}
         onReplyBodyChange={setReplyBody}
         onReplyCancel={() => setReplyTo(null)}
-        onReplySubmit={(event, comment) => void publish(event, replyBody, comment.id)}
+        onReplySubmit={(event, comment, attachmentFileIds) => void publish(event, replyBody, comment.id, attachmentFileIds)}
         acceptedCommentId={acceptedCommentId}
         canAcceptAnswer={canAcceptAnswer}
         onAcceptAnswer={onAcceptAnswer}
@@ -291,7 +276,7 @@ type CommentTreeProps = {
   onReply: (comment: CommentItem) => void;
   onReplyBodyChange: (body: string) => void;
   onReplyCancel: () => void;
-  onReplySubmit: (event: FormEvent, comment: CommentItem) => void;
+  onReplySubmit: (event: FormEvent, comment: CommentItem, attachmentFileIds: string[]) => void;
   acceptedCommentId: string;
   canAcceptAnswer: boolean;
   onAcceptAnswer?: (commentId: string) => Promise<void>;
@@ -305,6 +290,8 @@ function CommentTree(props: CommentTreeProps) {
   const [highlighted, setHighlighted] = useState("");
   const [returnTo, setReturnTo] = useState("");
   const [replyCursors, setReplyCursors] = useState<Record<string, string>>({});
+  const [replyAttachments, setReplyAttachments] = useState<CommentEditorAttachment[]>([]);
+  const [uploadingReplyAttachments, setUploadingReplyAttachments] = useState(false);
   const tree = useMemo(() => buildTree(props.items, props.sort), [props.items, props.sort]);
   const visible = useMemo(() => flattenTree(tree, collapsed), [collapsed, tree]);
 
@@ -457,7 +444,11 @@ function CommentTree(props: CommentTreeProps) {
               onDelete={() => void remove(item)}
               onJumpParent={(id) => jumpTo(id)}
               onReact={(reaction) => void react(item, reaction)}
-              onReply={() => props.onReply(item)}
+              onReply={() => {
+                setReplyAttachments([]);
+                setUploadingReplyAttachments(false);
+                props.onReply(item);
+              }}
               onPin={() => void pin(item)}
               onShare={() => void copyBranch(item)}
               onToggleCollapse={hasChildren ? () => setCollapsed((current) => toggleSet(current, item.id)) : undefined}
@@ -466,15 +457,15 @@ function CommentTree(props: CommentTreeProps) {
             />
             {item.hasMoreReplies ? <button className="mt-2 text-sm font-bold text-[var(--accent)] hover:underline" type="button" onClick={() => void loadChildren(item)}>{t("mods.comments.loadReplies", { count: item.childCount })}</button> : null}
             {props.replyTo?.id === item.id ? (
-              <form className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => props.onReplySubmit(event, item)}>
-<p className="mb-2 text-sm font-bold text-[var(--muted)]">{t("mods.comments.replyingTo", { name: item.author.username })}</p>
-                <textarea ref={replyInput} className="field min-h-24 resize-y" maxLength={10000} required value={props.replyBody} onChange={(event) => props.onReplyBodyChange(event.target.value)} />
+              <form className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => props.onReplySubmit(event, item, replyAttachments.map((attachment) => attachment.id))}>
+                <p className="mb-2 text-sm font-bold text-[var(--muted)]">{t("mods.comments.replyingTo", { name: item.author.username })}</p>
+                <CommentMarkdownEditor attachments={replyAttachments} inputRef={replyInput} maxLength={10000} onAttachmentsChange={setReplyAttachments} onChange={props.onReplyBodyChange} onError={props.onMessage} onUploadingChange={setUploadingReplyAttachments} placeholder={t("mods.comments.placeholder")} token={props.token} value={props.replyBody} />
                 <p className="mt-2 text-xs text-[var(--muted)]">{t("mods.comments.cyHint")}</p>
                 <div className="mt-2 flex justify-between gap-2">
-                  <StickerPicker inputRef={replyInput} value={props.replyBody} onChange={props.onReplyBodyChange} />
+                  <span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span>
                   <div className="flex gap-2">
-                  <button className="button-secondary focus-ring" type="button" onClick={props.onReplyCancel}>{t("common.cancel")}</button>
-                  <button className="button-primary focus-ring" disabled={props.submitting} type="submit">{t("mods.comments.reply")}</button>
+                  <button className="button-secondary focus-ring" type="button" onClick={() => { setReplyAttachments([]); setUploadingReplyAttachments(false); props.onReplyCancel(); }}>{t("common.cancel")}</button>
+                  <button className="button-primary focus-ring" disabled={!props.replyBody.trim() || props.submitting || uploadingReplyAttachments} type="submit">{uploadingReplyAttachments ? t("mods.comments.editor.uploading") : t("mods.comments.reply")}</button>
                   </div>
                 </div>
               </form>
@@ -535,7 +526,12 @@ function CommentCard({
           </div>
           {comment.parent ? <button className="mt-2 block max-w-full truncate rounded border-l-2 border-[var(--accent)] bg-[var(--panel-subtle)] px-3 py-2 text-left text-xs text-[var(--muted)] hover:text-[var(--accent)]" type="button" onClick={() => onJumpParent(comment.parent!.id)}>@{comment.parent.authorName} · {comment.parent.deleted ? t("mods.comments.deleted") : comment.parent.bodySummary}</button> : null}
           {comment.deleted ? <p className="mt-3 text-sm italic text-[var(--muted)]">{t("mods.comments.deleted")}</p> : <div className="markdown-preview mt-3 text-sm leading-7"><MarkdownRenderer commentFloorLinks config={defaultMarkdownConfig} emptyText="" markdown={comment.body} /></div>}
-          {comment.logAttachments?.length ? <div className="mt-3 flex flex-wrap gap-2">{comment.logAttachments.map((attachment) => attachment.url ? <Link className="rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold text-[var(--accent)] hover:border-[var(--accent)]" href={attachment.url} key={attachment.fileId}>日志 · {attachment.fileName}</Link> : <span className="rounded-md border border-[var(--line)] px-3 py-2 text-sm text-[var(--muted)]" key={attachment.fileId}>日志分享已失效 · {attachment.fileName}</span>)}</div> : null}
+          {comment.attachments?.length ? <div className="mt-3 flex flex-wrap gap-2">{comment.attachments.map((attachment) => {
+            const label = `${attachment.kind === "log" ? t("mods.comments.editor.logAttachment") : t("mods.comments.editor.fileAttachment")} · ${attachment.fileName} · ${formatBytes(attachment.sizeBytes)}`;
+            if (attachment.url && attachment.kind === "log") return <Link className="rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold text-[var(--accent)] hover:border-[var(--accent)]" href={attachment.url} key={attachment.fileId}>{label}</Link>;
+            if (attachment.url) return <a className="rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold text-[var(--accent)] hover:border-[var(--accent)]" href={`${apiBaseURL}${attachment.url}`} key={attachment.fileId}>{t("mods.comments.editor.download")} · {label}</a>;
+            return <span className="rounded-md border border-[var(--line)] px-3 py-2 text-sm text-[var(--muted)]" key={attachment.fileId}>{t(`mods.comments.editor.attachmentStatus.${attachment.status}`)} · {label}</span>;
+          })}</div> : null}
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {reactionOptions.map(([reaction, emoji]) => {
               const count = comment.reactions[reaction] || 0;

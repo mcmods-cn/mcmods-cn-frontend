@@ -69,6 +69,7 @@ export type CreatorDetail = {
     username: string;
     avatarUrl: string;
   } | null;
+  claimStatus?: "pending" | "approved" | "rejected" | "revoked";
   canEdit: boolean;
   canClaim: boolean;
   publishedRevisionId?: string;
@@ -114,7 +115,7 @@ type CreatorClaimAttachment = {
 export type CreatorClaim = {
   id: string;
   creatorId: string;
-  kind: CreatorKind;
+  kind: "author";
   name: string;
   userId: string;
   username: string;

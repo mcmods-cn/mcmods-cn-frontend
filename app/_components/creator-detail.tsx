@@ -74,6 +74,7 @@ export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId:
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-md bg-[var(--accent-soft)] px-2 py-1 text-xs font-black text-[var(--accent)]">{t(`creators.kinds.${creator.kind}`)}</span>
                   {creator.claimed ? <span className="rounded-md border border-[var(--line)] px-2 py-1 text-xs font-black">{t("creators.claimed")}</span> : null}
+                  {record.claimStatus === "pending" ? <span className="rounded-md border border-[var(--warning)] px-2 py-1 text-xs font-black text-[var(--warning)]">{t("creators.claimPending")}</span> : null}
                   {creator.reviewStatus && creator.reviewStatus !== "approved" ? <span className="rounded-md border border-[var(--line)] px-2 py-1 text-xs font-black">{t(`creators.reviewStatuses.${creator.reviewStatus}`)}</span> : null}
                 </div>
                 <h1 className="mt-3 break-words text-3xl font-black">{creator.name}</h1>
@@ -83,7 +84,7 @@ export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId:
             <div className="flex flex-wrap gap-2">
               <ReviewAwareEditAction canEdit={record.canEdit} editHref={`${creatorHref(creator)}/edit`} entityType="creator" publicId={creator.publicId} />
               {record.canClaim ? <button className="button-secondary focus-ring" type="button" onClick={() => setClaimOpen(true)}>{t("creators.claim")}</button> : null}
-              {!user && !record.claimedUser ? <Link className="button-secondary focus-ring" href={`/login?next=${encodeURIComponent(creatorHref(creator))}`}>{t("common.login")}</Link> : null}
+              {creator.kind === "author" && !user && !record.claimedUser ? <Link className="button-secondary focus-ring" href={`/login?next=${encodeURIComponent(creatorHref(creator))}`}>{t("common.login")}</Link> : null}
             </div>
           </div>
         </div>
@@ -104,7 +105,7 @@ export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId:
         </aside>
       </div>
       <div className="mx-auto max-w-7xl px-4 pb-8"><CommentSection targetKey={publicId} targetType="creator" /></div>
-      {claimOpen && token ? <ClaimCreatorDialog creator={creator} token={token} onClose={() => setClaimOpen(false)} onSubmitted={(status) => { setClaimOpen(false); notifySite(status === "approved" ? t("creators.claimApproved") : t("creators.claimSubmitted"), t("creators.claim"), "success"); void load(); }} /> : null}
+      {claimOpen && token && creator.kind === "author" ? <ClaimCreatorDialog creator={creator} token={token} onClose={() => setClaimOpen(false)} onSubmitted={(status) => { setClaimOpen(false); notifySite(status === "approved" ? t("creators.claimApproved") : t("creators.claimSubmitted"), t("creators.claim"), "success"); void load(); }} /> : null}
     </main>
   );
 }

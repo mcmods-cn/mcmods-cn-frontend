@@ -45,7 +45,7 @@ export type BackendModpackRecord = {
   galleryImages: BackendModGalleryImage[];
   mods: BackendModpackMod[];
   reviewStatus: "pending" | "approved" | "rejected";
-  createdBy?: string;
+  submittedBy?: string;
   publishedRevisionId?: string;
   submissionRevisionId?: string;
   changeRequestId?: string;
@@ -60,7 +60,7 @@ export const modpackTypeOptions = ["native", "customized"] as const;
 export const modpackPackagingMethodOptions = ["curseforge", "ftb", "other_launcher", "manual", "atlauncher", "modrinth", "mcbbs", "other"] as const;
 
 export type BackendModpackList = { items: BackendModpackRecord[]; total: number };
-export type CreateModpackPayload = Omit<BackendModpackRecord, "id" | "reviewStatus" | "createdBy" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
+export type CreateModpackPayload = Omit<BackendModpackRecord, "id" | "reviewStatus" | "submittedBy" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
 export type BackendModpackImportJob = {
   id: string;
   projectType: "modpack";

@@ -40,6 +40,7 @@ import { AdminActivityRetentionPanel } from "./admin-activity-retention-panel";
 import { AdminAntiAbusePanel } from "./admin-anti-abuse-panel";
 import { AboutAdminPanel, BanAdminPanel, ProjectAutomationAdminPanel, SeedCrawlerAdminPanel, SiteChangelogAdminPanel, UnifiedReportAdminPanel } from "./admin-governance-automation-panels";
 import { AdminStickerPanel } from "./admin-sticker-panel";
+import { AdminProjectAuthorshipPanel } from "./admin-project-authorship-panel";
 
 type PanelId =
   | "overview"
@@ -52,6 +53,7 @@ type PanelId =
   | "role-tracks"
   | "permission-settings"
   | "creator-claims"
+  | "project-authorship"
   | "activity-monitor"
   | "anti-abuse"
   | "economy-config"
@@ -449,6 +451,7 @@ const adminNavGroups: Array<{
       { id: "reports", label: "", description: "" },
       { id: "bans", label: "", description: "" },
       { id: "creator-claims", label: "", description: "" },
+      { id: "project-authorship", label: "", description: "" },
       { id: "review-settings", label: "", description: "" },
       { id: "server-settings", label: "", description: "" },
     ],
@@ -700,8 +703,6 @@ const emptyConfig: AdminConfig = {
 type PermissionDefaults = {
   registeredRole: string;
   bannedRole: string;
-  developerRole: string;
-  editorRole: string;
 };
 
 const emptyCatalog: PermissionCatalog = { roles: [], permissions: [] };
@@ -919,8 +920,8 @@ export function AdminConsole() {
             <nav className={`${mobileNavigationOpen ? "block" : "hidden"} min-h-0 flex-1 overflow-y-auto p-3 lg:block`}>
               {adminNavGroups.map((group) => {
                 const visibleItems = group.items.filter((item) => {
-                  const required = panelPermission(item.id);
-                  return !required || hasPermission(auth.user, required);
+                  const required = panelPermissions(item.id);
+                  return required.length === 0 || required.some((permission) => hasPermission(auth.user, permission));
                 });
                 if (visibleItems.length === 0) return null;
                 const open = expanded.includes(group.id);
@@ -1013,6 +1014,7 @@ export function AdminConsole() {
           ) : null}
           {activePanel === "permission-settings" ? <PermissionSettingsPanel catalog={catalog} token={auth.token} /> : null}
           {activePanel === "creator-claims" ? <CreatorClaimsPanel token={auth.token} /> : null}
+          {activePanel === "project-authorship" ? <AdminProjectAuthorshipPanel token={auth.token} /> : null}
           {activePanel === "activity-monitor" ? <><ActivityMonitorPanel token={auth.token} />{hasPermission(auth.user, "log.read") ? <AdminActivityRetentionPanel token={auth.token} /> : null}</> : null}
           {activePanel === "anti-abuse" ? <AdminAntiAbusePanel token={auth.token} /> : null}
           {activePanel === "economy-config" ? <EconomyConfigPanel token={auth.token} /> : null}
@@ -3037,11 +3039,10 @@ function AuthPanelV2({ config, token }: { config: AdminConfig; token: string }) 
 
 function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalog; token: string }) {
   const { t } = useI18n();
-  const [defaults, setDefaults] = useState<PermissionDefaults>({ registeredRole: "", bannedRole: "", developerRole: "", editorRole: "" });
+  const [defaults, setDefaults] = useState<PermissionDefaults>({ registeredRole: "", bannedRole: "" });
   const [levelConfig, setLevelConfig] = useState<LevelConfig | null>(null);
   const [roleTracks, setRoleTracks] = useState<RoleTrack[]>([]);
   const [saving, setSaving] = useState(false);
-  const variableRoles = catalog.roles.filter((role) => role.code.split(".").some((segment) => /^\[(projectid)\]$|^<(projectid)>$/i.test(segment)));
 
   useEffect(() => {
     let cancelled = false;
@@ -3126,30 +3127,6 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
         >
           {roleOptions(catalog.roles)}
         </PermissionRoleSelect>
-      </section>
-
-      <section className="grid gap-4 border-b border-[var(--line)] py-5 md:grid-cols-2">
-        <div className="md:col-span-2">
-          <h3 className="font-black">{t("admin.permissionSettings.projectDefaults")}</h3>
-          <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.permissionSettings.projectDefaultsDescription")}</p>
-        </div>
-        <PermissionRoleSelect
-          label={t("admin.permissionSettings.developerRole")}
-          value={defaults.developerRole}
-          onChange={(developerRole) => setDefaults((current) => ({ ...current, developerRole }))}
-        >
-          {roleOptions(variableRoles)}
-        </PermissionRoleSelect>
-        <PermissionRoleSelect
-          label={t("admin.permissionSettings.editorRole")}
-          value={defaults.editorRole}
-          onChange={(editorRole) => setDefaults((current) => ({ ...current, editorRole }))}
-        >
-          {roleOptions(variableRoles)}
-        </PermissionRoleSelect>
-        {variableRoles.length === 0 ? (
-          <p className="md:col-span-2 text-sm font-bold text-[var(--warning)]">{t("admin.permissionSettings.noVariableRoles")}</p>
-        ) : null}
       </section>
 
       <section className="grid gap-4 pt-5">
@@ -4340,10 +4317,8 @@ type ReviewSettings = {
   addonEdit: boolean;
   authorCreate: boolean;
   authorEdit: boolean;
-  authorClaim: boolean;
   teamCreate: boolean;
   teamEdit: boolean;
-  teamClaim: boolean;
   modContentSectionCreate: boolean;
 };
 
@@ -4403,10 +4378,8 @@ function ReviewSettingsPanel({ token }: { token: string }) {
     { key: "addonEdit", title: t("admin.reviewSettings.addonEdit"), description: t("admin.reviewSettings.addonEditDescription") },
     { key: "authorCreate", title: t("admin.reviewSettings.authorCreate"), description: t("admin.reviewSettings.authorCreateDescription") },
     { key: "authorEdit", title: t("admin.reviewSettings.authorEdit"), description: t("admin.reviewSettings.authorEditDescription") },
-    { key: "authorClaim", title: t("admin.reviewSettings.authorClaim"), description: t("admin.reviewSettings.authorClaimDescription") },
     { key: "teamCreate", title: t("admin.reviewSettings.teamCreate"), description: t("admin.reviewSettings.teamCreateDescription") },
     { key: "teamEdit", title: t("admin.reviewSettings.teamEdit"), description: t("admin.reviewSettings.teamEditDescription") },
-    { key: "teamClaim", title: t("admin.reviewSettings.teamClaim"), description: t("admin.reviewSettings.teamClaimDescription") },
     { key: "modContentSectionCreate", title: t("admin.reviewSettings.modContentSectionCreate"), description: t("admin.reviewSettings.modContentSectionCreateDescription") },
   ];
   return <section className="space-y-4"><header className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-black">{t("admin.reviewSettings.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.reviewSettings.description")}</p></div><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></header><div className="surface divide-y divide-[var(--line)] rounded-lg px-5">{options.map((option) => <label className="flex items-center justify-between gap-5 py-5" key={option.key}><span><span className="block font-black">{option.title}</span><span className="mt-1 block text-sm text-[var(--muted)]">{option.description}</span></span><input checked={settings[option.key]} type="checkbox" onChange={(event) => setSettings((current) => current ? { ...current, [option.key]: event.target.checked } : current)} /></label>)}</div></section>;
@@ -5568,6 +5541,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "role-tracks": t("admin.roleTracks.title"),
     "permission-settings": t("admin.permissionSettings.title"),
     "creator-claims": t("admin.community.creatorClaims"),
+    "project-authorship": t("admin.projectAuthorship.title"),
     "activity-monitor": t("admin.community.activity"),
     "anti-abuse": "反机器人与反滥用",
     "economy-config": t("admin.community.economyConfig"),
@@ -5622,7 +5596,8 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
   return titles[panel];
 }
 
-function panelPermission(panel: PanelId) {
+function panelPermissions(panel: PanelId): string[] {
+	if (panel === "project-authorship") return ["project.authorship.manage", "project.team_relation.manage"];
   const permissions: Partial<Record<PanelId, string>> = {
     reports: "report.review",
     bans: "ban.view_internal",
@@ -5631,7 +5606,7 @@ function panelPermission(panel: PanelId) {
     "seed-crawler": "seed_crawler.view",
     "project-auto-updates": "project.auto_update.view_logs",
     "reviews-content": "project.review",
-    "reviews-editor": "project.review",
+    "reviews-editor": "project.editor.review",
     "reviews-server": "server.review",
     roles: "permission.read",
     "user-roles": "permission.read",
@@ -5644,7 +5619,7 @@ function panelPermission(panel: PanelId) {
     "oss-files": "oss.file.read",
     stickers: "sticker.manage",
   };
-  return permissions[panel];
+  return permissions[panel] ? [permissions[panel]] : [];
 }
 
 function adminNavGroupLabel(groupId: string, fallback: string, t: (key: string, params?: Record<string, string | number>) => string) {
@@ -5681,6 +5656,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "role-tracks": t("admin.roleTracks.navDescription"),
     "permission-settings": t("admin.permissionSettings.navDescription"),
     "creator-claims": t("admin.community.creatorClaimsDescription"),
+    "project-authorship": t("admin.projectAuthorship.description"),
     "activity-monitor": t("admin.community.activityDescription"),
     "anti-abuse": "风险事件、分层限流、用户限制和只读机器人规则",
     "economy-config": t("admin.community.economyConfigDescription"),

@@ -17,6 +17,7 @@ import { ContentMetricsPanel } from "./content-metrics-panel";
 import { ProjectChangelog } from "./project-changelog";
 import { UnifiedReportButton } from "./unified-report-dialog";
 import { ProjectFollowButton } from "./project-follow-button";
+import { ProjectEditorApplicationButton } from "./project-editor-application";
 
 type HistoryRange = ServerHistory["range"];
 const ranges: HistoryRange[] = ["24h", "7d", "30d", "90d"];
@@ -95,6 +96,7 @@ export function ServerDetail({ serverId }: { serverId: string }) {
           <div>
             <ProjectFollowButton publicId={record.id} />
             <UnifiedReportButton className="button-secondary focus-ring mb-3 w-full" targetId={record.id} targetSummary={record.name} targetType="server" />
+            <ProjectEditorApplicationButton canEdit={record.canEdit} projectId={record.id} projectName={record.name} projectType="minecraft_server" returnPath={`/servers/${serverId}`} />
             {record.canEdit ? <button className="button-secondary focus-ring mb-3 w-full" type="button" onClick={() => setEditOpen(true)}>{t("common.edit")}</button> : null}
             <div className="grid grid-cols-2 gap-5 text-center sm:grid-cols-1 sm:text-right">
             <span><strong className="block text-2xl">{record.online ? `${record.playersOnline}/${record.playersMax}` : "—"}</strong><small className="text-[var(--muted)]">{t("servers.players")}</small></span>

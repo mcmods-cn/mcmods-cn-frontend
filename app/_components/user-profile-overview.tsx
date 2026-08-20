@@ -39,7 +39,9 @@ type ContributionsPayload = {
 };
 
 type ShowcasePayload = {
-  projects: ShowcaseItem[];
+  claimedAuthors: ShowcaseItem[];
+  developerProjects: ShowcaseItem[];
+  editorProjects: ShowcaseItem[];
   uploads: ShowcaseItem[];
   posts: ShowcaseItem[];
   contributions: ContributionsPayload;
@@ -112,7 +114,9 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
 
   return (
     <div className="grid gap-4">
-      <ShowcaseSection description={t("user.projectsDescription")} empty={t("user.noProjects")} items={showcase.projects} title={t("user.projectsAndResources")} />
+      <ShowcaseSection description={t("user.claimedAuthorsDescription")} empty={t("user.noClaimedAuthors")} items={showcase.claimedAuthors} title={t("user.claimedAuthors")} />
+      <ShowcaseSection description={t("user.developerProjectsDescription")} empty={t("user.noDeveloperProjects")} items={showcase.developerProjects} title={t("user.developerProjects")} />
+      <ShowcaseSection description={t("user.editorProjectsDescription")} empty={t("user.noEditorProjects")} items={showcase.editorProjects} title={t("user.editorProjects")} />
       <ShowcaseSection description={t("user.uploadsDescription")} empty={t("user.noUploads")} items={showcase.uploads} title={t("user.uploads")} />
       <ShowcaseSection description={t("user.postsDescription")} empty={t("user.noPosts")} items={showcase.posts} title={t("user.communityPosts")} />
       {collections.length ? (
@@ -329,7 +333,7 @@ const showcaseTypeAliases: Record<string, string> = {
   resource_pack: "resourcePack",
   shader_pack: "shaderPack",
 };
-const showcaseDirectTypes = new Set(["mod", "modpack", "plugin", "map", "datapack", "addon", "blueprint", "skin", "tutorial", "issue", "news", "discussion", "resource", "recipe", "tag"]);
+const showcaseDirectTypes = new Set(["author", "mod", "modpack", "plugin", "map", "datapack", "addon", "blueprint", "skin", "tutorial", "issue", "news", "discussion", "resource", "recipe", "tag"]);
 
 function entityTypeLabel(entityType: string, t: (key: string, params?: Record<string, string | number>) => string) {
   const key = showcaseTypeAliases[entityType] ?? (showcaseDirectTypes.has(entityType) ? entityType : "other");

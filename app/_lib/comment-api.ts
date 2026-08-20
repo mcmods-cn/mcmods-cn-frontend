@@ -32,7 +32,7 @@ export type CommentItem = {
     username: string;
     avatarUrl: string;
 	    onlineStatus: OnlineStatus;
-    projectRole?: "owner" | "editor";
+    projectRole?: "developer" | "editor";
   };
   parent?: { id: string; authorName: string; bodySummary: string; deleted: boolean };
   reactions: Record<string, number>;
@@ -53,7 +53,15 @@ export type CommentItem = {
   canWatch: boolean;
   createdAt: string;
   updatedAt: string;
-  logAttachments: Array<{ fileId: string; fileName: string; publicCode?: string; status: string; url?: string }>;
+  attachments: Array<{
+    fileId: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number;
+    kind: "file" | "log";
+    status: string;
+    url?: string;
+  }>;
 };
 
 export type CommentPage = {

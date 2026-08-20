@@ -145,7 +145,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase text-[var(--accent)]">
-                  {item.kind === "team" ? t("creators.kinds.team") : t("creators.kinds.author")}
+                  {t("creators.kinds.author")}
                 </p>
                 <h3 className="mt-1 text-lg font-black">{item.name}</h3>
                 <p className="mt-1 text-sm text-[var(--muted)]">

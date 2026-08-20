@@ -72,7 +72,7 @@ export type ModCatalogEntry = {
   features: Record<ModFeature, boolean>;
   bodyMarkdown?: string;
   reviewStatus?: "pending" | "approved" | "rejected";
-  createdBy?: string;
+  submittedBy?: string;
   links?: Array<{ type: string; url: string; note: string }>;
   relationshipGroups?: ModRelationshipGroup[];
   galleryImages?: Array<{ publicId?: string; name?: string; url?: string }>;
@@ -107,7 +107,7 @@ type BaseCatalogProjectSource = {
   createdAt: string;
   bodyMarkdown?: string;
   reviewStatus?: "pending" | "approved" | "rejected";
-  createdBy?: string;
+  submittedBy?: string;
   links?: ModCatalogEntry["links"];
   galleryImages?: ModCatalogEntry["galleryImages"];
 };
@@ -154,7 +154,7 @@ export function baseProjectCatalogEntry(record: BaseCatalogProjectSource): BaseC
     claimed: false,
     bodyMarkdown: record.bodyMarkdown,
     reviewStatus: record.reviewStatus,
-    createdBy: record.createdBy,
+    submittedBy: record.submittedBy,
     links: record.links,
     galleryImages: record.galleryImages,
   };

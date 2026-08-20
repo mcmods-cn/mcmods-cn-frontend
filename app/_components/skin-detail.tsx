@@ -23,6 +23,7 @@ import { SkinPreview2D } from "./skin-preview";
 import { CommentSection } from "./comment-section";
 import { UnifiedReportButton } from "./unified-report-dialog";
 import { ProjectFollowButton } from "./project-follow-button";
+import { ProjectEditorApplicationButton } from "./project-editor-application";
 
 const SkinViewerCanvas = dynamic(
   () => import("@/components/minecraft-skin/SkinViewerCanvas").then((module) => module.SkinViewerCanvas),
@@ -176,6 +177,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
                 <a className="button-primary focus-ring text-center" download href={textureURL} target="_blank" rel="noopener noreferrer">{t("skins.download")}</a>
                 {token ? <button className="button-secondary focus-ring" disabled={busy === "wardrobe"} type="button" onClick={() => void toggleWardrobe()}>{texture.inWardrobe ? t("skins.removeWardrobe") : t("skins.addWardrobe")}</button> : <Link className="button-secondary focus-ring text-center" href={`/login?next=/skins/${texture.publicId}`}>{t("skins.loginToUse")}</Link>}
                 <UnifiedReportButton targetAuthor={ownerName} targetId={texture.publicId} targetSummary={texture.name} targetType="skin" />
+                {texture.reviewStatus === "approved" ? <ProjectEditorApplicationButton canEdit={texture.canEdit} projectId={texture.publicId} projectName={texture.name} projectType="skin" returnPath={`/skins/${texture.publicId}`} /> : null}
               </div>
             </section>
 

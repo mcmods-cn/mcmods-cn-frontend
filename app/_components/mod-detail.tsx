@@ -3,14 +3,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
-import { API_BASE_URL, apiRequest } from "../_lib/api";
+import { useEffect, useState } from "react";
+import { API_BASE_URL } from "../_lib/api";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
-import { BackendModApplication } from "../_lib/mod-api";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { ModCatalogEntry } from "../_lib/mod-catalog-data";
 import { useI18n } from "../_lib/i18n-provider";
-import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ModCatalogData } from "./mod-catalog-data";
 import { ProjectDownloads } from "./project-downloads";
@@ -24,6 +22,7 @@ import { ContentMetricsPanel } from "./content-metrics-panel";
 import { ProjectAutoUpdateSettings } from "./project-auto-update-settings";
 import { UnifiedReportButton } from "./unified-report-dialog";
 import { ProjectFollowButton } from "./project-follow-button";
+import { ProjectEditorApplicationButton } from "./project-editor-application";
 
 type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
@@ -33,12 +32,11 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
   const searchParams = useSearchParams();
   const [selectedTab, setSelectedTab] = useState<DetailTab>();
   const tab = selectedTab ?? (searchParams.get("tab") === "changelog" ? "changelog" : "introduction");
-  const [applicationKind, setApplicationKind] = useState<"editor" | "developer" | null>(null);
   const isChinese = locale.startsWith("zh");
   const displayName = isChinese && mod.localizedName ? mod.localizedName : mod.name;
   const secondaryName = displayName === mod.name ? mod.localizedName : mod.name;
   const summary = mod.summary || (mod.descriptionKey ? t(mod.descriptionKey) : "");
-  const canEdit = Boolean(user && (user.id === mod.createdBy || [`project.editor.${mod.uniqueId}`, `project.owner.${mod.uniqueId}`, "project.edit"].some((required) => hasPermission(user, required))));
+  const canEdit = Boolean(user && ([`project.edit.${mod.uniqueId}`, "project.edit"].some((required) => hasPermission(user, required))));
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -47,7 +45,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <Link className="text-sm font-bold text-[var(--accent)] hover:underline" href="/mods">{t("mods.detail.back")}</Link>
             <ProjectFollowButton publicId={mod.uniqueId} />
-            <div className="flex w-full flex-wrap gap-2 sm:w-auto"><Link className="button-secondary focus-ring" href={`/mods/${mod.siteId}/history`}>{t("mods.detail.history")}</Link><UnifiedReportButton targetAuthor={mod.authors.join("、")} targetId={mod.uniqueId} targetSummary={displayName} targetType="mod" />{!canEdit ? user ? <><button className="button-secondary focus-ring" type="button" onClick={() => setApplicationKind("editor")}>{t("mods.applications.applyEditor")}</button><button className="button-secondary focus-ring" type="button" onClick={() => setApplicationKind("developer")}>{t("mods.applications.iAmDeveloper")}</button></> : <><Link className="button-secondary focus-ring" href={`/login?next=/mods/${mod.siteId}`}>{t("mods.applications.applyEditor")}</Link><Link className="button-secondary focus-ring" href={`/login?next=/mods/${mod.siteId}`}>{t("mods.applications.iAmDeveloper")}</Link></> : null}<ReviewAwareEditAction canEdit={canEdit} editHref={`/mods/${mod.siteId}/edit`} entityType="mod" publicId={mod.uniqueId} /></div>
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto"><Link className="button-secondary focus-ring" href={`/mods/${mod.siteId}/history`}>{t("mods.detail.history")}</Link><UnifiedReportButton targetAuthor={mod.authors.join("、")} targetId={mod.uniqueId} targetSummary={displayName} targetType="mod" /><ProjectEditorApplicationButton canEdit={canEdit} projectId={mod.uniqueId} projectName={displayName} projectType="mod" returnPath={`/mods/${mod.siteId}`} /><ReviewAwareEditAction canEdit={canEdit} editHref={`/mods/${mod.siteId}/edit`} entityType="mod" publicId={mod.uniqueId} /></div>
           </div>
           <div className="mt-5 flex flex-col gap-5 sm:flex-row">
             <ModIcon icon={mod.icon} name={displayName} alt={t("mods.card.iconAlt", { name: displayName })} />
@@ -98,7 +96,6 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
         {canEdit && token ? <ProjectAutoUpdateSettings projectId={mod.uniqueId} projectType="mod" token={token} /> : null}
         <CommentSection targetKey={mod.uniqueId} targetType="mod" />
       </div>
-      {applicationKind ? <ModApplicationModal kind={applicationKind} mod={mod} token={token} onClose={() => setApplicationKind(null)} /> : null}
     </main>
   );
 }
@@ -170,46 +167,6 @@ function ModRelationshipsTab({ mod }: { mod: ModCatalogEntry }) {
   const { t } = useI18n();
   if (!mod.relationshipGroups?.length) return <EmptyState text={t("mods.detail.noRelationships")} />;
   return <div className="grid gap-4">{mod.relationshipGroups.map((group, index) => <section key={index} className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><h3 className="font-black">{group.label || [group.loader, group.minecraftVersions.join(", "), group.modVersion].filter(Boolean).join(" / ") || t("mods.submission.commonCondition")}</h3><div className="mt-4 grid gap-3">{(["dependency", "integration", "conflict"] as const).map((type) => { const items = group.relationships.filter((item) => item.type === type); const labelKey = group.direction === "incoming" ? `mods.submission.incomingRelationshipTypes.${type}` : `mods.submission.relationshipTypes.${type}`; return items.length ? <div key={type}><strong className="text-sm text-[var(--muted)]">{t(labelKey)}</strong><div className="mt-2 flex flex-wrap gap-2">{items.map((item, itemIndex) => item.relatedModSiteId ? <Link key={`${item.relatedModName}-${itemIndex}`} className="rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold hover:border-[var(--accent)] hover:text-[var(--accent)]" href={`/mods/${encodeURIComponent(item.relatedModSiteId)}`}>{item.relatedModName}</Link> : <span key={`${item.relatedModIdentifier}-${itemIndex}`} className="inline-flex items-center gap-2 rounded-md border border-dashed border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold"><span className="grid h-6 w-6 place-items-center rounded bg-[var(--panel)] font-black">?</span>{item.relatedModIdentifier || item.relatedModName}</span>)}</div></div> : null; })}</div></section>)}</div>;
-}
-
-function ModApplicationModal({ kind, mod, token, onClose }: { kind: "editor" | "developer"; mod: ModCatalogEntry; token: string; onClose: () => void }) {
-  const { t } = useI18n();
-  const [proof, setProof] = useState("");
-  const [attachments, setAttachments] = useState<Array<{ id: string; name: string; size: number }>>([]);
-  const [uploading, setUploading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
-  async function addFiles(files: FileList | null) {
-    if (!files?.length) return;
-    setUploading(true);
-    setMessage("");
-    try {
-      const uploaded: Array<{ id: string; name: string; size: number }> = [];
-      for (const file of Array.from(files).slice(0, Math.max(0, 10 - attachments.length))) {
-        const record = await uploadUserFileToOSS(file, token, "application");
-        uploaded.push({ id: record.id, name: record.originalName, size: record.sizeBytes });
-      }
-      setAttachments((current) => [...current, ...uploaded].slice(0, 10));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.applications.uploadFailed"));
-    } finally {
-      setUploading(false);
-    }
-  }
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setSubmitting(true);
-    setMessage("");
-    try {
-      await apiRequest<BackendModApplication>(`/api/v1/mods/${encodeURIComponent(mod.siteId)}/applications`, { method: "POST", body: JSON.stringify({ kind, proof, attachmentIds: attachments.map((item) => item.id) }) }, token);
-      setMessage(t("mods.applications.submitted"));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.applications.submitFailed"));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-  return <div className="fixed inset-0 z-[70] grid place-items-center bg-black/45 p-4" role="presentation" onMouseDown={onClose}><form className="surface max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()} onSubmit={submit}><div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t(`mods.applications.${kind}Title`)}</h2><p className="mt-1 text-sm text-[var(--muted)]">{mod.localizedName || mod.name}</p></div><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button></div><label className="mt-5 block"><span className="mb-1.5 block text-sm font-black">{t("mods.applications.proof")}</span><textarea className="field min-h-40 resize-y" required maxLength={10000} value={proof} placeholder={t(`mods.applications.${kind}ProofPlaceholder`)} onChange={(event) => setProof(event.target.value)} /></label><div className="mt-4"><span className="block text-sm font-black">{t("mods.applications.attachments")}</span><label className="button-secondary focus-ring mt-2 inline-flex cursor-pointer"><input className="sr-only" type="file" multiple disabled={uploading || attachments.length >= 10} onChange={(event) => void addFiles(event.target.files)} />{uploading ? t("mods.applications.uploading") : t("mods.applications.addAttachments")}</label><div className="mt-3 grid gap-2">{attachments.map((item) => <div key={`${item.id}-${item.name}`} className="flex items-center justify-between gap-3 rounded-md border border-[var(--line)] px-3 py-2 text-sm"><span className="min-w-0 truncate">{item.name} · {formatBytes(item.size)}</span><button className="text-[var(--red)]" type="button" onClick={() => setAttachments((current) => current.filter((file) => file !== item))}>{t("common.delete")}</button></div>)}</div></div>{message ? <p className="mt-4 rounded-md border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}<div className="mt-5 flex justify-end gap-2"><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.cancel")}</button><button className="button-primary focus-ring" disabled={submitting || uploading} type="submit">{submitting ? t("mods.submission.actions.submitting") : t("mods.applications.submit")}</button></div></form></div>;
 }
 
 function ModIcon({ icon, name, alt }: { icon: string; name: string; alt: string }) {

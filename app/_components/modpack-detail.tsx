@@ -20,6 +20,7 @@ import { RatingPanel } from "./rating-panel";
 import { ProjectChangelog } from "./project-changelog";
 import { ContentMetricsPanel } from "./content-metrics-panel";
 import { ProjectFollowButton } from "./project-follow-button";
+import { ProjectEditorApplicationButton } from "./project-editor-application";
 
 type ModpackTab = "introduction" | "mods" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
@@ -55,7 +56,7 @@ function ModpackDetail({ record }: { record: BackendModpackRecord }) {
 
   return <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
     <header className="border-b border-[var(--line)] bg-[var(--panel)]"><div className="mx-auto max-w-[1440px] px-4 py-7 lg:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href="/modpacks">{t("modpacks.detail.back")}</Link><div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`/modpacks/${record.siteId}/history`}>{t("mods.detail.history")}</Link><ReviewAwareEditAction canEdit={Boolean(record.canEdit)} editHref={`/modpacks/${record.siteId}/edit`} entityType="modpack" publicId={record.id} /></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href="/modpacks">{t("modpacks.detail.back")}</Link><div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`/modpacks/${record.siteId}/history`}>{t("mods.detail.history")}</Link><ProjectEditorApplicationButton canEdit={Boolean(record.canEdit)} projectId={record.id} projectName={displayName} projectType="modpack" returnPath={`/modpacks/${record.siteId}`} /><ReviewAwareEditAction canEdit={Boolean(record.canEdit)} editHref={`/modpacks/${record.siteId}/edit`} entityType="modpack" publicId={record.id} /></div></div>
       <div className="mt-5 flex flex-col gap-5 sm:flex-row"><ProjectIcon icon={modpackIconURL(record)} name={displayName} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black sm:text-3xl">{record.abbreviation ? `[${record.abbreviation}] ` : ""}{displayName}</h1>{record.reviewStatus === "pending" ? <Badge>{t("mods.detail.pendingReview")}</Badge> : null}</div>{secondaryName && secondaryName !== displayName ? <p className="mt-1 font-semibold text-[var(--muted)]">{secondaryName}</p> : null}<p className="mt-4 max-w-4xl text-sm leading-7 text-[var(--muted)] sm:text-base">{record.summary}</p></div></div>
     </div></header>
     <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">

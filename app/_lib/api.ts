@@ -3,6 +3,8 @@ import { reportBackendAvailability } from "./backend-status";
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
+let observedAuthorizationVersion = "";
+
 export class ApiError extends Error {
   status: number;
   code: string;
@@ -64,6 +66,7 @@ export async function apiRequest<T>(
 export async function backendFetch(input: RequestInfo | URL, init?: RequestInit) {
   try {
     const response = await fetch(input, init);
+    observeAuthenticationHeaders(response);
     // A structured JSON 502/503/504 is an API response from our backend, not
     // proof that the whole backend is offline. Optional dependencies (OSS,
     // mail, NATS, import providers, and others) deliberately use these status
@@ -82,6 +85,31 @@ export async function backendFetch(input: RequestInfo | URL, init?: RequestInit)
     }
     throw error;
   }
+}
+
+function observeAuthenticationHeaders(response: Response) {
+  if (typeof window === "undefined") return;
+  if (response.headers.get("x-mcmods-auth-state") === "invalid") {
+    window.dispatchEvent(new Event("mcmods-auth-expired"));
+    return;
+  }
+  const permissionVersion = response.headers.get("x-mcmods-permission-version")?.trim() ?? "";
+  const rbacVersion = response.headers.get("x-mcmods-rbac-version")?.trim() ?? "";
+  if (!/^\d+$/.test(permissionVersion) || !/^\d+$/.test(rbacVersion)) return;
+  const version = `${permissionVersion}:${rbacVersion}`;
+  if (observedAuthorizationVersion && observedAuthorizationVersion !== version) {
+    window.dispatchEvent(new CustomEvent("mcmods-permissions-changed", {
+      detail: { permissionVersion, rbacVersion },
+    }));
+  }
+  observedAuthorizationVersion = version;
+}
+
+export function rememberAuthorizationVersion(permissionVersion?: number, rbacVersion?: number) {
+  observedAuthorizationVersion = Number.isSafeInteger(permissionVersion) && Number(permissionVersion) > 0
+    && Number.isSafeInteger(rbacVersion) && Number(rbacVersion) > 0
+    ? `${permissionVersion}:${rbacVersion}`
+    : "";
 }
 
 export function isUnstructuredGatewayFailure(response: Pick<Response, "status" | "headers">) {

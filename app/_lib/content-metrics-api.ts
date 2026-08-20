@@ -22,7 +22,7 @@ type ContentMetricEditor = {
   id: string;
   name: string;
   avatarUrl?: string;
-  role: "owner" | "editor";
+  role: "developer" | "editor";
   url: string;
 };
 

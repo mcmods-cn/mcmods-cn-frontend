@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
-import { BackendModApplication, MinecraftVersionConfig } from "../_lib/mod-api";
+import { MinecraftVersionConfig } from "../_lib/mod-api";
 import { cacheMinecraftVersionConfig, loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { formatBytes } from "../_lib/oss-upload";
 import { useAuthSnapshot } from "../_lib/auth";
 import { LoginRequiredState } from "./page-feedback";
+import type { ProjectEditorApplication } from "./project-editor-application";
 
 type ModContentReviewItem = {
   id: string;
@@ -169,9 +170,9 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
   </section>;
 }
 
-export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "developer" | "editor"; token: string }) {
+export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "editor"; token: string }) {
   const { locale, t } = useI18n();
-  const [items, setItems] = useState<Array<ModContentReviewItem | BackendModApplication>>([]);
+  const [items, setItems] = useState<Array<ModContentReviewItem | ProjectEditorApplication>>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState("");
@@ -190,10 +191,10 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "develo
   if (search) contentSearch.set("q", search);
   contentSearch.set("limit", String(pageSize));
   contentSearch.set("offset", String(page * pageSize));
-  const endpoint = kind === "content" ? `/api/v1/reviews/content?${contentSearch}` : `/api/v1/admin/mod-applications?kind=${kind}`;
+  const endpoint = kind === "content" ? `/api/v1/reviews/content?${contentSearch}` : "/api/v1/admin/project-editor-applications";
   const load = useCallback(async () => {
     try {
-      const result = await apiRequest<{ items: Array<ModContentReviewItem | BackendModApplication>; total?: number; facets?: ReviewQueueResponse["facets"] }>(endpoint, {}, token);
+      const result = await apiRequest<{ items: Array<ModContentReviewItem | ProjectEditorApplication>; total?: number; facets?: ReviewQueueResponse["facets"] }>(endpoint, {}, token);
       setItems(result.items);
       if (kind === "content") {
         if (result.facets) setFacets(result.facets);
@@ -206,8 +207,8 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "develo
   }, [endpoint, kind, t, token]);
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
 
-  async function review(item: ModContentReviewItem | BackendModApplication, status: "approved" | "rejected") {
-    const url = "reviewUrl" in item ? item.reviewUrl : `/api/v1/admin/mod-applications/${item.id}`;
+  async function review(item: ModContentReviewItem | ProjectEditorApplication, status: "approved" | "rejected") {
+    const url = "reviewUrl" in item ? item.reviewUrl : `/api/v1/admin/project-editor-applications/${item.id}`;
     try {
       await apiRequest(url, { method: "PATCH", body: JSON.stringify({ status, note: notes[item.id] ?? "" }) }, token);
       await load();
@@ -218,7 +219,7 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "develo
 
   async function openAttachment(applicationID: string, attachmentID: string) {
     try {
-      const result = await apiRequest<{ url: string }>(`/api/v1/admin/mod-applications/${applicationID}/attachments/${attachmentID}/presign`, { method: "POST" }, token);
+      const result = await apiRequest<{ url: string }>(`/api/v1/admin/project-editor-applications/${applicationID}/attachments/${attachmentID}/presign`, { method: "POST" }, token);
       window.open(result.url, "_blank", "noopener,noreferrer");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.reviews.attachmentFailed"));
@@ -244,7 +245,7 @@ return <section>
     <div className="flex gap-2"><button className="button-primary focus-ring" type="submit">{t("common.search")}</button><button className="button-secondary focus-ring" type="button" onClick={() => { setPage(0); setCategory(""); setOperation(""); setProjectType(""); setSearchInput(""); setSearch(""); }}>{t("common.clear")}</button></div>
   </form> : null}
   {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
-  <div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t(`admin.reviews.applicationKinds.${item.kind}`); const summary = content ? item.summary : item.proof; const name = item.username; const historyHref = content ? contentReviewHistoryHref(item) : ""; return <article key={`${content ? item.source : item.kind}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="mb-2 flex flex-wrap gap-2">{content ? <><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{reviewFacetLabel(t, "categories", item.category)}</span><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold">{reviewFacetLabel(t, "operations", item.operation)}</span>{item.reviewerScope === "project" ? <span className="rounded-full border border-[var(--accent)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{t("admin.reviews.projectScoped")}</span> : null}</> : null}</div><h3 className="break-words text-lg font-black">{item.modName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>{content && item.projectId ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.projectType}: {item.projectId}</p> : null}</div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && (item.source === "blueprint" || item.source === "skin") ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div>
+  <div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t("admin.reviews.applicationKinds.editor"); const summary = content ? item.summary : item.proofMarkdown; const name = item.username; const projectName = content ? item.modName : item.targetName; const historyHref = content ? contentReviewHistoryHref(item) : item.targetUrl; return <article key={`${content ? item.source : "editor"}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="mb-2 flex flex-wrap gap-2">{content ? <><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{reviewFacetLabel(t, "categories", item.category)}</span><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold">{reviewFacetLabel(t, "operations", item.operation)}</span>{item.reviewerScope === "project" ? <span className="rounded-full border border-[var(--accent)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{t("admin.reviews.projectScoped")}</span> : null}</> : null}</div><h3 className="break-words text-lg font-black">{projectName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>{content && item.projectId ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.projectType}: {item.projectId}</p> : !content ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.targetType}: {item.targetId}</p> : null}</div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && (item.source === "blueprint" || item.source === "skin") ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div>
   {kind === "content" && total > pageSize ? <nav className="mt-5 flex items-center justify-between gap-3" aria-label={t("admin.reviews.paginationLabel")}><button className="button-secondary focus-ring" disabled={page === 0} type="button" onClick={() => setPage((current) => Math.max(0, current - 1))}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("admin.reviews.pageSummary", { page: page + 1, pages: Math.max(1, Math.ceil(total / pageSize)), total })}</span><button className="button-secondary focus-ring" disabled={(page + 1) * pageSize >= total} type="button" onClick={() => setPage((current) => current + 1)}>{t("common.next")}</button></nav> : null}
 </section>;
 }

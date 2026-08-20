@@ -93,7 +93,7 @@ export type BackendModRecord = {
   searchKeywords: string[];
   submissionMethod: "manual" | "modrinth" | "curseforge" | "github";
   reviewStatus: "pending" | "approved" | "rejected";
-  createdBy?: string;
+  submittedBy?: string;
   createdAt: string;
   updatedAt: string;
   publishedAt?: string;
@@ -109,7 +109,7 @@ export type BackendModRecord = {
 
 export type BackendModList = { items: BackendModRecord[]; total: number };
 
-export type CreateModPayload = Omit<BackendModRecord, "id" | "uniqueId" | "reviewStatus" | "createdBy" | "createdAt" | "updatedAt" | "publishedAt" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId">;
+export type CreateModPayload = Omit<BackendModRecord, "id" | "uniqueId" | "reviewStatus" | "submittedBy" | "createdAt" | "updatedAt" | "publishedAt" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId">;
 
 export type BackendModImportJob = {
   id: string;
@@ -144,22 +144,6 @@ export type BackendModRevision = {
 
 export type BackendModRevisionList = { items: BackendModRevision[] };
 export type BackendModRevisionComparison = { before: BackendModRevision; after: BackendModRevision; changedFields: string[] };
-
-export type BackendModApplication = {
-  id: string;
-  modId: string;
-  modSiteId: string;
-  modName: string;
-  userId: string;
-  username: string;
-  kind: "editor" | "developer";
-  proof: string;
-  status: "pending" | "approved" | "rejected";
-  reviewNote: string;
-  attachments: Array<{ id: string; originalName: string; objectKey: string; sizeBytes: number }>;
-  createdAt: string;
-  reviewedAt?: string;
-};
 
 export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEntry {
   return {

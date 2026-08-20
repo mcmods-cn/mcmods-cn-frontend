@@ -48,7 +48,7 @@ export type SimpleProjectRecord = {
   galleryImages: BackendModGalleryImage[];
   parentProjects: SimpleProjectParent[];
   reviewStatus: "pending" | "approved" | "rejected";
-  createdBy?: string;
+  submittedBy?: string;
   publishedRevisionId?: string;
   submissionRevisionId?: string;
   changeRequestId?: string;
@@ -59,7 +59,7 @@ export type SimpleProjectRecord = {
 };
 
 export type SimpleProjectPayload = Omit<SimpleProjectRecord,
-  "id" | "reviewStatus" | "createdBy" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
+  "id" | "reviewStatus" | "submittedBy" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
 export type SimpleProjectList = { items: SimpleProjectRecord[]; total: number };
 
 export type SimpleProjectImportProvider = "modrinth" | "curseforge";

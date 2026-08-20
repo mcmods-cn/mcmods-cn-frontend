@@ -10,9 +10,10 @@ type StickerPickerProps = {
   inputRef: RefObject<HTMLTextAreaElement | null>;
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
 };
 
-export function StickerPicker({ inputRef, value, onChange }: StickerPickerProps) {
+export function StickerPicker({ inputRef, value, onChange, disabled = false }: StickerPickerProps) {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [packs, setPacks] = useState<StickerCatalogPack[]>([]);
@@ -63,6 +64,7 @@ export function StickerPicker({ inputRef, value, onChange }: StickerPickerProps)
         aria-expanded={open}
         className="button-secondary focus-ring px-3 py-2 text-sm"
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((current) => !current)}
       >
         {t("stickers.insert")}
@@ -74,19 +76,7 @@ export function StickerPicker({ inputRef, value, onChange }: StickerPickerProps)
           role="dialog"
         >
           <input className="field" value={query} placeholder={t("stickers.search")} onChange={(event) => setQuery(event.target.value)} />
-          <div className="mt-2 flex max-w-full gap-2 overflow-x-auto pb-1">
-            {packs.map((pack) => (
-              <button
-                className={`focus-ring shrink-0 rounded-md px-3 py-2 text-sm font-bold ${selectedPack === pack.code ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-subtle)]"}`}
-                key={pack.code}
-                type="button"
-                onClick={() => setSelectedPack(pack.code)}
-              >
-                {pack.name}
-              </button>
-            ))}
-          </div>
-          <div className="mt-3 grid max-h-64 grid-cols-5 gap-2 overflow-y-auto sm:grid-cols-7">
+          <div className="mt-3 grid max-h-64 min-h-24 grid-cols-5 gap-2 overflow-y-auto sm:grid-cols-7">
             {visible.map((sticker) => (
               <button
                 className="focus-ring grid aspect-square place-items-center rounded-md border border-[var(--line)] p-1 hover:border-[var(--accent)]"
@@ -100,6 +90,18 @@ export function StickerPicker({ inputRef, value, onChange }: StickerPickerProps)
             ))}
           </div>
           {visible.length === 0 ? <p className="py-6 text-center text-sm text-[var(--muted)]">{t("stickers.empty")}</p> : null}
+          <div className="mt-3 flex max-w-full gap-2 overflow-x-auto border-t border-[var(--line)] pt-3">
+            {packs.map((pack) => (
+              <button
+                className={`focus-ring shrink-0 rounded-md px-3 py-2 text-sm font-bold ${selectedPack === pack.code ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-subtle)]"}`}
+                key={pack.code}
+                type="button"
+                onClick={() => setSelectedPack(pack.code)}
+              >
+                {pack.name}
+              </button>
+            ))}
+          </div>
         </div>
       ) : null}
     </div>
