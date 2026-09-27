@@ -57,9 +57,9 @@ export type RatingSummary = {
 
 export type RatingList = {
   items: RatingItem[];
-  total: number;
   limit: number;
-  offset: number;
+  hasMore: boolean;
+  nextCursor: string;
 };
 
 export type RatingPayload = {
@@ -76,8 +76,10 @@ export function getRatingSummary(targetType: RatingTargetType, targetId: string,
   return apiRequest<RatingSummary>(ratingPath(targetType, targetId), {}, token);
 }
 
-export function getRatingReviews(targetType: RatingTargetType, targetId: string, token?: string, offset = 0) {
-  return apiRequest<RatingList>(`${ratingPath(targetType, targetId)}/reviews?limit=20&offset=${offset}`, {}, token);
+export function getRatingReviews(targetType: RatingTargetType, targetId: string, token?: string, cursor = "") {
+  const params = new URLSearchParams({ limit: "20" });
+  if (cursor) params.set("cursor", cursor);
+  return apiRequest<RatingList>(`${ratingPath(targetType, targetId)}/reviews?${params}`, {}, token);
 }
 
 export function saveRating(targetType: RatingTargetType, targetId: string, payload: RatingPayload, token?: string) {

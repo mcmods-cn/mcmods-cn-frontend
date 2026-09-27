@@ -2,7 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
@@ -17,6 +17,7 @@ import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
 import { CommentSection } from "./comment-section";
+import { FileDropZone } from "./file-drop-zone";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ReviewAwareEditAction } from "./review-edit-lock";
 
@@ -82,7 +83,8 @@ export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId:
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <ReviewAwareEditAction canEdit={record.canEdit} editHref={`${creatorHref(creator)}/edit`} entityType="creator" publicId={creator.publicId} />
+              <ReviewAwareEditAction canEdit={record.canEditProfile} editHref={`${creatorHref(creator)}/edit`} entityType="creator" publicId={creator.publicId} />
+              {creator.kind === "team" && record.canManageMembers ? <Link className="button-secondary focus-ring" href={`${creatorHref(creator)}/members`}>{t("creators.manageMembers")}</Link> : null}
               {record.canClaim ? <button className="button-secondary focus-ring" type="button" onClick={() => setClaimOpen(true)}>{t("creators.claim")}</button> : null}
               {creator.kind === "author" && !user && !record.claimedUser ? <Link className="button-secondary focus-ring" href={`/login?next=${encodeURIComponent(creatorHref(creator))}`}>{t("common.login")}</Link> : null}
             </div>
@@ -112,16 +114,13 @@ export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId:
 
 function ClaimCreatorDialog({ creator, token, onClose, onSubmitted }: { creator: CreatorSummary; token: string; onClose: () => void; onSubmitted: (status: "pending" | "approved") => void }) {
   const { t } = useI18n();
-  const fileInput = useRef<HTMLInputElement | null>(null);
   const [proofMarkdown, setProofMarkdown] = useState("");
   const [proofFiles, setProofFiles] = useState<OSSFileRecord[]>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const totalBytes = useMemo(() => proofFiles.reduce((sum, file) => sum + Math.max(file.sizeBytes, file.sourceSizeBytes ?? 0), 0), [proofFiles]);
 
-  async function uploadProofFiles(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = "";
+  async function uploadProofFiles(files: File[]) {
     if (!files.length) return;
     if (proofFiles.length + files.length > claimMaximumFiles) {
       notifySite(t("creators.claimFileCount", { count: claimMaximumFiles }), t("creators.claim"), "danger");
@@ -157,7 +156,7 @@ function ClaimCreatorDialog({ creator, token, onClose, onSubmitted }: { creator:
     }
   }
 
-  return <div className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4" role="presentation" onMouseDown={onClose}><form className="surface max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg p-5" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-black">{t("creators.claimTitle", { name: creator.name })}</h2><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button></div><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("creators.claimDescription")}</p><textarea className="field mt-4 min-h-44 resize-y" placeholder={t("creators.claimProof")} value={proofMarkdown} onChange={(event) => setProofMarkdown(event.target.value)} /><section className="mt-5 rounded-lg border border-[var(--line)] p-4"><div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-black">{t("creators.claimAttachments")}</h3><p className="mt-1 text-xs text-[var(--muted)]">{t("creators.claimAttachmentsHint", { count: claimMaximumFiles, size: formatBytes(claimMaximumBytes) })}</p></div><input ref={fileInput} className="hidden" multiple type="file" onChange={(event) => void uploadProofFiles(event)} /><button className="button-secondary focus-ring" disabled={uploading || proofFiles.length >= claimMaximumFiles} type="button" onClick={() => fileInput.current?.click()}>{uploading ? t("common.loading") : t("creators.uploadClaimAttachments")}</button></div><ul className="mt-3 grid gap-2">{proofFiles.map((file) => <li className="flex items-center justify-between gap-3 rounded-md bg-[var(--panel-subtle)] p-3" key={file.id}><span className="min-w-0 truncate text-sm font-bold">{file.originalName}</span><span className="flex shrink-0 items-center gap-3 text-xs text-[var(--muted)]">{formatBytes(Math.max(file.sizeBytes, file.sourceSizeBytes ?? 0))}<button className="font-bold text-[var(--red)]" type="button" onClick={() => setProofFiles((current) => current.filter((item) => item.id !== file.id))}>{t("common.delete")}</button></span></li>)}</ul></section><div className="mt-5 flex justify-end"><button className="button-primary focus-ring" disabled={submitting || uploading} type="submit">{submitting ? t("common.loading") : t("creators.submitClaim")}</button></div></form></div>;
+  return <div className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4" role="presentation" onMouseDown={onClose}><form className="surface max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg p-5" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-black">{t("creators.claimTitle", { name: creator.name })}</h2><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button></div><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("creators.claimDescription")}</p><textarea className="field mt-4 min-h-44 resize-y" placeholder={t("creators.claimProof")} value={proofMarkdown} onChange={(event) => setProofMarkdown(event.target.value)} /><section className="mt-5 rounded-lg border border-[var(--line)] p-4"><h3 className="font-black">{t("creators.claimAttachments")}</h3><FileDropZone accept="" className="mt-3 min-h-28 p-4" disabled={uploading || proofFiles.length >= claimMaximumFiles} hint={t("creators.claimAttachmentsHint", { count: claimMaximumFiles, size: formatBytes(claimMaximumBytes) })} multiple title={uploading ? t("common.loading") : t("creators.uploadClaimAttachments")} onFiles={(files) => void uploadProofFiles(files)} /><ul className="mt-3 grid gap-2">{proofFiles.map((file) => <li className="flex items-center justify-between gap-3 rounded-md bg-[var(--panel-subtle)] p-3" key={file.id}><span className="min-w-0 truncate text-sm font-bold">{file.originalName}</span><span className="flex shrink-0 items-center gap-3 text-xs text-[var(--muted)]">{formatBytes(Math.max(file.sizeBytes, file.sourceSizeBytes ?? 0))}<button className="font-bold text-[var(--red)]" type="button" onClick={() => setProofFiles((current) => current.filter((item) => item.id !== file.id))}>{t("common.delete")}</button></span></li>)}</ul></section><div className="mt-5 flex justify-end"><button className="button-primary focus-ring" disabled={submitting || uploading} type="submit">{submitting ? t("common.loading") : t("creators.submitClaim")}</button></div></form></div>;
 }
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {

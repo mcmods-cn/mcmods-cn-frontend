@@ -137,7 +137,7 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
         onChoose={() => setPickerOpen(true)}
         onRemove={(resource) => setMembers((current) => current.filter((item) => item.publicId !== resource.publicId))}
       />
-      <MarkdownContentPanel fields={fields} locale={selectedLocale} onChange={updateFields} />
+      <MarkdownContentPanel documentId={`catalog-tag:${publicId || "draft"}:${selectedLocale}:content`} fields={fields} locale={selectedLocale} onChange={updateFields} />
     </EditorShell>
     <ResourcePickerDialog
       multiple
@@ -265,7 +265,7 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
         onChoose={() => setPickerOpen(true)}
         onRemove={(resource) => setCatalysts((current) => current.filter((item) => item.publicId !== resource.publicId))}
       />
-      <MarkdownContentPanel fields={fields} locale={selectedLocale} onChange={updateFields} />
+      <MarkdownContentPanel documentId={`catalog-recipe-type:${publicId || "draft"}:${selectedLocale}:content`} fields={fields} locale={selectedLocale} onChange={updateFields} />
     </EditorShell>
     <ResourcePickerDialog
       multiple
@@ -409,10 +409,10 @@ function LocalizedFieldsPanel({ fields, locale, onChange }: { fields: LocalizedC
   </section>;
 }
 
-function MarkdownContentPanel({ fields, locale, onChange }: { fields: LocalizedContentFields; locale: Locale; onChange: (patch: Partial<LocalizedContentFields>) => void }) {
+function MarkdownContentPanel({ documentId, fields, locale, onChange }: { documentId: string; fields: LocalizedContentFields; locale: Locale; onChange: (patch: Partial<LocalizedContentFields>) => void }) {
   const { t } = useI18n();
   return <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
-    <ToolsPlayground embedded editorTitle={`${t("catalogEditor.contentMarkdown")} (${locale})`} value={fields.contentMarkdown} onChange={(value) => onChange({ contentMarkdown: value })} />
+    <ToolsPlayground embedded documentId={documentId} editorTitle={`${t("catalogEditor.contentMarkdown")} (${locale})`} value={fields.contentMarkdown} onChange={(value) => onChange({ contentMarkdown: value })} />
   </section>;
 }
 

@@ -2,13 +2,14 @@
 
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { type CatalogSortField, normalizeCatalogSortDirection, normalizeCatalogSortField } from "../_lib/catalog-sort";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatMinecraftLanguages } from "../_lib/minecraft-languages";
+import { loadServerCursorPage, mergeServerCursorItems } from "../_lib/server-cursor-pagination.mts";
 import {
   ServerCatalogItem,
   ServerCatalogResponse,
@@ -23,7 +24,6 @@ import {
   CatalogMobileFilterDrawer,
   CatalogOptionList,
   CatalogRadioList,
-  CatalogPagination,
   CatalogSortControl,
 } from "./catalog-list-ui";
 import { CatalogMinecraftVersionFilter } from "./catalog-minecraft-version-filter";
@@ -43,14 +43,16 @@ export function ServerCatalog() {
   const [queryDraft, setQueryDraft] = useState(searchParams.get("q") ?? "");
   const [result, setResult] = useState<ServerCatalogResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const requestGeneration = useRef(0);
   const requestedPageSize = Number(searchParams.get("size"));
   const pageSize = serverPageSizes.includes(requestedPageSize) ? requestedPageSize : serverPageSizes[0];
   const rawSort = searchParams.get("sort");
   const normalizedSort = normalizeCatalogSortField(rawSort, "heat");
   const sort = serverSortFields.includes(normalizedSort) ? normalizedSort : "heat";
-  const sortDirection = normalizeCatalogSortDirection(searchParams.get("order"), "desc", rawSort);
+  const sortDirection = normalizeCatalogSortDirection(searchParams.get("order"), "desc", normalizedSort);
 
   const canCreate = ready && hasPermission(user, "server.create");
   const activeFilterCount = useMemo(
@@ -59,32 +61,39 @@ export function ServerCatalog() {
   );
 
   useEffect(() => {
+    const generation = ++requestGeneration.current;
     let cancelled = false;
+    const controller = new AbortController();
     queueMicrotask(() => {
       if (!cancelled) {
         setLoading(true);
+        setLoadingMore(false);
         setError("");
       }
     });
-    const query = new URLSearchParams(paramsKey);
-    query.delete("size");
-    query.set("sort", sort);
-    query.set("order", sortDirection);
-    query.set("limit", String(pageSize));
-    apiRequest<ServerCatalogResponse>(`/api/v1/servers?${query.toString()}`, {}, token)
+    loadServerCursorPage<ServerCatalogItem>(
+      (path, signal) => apiRequest<ServerCatalogResponse>(path, { signal }, token),
+      new URLSearchParams(paramsKey),
+      { sort, order: sortDirection, limit: pageSize },
+      "",
+      controller.signal,
+    )
       .then((response) => {
-        if (!cancelled) setResult(response);
+        if (!cancelled && requestGeneration.current === generation) setResult(response);
       })
       .catch((reason) => {
-        if (!cancelled) {
+        if (!cancelled && requestGeneration.current === generation) {
           setResult(null);
           setError(reason instanceof Error ? reason.message : t("servers.loadFailed"));
         }
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && requestGeneration.current === generation) setLoading(false);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [pageSize, paramsKey, sort, sortDirection, t, token]);
 
   useEffect(() => {
@@ -95,15 +104,44 @@ export function ServerCatalog() {
     return () => { cancelled = true; };
   }, [searchParams]);
 
-  function replaceParams(updates: Record<string, string | number | null>, resetPage = true) {
+  function replaceParams(updates: Record<string, string | number | null>) {
     const next = new URLSearchParams(searchParams.toString());
     for (const [key, value] of Object.entries(updates)) {
       if (value === null || value === "") next.delete(key);
       else next.set(key, String(value));
     }
-    if (resetPage && !("page" in updates)) next.delete("page");
+    next.delete("page");
+    next.delete("offset");
+    next.delete("cursor");
     const query = next.toString();
     router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }
+
+  async function loadMore() {
+    const cursor = result?.nextCursor ?? "";
+    if (!cursor || loadingMore) return;
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const response = await loadServerCursorPage<ServerCatalogItem>(
+        (path, signal) => apiRequest<ServerCatalogResponse>(path, { signal }, token),
+        new URLSearchParams(paramsKey),
+        { sort, order: sortDirection, limit: pageSize },
+        cursor,
+      );
+      if (requestGeneration.current !== generation) return;
+      setResult((current) => current ? {
+        ...response,
+        items: mergeServerCursorItems(current.items, response.items),
+      } : response);
+    } catch (reason) {
+      if (requestGeneration.current === generation) {
+        setError(reason instanceof Error ? reason.message : t("servers.loadFailed"));
+      }
+    } finally {
+      if (requestGeneration.current === generation) setLoadingMore(false);
+    }
   }
 
   function submitSearch(event: FormEvent) {
@@ -127,7 +165,7 @@ export function ServerCatalog() {
 
   const filters = (onClose?: () => void) => (
     <ServerFilters
-      resultCount={result?.total ?? 0}
+      resultCount={result?.items.length ?? 0}
       onClear={clearFilters}
       onClose={onClose}
       onChange={replaceParams}
@@ -162,7 +200,7 @@ export function ServerCatalog() {
             {t("servers.filters.button", { count: activeFilterCount })}
           </button>
           <span className="text-sm font-semibold text-[var(--muted)]">
-            {loading ? t("common.loading") : t("servers.resultCount", { count: result?.total ?? 0 })}
+            {loading ? t("common.loading") : t("servers.loadedResults", { count: result?.items.length ?? 0 })}
           </span>
         </div>
 
@@ -173,11 +211,17 @@ export function ServerCatalog() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-xl font-black">
                   {searchParams.get("q")
-                    ? t("servers.queryResults", { query: searchParams.get("q") ?? "", count: result?.total ?? 0 })
-                    : t("servers.resultCount", { count: result?.total ?? 0 })}
+                    ? t("servers.queryLoadedResults", { query: searchParams.get("q") ?? "", count: result?.items.length ?? 0 })
+                    : t("servers.loadedResults", { count: result?.items.length ?? 0 })}
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
                   <CatalogSortControl direction={sortDirection} field={sort} fields={serverSortFields} onDirectionChange={(order) => replaceParams({ order })} onFieldChange={(nextSort) => replaceParams({ sort: nextSort })} />
+                  <label className="flex items-center gap-2 text-sm font-bold text-[var(--muted)]">
+                    {t("servers.pageSize")}
+                    <select className="field py-2" value={pageSize} onChange={(event) => replaceParams({ size: Number(event.target.value) })}>
+                      {serverPageSizes.map((size) => <option key={size} value={size}>{size}</option>)}
+                    </select>
+                  </label>
                   {!canCreate && ready ? <p className="text-xs text-[var(--muted)]">{t(user ? "servers.permissionRequired" : "servers.loginToSubmit")}</p> : null}
                 </div>
               </div>
@@ -201,27 +245,9 @@ export function ServerCatalog() {
                 onClear={clearFilters}
               />
             ) : null}
-            {result ? (
-              <CatalogPagination
-                currentPage={result.page}
-                labels={{
-                  previous: t("common.previous"),
-                  next: t("common.next"),
-                  pageSize: t("servers.pageSize"),
-                  pageSummary: t("servers.pageSummary", { page: result.page, pages: result.pages }),
-                  itemSummary: t("servers.itemSummary", {
-                    start: result.total === 0 ? 0 : (result.page - 1) * result.limit + 1,
-                    end: result.total === 0 ? 0 : Math.min(result.page * result.limit, result.total),
-                    total: result.total,
-                  }),
-                }}
-                pageSize={pageSize}
-                pageSizes={serverPageSizes}
-                totalPages={Math.max(1, result.pages)}
-                onPageChange={(page) => replaceParams({ page }, false)}
-                onPageSizeChange={(size) => replaceParams({ size })}
-              />
-            ) : null}
+            {result?.nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>
+              {loadingMore ? t("common.loading") : t("servers.loadMore")}
+            </button> : null}
           </section>
         </div>
       </div>
@@ -333,7 +359,7 @@ function TriStateFilter({ label, param, params, onChange }: { label: string; par
 function ServerCard({ server }: { server: ServerCatalogItem }) {
   const { t } = useI18n();
   return (
-    <Link className="group grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center" href={`/servers/${server.id}`}>
+    <Link prefetch={false} className="group grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-md sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center" href={`/servers/${server.id}`}>
       {server.iconDataUri
         ? <img alt="" className="h-[72px] w-[72px] rounded-lg border border-[var(--line)] object-cover [image-rendering:pixelated]" height={72} src={server.iconDataUri} width={72} />
         : <span className="grid h-[72px] w-[72px] place-items-center rounded-lg bg-[var(--panel-subtle)] text-3xl font-black text-[var(--muted)]">?</span>}

@@ -13,7 +13,6 @@ import {
   createModContentSection,
   createModContentTemplate,
   createModContentVersion,
-  loadAllModContentSectionResources,
   loadModContentSections,
   loadModContentTemplates,
   loadModContentVersions,
@@ -22,7 +21,7 @@ import {
   type ModContentSection,
   type ModContentTemplate,
   type ModContentVersion,
-  updateModContentLayout,
+  patchModContentLayout,
   updateModContentVersion,
 } from "../_lib/mod-content-api";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -47,7 +46,7 @@ type VersionDraft = { minecraftVersions: string[]; loaders: string[]; modVersion
 const emptyVersion = (): VersionDraft => ({ minecraftVersions: [], loaders: [], modVersion: "", reason: "" });
 const emptyLocalization = (locale: string): ModContentLocalization => ({ locale, name: "", summary: "", contentMarkdown: "" });
 
-export function ModContentWorkspace({ siteId, token, initialImportSource = "", initialVersionId = "", createNew = false }: { siteId: string; token: string; initialImportSource?: ImportSource; initialVersionId?: string; createNew?: boolean }) {
+export function ModContentWorkspace({ siteId, subjectId, token, initialImportSource = "", initialVersionId = "", createNew = false }: { siteId: string; subjectId: string; token: string; initialImportSource?: ImportSource; initialVersionId?: string; createNew?: boolean }) {
   const { locale, t } = useI18n();
   const [versions, setVersions] = useState<ModContentVersion[]>([]);
   const [templates, setTemplates] = useState<ModContentTemplate[]>([]);
@@ -90,8 +89,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
     setSections(nextSections);
     setMinecraftConfig(nextMinecraftConfig);
     const hasModCompatibility = Boolean(mod.compatibilities?.length);
-    const allMinecraftVersions = nextMinecraftConfig.versions.map((item) => item.code);
-    setCompatibilities(hasModCompatibility ? mod.compatibilities : nextMinecraftConfig.loaders.map((loader) => ({ loader: loader.code, versions: allMinecraftVersions })));
+    setCompatibilities(hasModCompatibility ? mod.compatibilities : nextMinecraftConfig.loaders.map((loader) => ({ loader: loader.code, versions: [...loader.versions] })));
     setUsingGlobalCompatibility(!hasModCompatibility);
     setSelectedVersionId((current) => nextVersions.some((item) => item.publicId === current) ? current : nextVersions.find((item) => item.status === "active")?.publicId || nextVersions[0]?.publicId || "");
     if (!nextVersions.length) setAddingVersion(true);
@@ -283,7 +281,7 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
         {importBusy ? <p className="mt-4 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("modContent.catalogImport.continuesInBackground", { importer: importSourceLabel(activeImportSource) })}</p> : null}
         <div hidden={!editingVersion}><VersionForm busy={busy || importBusy} compatibilities={compatibilities} draft={versionDraft} editing minecraftConfig={minecraftConfig} usingGlobalCompatibility={usingGlobalCompatibility} onCancel={() => setEditingVersion(false)} onChange={setVersionDraft} onSave={() => void saveVersion()} /></div>
         <div className="mt-6" hidden={editingVersion || importSource !== ""}><div className="mb-4"><h3 className="text-lg font-black">{t("modContent.versionEditor.contentTypes")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.contentTypesHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{currentSections.map((section) => <ContentTypeCard busy={busy} key={section.publicId} locale={locale} section={section} siteId={siteId} templates={templates} token={token} onDelete={() => void archiveSection(section)} onDisplayModeChange={(displayMode) => void changeSectionDisplayMode(section, displayMode)} onTemplateSaved={async (result) => { setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); await reload(); }} />)}<AddContentPageCard disabled={selectedVersion.status !== "active" || importBusy} onClick={() => setTypeDialogOpen(true)} /></div></div>
-        <div hidden={editingVersion || importSource !== "exporter"}><ExporterImportPanel blocked={importBusy && activeImportSource !== "exporter"} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} token={token} version={selectedVersion} /></div>
+        <div hidden={editingVersion || importSource !== "exporter"}><ExporterImportPanel blocked={importBusy && activeImportSource !== "exporter"} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} subjectId={subjectId} token={token} version={selectedVersion} /></div>
         <div hidden={editingVersion || importSource !== "icon"}><IconExportPanel blocked={importBusy && activeImportSource !== "icon"} onBusyChange={updateImportBusy} siteId={siteId} token={token} version={selectedVersion} /></div>
         {(["iconrenderer", "letmeseesee", "irr"] as CatalogImportSource[]).map((source) => <div hidden={editingVersion || importSource !== source} key={source}><EmbeddedIconImportPanel blocked={importBusy && activeImportSource !== source} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} source={source} token={token} version={selectedVersion} /></div>)}
       </>}
@@ -310,26 +308,13 @@ export function ModContentWorkspace({ siteId, token, initialImportSource = "", i
     setBusy(true);
     setMessage("");
     try {
-      const page = await loadAllModContentSectionResources(siteId, section.publicId, { locale }, token);
-      const result = await updateModContentLayout(siteId, section.publicId, {
-        versionPublicId: page.section.versionPublicId,
-        rootSectionPublicId: page.section.publicId,
+      const result = await patchModContentLayout(siteId, section.publicId, {
+        versionPublicId: section.versionPublicId,
+        rootSectionPublicId: section.publicId,
         displayMode,
-        categories: page.categories.map((category) => ({
-          publicId: category.publicId,
-          parentPublicId: category.parentPublicId,
-          defaultLocale: category.defaultLocale,
-          ordinal: category.ordinal,
-          localizations: category.localizations,
-        })),
-        resources: page.items.map((resource) => ({
-          resourcePublicId: resource.resourcePublicId,
-          sectionPublicId: resource.sectionPublicId,
-          ordinal: resource.ordinal,
-          similarGroupId: resource.similarGroupId,
-        })),
+        resources: [],
         reason: t("modContent.versionEditor.changeDisplayModeReason"),
-        baseRevisionId: page.section.publishedRevisionId,
+        baseRevisionId: section.publishedRevisionId,
       }, token);
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       await reload();
@@ -435,9 +420,9 @@ function AddContentTypeDialog({ templates, locale, busy, onClose, onPreset, onCu
   </div>;
 }
 
-function ExporterImportPanel({ siteId, token, version, blocked, onImported, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
+function ExporterImportPanel({ siteId, subjectId, token, version, blocked, onImported, onBusyChange }: { siteId: string; subjectId: string; token: string; version: ModContentVersion; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
   const notifyBusy = useCallback((active: boolean) => onBusyChange("exporter", active), [onBusyChange]);
-  return <ModExportImportModal disabled={blocked || version.status !== "active"} inline onBusyChange={notifyBusy} onImported={async () => { await onImported(); }} siteId={siteId} targetVersionId={version.publicId} targetVersionLabel={version.label} token={token} />;
+  return <ModExportImportModal disabled={blocked || version.status !== "active"} inline onBusyChange={notifyBusy} onImported={async () => { await onImported(); }} siteId={siteId} subjectId={subjectId} targetVersionId={version.publicId} targetVersionLabel={version.label} token={token} />;
 }
 
 function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; blocked: boolean; onBusyChange: (source: ImportSource, busy: boolean) => void }) {

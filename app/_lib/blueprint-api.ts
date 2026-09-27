@@ -14,7 +14,7 @@ export type BlueprintRequiredMod = {
   namespaces: string[];
 };
 
-type BlueprintSummary = {
+export type BlueprintSummary = {
   id: string;
   title: string;
   description: string;
@@ -57,7 +57,7 @@ export type BlueprintMaterial = {
   sourceModSiteId?: string;
   sourceVersionPublicId?: string;
   detailUrl?: string;
-  entityId?: string;
+  publicId?: string;
 };
 
 type BlueprintAssetRevision = { id: string; siteId: string; paths: string[] };
@@ -77,4 +77,6 @@ export type BlueprintListResponse = {
   items: BlueprintSummary[];
   limit: number;
   offset: number;
+  hasMore: boolean;
+  nextCursor: string;
 };

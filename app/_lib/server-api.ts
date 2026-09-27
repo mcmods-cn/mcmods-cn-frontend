@@ -16,6 +16,11 @@ export type DetectedServerMod = {
   confidence: "exact" | "high" | "inferred" | "declared";
 };
 
+export type ServerModDeclaration = {
+  id: string;
+  version?: string;
+};
+
 export type ServerProbeResult = {
   address: string;
   normalizedAddress: string;
@@ -100,10 +105,9 @@ export type ServerDetail = ServerCatalogItem & {
 
 export type ServerCatalogResponse = {
   items: ServerCatalogItem[];
-  total: number;
-  page: number;
   limit: number;
-  pages: number;
+  hasMore: boolean;
+  nextCursor: string;
 };
 
 export type ServerHistoryPoint = {
@@ -132,7 +136,7 @@ export type CreateServerRequest = {
   hasWhitelist: boolean;
   onlineMode: boolean;
   links: ServerLink[];
-  mods: DetectedServerMod[];
+  mods: ServerModDeclaration[];
   proofText: string;
   proofFileIds: string[];
 };

@@ -9,6 +9,7 @@ import type { LocalizedContentFields, LocalizationVersion } from "../_lib/editor
 import { useI18n, type Locale } from "../_lib/i18n-provider";
 import { loadSkin, type SkinModel, type SkinTexture, type SkinVisibility, updateSkin } from "../_lib/skin-api";
 import type { BlueprintDetailRecord } from "../_lib/blueprint-api";
+import { localizedAssetContentPayload } from "../_lib/localized-asset-update.mts";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
 import { ToolsPlayground } from "./tools-playground";
 import { ReviewLockGate } from "./review-edit-lock";
@@ -74,16 +75,11 @@ export function LocalizedAssetEditor({ kind, publicId }: { kind: AssetKind; publ
     if (!token || !defaultVersion.fields.name.trim()) return;
     setSaving(true); setMessage("");
     try {
+      const content = localizedAssetContentPayload(defaultLocale, versions);
       if (kind === "skin" && skin) {
-        await updateSkin(publicId, { name: defaultVersion.fields.name.trim(), description: defaultVersion.fields.summary, tags: parseTags(tags), visibility, model: skin.kind === "cape" ? "default" : model, reason: reason.trim() || t("assetEditor.defaultReason") }, token);
+        await updateSkin(publicId, { name: defaultVersion.fields.name.trim(), description: defaultVersion.fields.summary, tags: parseTags(tags), visibility, model: skin.kind === "cape" ? "default" : model, reason: reason.trim() || t("assetEditor.defaultReason"), ...content }, token);
       } else if (kind === "blueprint" && blueprint) {
-        await apiRequest(`/api/v1/blueprints/${encodeURIComponent(publicId)}`, { method: "PUT", body: JSON.stringify({ title: defaultVersion.fields.name.trim(), description: defaultVersion.fields.contentMarkdown }) }, token);
-      }
-      for (const version of versions.filter((item) => item.fields.name.trim())) {
-        await apiRequest(`/api/v1/${kind === "skin" ? "skins" : "blueprints"}/${encodeURIComponent(publicId)}/content`, {
-          method: "PUT",
-          body: JSON.stringify({ baseRevisionId: version.revisionId, locale: version.locale, name: version.fields.name, summary: version.fields.summary, contentMarkdown: version.fields.contentMarkdown, reason: reason.trim() || t("assetEditor.defaultReason") }),
-        }, token);
+        await apiRequest(`/api/v1/blueprints/${encodeURIComponent(publicId)}`, { method: "PUT", body: JSON.stringify({ title: defaultVersion.fields.name.trim(), description: defaultVersion.fields.contentMarkdown, reason: reason.trim() || t("assetEditor.defaultReason"), ...content }) }, token);
       }
       setMessage(t("assetEditor.submitted"));
     } catch (error) {
@@ -98,7 +94,7 @@ export function LocalizedAssetEditor({ kind, publicId }: { kind: AssetKind; publ
     <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="text-sm font-bold text-[var(--accent)]" href={back}>{t("assetEditor.back")}</Link><h1 className="mt-2 text-3xl font-black">{t(kind === "skin" ? "assetEditor.skinTitle" : "assetEditor.blueprintTitle")}</h1><code className="mt-2 block text-xs text-[var(--muted)]">{publicId}</code></div><button className="button-primary focus-ring" disabled={saving || !defaultVersion.fields.name.trim()} type="button" onClick={() => void save()}>{saving ? t("common.saving") : t("assetEditor.submit")}</button></header>
     <div className="mt-6"><ContentLanguageSwitcher value={selectedLocale} versions={versions} onChange={setSelectedLocale} /></div>
     <section className="mt-5 grid gap-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><label className="text-sm font-bold">{t("assetEditor.name")} ({selectedLocale})<input className="field mt-1" maxLength={120} value={selected.fields.name} onChange={(event) => updateFields({ name: event.target.value })} /></label>
-      {kind === "skin" ? <label className="text-sm font-bold">{t("assetEditor.introduction")} ({selectedLocale})<textarea className="field mt-1 min-h-32" maxLength={1000} value={selected.fields.summary} onChange={(event) => updateFields({ summary: event.target.value })} /></label> : <ToolsPlayground embedded editorTitle={`${t("assetEditor.introduction")} (${selectedLocale})`} value={selected.fields.contentMarkdown} onChange={(contentMarkdown) => updateFields({ contentMarkdown })} />}
+      {kind === "skin" ? <label className="text-sm font-bold">{t("assetEditor.introduction")} ({selectedLocale})<textarea className="field mt-1 min-h-32" maxLength={1000} value={selected.fields.summary} onChange={(event) => updateFields({ summary: event.target.value })} /></label> : <ToolsPlayground embedded documentId={`${kind}:${publicId}:${selectedLocale}:content`} editorTitle={`${t("assetEditor.introduction")} (${selectedLocale})`} value={selected.fields.contentMarkdown} onChange={(contentMarkdown) => updateFields({ contentMarkdown })} />}
     </section>
     {kind === "skin" && skin ? <section className="mt-5 grid gap-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5 sm:grid-cols-3"><label className="text-sm font-bold">{t("assetEditor.tags")}<input className="field mt-1" value={tags} onChange={(event) => setTags(event.target.value)} /></label><label className="text-sm font-bold">{t("assetEditor.visibility")}<select className="field mt-1" value={visibility} onChange={(event) => setVisibility(event.target.value as SkinVisibility)}><option value="public">{t("assetEditor.visibilityPublic")}</option><option value="unlisted">{t("assetEditor.visibilityUnlisted")}</option><option value="private">{t("assetEditor.visibilityPrivate")}</option></select></label>{skin.kind === "skin" ? <label className="text-sm font-bold">{t("assetEditor.armModel")}<select className="field mt-1" value={model} onChange={(event) => setModel(event.target.value as SkinModel)}><option value="default">{t("assetEditor.modelClassic")}</option><option value="slim">{t("assetEditor.modelSlim")}</option></select></label> : null}</section> : null}
     <label className="mt-5 block text-sm font-bold">{t("assetEditor.reason")}<textarea className="field mt-1 min-h-24" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} /></label>

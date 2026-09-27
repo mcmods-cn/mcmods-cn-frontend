@@ -1,7 +1,7 @@
-import type { Locale } from "./i18n-provider";
+import { uiLocaleCodes, type UILocale as Locale } from "./ui-locale.mts";
 import type { CatalogResourceRef, ContentLanguageTag, LocalizedContentFields, LocalizationVersion } from "./editor-types";
 
-export const editableContentLanguages = ["zh-CN", "zh-TW", "en-US", "ja-JP", "fr-FR", "de-DE", "es-ES", "ru-RU"] as const satisfies readonly Locale[];
+export const editableContentLanguages = uiLocaleCodes;
 
 const editableLanguageSet = new Set<string>(editableContentLanguages);
 

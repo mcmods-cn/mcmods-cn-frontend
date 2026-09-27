@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "../../_lib/api";
 import { catalogResourceIconURL } from "../../_lib/editor-api";
 import type { CatalogResourceRef, LocalizationVersion } from "../../_lib/editor-types";
+import { preserveRecipeDefinition } from "../../_lib/recipe-definition-roundtrip.mts";
 import { deleteRecipe, loadRecipeSourceVersions, loadRecipeTemplate, loadRecipeTemplates, loadRecipeTypeOptions, saveRecipe } from "../../_lib/recipe-editor-api";
 import type {
   CatalogEditResult,
@@ -283,7 +284,7 @@ export function RecipeEditor({
     setFailure("");
     setMessage("");
     try {
-      const definition: Record<string, unknown> = {};
+      const definition = preserveRecipeDefinition(draft.definition);
       const payload = recipeMutation(draft, selectedTemplate, versions, dirtyLocales, contentDefaultLocale, reason, definition);
       const result = await saveRecipe(draft.recipeTypePublicId, draft.publicId, payload, token);
       const next = { ...draft, publicId: result.objectPublicId || draft.publicId, definition, publishedRevisionId: result.reviewStatus === "approved" ? result.revisionId : draft.publishedRevisionId };

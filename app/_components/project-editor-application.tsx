@@ -6,6 +6,7 @@ import { apiRequest } from "../_lib/api";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
+import { FileDropZone } from "./file-drop-zone";
 
 export type ProjectEditorApplication = {
   id: string;
@@ -67,13 +68,13 @@ function ProjectEditorApplicationDialog({ projectId, projectName, projectType, t
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
 
-  async function addFiles(files: FileList | null) {
-    if (!files?.length) return;
+  async function addFiles(files: File[]) {
+    if (!files.length) return;
     setUploading(true);
     setMessage("");
     try {
       const uploaded: Array<{ id: string; name: string; size: number }> = [];
-      for (const file of Array.from(files).slice(0, Math.max(0, 10 - attachments.length))) {
+      for (const file of files.slice(0, Math.max(0, 10 - attachments.length))) {
         const record = await uploadUserFileToOSS(file, token, "project-editor-application");
         uploaded.push({ id: record.id, name: record.originalName, size: record.sizeBytes });
       }
@@ -121,10 +122,15 @@ function ProjectEditorApplicationDialog({ projectId, projectName, projectType, t
       </label>
       <div className="mt-4">
         <span className="block text-sm font-black">{t("mods.applications.attachments")}</span>
-        <label className="button-secondary focus-ring mt-2 inline-flex cursor-pointer">
-          <input className="sr-only" type="file" multiple disabled={uploading || attachments.length >= 10} onChange={(event) => void addFiles(event.target.files)} />
-          {uploading ? t("mods.applications.uploading") : t("mods.applications.addAttachments")}
-        </label>
+        <FileDropZone
+          accept=""
+          className="mt-2 min-h-28 p-4"
+          disabled={uploading || attachments.length >= 10}
+          hint={`${attachments.length} / 10 · ${t("mods.applications.attachments")}`}
+          multiple
+          title={uploading ? t("mods.applications.uploading") : t("mods.applications.addAttachments")}
+          onFiles={(files) => void addFiles(files)}
+        />
         <div className="mt-3 grid gap-2">{attachments.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-md border border-[var(--line)] px-3 py-2 text-sm">
           <span className="min-w-0 truncate">{item.name} · {formatBytes(item.size)}</span>
           <button className="text-[var(--red)]" type="button" onClick={() => setAttachments((current) => current.filter((file) => file.id !== item.id))}>{t("common.delete")}</button>

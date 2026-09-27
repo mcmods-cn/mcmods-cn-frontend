@@ -1,9 +1,8 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../_lib/api";
-import { useI18n } from "../_lib/i18n-provider";
 
 export type SiteBrand = {
   siteName: string;
@@ -14,8 +13,7 @@ const defaultSiteBrand: SiteBrand = { siteName: "Mcmods-cn", logoUrl: "" };
 const SiteBrandContext = createContext<SiteBrand>(defaultSiteBrand);
 
 export function SiteBrandProvider({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const { t } = useI18n();
+  const router = useRouter();
   const [brand, setBrand] = useState(defaultSiteBrand);
   const load = useCallback(() => {
     void apiRequest<Partial<SiteBrand>>("/api/v1/site/config", { cache: "no-store" })
@@ -24,23 +22,14 @@ export function SiteBrandProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(load, [load]);
+  const refreshBrand = useCallback(() => {
+    load();
+    router.refresh();
+  }, [load, router]);
   useEffect(() => {
-    window.addEventListener("mcmods-site-brand-change", load);
-    return () => window.removeEventListener("mcmods-site-brand-change", load);
-  }, [load]);
-  const documentTitle = pathname === "/admin" || pathname.startsWith("/admin/")
-    ? `${brand.siteName} - ${t("admin.title")}`
-    : brand.siteName;
-
-  useEffect(() => {
-    const applyTitle = () => {
-      if (document.title !== documentTitle) document.title = documentTitle;
-    };
-    applyTitle();
-    const observer = new MutationObserver(applyTitle);
-    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
-    return () => observer.disconnect();
-  }, [documentTitle]);
+    window.addEventListener("mcmods-site-brand-change", refreshBrand);
+    return () => window.removeEventListener("mcmods-site-brand-change", refreshBrand);
+  }, [refreshBrand]);
 
   const value = useMemo(() => brand, [brand]);
   return <SiteBrandContext.Provider value={value}>{children}</SiteBrandContext.Provider>;
@@ -57,10 +46,10 @@ function normalizeSiteBrand(value: Partial<SiteBrand>): SiteBrand {
 }
 
 function safeHTTPURL(value: unknown) {
-	if (typeof value !== "string" || !value.trim()) return "";
-	if (value.startsWith("/site-assets/site-logo-")) return value;
-	try {
-		const parsed = new URL(value);
+  if (typeof value !== "string" || !value.trim()) return "";
+  if (/^\/site-assets\/site-logo-[a-f0-9]{20}\.webp$/.test(value)) return value;
+  try {
+    const parsed = new URL(value);
     return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : "";
   } catch {
     return "";

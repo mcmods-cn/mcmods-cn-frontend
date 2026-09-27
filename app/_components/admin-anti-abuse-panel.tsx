@@ -2,19 +2,14 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
+import { validateAntiAbuseSettings, type AntiAbusePolicy, type AntiAbuseSettings, type AntiAbuseSettingsError } from "../_lib/anti-abuse-settings.mts";
 
-type Policy = { burstLimit: number; burstSeconds: number; hourLimit: number; dayLimit: number; objectLimit: number; objectMinutes: number; pendingLimit: number };
-type Settings = {
-  enabled: boolean; emergencyMode: boolean; logThreshold: number; moderationThreshold: number; challengeThreshold: number;
-  tempBlockThreshold: number; denyThreshold: number; newAccountDays: number; trustedAccountDays: number; trustedMinimumLevel: number;
-  duplicateWindowHours: number; similarityThreshold: number; temporaryBlockMinutes: number; policies: Record<string, Policy>;
-};
 type Overview = { counts: Record<string, Record<string, number>>; activeRestrictions: number; highRiskUsers: number; trend: Array<Record<string, unknown>>; challengePassed24h: number; challengeFailed24h: number; duplicateBlocked24h: number; verifiedCrawlerReads24h: number; unknownCrawlerReads24h: number };
 type RiskEvent = { id: string; username: string; action: string; objectKey: string; outcome: string; riskScore: number; rules: string[]; crawlerClass: string; disposition: string; createdAt: string };
 
 export function AdminAntiAbusePanel({ token }: { token: string }) {
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [settings, setSettings] = useState<Settings | null>(null);
+  const [settings, setSettings] = useState<AntiAbuseSettings | null>(null);
   const [events, setEvents] = useState<RiskEvent[]>([]);
   const [restrictions, setRestrictions] = useState<Array<Record<string, unknown>>>([]);
   const [botRules, setBotRules] = useState<Array<Record<string, unknown>>>([]);
@@ -25,7 +20,7 @@ export function AdminAntiAbusePanel({ token }: { token: string }) {
     try {
       const [nextOverview, nextSettings, nextEvents, nextRestrictions, nextBotRules] = await Promise.all([
         apiRequest<Overview>("/api/v1/admin/anti-abuse/overview", {}, token),
-        apiRequest<Settings>("/api/v1/admin/anti-abuse/config", {}, token),
+        apiRequest<AntiAbuseSettings>("/api/v1/admin/anti-abuse/config", {}, token),
         apiRequest<{ items: RiskEvent[] }>("/api/v1/admin/anti-abuse/events?limit=100", {}, token),
         apiRequest<{ items: Array<Record<string, unknown>> }>("/api/v1/admin/anti-abuse/restrictions", {}, token),
         apiRequest<{ items: Array<Record<string, unknown>> }>("/api/v1/admin/anti-abuse/bot-rules", {}, token),
@@ -42,9 +37,14 @@ export function AdminAntiAbusePanel({ token }: { token: string }) {
 
   async function saveSettings() {
     if (!settings) return;
+    const validationError = validateAntiAbuseSettings(settings);
+    if (validationError) {
+      setMessage(antiAbuseValidationMessage(validationError));
+      return;
+    }
     setBusy(true);
     try {
-      setSettings(await apiRequest<Settings>("/api/v1/admin/anti-abuse/config", { method: "PUT", body: JSON.stringify(settings) }, token));
+      setSettings(await apiRequest<AntiAbuseSettings>("/api/v1/admin/anti-abuse/config", { method: "PUT", body: JSON.stringify(settings) }, token));
       setMessage("反滥用规则已保存，并记录管理员审计日志。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "保存失败"); }
     finally { setBusy(false); }
@@ -52,7 +52,7 @@ export function AdminAntiAbusePanel({ token }: { token: string }) {
 
   async function resetSettings() {
     if (!window.confirm("确认恢复安全默认值？")) return;
-    setSettings(await apiRequest<Settings>("/api/v1/admin/anti-abuse/config/reset", { method: "POST" }, token));
+    setSettings(await apiRequest<AntiAbuseSettings>("/api/v1/admin/anti-abuse/config/reset", { method: "POST" }, token));
     setMessage("已恢复默认规则。");
   }
 
@@ -83,7 +83,7 @@ export function AdminAntiAbusePanel({ token }: { token: string }) {
     event.preventDefault();
     const values = new FormData(event.currentTarget);
     await apiRequest("/api/v1/admin/anti-abuse/bot-rules", { method: "POST", body: JSON.stringify({
-      kind: values.get("kind"), label: values.get("label"), matcher: values.get("matcher"), token: values.get("botToken"), readOnly: true,
+      kind: values.get("kind"), label: values.get("label"), matcher: values.get("matcher"), token: values.get("botToken"),
     }) }, token);
     event.currentTarget.reset(); await load();
   }
@@ -122,14 +122,32 @@ export function AdminAntiAbusePanel({ token }: { token: string }) {
 
     {settings ? <section className="surface rounded-xl p-5">
       <h2 className="text-xl font-black">规则配置</h2>
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
         <Check label="启用反滥用系统" checked={settings.enabled} onChange={(enabled) => setSettings({ ...settings, enabled })} />
         <Check label="全站紧急保护模式" checked={settings.emergencyMode} onChange={(emergencyMode) => setSettings({ ...settings, emergencyMode })} />
-        {(["logThreshold", "moderationThreshold", "challengeThreshold", "tempBlockThreshold", "denyThreshold", "similarityThreshold"] as const).map((key) =>
-          <NumberField key={key} label={key} value={settings[key]} onChange={(value) => setSettings({ ...settings, [key]: value })} />)}
       </div>
-      <div className="mt-5 overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr><th>动作</th><th>瞬时</th><th>小时</th><th>每日</th><th>对象</th><th>待审</th></tr></thead><tbody>
-        {Object.entries(settings.policies).map(([action, policy]) => <tr className="border-t border-[var(--line)]" key={action}><td className="py-2 font-mono">{action}</td>{(["burstLimit", "hourLimit", "dayLimit", "objectLimit", "pendingLimit"] as const).map((key) => <td key={key}><input className="field w-24 py-1" min={0} type="number" value={policy[key]} onChange={(e) => setSettings({ ...settings, policies: { ...settings.policies, [action]: { ...policy, [key]: Number(e.target.value) } } })} /></td>)}</tr>)}
+      <h3 className="mt-5 font-black">风险分级阈值</h3>
+      <p className="mt-1 text-xs text-[var(--muted)]">数值必须按记录 ≤ 审核 ≤ 验证 ≤ 临时限制 ≤ 拒绝排列。</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <NumberField label="记录阈值（1–100）" min={1} max={100} value={settings.logThreshold} onChange={(logThreshold) => setSettings({ ...settings, logThreshold })} />
+        <NumberField label={`强制审核阈值（${settings.logThreshold}–200）`} min={settings.logThreshold} max={200} value={settings.moderationThreshold} onChange={(moderationThreshold) => setSettings({ ...settings, moderationThreshold })} />
+        <NumberField label={`验证阈值（${settings.moderationThreshold}–300）`} min={settings.moderationThreshold} max={300} value={settings.challengeThreshold} onChange={(challengeThreshold) => setSettings({ ...settings, challengeThreshold })} />
+        <NumberField label={`临时限制阈值（${settings.challengeThreshold}–500）`} min={settings.challengeThreshold} max={500} value={settings.tempBlockThreshold} onChange={(tempBlockThreshold) => setSettings({ ...settings, tempBlockThreshold })} />
+        <NumberField label={`拒绝阈值（${settings.tempBlockThreshold}–1000）`} min={settings.tempBlockThreshold} max={1000} value={settings.denyThreshold} onChange={(denyThreshold) => setSettings({ ...settings, denyThreshold })} />
+        <NumberField label="内容相似度阈值（700–1000）" min={700} max={1000} value={settings.similarityThreshold} onChange={(similarityThreshold) => setSettings({ ...settings, similarityThreshold })} />
+      </div>
+      <h3 className="mt-5 font-black">账户分层、重复检测与限制时长</h3>
+      <p className="mt-1 text-xs text-[var(--muted)]">可信账号天数不能小于新账号天数；时间字段使用标签中标明的单位。</p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <NumberField label="新账号期限（天，1–90）" min={1} max={90} value={settings.newAccountDays} onChange={(newAccountDays) => setSettings({ ...settings, newAccountDays })} />
+        <NumberField label={`可信账号期限（天，${settings.newAccountDays}–3650）`} min={settings.newAccountDays} max={3650} value={settings.trustedAccountDays} onChange={(trustedAccountDays) => setSettings({ ...settings, trustedAccountDays })} />
+        <NumberField label="可信账号最低等级（0–1000）" min={0} max={1000} value={settings.trustedMinimumLevel} onChange={(trustedMinimumLevel) => setSettings({ ...settings, trustedMinimumLevel })} />
+        <NumberField label="重复内容窗口（小时，1–720）" min={1} max={720} value={settings.duplicateWindowHours} onChange={(duplicateWindowHours) => setSettings({ ...settings, duplicateWindowHours })} />
+        <NumberField label="自动临时限制（分钟，1–43200）" min={1} max={43200} value={settings.temporaryBlockMinutes} onChange={(temporaryBlockMinutes) => setSettings({ ...settings, temporaryBlockMinutes })} />
+      </div>
+      <h3 className="mt-5 font-black">逐动作速率与存量限制</h3>
+      <div className="mt-3 overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr><th>动作</th>{policyFields.map((field) => <th className="min-w-32" key={field.key}>{field.label}</th>)}</tr></thead><tbody>
+        {Object.entries(settings.policies).map(([action, policy]) => <tr className="border-t border-[var(--line)]" key={action}><td className="py-2 pr-3 font-mono">{action}</td>{policyFields.map((field) => <td className="pr-2" key={field.key}><input className="field w-28 py-1" min={field.min} max={field.max} step={1} type="number" value={policy[field.key]} onChange={(event) => setSettings({ ...settings, policies: { ...settings.policies, [action]: { ...policy, [field.key]: Number(event.target.value) } } })} /></td>)}</tr>)}
       </tbody></table></div>
       <div className="mt-4 flex gap-2"><button className="button-primary" disabled={busy} onClick={() => void saveSettings()} type="button">保存规则</button><button className="button-secondary" onClick={() => void resetSettings()} type="button">恢复默认</button></div>
     </section> : null}
@@ -148,4 +166,25 @@ export function AdminAntiAbusePanel({ token }: { token: string }) {
 function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded-lg border border-[var(--line)] p-4"><b className="text-2xl">{value}</b><p className="text-sm text-[var(--muted)]">{label}</p></div>; }
 function sumCounts(values?: Record<string, number>) { return Object.values(values || {}).reduce((sum, value) => sum + value, 0); }
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) { return <label className="flex items-center gap-2 rounded border border-[var(--line)] p-3"><input checked={checked} type="checkbox" onChange={(e) => onChange(e.target.checked)} /> {label}</label>; }
-function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) { return <label className="text-sm font-bold"><span>{label}</span><input className="field mt-1" min={0} type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} /></label>; }
+const policyFields: ReadonlyArray<{ key: keyof AntiAbusePolicy; label: string; min: number; max: number }> = [
+  { key: "burstLimit", label: "瞬时次数", min: 1, max: 10000 },
+  { key: "burstSeconds", label: "瞬时窗口（秒）", min: 1, max: 3600 },
+  { key: "hourLimit", label: "每小时次数", min: 1, max: 100000 },
+  { key: "dayLimit", label: "每日次数", min: 1, max: 1000000 },
+  { key: "objectLimit", label: "单对象次数", min: 1, max: 10000 },
+  { key: "objectMinutes", label: "单对象窗口（分钟）", min: 1, max: 10080 },
+  { key: "pendingLimit", label: "待审核存量", min: 0, max: 10000 },
+];
+
+function antiAbuseValidationMessage(error: AntiAbuseSettingsError) {
+  const messages: Record<AntiAbuseSettingsError, string> = {
+    integerRequired: "全部反滥用参数必须是整数。",
+    globalBounds: "全局参数超出页面标明的支持范围。",
+    thresholdOrder: "风险阈值必须按记录、审核、验证、临时限制、拒绝递增。",
+    accountOrder: "可信账号期限不能小于新账号期限。",
+    policyBounds: "逐动作策略超出表头字段的支持范围。",
+  };
+  return messages[error];
+}
+
+function NumberField({ label, value, min, max, onChange }: { label: string; value: number; min: number; max: number; onChange: (value: number) => void }) { return <label className="text-sm font-bold"><span>{label}</span><input className="field mt-1" min={min} max={max} step={1} type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} /></label>; }

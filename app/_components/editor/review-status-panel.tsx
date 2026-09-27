@@ -2,6 +2,7 @@
 
 import type { EditResult, ReviewStatus } from "../../_lib/editor-types";
 import { useI18n } from "../../_lib/i18n-provider";
+import { resolveReviewStatusPresentation } from "../../_lib/review-status-presentation.mts";
 
 export type ReviewStatusPanelLabels = Partial<{
   title: string;
@@ -27,14 +28,17 @@ export function ReviewStatusPanel({
   labels?: ReviewStatusPanelLabels;
 }) {
   const { t } = useI18n();
-  const currentStatus = status ?? result?.reviewStatus;
-  if (!currentStatus && !result && !note) return null;
-  const statusLabels: Record<ReviewStatus, string> = {
-    draft: labels.draft ?? t("common.edit"),
-    pending: labels.pending ?? t("common.loading"),
-    approved: labels.approved ?? t("common.confirm"),
-    rejected: labels.rejected ?? t("common.cancel"),
-  };
+  const currentStatus: unknown = status ?? result?.reviewStatus;
+  const presentation = currentStatus !== undefined
+    ? resolveReviewStatusPresentation(currentStatus)
+    : undefined;
+  if (!presentation && !result && !note) return null;
+  const knownStatus = presentation && "status" in presentation ? presentation.status : undefined;
+  const statusText = presentation
+    ? knownStatus
+      ? labels[knownStatus] ?? t(presentation.translationKey)
+      : t(presentation.translationKey)
+    : undefined;
   const tones: Record<ReviewStatus, string> = {
     draft: "border-[var(--line)]",
     pending: "border-[var(--warning)] text-[var(--warning)]",
@@ -42,10 +46,10 @@ export function ReviewStatusPanel({
     rejected: "border-[var(--red)] text-[var(--red)]",
   };
 
-  return <section className={`rounded-lg border bg-[var(--panel)] p-4 ${currentStatus ? tones[currentStatus] : "border-[var(--line)]"}`}>
+  return <section className={`rounded-lg border bg-[var(--panel)] p-4 ${knownStatus ? tones[knownStatus] : presentation ? "border-[var(--red)] text-[var(--red)]" : "border-[var(--line)]"}`}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="font-black">{labels.title ?? t("common.notice")}</h2>
-      {currentStatus ? <span className="rounded-md border border-current px-2 py-1 text-xs font-black">{statusLabels[currentStatus]}</span> : null}
+      {statusText ? <span className="rounded-md border border-current px-2 py-1 text-xs font-black">{statusText}</span> : null}
     </div>
     {note ? <p className="mt-3 whitespace-pre-wrap text-sm leading-6">{note}</p> : null}
     {result ? <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-3">

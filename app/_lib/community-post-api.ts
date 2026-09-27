@@ -5,6 +5,8 @@ export type CommunityPostKind = "tutorial" | "issue" | "news" | "discussion";
 export type CommunityPostSeverity = "client" | "harmless" | "minor" | "harmful" | "severe" | "fatal";
 export const communityProjectTypes = ["mod", "modpack", "plugin", "map", "resource_pack", "shader_pack", "datapack", "addon"] as const;
 export type CommunityProjectType = (typeof communityProjectTypes)[number];
+export const communityPostProjectReferenceLimit = 32;
+export const communityPostResourceReferenceLimit = 64;
 
 export type CommunityPostReference = {
   publicId?: string;
@@ -19,6 +21,7 @@ export type CommunityPostReference = {
   revisionId?: string;
   iconPath?: string;
   unresolved?: boolean;
+  unavailable?: boolean;
 };
 
 export type CommunityPost = {
@@ -52,12 +55,17 @@ export type CommunityPost = {
   authorId: string;
   authorName: string;
   reviewStatus: "pending" | "approved" | "rejected";
+  publishedRevisionId?: string;
   projects: CommunityPostReference[];
   resources: CommunityPostReference[];
   createdAt: string;
   updatedAt: string;
   canEdit: boolean;
   canResolve: boolean;
+};
+
+export type CommunityPostSummary = Omit<CommunityPost, "bodyMarkdown"> & {
+  summary: string;
 };
 
 type CommunityPostResponse = Omit<CommunityPost, "minecraftVersions" | "projects" | "resources"> & {
@@ -75,8 +83,7 @@ function normalizeCommunityPost(post: CommunityPostResponse): CommunityPost {
   };
 }
 
-export type CommunityPostDraft = Pick<CommunityPost, "kind" | "category" | "title" | "bodyMarkdown" | "minecraftVersions" | "modVersionMin" | "modVersionMax" | "severity" | "hasFix" | "issueUrl" | "projects" | "resources"> & {
-  sourceLocale?: string;
+export type CommunityPostDraft = Pick<CommunityPost, "kind" | "category" | "title" | "sourceLocale" | "bodyMarkdown" | "minecraftVersions" | "modVersionMin" | "modVersionMax" | "severity" | "hasFix" | "issueUrl" | "projects" | "resources"> & {
   coverFileId?: string;
   bountyCurrency?: string;
   bountyAmount?: number;
@@ -91,8 +98,8 @@ export function communityPostCollection(kind: CommunityPostKind) {
   }
 }
 
-export async function loadCommunityPosts(kind: CommunityPostKind, options: { query?: string; category?: string; versions?: string[]; versionMode?: "any" | "all"; projects?: string[]; sort?: CatalogSortField; order?: CatalogSortDirection; modId?: string; resourceId?: string; limit?: number; offset?: number } = {}, token = "", signal?: AbortSignal) {
-  const parameters = new URLSearchParams({ kind, limit: String(options.limit ?? 24), offset: String(options.offset ?? 0) });
+export async function loadCommunityPosts(kind: CommunityPostKind, options: { query?: string; category?: string; versions?: string[]; versionMode?: "any" | "all"; projects?: string[]; sort?: CatalogSortField; order?: CatalogSortDirection; modId?: string; resourceId?: string; limit?: number; cursor?: string } = {}, token = "", signal?: AbortSignal) {
+  const parameters = new URLSearchParams({ kind, limit: String(options.limit ?? 24) });
   if (options.query) parameters.set("q", options.query);
   if (options.category) parameters.set("category", options.category);
   if (options.versions?.length) parameters.set("version", options.versions.join(","));
@@ -102,8 +109,24 @@ export async function loadCommunityPosts(kind: CommunityPostKind, options: { que
   if (options.order) parameters.set("order", options.order);
   if (options.modId) parameters.set("modId", options.modId);
   if (options.resourceId) parameters.set("resourceId", options.resourceId);
-  const result = await apiRequest<{ items: CommunityPostResponse[] | null; total: number; limit: number; offset: number; categories?: string[] }>(`/api/v1/community/posts?${parameters}`, { cache: "no-store", signal }, token || undefined);
-  return { ...result, items: (result.items ?? []).map(normalizeCommunityPost) };
+  if (options.cursor) parameters.set("cursor", options.cursor);
+  const result = await apiRequest<{ items: CommunityPostSummaryResponse[] | null; limit: number; hasMore: boolean; nextCursor: string; categories?: string[] }>(`/api/v1/community/posts?${parameters}`, { cache: "no-store", signal }, token || undefined);
+  return { ...result, items: (result.items ?? []).map(normalizeCommunityPostSummary) };
+}
+
+type CommunityPostSummaryResponse = Omit<CommunityPostSummary, "minecraftVersions" | "projects" | "resources"> & {
+  minecraftVersions: string[] | null;
+  projects: CommunityPostReference[] | null;
+  resources: CommunityPostReference[] | null;
+};
+
+function normalizeCommunityPostSummary(post: CommunityPostSummaryResponse): CommunityPostSummary {
+  return {
+    ...post,
+    minecraftVersions: post.minecraftVersions ?? [],
+    projects: post.projects ?? [],
+    resources: post.resources ?? [],
+  };
 }
 
 export function loadCommunityPostCategories(kind: CommunityPostKind, signal?: AbortSignal) {
@@ -115,10 +138,10 @@ export async function loadCommunityPost(id: string, token = "") {
   return normalizeCommunityPost(post);
 }
 
-export function saveCommunityPost(draft: CommunityPostDraft, token: string, id = "") {
+export function saveCommunityPost(draft: CommunityPostDraft, token: string, id = "", baseRevisionId = "") {
   return apiRequest<{ id: string; reviewStatus: CommunityPost["reviewStatus"]; revisionId: string; changeRequestId: string }>(id ? `/api/v1/community/posts/${encodeURIComponent(id)}` : "/api/v1/community/posts", {
     method: id ? "PUT" : "POST",
-    body: JSON.stringify(draft),
+    body: JSON.stringify({ ...draft, baseRevisionId }),
   }, token);
 }
 

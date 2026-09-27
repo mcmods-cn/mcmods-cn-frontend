@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
+import { resolvePublicSiteURL } from "./_lib/deployment-env.mts";
 
-const siteURL = (process.env.NEXT_PUBLIC_SITE_URL || "https://mcmods.cn").replace(/\/$/, "");
+const siteURL = resolvePublicSiteURL(process.env.NEXT_PUBLIC_SITE_URL, process.env.NODE_ENV);
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const routes = [

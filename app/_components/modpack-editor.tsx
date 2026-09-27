@@ -9,10 +9,12 @@ import { useAuthSnapshot } from "../_lib/auth";
 import { licenseOptions, maintenanceOptions, sourceOptions } from "../_lib/mod-catalog-data";
 import type { BackendModAuthor, BackendModCompatibility, BackendModGalleryImage, MinecraftVersionConfig } from "../_lib/mod-api";
 import { loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
-import { modpackCategoryOptions, modpackIconURL, modpackPackagingMethodOptions, modpackTypeOptions, type BackendModpackImportJob, type BackendModpackMod, type BackendModpackRecord, type CreateModpackPayload } from "../_lib/modpack-api";
+import { modpackCategoryOptions, modpackIconURL, modpackPackagingMethodOptions, modpackTypeOptions, type BackendModpackImportJob, type BackendModpackImportResult, type BackendModpackImportSelection, type BackendModpackMod, type BackendModpackRecord, type CreateModpackPayload } from "../_lib/modpack-api";
 import type { CatalogResourceRef } from "../_lib/editor-types";
+import { editableContentLanguages } from "../_lib/content-language";
 import { useI18n } from "../_lib/i18n-provider";
-import { uploadUserFileToOSS } from "../_lib/oss-upload";
+import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
+import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
 import { CreatorPicker } from "./creator-picker";
 import { FileDropZone } from "./file-drop-zone";
@@ -25,8 +27,9 @@ import { useAutoDraft } from "../_lib/use-auto-draft";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { Field, FormSection, SelectField } from "./project-editor-fields";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
+import { OSSUploadBatchStatus } from "./oss-upload-batch-status";
 
-type ModpackDraft = Omit<CreateModpackPayload, "searchKeywords"> & { searchKeywords: string };
+type ModpackDraft = Omit<CreateModpackPayload, "searchKeywords"> & { searchKeywords: string; importSelection?: BackendModpackImportSelection };
 
 const environmentOptions = ["clientOnly", "serverOnly", "bothRequired"] as const;
 const emptyDraft = (): ModpackDraft => ({
@@ -55,6 +58,7 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
   const [iconUploading, setIconUploading] = useState(false);
   const [iconPreviewUrl, setIconPreviewUrl] = useState("");
   const [galleryUploading, setGalleryUploading] = useState(false);
+  const [galleryUploadTasks, setGalleryUploadTasks] = useState<OSSUploadBatchTask<File, OSSFileRecord>[]>([]);
   const automaticImportRef = useRef(false);
   const autoDraft = useAutoDraft({
     draftKey: `modpack:${siteId || "new"}`,
@@ -135,7 +139,6 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
           projectKey: `modpack:${targetSiteId}`,
           projectTitle: snapshot.primaryName,
           targetUrl: `/modpacks/${targetSiteId}`,
-          reviewStatus: result.status,
           changeRequestId: result.changeRequestId,
         }).catch(() => undefined);
         router.push(`/modpacks/${targetSiteId}`);
@@ -145,7 +148,6 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
           projectKey: `modpack:${result.siteId}`,
           projectTitle: result.primaryName,
           targetUrl: `/modpacks/${result.siteId}`,
-          reviewStatus: result.reviewStatus === "approved" ? "approved" : "pending",
           changeRequestId: result.changeRequestId,
         }).catch(() => undefined);
         router.push(`/modpacks/${result.siteId}`);
@@ -175,17 +177,31 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
   }
 
   async function uploadGallery(files: File[]) {
-    if (!token) return;
+    if (!token || galleryUploading) return;
+    const tasks = createOSSUploadBatchTasks<File, OSSFileRecord>(files, {
+      capacity: Math.max(0, 32 - draft.galleryImages.length),
+      capacityError: t("uploadBatch.capacityReached"),
+      identity: (file, index) => `${file.name}:${file.size}:${file.lastModified}:${index}`,
+      validate: (file) => file.type.startsWith("image/") ? "" : t("uploadBatch.imageOnly"),
+    });
+    if (!tasks.length) return;
+    await processGalleryUploadTasks(tasks);
+  }
+
+  async function processGalleryUploadTasks(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string) {
+    if (!token || galleryUploading) return;
     setGalleryUploading(true);
+    setMessage("");
     try {
-      const uploaded: BackendModGalleryImage[] = [];
-      for (const file of files.filter((item) => item.type.startsWith("image/")).slice(0, 32 - draft.galleryImages.length)) {
-        const stored = await uploadUserFileToOSS(file, token, `modpack_gallery:${siteId || "draft"}`);
-        uploaded.push({ fileId: stored.id, name: stored.originalName, contentType: stored.contentType, sizeBytes: stored.sizeBytes, url: stored.accessUrl });
-      }
-      setDraft((current) => ({ ...current, galleryImages: [...current.galleryImages, ...uploaded] }));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.submission.galleryUploadFailed"));
+      const result = await processOSSUploadBatch(tasks, {
+        upload: (file) => uploadUserFileToOSS(file, token, `modpack_gallery:${siteId || "draft"}`),
+        shouldProcess: retryKey ? (task) => task.key === retryKey : undefined,
+        onChange: setGalleryUploadTasks,
+        onUploaded: (_task, record) => setDraft((current) => current.galleryImages.some((image) => image.fileId === record.id)
+          ? current
+          : { ...current, galleryImages: [...current.galleryImages, { fileId: record.id, name: record.originalName, contentType: record.contentType, sizeBytes: record.sizeBytes, url: record.accessUrl } satisfies BackendModGalleryImage].slice(0, 32) }),
+      });
+      if (result.some((task) => task.stage === "failed")) setMessage(t("mods.submission.galleryUploadFailed"));
     } finally {
       setGalleryUploading(false);
     }
@@ -203,15 +219,15 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
   const editor = <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]"><form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}>
     <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={siteId ? `/modpacks/${siteId}` : "/modpacks"}>{t("modpacks.detail.back")}</Link><h1 className="mt-2 text-3xl font-black">{t(siteId ? "modpacks.editor.editTitle" : "modpacks.editor.createTitle")}</h1></div><div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t("common.save")}</button></div></header>
 
-    <FormSection title={t("mods.submission.sections.identity")}><div className="grid gap-4 md:grid-cols-2"><Field label={t("mods.submission.fields.siteId")}><input className="field font-mono" required value={draft.siteId} onChange={(event) => setDraft({ ...draft, siteId: normalizeProjectSiteIdInput(event.target.value) })} /></Field>{publicId ? <Field label={t("mods.submission.fields.uniqueId")}><input className="field font-mono" readOnly value={publicId} /></Field> : null}<Field label={t("mods.submission.fields.primaryName")}><input className="field" required maxLength={160} value={draft.primaryName} onChange={(event) => setDraft({ ...draft, primaryName: event.target.value })} /></Field><Field label={t("mods.submission.fields.secondaryName")}><input className="field" maxLength={160} value={draft.secondaryName} onChange={(event) => setDraft({ ...draft, secondaryName: event.target.value })} /></Field><Field label={t("mods.submission.fields.abbreviation")}><input className="field" maxLength={32} value={draft.abbreviation} onChange={(event) => setDraft({ ...draft, abbreviation: event.target.value })} /></Field></div><Field label={t("mods.submission.fields.summary")}><textarea className="field min-h-24" maxLength={500} value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} /></Field><div className="mt-4 flex items-center gap-4"><div className="grid h-28 w-28 place-items-center overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]">{draft.iconUrl ? <Image unoptimized alt="" className="h-full w-full object-contain" height={128} src={iconPreviewUrl || draft.iconUrl} width={128} /> : "?"}</div><label className="button-secondary focus-ring cursor-pointer">{iconUploading ? t("mods.submission.actions.uploadingIcon") : t("mods.submission.actions.uploadIcon")}<input accept="image/*" className="sr-only" type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setIconCropFile(file); }} /></label></div></FormSection>
+    <FormSection title={t("mods.submission.sections.identity")}><div className="grid gap-4 md:grid-cols-2"><Field label={t("mods.submission.fields.siteId")}><input className="field font-mono" required value={draft.siteId} onChange={(event) => setDraft({ ...draft, siteId: normalizeProjectSiteIdInput(event.target.value) })} /></Field>{publicId ? <Field label={t("mods.submission.fields.uniqueId")}><input className="field font-mono" readOnly value={publicId} /></Field> : null}<Field label={t("mods.submission.fields.primaryName")}><input className="field" required maxLength={160} value={draft.primaryName} onChange={(event) => setDraft({ ...draft, primaryName: event.target.value })} /></Field><Field label={t("mods.submission.fields.secondaryName")}><input className="field" maxLength={160} value={draft.secondaryName} onChange={(event) => setDraft({ ...draft, secondaryName: event.target.value })} /></Field><Field label={t("mods.submission.fields.abbreviation")}><input className="field" maxLength={32} value={draft.abbreviation} onChange={(event) => setDraft({ ...draft, abbreviation: event.target.value })} /></Field><Field label={t("modpacks.editor.sourceLocale")} required><select className="field" required value={draft.defaultLocale} onChange={(event) => setDraft({ ...draft, defaultLocale: event.target.value })}><option disabled value="">{t("modpacks.editor.sourceLocalePlaceholder")}</option>{editableContentLanguages.map((language) => <option key={language} value={language}>{language}</option>)}</select></Field></div>{draft.importSelection ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm" data-testid="modpack-import-selection">{t("modpacks.editor.importSelection", { provider: draft.importSelection.provider, version: draft.importSelection.versionName || draft.importSelection.versionId, file: draft.importSelection.fileName, publishedAt: draft.importSelection.publishedAt })}</p> : null}<Field label={t("mods.submission.fields.summary")}><textarea className="field min-h-24" maxLength={500} value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} /></Field><div className="mt-4 flex items-center gap-4"><div className="grid h-28 w-28 place-items-center overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]">{draft.iconUrl ? <Image unoptimized alt="" className="h-full w-full object-contain" height={128} src={iconPreviewUrl || draft.iconUrl} width={128} /> : "?"}</div><label className="button-secondary focus-ring cursor-pointer">{iconUploading ? t("mods.submission.actions.uploadingIcon") : t("mods.submission.actions.uploadIcon")}<input accept="image/*" className="sr-only" type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setIconCropFile(file); }} /></label></div></FormSection>
 
     <FormSection title={t("mods.submission.sections.classification")}><div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3"><SelectField label={t("mods.submission.fields.environment")} value={draft.environment} options={environmentOptions} optionLabel={(value) => t(`mods.environments.${value}`)} onChange={(environment) => setDraft({ ...draft, environment })} /><SelectField label={t("modpacks.editor.packType")} value={draft.packType} options={modpackTypeOptions} optionLabel={(value) => t(`modpacks.packTypes.${value}`)} onChange={(packType) => setDraft({ ...draft, packType })} /><SelectField label={t("modpacks.editor.packagingMethod")} value={draft.packagingMethod} options={modpackPackagingMethodOptions} optionLabel={(value) => t(`modpacks.packagingMethods.${value}`)} onChange={(packagingMethod) => setDraft({ ...draft, packagingMethod })} /><SelectField label={t("mods.submission.fields.officialStatus")} value={draft.officialStatus} options={maintenanceOptions} optionLabel={(value) => t(`mods.statuses.${value}`)} onChange={(officialStatus) => setDraft({ ...draft, officialStatus })} /><SelectField label={t("mods.submission.fields.sourceStatus")} value={draft.sourceStatus} options={sourceOptions} optionLabel={(value) => t(`mods.sources.${value}`)} onChange={(sourceStatus) => setDraft({ ...draft, sourceStatus })} /><SelectField label={t("mods.submission.fields.license")} value={draft.license} options={licenseOptions} optionLabel={(value) => value} onChange={(license) => setDraft({ ...draft, license })} /></div><div className="mt-5"><CompatibilityEditor config={minecraftConfig} value={draft.compatibilities} onChange={(compatibilities: BackendModCompatibility[]) => setDraft({ ...draft, compatibilities })} /></div><div className="mt-4"><h3 className="mb-2 font-black">{t("modpacks.editor.categories")}</h3><div className="grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 sm:grid-cols-2 lg:grid-cols-4">{modpackCategoryOptions.map((category) => <label className="flex items-center gap-2 text-sm" key={category}><input type="checkbox" checked={draft.tags.includes(category)} onChange={() => setDraft({ ...draft, tags: draft.tags.includes(category) ? draft.tags.filter((item) => item !== category) : [...draft.tags, category] })} />{t(`modpacks.categories.${category}`)}</label>)}</div></div><Field label={t("mods.submission.fields.searchKeywords")}><input className="field" value={draft.searchKeywords} onChange={(event) => setDraft({ ...draft, searchKeywords: event.target.value })} /></Field></FormSection>
 
     <FormSection title={t("mods.submission.sections.authors")}><CreatorPicker value={draft.authors} onChange={(authors: BackendModAuthor[]) => setDraft({ ...draft, authors })} /></FormSection>
     <FormSection title={t("mods.submission.sections.links")} description={t("mods.submission.sections.linksHint")}><ModLinkEditor links={draft.links} onChange={(links) => setDraft({ ...draft, links })} /></FormSection>
     <FormSection title={t("modpacks.editor.modList")} description={t("modpacks.editor.modListHint")}><ModRows mods={draft.mods} onRemove={(index) => setDraft((current) => ({ ...current, mods: current.mods.filter((_, itemIndex) => itemIndex !== index) }))} /><button className="button-secondary focus-ring mt-4" type="button" onClick={() => setPickerOpen(true)}>+ {t("modpacks.editor.selectMods")}</button></FormSection>
-    <FormSection title={t("mods.submission.sections.body")}><ToolsPlayground embedded editorTitle={t("mods.submission.sections.body")} value={draft.bodyMarkdown} onChange={(bodyMarkdown) => setDraft({ ...draft, bodyMarkdown })} /></FormSection>
-    <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft((current) => ({ ...current, galleryImages: current.galleryImages.filter((_, itemIndex) => itemIndex !== index) }))}>{t("common.delete")}</button></div>)}</div></FormSection>
+    <FormSection title={t("mods.submission.sections.body")}><ToolsPlayground embedded documentId={`modpack:${siteId || "draft"}:body`} editorTitle={t("mods.submission.sections.body")} value={draft.bodyMarkdown} onChange={(bodyMarkdown) => setDraft({ ...draft, bodyMarkdown })} /></FormSection>
+    <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={(key) => void processGalleryUploadTasks(galleryUploadTasks, key)} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft((current) => ({ ...current, galleryImages: current.galleryImages.filter((_, itemIndex) => itemIndex !== index) }))}>{t("common.delete")}</button></div>)}</div></FormSection>
     {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24" value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
     {message ? <p className="mb-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={submitting} type="submit">{t("common.save")}</button></div>
     <SquareImageCropDialog file={iconCropFile} minimumSize={128} outputSizes={[128]} onCancel={() => setIconCropFile(undefined)} onConfirm={(output) => { setIconCropFile(undefined); void uploadIcon(output); }} />
@@ -231,5 +247,5 @@ function ModRows({ mods, onRemove }: { mods: BackendModpackMod[]; onRemove: (ind
 function resourceToModpackMod(resource: CatalogResourceRef): BackendModpackMod { return { modPublicId: resource.unresolved ? undefined : resource.publicId, modSiteId: resource.source?.siteId, modName: resource.resolvedName || resource.id, iconUrl: resource.iconUrl, provider: "manual", identifier: resource.unresolved ? resource.rawIdentifier || resource.id : "", clientRequired: true, serverRequired: true, resolved: !resource.unresolved }; }
 function modpackModToResource(mod: BackendModpackMod): CatalogResourceRef { return { publicId: mod.modPublicId || `unresolved:mod:${mod.identifier}`, id: mod.identifier || mod.modSiteId || mod.modName, registry: "mods", kind: "mod", names: {}, resolvedName: mod.modName, iconUrl: mod.iconUrl, unresolved: !mod.modPublicId, rawIdentifier: mod.identifier, source: mod.modSiteId ? { publicId: mod.modPublicId || "", siteId: mod.modSiteId, name: mod.modName } : undefined }; }
 function deduplicateMods(mods: BackendModpackMod[]) { const seen = new Set<string>(); return mods.filter((mod) => { const key = mod.modPublicId || `${mod.provider}:${mod.providerProjectId}:${mod.identifier}`; if (seen.has(key)) return false; seen.add(key); return true; }); }
-function draftFromRecord(record: CreateModpackPayload | BackendModpackRecord): ModpackDraft { return { ...record, packType: record.packType || "native", packagingMethod: record.packagingMethod || "other", searchKeywords: Array.isArray(record.searchKeywords) ? record.searchKeywords.join(", ") : record.searchKeywords, galleryImages: record.galleryImages || [], mods: record.mods || [], authors: record.authors || [], links: record.links || [], tags: record.tags || [], compatibilities: record.compatibilities || [] }; }
-function payloadFromDraft(draft: ModpackDraft): CreateModpackPayload { return { ...draft, searchKeywords: draft.searchKeywords.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean) }; }
+function draftFromRecord(record: CreateModpackPayload | BackendModpackRecord | BackendModpackImportResult): ModpackDraft { return { ...record, defaultLocale: record.defaultLocale === "und" ? "" : record.defaultLocale, packType: record.packType || "native", packagingMethod: record.packagingMethod || "other", searchKeywords: Array.isArray(record.searchKeywords) ? record.searchKeywords.join(", ") : record.searchKeywords, galleryImages: record.galleryImages || [], mods: record.mods || [], authors: record.authors || [], links: record.links || [], tags: record.tags || [], compatibilities: record.compatibilities || [] }; }
+function payloadFromDraft(draft: ModpackDraft): CreateModpackPayload { const editable = { ...draft }; delete editable.importSelection; return { ...editable, searchKeywords: draft.searchKeywords.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean) }; }

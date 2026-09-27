@@ -5,6 +5,8 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
 import { abortMultipartUpload, completeOSSUpload, computeFileSHA256, putFileToOSS, type OSSDirectUploadTicket } from "../_lib/oss-upload";
+import { invalidateStickerCatalog } from "../_lib/sticker-api";
+import { withStickerUploadLifecycle } from "../_lib/sticker-upload-lifecycle.mts";
 
 type AdminSticker = {
   code: string;
@@ -44,7 +46,8 @@ export function AdminStickerPanel({ token }: { token: string }) {
   const [stickerNames, setStickerNames] = useState<Record<string, string>>({});
   const [image, setImage] = useState<File | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (invalidatePublicCatalog = false) => {
+    if (invalidatePublicCatalog) invalidateStickerCatalog();
     setData(await apiRequest<StickerAdminResponse>("/api/v1/admin/stickers", {}, token));
   }, [token]);
   useEffect(() => {
@@ -72,7 +75,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
       }, token);
       setPackCode("");
       setPackNames({});
-      await load();
+      await load(true);
       setMessage(t("admin.stickers.packSaved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.stickers.saveFailed"));
@@ -91,7 +94,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
         sizeBytes: file.size,
         sha256,
         category: `stickers-${pack}`,
-        source: "sticker-upload",
+        source: `sticker-upload:${crypto.randomUUID()}`,
       }),
     }, token);
     if (ticket.uploadRequired !== false) {
@@ -107,21 +110,28 @@ export function AdminStickerPanel({ token }: { token: string }) {
     return record.id;
   }
 
+  async function discardStickerUpload(fileID: string) {
+    await apiRequest(`/api/v1/admin/sticker-upload-files/${encodeURIComponent(fileID)}`, { method: "DELETE" }, token);
+  }
+
   async function createSticker(event: FormEvent) {
     event.preventDefault();
     if (!image) return;
     setBusy(true);
     setMessage("");
     try {
-      const imageFileId = await uploadStickerFile(image, selectedPack);
-      await apiRequest(`/api/v1/admin/sticker-packs/${encodeURIComponent(selectedPack)}/stickers`, {
-        method: "POST",
-        body: JSON.stringify({ code: stickerCode, imageFileId, status: "active", sortOrder: 0, translations: stickerNames }),
-      }, token);
+      await withStickerUploadLifecycle(
+        () => uploadStickerFile(image, selectedPack),
+        (imageFileId) => apiRequest(`/api/v1/admin/sticker-packs/${encodeURIComponent(selectedPack)}/stickers`, {
+          method: "POST",
+          body: JSON.stringify({ code: stickerCode, imageFileId, status: "active", sortOrder: 0, translations: stickerNames }),
+        }, token),
+        discardStickerUpload,
+      );
       setStickerCode("");
       setStickerNames({});
       setImage(null);
-      await load();
+      await load(true);
       setMessage(t("admin.stickers.stickerSaved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.stickers.saveFailed"));
@@ -139,7 +149,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
         translations: pack.translations,
       }),
     }, token);
-    await load();
+    await load(true);
   }
 
   async function toggleSticker(pack: AdminStickerPack, sticker: AdminSticker) {
@@ -151,7 +161,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
         translations: sticker.translations,
       }),
     }, token);
-    await load();
+    await load(true);
   }
 
   async function savePack(pack: AdminStickerPack, form: HTMLFormElement) {
@@ -164,7 +174,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
         method: "PUT",
         body: JSON.stringify({ status: pack.status, sortOrder: Number(values.get("sortOrder")) || 0, translations }),
       }, token);
-      await load();
+      await load(true);
       setMessage(t("admin.stickers.packSaved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.stickers.saveFailed"));
@@ -180,12 +190,20 @@ export function AdminStickerPanel({ token }: { token: string }) {
     setBusy(true);
     setMessage("");
     try {
-      const imageFileId = replacement instanceof File && replacement.size > 0 ? await uploadStickerFile(replacement, pack.code) : "";
-      await apiRequest(`/api/v1/admin/sticker-packs/${pack.code}/stickers/${sticker.code}`, {
+      const update = (imageFileId: string) => apiRequest(`/api/v1/admin/sticker-packs/${pack.code}/stickers/${sticker.code}`, {
         method: "PUT",
         body: JSON.stringify({ imageFileId, status: sticker.status, sortOrder: Number(values.get("sortOrder")) || 0, translations }),
       }, token);
-      await load();
+      if (replacement instanceof File && replacement.size > 0) {
+        await withStickerUploadLifecycle(
+          () => uploadStickerFile(replacement, pack.code),
+          update,
+          discardStickerUpload,
+        );
+      } else {
+        await update("");
+      }
+      await load(true);
       setMessage(t("admin.stickers.stickerSaved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.stickers.saveFailed"));
@@ -197,13 +215,13 @@ export function AdminStickerPanel({ token }: { token: string }) {
   async function deletePack(pack: AdminStickerPack) {
     if (!window.confirm(`${t("common.delete")} ${pack.code}?`)) return;
     await apiRequest(`/api/v1/admin/sticker-packs/${pack.code}`, { method: "DELETE" }, token);
-    await load();
+    await load(true);
   }
 
   async function deleteSticker(pack: AdminStickerPack, sticker: AdminSticker) {
     if (!window.confirm(`${t("common.delete")} ${pack.code}:${sticker.code}?`)) return;
     await apiRequest(`/api/v1/admin/sticker-packs/${pack.code}/stickers/${sticker.code}`, { method: "DELETE" }, token);
-    await load();
+    await load(true);
   }
 
   return (

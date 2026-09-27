@@ -2,6 +2,7 @@ import type { OSSDirectUploadTicket } from "./oss-upload";
 
 export type PersistedModExportUploadTask = {
   key: string;
+  subjectId: string;
   siteId: string;
   targetVersionId: string;
   overwriteExistingImportData: boolean;
@@ -22,14 +23,32 @@ const databaseName = "mcmods-cn-import-uploads";
 const taskStore = "tasks";
 const fileStore = "files";
 
-export function modExportUploadTaskKey(siteId: string, targetVersionId: string, token: string) {
-  return `exporter:${tokenSubject(token)}:${siteId}:${targetVersionId}`;
+export function modExportUploadTaskKey(siteId: string, targetVersionId: string, subjectId: string) {
+  const normalizedSubjectId = normalizeSubjectId(subjectId);
+  return `exporter:${normalizedSubjectId}:${siteId}:${targetVersionId}`;
+}
+
+export function persistedModExportUploadTaskBelongsToSubject(
+  task: PersistedModExportUploadTask,
+  subjectId: string,
+) {
+  let normalizedSubjectId: string;
+  try {
+    normalizedSubjectId = normalizeSubjectId(subjectId);
+  } catch {
+    return false;
+  }
+  return task.subjectId === normalizedSubjectId &&
+    task.key === modExportUploadTaskKey(task.siteId, task.targetVersionId, normalizedSubjectId);
 }
 
 export async function createPersistedModExportUploadTask(
   task: PersistedModExportUploadTask,
   file: File,
 ) {
+  if (!persistedModExportUploadTaskBelongsToSubject(task, task.subjectId)) {
+    throw new Error("The upload task is not bound to a valid user public ID.");
+  }
   await requestPersistentBrowserStorage();
   const database = await openUploadDatabase();
   await transactionPromise(database, "readwrite", [taskStore, fileStore], (transaction) => {
@@ -38,7 +57,7 @@ export async function createPersistedModExportUploadTask(
   });
 }
 
-export async function readPersistedModExportUploadTask(key: string) {
+export async function readPersistedModExportUploadTask(key: string, subjectId: string) {
   const database = await openUploadDatabase();
   const transaction = database.transaction([taskStore, fileStore], "readonly");
   const taskRequest = transaction.objectStore(taskStore).get(key);
@@ -48,29 +67,37 @@ export async function readPersistedModExportUploadTask(key: string) {
     requestPromise<PersistedModExportUploadFile | undefined>(fileRequest),
     transactionCompletion(transaction),
   ]);
-  if (!task || !fileRecord?.file) return undefined;
+  if (!task || !fileRecord?.file || !persistedModExportUploadTaskBelongsToSubject(task, subjectId)) return undefined;
   return { task, file: fileRecord.file };
 }
 
 export async function updatePersistedModExportUploadTask(
   key: string,
-  patch: Partial<Omit<PersistedModExportUploadTask, "key" | "siteId" | "targetVersionId" | "createdAt">>,
+  subjectId: string,
+  patch: Partial<Omit<PersistedModExportUploadTask, "key" | "subjectId" | "siteId" | "targetVersionId" | "createdAt">>,
 ) {
   const database = await openUploadDatabase();
   const transaction = database.transaction(taskStore, "readwrite");
   const completion = transactionCompletion(transaction);
   const store = transaction.objectStore(taskStore);
   const current = await requestPromise<PersistedModExportUploadTask | undefined>(store.get(key));
-  if (current) store.put({ ...current, ...patch, updatedAt: Date.now() });
+  if (current && persistedModExportUploadTaskBelongsToSubject(current, subjectId)) {
+    store.put({ ...current, ...patch, subjectId: current.subjectId, updatedAt: Date.now() });
+  }
   await completion;
 }
 
-export async function deletePersistedModExportUploadTask(key: string) {
+export async function deletePersistedModExportUploadTask(key: string, subjectId: string) {
   const database = await openUploadDatabase();
-  await transactionPromise(database, "readwrite", [taskStore, fileStore], (transaction) => {
-    transaction.objectStore(taskStore).delete(key);
+  const transaction = database.transaction([taskStore, fileStore], "readwrite");
+  const completion = transactionCompletion(transaction);
+  const taskStoreHandle = transaction.objectStore(taskStore);
+  const current = await requestPromise<PersistedModExportUploadTask | undefined>(taskStoreHandle.get(key));
+  if (current && persistedModExportUploadTaskBelongsToSubject(current, subjectId)) {
+    taskStoreHandle.delete(key);
     transaction.objectStore(fileStore).delete(key);
-  });
+  }
+  await completion;
 }
 
 function openUploadDatabase() {
@@ -116,15 +143,12 @@ async function transactionPromise(
   await transactionCompletion(transaction);
 }
 
-function tokenSubject(token: string) {
-  try {
-    const payload = token.split(".")[1] || "";
-    const normalized = payload.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
-    const value = JSON.parse(atob(normalized)) as { sub?: string | number };
-    return String(value.sub || "session").replaceAll(/[^A-Za-z0-9_-]/g, "_");
-  } catch {
-    return "session";
+function normalizeSubjectId(subjectId: string) {
+  const normalized = subjectId.trim().toLowerCase();
+  if (!/^[a-z0-9]{9}$/.test(normalized)) {
+    throw new Error("A valid authenticated user public ID is required for upload recovery.");
   }
+  return normalized;
 }
 
 async function requestPersistentBrowserStorage() {

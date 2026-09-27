@@ -70,7 +70,9 @@ export type CreatorDetail = {
     avatarUrl: string;
   } | null;
   claimStatus?: "pending" | "approved" | "rejected" | "revoked";
-  canEdit: boolean;
+  canEditProfile: boolean;
+  canManageMembers: boolean;
+  canCreateRoles: boolean;
   canClaim: boolean;
   publishedRevisionId?: string;
   avatarFileId?: string;
@@ -88,22 +90,24 @@ export type CreatorSnapshot = {
   members: Array<{ creatorId: string; roleId: string; title: string }>;
 };
 
+export type CreatorProfileSnapshot = Omit<CreatorSnapshot, "members">;
+
 export type CreatorImportResult = {
   kind: CreatorKind;
   name: string;
   avatarUrl: string;
-  avatarFileId?: string;
   links: CreatorLink[];
   members: Array<{
-    creatorId: string;
     kind: "author";
     name: string;
     avatarUrl: string;
-    roleId: string;
-    role: string;
+    profileUrl: string;
+    externalRole: string;
+    suggestedRoleCode: string;
+    suggestedRole: string;
+    permissionGranting: boolean;
     title: string;
   }>;
-  createdMembers: number;
 };
 
 type CreatorClaimAttachment = {
@@ -125,6 +129,13 @@ export type CreatorClaim = {
   createdAt: string;
 };
 
+export type CreatorClaimPage = {
+  items: CreatorClaim[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
 export type Currency = {
   publicId: string;
   code: string;
@@ -137,10 +148,12 @@ export type Currency = {
   displayOrder: number;
 };
 
+export type ShopItemType = "profile_background" | "project_heat_boost" | "server_heat_boost";
+
 export type ShopItem = {
   publicId: string;
   code: string;
-  itemType: string;
+  itemType: ShopItemType;
   name: string;
   description: string;
   icon: string;
@@ -171,7 +184,7 @@ export type EconomyOverview = {
   inventory: Array<{
     publicId: string;
     code: string;
-    itemType: string;
+    itemType: ShopItemType;
     name: string;
     icon: string;
     quantity: number;
@@ -196,6 +209,16 @@ export type EconomyConfig = {
 export type LevelConfig = {
   roleTrackCode: string;
   levelThresholds: number[];
+  version?: number;
+  recalculation?: {
+    configVersion: number;
+    status: "queued" | "processing" | "completed" | "superseded" | "dead";
+    cursorUserId: number;
+    processedCount: number;
+    attempts: number;
+    maxAttempts: number;
+    lastError?: string;
+  };
 };
 
 export type TaskDefinition = {

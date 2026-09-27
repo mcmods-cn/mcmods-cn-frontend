@@ -6,6 +6,7 @@ import {
   normalizeCatalogResourceVersions as normalizeResourceVersions,
 } from "./api-normalizers";
 import type { CatalogResourceRef, EditResult, LocalizedContentFields, LocalizationVersion, ReviewStatus } from "./editor-types";
+import { parseLocalizedContentVersions, parsePublishedReviewStatus } from "./localization-boundary.mts";
 
 export type CatalogEditorLocalization = LocalizationVersion<LocalizedContentFields>;
 
@@ -127,8 +128,8 @@ function normalizeTagDocument(value: unknown): CatalogTagEditorDocument {
     canonicalId: text(source.canonicalId),
     defaultLocale: text(source.defaultLocale) || "en-US",
     publishedRevisionId: text(source.publishedRevisionId) || undefined,
-    reviewStatus: normalizeReviewStatus(source.reviewStatus),
-    localizations: normalizeLocalizations(source.localizations),
+    reviewStatus: parsePublishedReviewStatus(source.reviewStatus),
+    localizations: parseLocalizedContentVersions(source.localizations),
     members: normalizeResources(source.members),
   };
 }
@@ -140,34 +141,13 @@ function normalizeRecipeTypeDocument(value: unknown): CatalogRecipeTypeEditorDoc
     canonicalId: text(source.canonicalId),
     defaultLocale: text(source.defaultLocale) || "en-US",
     publishedRevisionId: text(source.publishedRevisionId) || undefined,
-    reviewStatus: normalizeReviewStatus(source.reviewStatus),
-    localizations: normalizeLocalizations(source.localizations),
+    reviewStatus: parsePublishedReviewStatus(source.reviewStatus),
+    localizations: parseLocalizedContentVersions(source.localizations),
     catalysts: normalizeResources(source.catalysts),
     definition: record(source.definition),
     templateCount: number(source.templateCount),
     recipeCount: number(source.recipeCount),
   };
-}
-
-function normalizeLocalizations(value: unknown): CatalogEditorLocalization[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((entry) => {
-    const source = record(entry);
-    return {
-      locale: text(source.locale),
-      fields: {
-        name: text(source.name),
-        summary: text(source.summary),
-        contentMarkdown: text(source.contentMarkdown),
-      },
-      revisionId: text(source.publishedRevisionId) || undefined,
-      provenance: normalizeProvenance(source.provenance),
-      reviewStatus: normalizeReviewStatus(source.reviewStatus),
-      generatedFromLocale: text(source.sourceLocale) || undefined,
-      editable: source.editable !== false,
-      updatedAt: text(source.updatedAt) || undefined,
-    };
-  }).filter((entry) => entry.locale);
 }
 
 function normalizeResources(value: unknown): CatalogResourceRef[] {
@@ -199,17 +179,9 @@ function normalizeEditResult(value: RawEditResult): EditResult {
     objectPublicId: value.objectPublicId || "",
     revisionId: text(value.revisionId) || undefined,
     changeRequestId: text(value.changeRequestId),
-    reviewStatus: value.reviewStatus === "approved" || value.reviewStatus === "rejected" ? value.reviewStatus : "pending",
+    reviewStatus: parsePublishedReviewStatus(value.reviewStatus),
     activityEventId: text(value.activityEventId),
   };
-}
-
-function normalizeProvenance(value: unknown): CatalogEditorLocalization["provenance"] {
-  return value === "original" || value === "import" || value === "ai" || value === "human_corrected" ? value : "human";
-}
-
-function normalizeReviewStatus(value: unknown): CatalogEditorLocalization["reviewStatus"] {
-  return value === "pending" || value === "rejected" || value === "draft" ? value : "approved";
 }
 
 function kindFromRegistry(value: string) {

@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { API_BASE_URL } from "../_lib/api";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
@@ -23,15 +22,15 @@ import { ProjectAutoUpdateSettings } from "./project-auto-update-settings";
 import { UnifiedReportButton } from "./unified-report-dialog";
 import { ProjectFollowButton } from "./project-follow-button";
 import { ProjectEditorApplicationButton } from "./project-editor-application";
+import { useProjectDetailTab } from "./use-project-detail-tab";
 
-type DetailTab = "introduction" | "relationships" | "data" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
+const MOD_DETAIL_TABS = ["introduction", "relationships", "data", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as const;
+type DetailTab = (typeof MOD_DETAIL_TABS)[number];
 
 export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
   const { locale, t } = useI18n();
   const { token, user } = useAuthSnapshot();
-  const searchParams = useSearchParams();
-  const [selectedTab, setSelectedTab] = useState<DetailTab>();
-  const tab = selectedTab ?? (searchParams.get("tab") === "changelog" ? "changelog" : "introduction");
+  const { tab, selectTab } = useProjectDetailTab<DetailTab>(MOD_DETAIL_TABS, "introduction");
   const isChinese = locale.startsWith("zh");
   const displayName = isChinese && mod.localizedName ? mod.localizedName : mod.name;
   const secondaryName = displayName === mod.name ? mod.localizedName : mod.name;
@@ -73,7 +72,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
         <div className="mt-5 lg:hidden"><ModSidebar mod={mod} locale={locale} /></div>
 
         <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("mods.detail.sections")}>
-          {(["introduction", "relationships", "data", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as DetailTab[]).map((item) => <button key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setSelectedTab(item)}><strong className="block whitespace-nowrap">{t(`mods.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}
+          {MOD_DETAIL_TABS.map((item) => <button aria-current={tab === item ? "page" : undefined} key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => selectTab(item)}><strong className="block whitespace-nowrap">{t(`mods.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}
         </nav>
 
         <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">

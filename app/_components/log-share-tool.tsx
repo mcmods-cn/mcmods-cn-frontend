@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { createFileLogShares, createPastedLogShare, deleteLogShare, loadMyLogShares, logShareURL, type CreatedLogShare, type LogShareHistoryItem } from "../_lib/log-share-api";
+import { mergeLogUploadTasks, processLogUploadBatch, type LogUploadTask } from "../_lib/log-upload-batch.mts";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { FileDropZone } from "./file-drop-zone";
 
@@ -17,7 +18,7 @@ export function LogShareTool() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [retentionDays, setRetentionDays] = useState(30);
-  const [files, setFiles] = useState<File[]>([]);
+  const [fileTasks, setFileTasks] = useState<Array<LogUploadTask<File>>>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [results, setResults] = useState<CreatedLogShare[]>([]);
@@ -59,25 +60,30 @@ export function LogShareTool() {
   }
 
   function addFiles(selected: File[]) {
-    setFiles((current) => mergeUniqueFiles(current, selected, maximumLogFiles));
+    setFileTasks((current) => mergeLogUploadTasks(current, selected, fileIdentity, maximumLogFiles));
   }
 
   async function submitFiles() {
     if (!token || !user) { setMessage("文件模式仅供已登录用户使用。"); return; }
-    if (!files.length || files.length > maximumLogFiles) { setMessage(`请选择 1 至 ${maximumLogFiles} 个 .zip、.log 或 .txt 文件。`); return; }
+    if (!fileTasks.length || fileTasks.length > maximumLogFiles) { setMessage(`请选择 1 至 ${maximumLogFiles} 个 .zip、.log 或 .txt 文件。`); return; }
     setBusy(true); setMessage(""); setResults([]);
     try {
-      const uploadedIds: string[] = [];
-      for (const file of files) {
-        if (![".zip", ".log", ".txt"].some((extension) => file.name.toLowerCase().endsWith(extension))) throw new Error(`${file.name}：不支持的文件类型`);
-        const uploaded = await uploadUserFileToOSS(file, token, "log_share");
-        uploadedIds.push(uploaded.id);
+      const completed = await processLogUploadBatch(fileTasks, {
+        upload: (file) => uploadUserFileToOSS(file, token, "log_share"),
+        createShares: (fileIds) => createFileLogShares(fileIds, retentionDays, token),
+        onChange: setFileTasks,
+      });
+      setFileTasks(completed);
+      setResults(completed.map(logUploadTaskResult));
+      const readyCount = completed.filter((task) => task.stage === "ready").length;
+      const unfinishedCount = completed.length - readyCount;
+      if (readyCount) await refreshHistory();
+      if (!unfinishedCount) {
+        setFileTasks([]);
+        setMessage("全部文件已计入个人储存；公开分享只包含系统生成的脱敏副本。");
+      } else {
+        setMessage(`本批 ${readyCount} 个已完成，${unfinishedCount} 个未完成；重试会复用已上传文件，不会重复占用储存。`);
       }
-      const response = await createFileLogShares(uploadedIds, retentionDays, token);
-      setResults(response.items);
-      setFiles([]);
-      setMessage("文件已计入个人储存；公开分享只包含系统生成的脱敏副本。");
-      await refreshHistory();
     } catch (error) { setMessage(errorText(error)); } finally { setBusy(false); }
   }
 
@@ -120,22 +126,22 @@ export function LogShareTool() {
               disabled={!token || busy}
               hint={token ? `支持批量选择，单次最多 ${maximumLogFiles} 个文件` : "登录后可以拖动或选择日志文件"}
               multiple
-              title={files.length ? `已选择 ${files.length} 个文件，可继续拖入或点击添加` : "拖动 .zip、.log 或 .txt 到这里，或点击选择"}
+              title={fileTasks.length ? `已选择 ${fileTasks.length} 个文件，可继续拖入或点击添加` : "拖动 .zip、.log 或 .txt 到这里，或点击选择"}
               onFiles={addFiles}
             />
-            {files.length ? (
+            {fileTasks.length ? (
               <ul className="grid gap-2" aria-label="已选择的日志文件">
-                {files.map((file, index) => (
+                {fileTasks.map((task, index) => (
                   <li
                     className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] px-3 py-2"
-                    key={fileIdentity(file)}
+                    key={task.key}
                   >
-                    <span className="min-w-0 truncate font-medium">{file.name}</span>
+                    <span className="min-w-0"><span className="block truncate font-medium">{task.name}</span><small className={task.error ? "text-[var(--red)]" : "text-[var(--muted)]"}>{task.error || logUploadTaskStatus(task.stage)}</small></span>
                     <button
                       className="shrink-0 text-[var(--red)] hover:underline"
                       disabled={busy}
                       type="button"
-                      onClick={() => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                      onClick={() => setFileTasks((current) => current.filter((_, itemIndex) => itemIndex !== index))}
                     >
                       移除
                     </button>
@@ -161,12 +167,34 @@ export function LogShareTool() {
 function errorText(error: unknown) { return error instanceof Error ? error.message : String(error); }
 function formatDate(value: string) { return value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "-"; }
 
-function mergeUniqueFiles(current: File[], selected: File[], limit: number) {
-  const unique = new Map(current.map((file) => [fileIdentity(file), file]));
-  for (const file of selected) unique.set(fileIdentity(file), file);
-  return Array.from(unique.values()).slice(0, limit);
-}
-
 function fileIdentity(file: File) {
   return `${file.name}\u0000${file.size}\u0000${file.lastModified}`;
+}
+
+function logUploadTaskResult(task: LogUploadTask<File>): CreatedLogShare {
+  if (task.share) {
+    return {
+      publicCode: task.share.publicCode || "",
+      url: task.share.url || "",
+      status: task.share.status,
+      expiresAt: task.share.expiresAt || "",
+      redactionVersion: task.share.redactionVersion || 0,
+      redactionCounts: task.share.redactionCounts || {},
+      entryCount: task.share.entryCount || 0,
+      fileId: task.uploadedFileId,
+      error: task.share.error,
+    };
+  }
+  return {
+    publicCode: "", url: "", status: task.stage, expiresAt: "", redactionVersion: 0,
+    redactionCounts: {}, entryCount: 0, fileId: task.uploadedFileId || task.key,
+    error: task.error || `${task.name}：尚未完成`,
+  };
+}
+
+function logUploadTaskStatus(stage: LogUploadTask<File>["stage"]) {
+  return ({
+    pending: "等待上传", invalid: "本地校验失败", uploading: "正在上传", uploaded: "上传完成",
+    creating: "正在生成脱敏分享", processing: "后台处理中", ready: "脱敏完成", failed: "处理失败，可重试",
+  } satisfies Record<LogUploadTask<File>["stage"], string>)[stage];
 }

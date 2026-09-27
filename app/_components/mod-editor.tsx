@@ -21,6 +21,7 @@ import {
   MinecraftVersionConfig,
 } from "../_lib/mod-api";
 import { loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
+import { minecraftLoaderCodeKey } from "../_lib/minecraft-version-selection.mts";
 import {
   environmentOptions,
   licenseOptions,
@@ -32,7 +33,8 @@ import {
 } from "../_lib/mod-catalog-data";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import type { Locale } from "../_lib/i18n-provider";
-import { uploadUserFileToOSS } from "../_lib/oss-upload";
+import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
+import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { CreatorPicker } from "./creator-picker";
@@ -47,6 +49,7 @@ import { useAutoDraft } from "../_lib/use-auto-draft";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { Field, FormSection, SelectField } from "./project-editor-fields";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
+import { OSSUploadBatchStatus } from "./oss-upload-batch-status";
 
 type ModDraft = Omit<CreateModPayload, "searchKeywords"> & { searchKeywords: string };
 
@@ -104,6 +107,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   const [minecraftConfig, setMinecraftConfig] = useState<MinecraftVersionConfig>(() => fallbackMinecraftConfig());
   const [selectedLocale, setSelectedLocale] = useState<Locale>(locale);
   const [galleryUploading, setGalleryUploading] = useState(false);
+  const [galleryUploadTasks, setGalleryUploadTasks] = useState<OSSUploadBatchTask<File, OSSFileRecord>[]>([]);
   const [iconCropFile, setIconCropFile] = useState<File>();
   const [iconUploading, setIconUploading] = useState(false);
   const [iconPreviewUrl, setIconPreviewUrl] = useState("");
@@ -230,7 +234,6 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           projectKey: `mod:${snapshot.siteId}`,
           projectTitle: snapshot.primaryName,
           targetUrl: `/mods/${snapshot.siteId}`,
-          reviewStatus: revision.status === "approved" ? "approved" : "pending",
           changeRequestId: revision.changeRequestId,
         }).catch(() => undefined);
         router.push(`/mods/${revision.status === "approved" ? snapshot.siteId : siteId}/history`);
@@ -240,7 +243,6 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           projectKey: `mod:${created.siteId}`,
           projectTitle: created.primaryName,
           targetUrl: `/mods/${created.siteId}`,
-          reviewStatus: created.reviewStatus === "approved" ? "approved" : "pending",
           changeRequestId: created.changeRequestId,
         }).catch(() => undefined);
         router.push(`/mods/${created.siteId}`);
@@ -253,19 +255,30 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   }
 
   async function uploadGalleryImages(files: File[]) {
-    if (!files.length || !token) return;
-    const images = [...files].filter((file) => file.type.startsWith("image/")).slice(0, Math.max(0, 32 - draft.galleryImages.length));
-    if (!images.length) return;
+    if (!files.length || !token || galleryUploading) return;
+    const tasks = createOSSUploadBatchTasks<File, OSSFileRecord>(files, {
+      capacity: Math.max(0, 32 - draft.galleryImages.length),
+      capacityError: t("uploadBatch.capacityReached"),
+      identity: (file, index) => `${file.name}:${file.size}:${file.lastModified}:${index}`,
+      validate: (file) => file.type.startsWith("image/") ? "" : t("uploadBatch.imageOnly"),
+    });
+    await processGalleryUploadTasks(tasks);
+  }
+
+  async function processGalleryUploadTasks(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string) {
+    if (!token || galleryUploading) return;
     setGalleryUploading(true);
+    setMessage("");
     try {
-      const uploaded: BackendModGalleryImage[] = [];
-      for (const file of images) {
-        const record = await uploadUserFileToOSS(file, token, `mod_gallery:${siteId || "draft"}`);
-        uploaded.push({ fileId: record.id, name: record.originalName || file.name, contentType: record.contentType, sizeBytes: record.sizeBytes, url: record.accessUrl });
-      }
-      setDraft((current) => ({ ...current, galleryImages: [...current.galleryImages, ...uploaded].slice(0, 32) }));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.submission.galleryUploadFailed"));
+      const result = await processOSSUploadBatch(tasks, {
+        upload: (file) => uploadUserFileToOSS(file, token, `mod_gallery:${siteId || "draft"}`),
+        shouldProcess: retryKey ? (task) => task.key === retryKey : undefined,
+        onChange: setGalleryUploadTasks,
+        onUploaded: (task, record) => setDraft((current) => current.galleryImages.some((image) => image.fileId === record.id)
+          ? current
+          : { ...current, galleryImages: [...current.galleryImages, { fileId: record.id, name: record.originalName || task.file.name, contentType: record.contentType, sizeBytes: record.sizeBytes, url: record.accessUrl } satisfies BackendModGalleryImage].slice(0, 32) }),
+      });
+      if (result.some((task) => task.stage === "failed")) setMessage(t("mods.submission.galleryUploadFailed"));
     } finally {
       setGalleryUploading(false);
     }
@@ -406,7 +419,18 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.relationships")} description={t("mods.submission.sections.relationshipsHint")}>
-          <RelationshipGroupEditor groups={draft.relationshipGroups} config={minecraftConfig} compatibilities={draft.compatibilities} currentSiteId={siteId} token={token} onChange={(relationshipGroups) => setDraft({ ...draft, relationshipGroups })} />
+          <ReadOnlyIncomingRelationshipGroups groups={draft.relationshipGroups.filter((group) => group.direction === "incoming")} />
+          <RelationshipGroupEditor
+            groups={draft.relationshipGroups.filter((group) => group.direction !== "incoming")}
+            config={minecraftConfig}
+            compatibilities={draft.compatibilities}
+            currentSiteId={siteId}
+            token={token}
+            onChange={(relationshipGroups) => setDraft({
+              ...draft,
+              relationshipGroups: [...relationshipGroups, ...draft.relationshipGroups.filter((group) => group.direction === "incoming")],
+            })}
+          />
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.platformIDs")}>
@@ -418,7 +442,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.body")} description={t("mods.submission.sections.bodyHint")}>
-          <ToolsPlayground embedded editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} editorDescription={t("mods.submission.sections.bodyHint")} value={localized.contentMarkdown} onChange={(contentMarkdown) => setDraft((current) => updateModLocalization(current, selectedLocale, { contentMarkdown }))} />
+          <ToolsPlayground embedded documentId={`mod:${siteId || "draft"}:${selectedLocale}:content`} editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} editorDescription={t("mods.submission.sections.bodyHint")} value={localized.contentMarkdown} onChange={(contentMarkdown) => setDraft((current) => updateModLocalization(current, selectedLocale, { contentMarkdown }))} />
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.gallery")} description={t("mods.submission.sections.galleryHint")}>
@@ -431,6 +455,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
             title={galleryUploading ? t("mods.submission.actions.uploadingGallery") : t("mods.submission.actions.uploadGallery")}
             onFiles={(files) => void uploadGalleryImages(files)}
           />
+          <OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={(key) => void processGalleryUploadTasks(galleryUploadTasks, key)} />
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {draft.galleryImages.map((image, index) => <figure className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]" key={`${image.publicId ?? "new"}-${image.fileId}`}>
             {image.url ? <Image unoptimized alt={image.name || `Gallery ${index + 1}`} className="aspect-video w-full object-cover" height={360} src={apiAssetURL(image.url)} width={640} /> : <div className="grid aspect-video place-items-center text-sm text-[var(--muted)]">{image.name}</div>}
@@ -493,15 +518,16 @@ export function ModLinkEditor({ links, onChange }: { links: BackendModRecord["li
 
 export function CompatibilityEditor({ config, value, onChange }: { config: MinecraftVersionConfig; value: BackendModCompatibility[]; onChange: (value: BackendModCompatibility[]) => void }) {
   const { t } = useI18n();
-  const selectedLoaders = new Set(value.map((item) => item.loader));
+  const selectedLoaders = new Set(value.map((item) => minecraftLoaderCodeKey(item.loader)));
   function toggleLoader(loader: string) {
-    if (selectedLoaders.has(loader)) {
-      onChange(value.filter((item) => item.loader !== loader));
+    const loaderKey = minecraftLoaderCodeKey(loader);
+    if (selectedLoaders.has(loaderKey)) {
+      onChange(value.filter((item) => minecraftLoaderCodeKey(item.loader) !== loaderKey));
       return;
     }
     onChange([...value, { loader, versions: [] }]);
   }
-  return <div className="grid gap-4"><div><h3 className="text-sm font-black">{t("mods.submission.compatibility.loaders")}</h3><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">{config.loaders.map((loader) => <label key={loader.code} className="flex cursor-pointer items-center gap-2 text-sm font-semibold"><input className="h-4 w-4 accent-[var(--accent)]" type="checkbox" checked={selectedLoaders.has(loader.code)} onChange={() => toggleLoader(loader.code)} />{loader.name}</label>)}</div></div>{value.map((compatibility) => { const loader = config.loaders.find((item) => item.code === compatibility.loader); const versions = loader?.versions ?? config.versions.map((item) => item.code); return <section key={compatibility.loader} className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-black">{loader?.name ?? compatibility.loader}</h3><span className="text-xs font-bold text-[var(--muted)]">{t("mods.submission.compatibility.selectedCount", { count: compatibility.versions.length })}</span></div><MinecraftVersionPicker className="mt-3 w-full" config={config} optionCodes={versions} values={compatibility.versions} onChange={(selectedVersions) => onChange(value.map((item) => item.loader === compatibility.loader ? { ...item, versions: selectedVersions } : item))} /></section>; })}{value.length === 0 ? <p className="rounded-lg border border-dashed border-[var(--line)] p-5 text-center text-sm font-semibold text-[var(--muted)]">{t("mods.submission.compatibility.empty")}</p> : null}</div>;
+  return <div className="grid gap-4"><div><h3 className="text-sm font-black">{t("mods.submission.compatibility.loaders")}</h3><div className="mt-2 flex flex-wrap gap-x-4 gap-y-2 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3">{config.loaders.map((loader) => <label key={loader.code} className="flex cursor-pointer items-center gap-2 text-sm font-semibold"><input className="h-4 w-4 accent-[var(--accent)]" type="checkbox" checked={selectedLoaders.has(minecraftLoaderCodeKey(loader.code))} onChange={() => toggleLoader(loader.code)} />{loader.name}</label>)}</div></div>{value.map((compatibility) => { const loader = config.loaders.find((item) => minecraftLoaderCodeKey(item.code) === minecraftLoaderCodeKey(compatibility.loader)); const versions = loader?.versions ?? config.versions.map((item) => item.code); return <section key={compatibility.loader} className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><div className="flex flex-wrap items-center justify-between gap-3"><h3 className="font-black">{loader?.name ?? compatibility.loader}</h3><span className="text-xs font-bold text-[var(--muted)]">{t("mods.submission.compatibility.selectedCount", { count: compatibility.versions.length })}</span></div><MinecraftVersionPicker className="mt-3 w-full" config={config} optionCodes={versions} values={compatibility.versions} onChange={(selectedVersions) => onChange(value.map((item) => item.loader === compatibility.loader ? { ...item, versions: selectedVersions } : item))} /></section>; })}{value.length === 0 ? <p className="rounded-lg border border-dashed border-[var(--line)] p-5 text-center text-sm font-semibold text-[var(--muted)]">{t("mods.submission.compatibility.empty")}</p> : null}</div>;
 }
 
 function RelationshipGroupEditor({ groups, config, compatibilities, currentSiteId = "", token = "", onChange }: { groups: BackendModRelationshipGroup[]; config: MinecraftVersionConfig; compatibilities: BackendModCompatibility[]; currentSiteId?: string; token?: string; onChange: (groups: BackendModRelationshipGroup[]) => void }) {
@@ -533,7 +559,7 @@ function RelationshipGroupEditor({ groups, config, compatibilities, currentSiteI
       <div className="flex items-center justify-between gap-3"><h4 className="font-black">{t("mods.submission.relationshipCondition", { number: groupIndex + 1 })}</h4><button className="button-secondary focus-ring" type="button" onClick={() => onChange(groups.filter((_, index) => index !== groupIndex))}>{t("common.delete")}</button></div>
       <div className="mt-3 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
         <input className="field" value={group.label} placeholder={t("mods.submission.placeholders.conditionLabel")} onChange={(event) => onChange(replaceAt(groups, groupIndex, { ...group, label: event.target.value }))} />
-        <select className="field" value={group.loader} onChange={(event) => { const loader = event.target.value; const nextAllowed = relationshipVersionOptions(loader, compatibilities, config); onChange(replaceAt(groups, groupIndex, { ...group, loader, minecraftVersions: group.minecraftVersions.filter((version) => nextAllowed.includes(version)) })); }}><option value="">{t("mods.submission.allSupportedLoaders")}</option>{allowedLoaders.map((loader) => <option key={loader} value={loader}>{config.loaders.find((item) => item.code === loader)?.name ?? loader}</option>)}</select>
+        <select className="field" value={group.loader} onChange={(event) => { const loader = event.target.value; const nextAllowed = relationshipVersionOptions(loader, compatibilities, config); onChange(replaceAt(groups, groupIndex, { ...group, loader, minecraftVersions: group.minecraftVersions.filter((version) => nextAllowed.includes(version)) })); }}><option value="">{t("mods.submission.allSupportedLoaders")}</option>{allowedLoaders.map((loader) => <option key={loader} value={loader}>{config.loaders.find((item) => minecraftLoaderCodeKey(item.code) === minecraftLoaderCodeKey(loader))?.name ?? loader}</option>)}</select>
         <MinecraftVersionPicker config={config} emptyLabelKey="mods.submission.allSupportedMinecraftVersions" optionCodes={allowedVersions} values={group.minecraftVersions} onChange={(minecraftVersions) => onChange(replaceAt(groups, groupIndex, { ...group, minecraftVersions }))} />
         <input className="field" value={group.modVersion} placeholder={t("mods.submission.placeholders.modVersion")} onChange={(event) => onChange(replaceAt(groups, groupIndex, { ...group, modVersion: event.target.value }))} />
       </div>
@@ -551,6 +577,18 @@ function RelationshipGroupEditor({ groups, config, compatibilities, currentSiteI
       onConfirm={insertRelationships}
     />
   </div>;
+}
+
+function ReadOnlyIncomingRelationshipGroups({ groups }: { groups: BackendModRelationshipGroup[] }) {
+  const { t } = useI18n();
+  if (!groups.length) return null;
+  return <div className="grid gap-3">{groups.map((group, groupIndex) => <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" key={`incoming-${groupIndex}`}>
+    <h4 className="font-black">{group.label || [group.loader, group.minecraftVersions.join(", "), group.modVersion].filter(Boolean).join(" / ") || t("mods.submission.relationshipCondition", { number: groupIndex + 1 })}</h4>
+    <div className="mt-3 grid gap-2">{group.relationships.map((relationship, relationshipIndex) => <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm" key={`${relationship.type}-${relationshipIndex}`}>
+      <span className="font-bold">{t(`mods.submission.incomingRelationshipTypes.${relationship.type}`)}</span>
+      <span>{relationship.relatedModName || relationship.relatedModIdentifier}</span>
+    </div>)}</div>
+  </section>)}</div>;
 }
 
 function relationshipPickerResource(relationship: BackendModRelationship, locale: string): CatalogResourceRef {
@@ -615,7 +653,7 @@ function payloadFromDraft(draft: ModDraft): CreateModPayload {
     tags: draft.tags,
     authors: draft.authors,
     links: draft.links,
-    relationshipGroups: draft.relationshipGroups,
+    relationshipGroups: draft.relationshipGroups.filter((group) => group.direction !== "incoming"),
     galleryImages: draft.galleryImages.map(({ publicId, fileId }) => ({ publicId, fileId })),
   };
 }
@@ -688,11 +726,11 @@ function modSupportedVersionOptions(draft: ModDraft, config: MinecraftVersionCon
 function relationshipVersionOptions(loader: string, compatibilities: BackendModCompatibility[], config: MinecraftVersionConfig) {
   if (compatibilities.length) {
     const selected = loader
-      ? compatibilities.find((item) => item.loader === loader)?.versions ?? []
+      ? compatibilities.find((item) => minecraftLoaderCodeKey(item.loader) === minecraftLoaderCodeKey(loader))?.versions ?? []
       : [...new Set(compatibilities.flatMap((item) => item.versions))];
     if (selected.length) return selected;
   }
-  if (loader) return config.loaders.find((item) => item.code === loader)?.versions ?? config.versions.map((item) => item.code);
+  if (loader) return config.loaders.find((item) => minecraftLoaderCodeKey(item.code) === minecraftLoaderCodeKey(loader))?.versions ?? config.versions.map((item) => item.code);
   return config.versions.map((item) => item.code);
 }
 

@@ -9,7 +9,7 @@ export type UserDraftSummary = {
   title: string;
   editUrl: string;
   targetUrl: string;
-  status: "draft" | "reviewing" | "approved";
+  status: "draft" | "reviewing" | "approved" | "rejected";
   statusAt: string;
   submittedAt?: string;
   expiresAt: string;
@@ -23,11 +23,17 @@ export type UserDraftDetail<T extends object> = UserDraftSummary & {
 
 export type UserDraftList = {
   items: UserDraftSummary[];
+  category: UserDraftCategory;
+  nextCursor: string;
   retentionSeconds: number;
 };
 
-export function loadUserDrafts(token: string) {
-  return apiRequest<UserDraftList>("/api/v1/users/me/drafts", { cache: "no-store" }, token);
+export type UserDraftCategory = "active" | "completed";
+
+export function loadUserDrafts(token: string, category: UserDraftCategory, cursor = "") {
+  const query = new URLSearchParams({ category, limit: "30" });
+  if (cursor) query.set("cursor", cursor);
+  return apiRequest<UserDraftList>(`/api/v1/users/me/drafts?${query}`, { cache: "no-store" }, token);
 }
 
 export function loadUserDraft<T extends object>(id: string, token: string) {
@@ -57,7 +63,6 @@ export function completeUserDraft<T extends object>(request: {
   title: string;
   editUrl: string;
   targetUrl: string;
-  reviewStatus: "pending" | "approved";
   changeRequestId?: string;
   reviewTargetType?: "server";
   reviewTargetPublicId?: string;

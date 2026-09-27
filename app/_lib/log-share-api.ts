@@ -4,10 +4,16 @@ export type LogShareEntry = {
   index: number;
   name: string;
   contentType: string;
-  text: string;
   byteSize: number;
   lineCount: number;
   checksum: string;
+};
+
+export type LogShareChunk = {
+  text: string;
+  characterOffset: number;
+  hasMore: boolean;
+  nextCursor: string;
 };
 
 export type LogShare = {
@@ -63,6 +69,16 @@ export function createFileLogShares(fileIds: string[], retentionDays: number, to
 
 export function loadPublicLogShare(code: string, signal?: AbortSignal) {
   return apiRequest<LogShare>(`/api/v1/log-shares/s/${encodeURIComponent(code)}`, { cache: "no-store", signal });
+}
+
+export function loadPublicLogShareEntry(code: string, entryIndex: number, options: { cursor?: string; signal?: AbortSignal } = {}) {
+  const parameters = new URLSearchParams();
+  if (options.cursor) parameters.set("cursor", options.cursor);
+  const query = parameters.size ? `?${parameters}` : "";
+  return apiRequest<LogShareChunk>(`/api/v1/log-shares/s/${encodeURIComponent(code)}/entries/${entryIndex}/content${query}`, {
+    cache: "no-store",
+    signal: options.signal,
+  });
 }
 
 export async function loadMyLogShares(token: string, options: { query?: string; sourceType?: string; status?: string; direction?: "asc" | "desc"; limit?: number; offset?: number } = {}) {

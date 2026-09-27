@@ -1,16 +1,15 @@
-import { API_BASE_URL, apiRequest } from "./api";
+import { API_BASE_URL, ApiError, apiRequest, backendFetch } from "./api";
 
 export type FavoriteCollection = {
   id: string;
   name: string;
   isDefault: boolean;
   isPublic: boolean;
-  itemCount: number;
 };
 
 export type FavoriteCollectionItem = {
   entityType: string;
-  entityKey: string;
+  entityPublicId: string;
   metadata: {
     primaryName?: string;
     secondaryName?: string;
@@ -21,7 +20,16 @@ export type FavoriteCollectionItem = {
   };
 };
 
+export type FavoritePage<T> = {
+  items: T[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
 export type ModpackExportResultType = "exported" | "auto_dependency" | "skipped" | "failed";
+
+export type FavoriteModpackExportRebuildSource = "current_collection" | "original_snapshot";
 
 export type FavoriteModpackExportItem = {
   sourceProjectId?: string;
@@ -47,11 +55,17 @@ export type FavoriteModpackExportItem = {
 };
 
 export type FavoriteModpackExportPreview = {
+  previewId: string;
+  previewHash: string;
+  expiresAt: string;
   collectionId: string;
   collectionName: string;
   minecraftVersion: string;
   loader: "neoforge" | "fabric" | "forge";
   loaderVersion: string;
+  allowCompatibleOnly: boolean;
+  reportVersion: number;
+  rebuildSource: FavoriteModpackExportRebuildSource;
   collectionItemCount: number;
   exportedModCount: number;
   autoDependencyCount: number;
@@ -68,6 +82,8 @@ export type FavoriteModpackExportTask = {
   minecraftVersion: string;
   loader: string;
   loaderVersion: string;
+  allowCompatibleOnly: boolean;
+  reportVersion: number;
   status: "pending" | "processing" | "ready" | "failed" | "expired" | "cancelled";
   collectionItemCount: number;
   exportedModCount: number;
@@ -83,14 +99,24 @@ export type FavoriteModpackExportTask = {
   expiresAt?: string;
 };
 
+export type FavoriteModpackExportStatus = FavoriteModpackExportTask["status"] | "all";
+
+export type FavoriteModpackExportPage = {
+  items: FavoriteModpackExportTask[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
 export type FavoriteModpackExportDetail = {
   task: FavoriteModpackExportTask;
   items: FavoriteModpackExportItem[];
   downloadAvailable: boolean;
 };
 
-export async function loadFavoriteCollections(token: string) {
-  return (await apiRequest<{ items: FavoriteCollection[] }>("/api/v1/users/me/favorite-collections", {}, token)).items;
+export function loadFavoriteCollections(token: string, cursor = "") {
+  const query = favoritePageQuery(cursor);
+  return apiRequest<FavoritePage<FavoriteCollection>>(`/api/v1/users/me/favorite-collections?${query}`, {}, token);
 }
 
 export async function createFavoriteCollection(token: string, name: string, isPublic = false) {
@@ -108,8 +134,9 @@ export async function deleteFavoriteCollection(token: string, id: string) {
   await apiRequest<void>(`/api/v1/users/me/favorite-collections/${id}`, { method: "DELETE" }, token);
 }
 
-export async function loadFavoriteItems(token: string, id: string) {
-  return (await apiRequest<{ items: FavoriteCollectionItem[] }>(`/api/v1/users/me/favorite-collections/${id}/items`, {}, token)).items;
+export function loadFavoriteItems(token: string, id: string, cursor = "") {
+  const query = favoritePageQuery(cursor);
+  return apiRequest<FavoritePage<FavoriteCollectionItem>>(`/api/v1/users/me/favorite-collections/${id}/items?${query}`, {}, token);
 }
 
 export function preflightFavoriteModpackExport(token: string, collectionId: string, minecraftVersion: string, loader: string) {
@@ -122,26 +149,46 @@ export function preflightFavoriteModpackExport(token: string, collectionId: stri
 export function createFavoriteModpackExport(
   token: string,
   collectionId: string,
-  minecraftVersion: string,
-  loader: string,
+  preview: FavoriteModpackExportPreview,
   exportCompatibleOnly: boolean,
 ) {
   return apiRequest<{ taskId: string; status: string; preview: FavoriteModpackExportPreview }>(
     `/api/v1/users/me/favorite-collections/${collectionId}/modpack-exports`,
     {
       method: "POST",
-      body: JSON.stringify({ minecraftVersion, loader, exportCompatibleOnly, confirmCompatibleOnly: exportCompatibleOnly }),
+      body: JSON.stringify({
+        minecraftVersion: preview.minecraftVersion,
+        loader: preview.loader,
+        previewId: preview.previewId,
+        previewHash: preview.previewHash,
+        exportCompatibleOnly,
+        confirmCompatibleOnly: exportCompatibleOnly,
+      }),
     },
     token,
   );
 }
 
-export async function loadFavoriteModpackExports(token: string) {
-  return (await apiRequest<{ items: FavoriteModpackExportTask[] }>("/api/v1/users/me/modpack-exports", {}, token)).items;
+export function loadFavoriteModpackExports(
+  token: string,
+  options: { status?: FavoriteModpackExportStatus; cursor?: string; limit?: number } = {},
+) {
+  const query = new URLSearchParams();
+  query.set("status", options.status ?? "all");
+  query.set("limit", String(options.limit ?? 30));
+  if (options.cursor) query.set("cursor", options.cursor);
+  return apiRequest<FavoriteModpackExportPage>(`/api/v1/users/me/modpack-exports?${query}`, {}, token);
 }
 
 export function loadFavoriteModpackExport(token: string, taskId: string) {
   return apiRequest<FavoriteModpackExportDetail>(`/api/v1/users/me/modpack-exports/${taskId}`, {}, token);
+}
+
+export function rebuildFavoriteModpackExportPreview(token: string, taskId: string, source: FavoriteModpackExportRebuildSource) {
+  return apiRequest<FavoriteModpackExportPreview>(`/api/v1/users/me/modpack-exports/${taskId}/rebuild-preflight`, {
+    method: "POST",
+    body: JSON.stringify({ source }),
+  }, token);
 }
 
 export function favoriteModpackExportDownloadURL(taskId: string) {
@@ -149,11 +196,18 @@ export function favoriteModpackExportDownloadURL(taskId: string) {
 }
 
 export async function downloadFavoriteModpackExport(token: string, taskId: string, fallbackName: string) {
-  const response = await fetch(favoriteModpackExportDownloadURL(taskId), {
+  const response = await backendFetch(favoriteModpackExportDownloadURL(taskId), {
     credentials: "include",
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
-  if (!response.ok) throw new Error("整合包下载失败或下载链接已过期");
+  if (!response.ok) {
+    const envelope = await response.json().catch(() => ({})) as { error?: string; code?: string };
+    throw new ApiError(
+      envelope.error ?? "favorite modpack export download failed",
+      response.status,
+      envelope.code ?? "MODPACK_EXPORT_DOWNLOAD_FAILED",
+    );
+  }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -165,35 +219,57 @@ export async function downloadFavoriteModpackExport(token: string, taskId: strin
   window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
-export async function loadPublicFavoriteCollections(userId: string, token?: string) {
-  return (await apiRequest<{ items: FavoriteCollection[] }>(`/api/v1/users/${userId}/favorite-collections`, {}, token)).items;
+export function loadPublicFavoriteCollections(userId: string, token?: string, cursor = "") {
+  const query = favoritePageQuery(cursor);
+  return apiRequest<FavoritePage<FavoriteCollection>>(`/api/v1/users/${userId}/favorite-collections?${query}`, {}, token);
 }
 
-export async function loadPublicFavoriteItems(userId: string, collectionId: string, token?: string) {
-  return (await apiRequest<{ items: FavoriteCollectionItem[] }>(
-    `/api/v1/users/${userId}/favorite-collections/${collectionId}/items`,
+export function loadPublicFavoriteItems(userId: string, collectionId: string, token?: string, cursor = "") {
+  const query = favoritePageQuery(cursor);
+  return apiRequest<FavoritePage<FavoriteCollectionItem>>(
+    `/api/v1/users/${userId}/favorite-collections/${collectionId}/items?${query}`,
     {},
     token,
-  )).items;
+  );
 }
 
-export async function loadFavoriteMembership(token: string, entityType: string, entityKey: string) {
-  const query = new URLSearchParams({ entityType, entityPublicId: entityKey });
-  return (await apiRequest<{ collectionIds: string[] }>(`/api/v1/users/me/favorites?${query}`, {}, token)).collectionIds;
+export type FavoriteMembershipSummary = {
+  entityPublicIds: string[];
+  collectionIdsByEntity: Record<string, string[]>;
+};
+
+export function loadFavoriteMembershipSummary(token: string, entityType: string, entityPublicIds: string[], collectionIds: string[] = []) {
+  return apiRequest<FavoriteMembershipSummary>("/api/v1/users/me/favorites/summary", {
+    method: "POST",
+    body: JSON.stringify({ entityType, entityPublicIds, collectionIds }),
+  }, token);
 }
 
-export async function saveFavoriteMembership(token: string, entityType: string, entityKey: string, collectionIds: string[]) {
+export function saveFavoriteMembershipChanges(token: string, entityType: string, entityPublicId: string, addCollectionIds: string[], removeCollectionIds: string[]) {
+  return apiRequest<{ saved: boolean; selected: boolean }>("/api/v1/users/me/favorites", {
+    method: "PATCH",
+    body: JSON.stringify({ entityType, entityPublicId, addCollectionIds, removeCollectionIds }),
+  }, token);
+}
+
+export async function saveFavoriteMembership(token: string, entityType: string, entityPublicId: string, collectionIds: string[]) {
   return apiRequest<{ collectionIds: string[] }>("/api/v1/users/me/favorites", {
     method: "PUT",
-    body: JSON.stringify({ entityType, entityPublicId: entityKey, collectionIds }),
+    body: JSON.stringify({ entityType, entityPublicId, collectionIds }),
   }, token);
 }
 
 export function favoriteItemHref(item: FavoriteCollectionItem) {
-  const key = item.metadata.publicId || item.metadata.slug || item.entityKey;
+  const key = item.metadata.publicId || item.metadata.slug || item.entityPublicId;
   if (item.entityType === "mod") return `/mods/${key}`;
   if (item.entityType === "modpack") return `/modpacks/${key}`;
   if (item.entityType === "blueprint") return `/blueprints/${key}`;
   if (item.entityType === "skin") return `/skins/${key}`;
   return `/${key}`;
+}
+
+function favoritePageQuery(cursor: string) {
+  const query = new URLSearchParams({ limit: "20" });
+  if (cursor) query.set("cursor", cursor);
+  return query;
 }

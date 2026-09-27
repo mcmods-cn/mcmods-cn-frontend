@@ -14,6 +14,20 @@ export type ContentHistoryItem = {
   current: boolean;
 };
 
-export function loadContentHistory(endpoint: string, token = "", signal?: AbortSignal) {
-  return apiRequest<{ items: ContentHistoryItem[] }>(endpoint, { cache: "no-store", signal }, token || undefined);
+export type ContentHistoryPage = {
+  items: ContentHistoryItem[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
+export function contentHistoryPagePath(endpoint: string, cursor = "", limit = 50) {
+  const separator = endpoint.includes("?") ? "&" : "?";
+  const parameters = new URLSearchParams({ limit: String(limit) });
+  if (cursor) parameters.set("cursor", cursor);
+  return `${endpoint}${separator}${parameters}`;
+}
+
+export function loadContentHistory(endpoint: string, token = "", cursor = "", signal?: AbortSignal) {
+  return apiRequest<ContentHistoryPage>(contentHistoryPagePath(endpoint, cursor), { cache: "no-store", signal }, token || undefined);
 }

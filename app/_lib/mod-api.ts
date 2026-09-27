@@ -56,6 +56,7 @@ export type MinecraftVersionConfig = {
   loaderSyncs?: Array<{
     code: string;
     sourceUrl: string;
+    sourceUrls?: string[];
     status: "synced" | "failed";
     lastSyncedAt?: string;
     versionCount: number;
@@ -142,7 +143,12 @@ export type BackendModRevision = {
   snapshotHash: string;
 };
 
-export type BackendModRevisionList = { items: BackendModRevision[] };
+export type BackendModRevisionList = {
+  items: BackendModRevision[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
 export type BackendModRevisionComparison = { before: BackendModRevision; after: BackendModRevision; changedFields: string[] };
 
 export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEntry {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { deleteUserDraft, draftResumeURL, loadUserDrafts, type UserDraftSummary } from "../_lib/draft-api";
+import { deleteUserDraft, draftResumeURL, loadUserDrafts, type UserDraftCategory, type UserDraftSummary } from "../_lib/draft-api";
 import { useI18n } from "../_lib/i18n-provider";
 
 type DraftProject = {
@@ -18,22 +18,48 @@ export function UserDraftsPanel({ token }: { token: string }) {
   const [items, setItems] = useState<UserDraftSummary[]>([]);
   const [retentionSeconds, setRetentionSeconds] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [message, setMessage] = useState("");
+  const [nextCursors, setNextCursors] = useState<Record<UserDraftCategory, string>>({ active: "", completed: "" });
   const projects = useMemo(() => groupDraftsByProject(items), [items]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setMessage("");
     try {
-      const result = await loadUserDrafts(token);
-      setItems(result.items);
-      setRetentionSeconds(result.retentionSeconds);
+      const [active, completed] = await Promise.all([
+        loadUserDrafts(token, "active"),
+        loadUserDrafts(token, "completed"),
+      ]);
+      setItems([...active.items, ...completed.items]);
+      setNextCursors({ active: active.nextCursor, completed: completed.nextCursor });
+      setRetentionSeconds(active.retentionSeconds);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : t("drafts.loadFailed"));
     } finally {
       setLoading(false);
     }
   }, [t, token]);
+
+  async function loadMore() {
+    const category: UserDraftCategory | undefined = nextCursors.active ? "active" : nextCursors.completed ? "completed" : undefined;
+    if (!category || loadingMore) return;
+    setLoadingMore(true);
+    setMessage("");
+    try {
+      const result = await loadUserDrafts(token, category, nextCursors[category]);
+      setItems((current) => {
+        const byID = new Map(current.map((item) => [item.id, item]));
+        for (const item of result.items) byID.set(item.id, item);
+        return [...byID.values()];
+      });
+      setNextCursors((current) => ({ ...current, [category]: result.nextCursor }));
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : t("drafts.loadFailed"));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -97,6 +123,7 @@ export function UserDraftsPanel({ token }: { token: string }) {
             </li>)}
           </ol>
         </article>)}
+        {nextCursors.active || nextCursors.completed ? <button className="button-secondary focus-ring w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("common.loading") : t("drafts.loadMore")}</button> : null}
       </div>
     ) : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] py-14 text-center text-sm font-bold text-[var(--muted)]">{t("drafts.empty")}</p>}
   </section>;
@@ -106,6 +133,8 @@ export function UserDraftsPanel({ token }: { token: string }) {
       ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
       : status === "reviewing"
         ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+        : status === "rejected"
+          ? "border-[var(--red)] bg-[var(--red-soft)] text-[var(--red)]"
         : "border-[var(--line)] bg-[var(--background)] text-[var(--muted)]";
     return <span className={`rounded-full border px-2.5 py-1 text-xs font-black ${className}`}>{t(`drafts.states.${status}`)}</span>;
   }

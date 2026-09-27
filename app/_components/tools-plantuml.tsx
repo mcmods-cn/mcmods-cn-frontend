@@ -4,6 +4,7 @@ import plantumlEncoder from "plantuml-encoder";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useI18n } from "../_lib/i18n-provider";
+import { PLANTUML_PROXY_PATH } from "../_lib/markdown-config";
 import { useTheme } from "./theme-provider";
 
 type ViewMode = "edit" | "preview";
@@ -17,7 +18,7 @@ export function ToolsPlantUML() {
   const previewUrl = useMemo(() => {
     const trimmed = source.trim();
     if (!trimmed) return "";
-    return `https://www.plantuml.com/plantuml/svg/${plantumlEncoder.encode(trimmed)}`;
+    return `${PLANTUML_PROXY_PATH}/svg/${plantumlEncoder.encode(trimmed)}`;
   }, [source]);
 
   async function copySource() {

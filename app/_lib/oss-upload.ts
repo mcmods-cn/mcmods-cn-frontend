@@ -1,4 +1,7 @@
 import { apiRequest } from "./api";
+import { computeFileSHA256 } from "./oss-file-hash";
+
+export { computeFileSHA256 } from "./oss-file-hash";
 
 export type OSSFileRecord = {
   id: string;
@@ -94,7 +97,6 @@ export async function uploadUserFileToOSS(
         sha256,
         category: source,
         source,
-        preferMultipart: true,
       }),
     },
     token,
@@ -112,14 +114,6 @@ export async function uploadUserFileToOSS(
   }
   const record = await completeOSSUpload("/api/v1/users/me/oss/uploads/complete", ticket, token);
   return normalizeUploadResult(record, ticket);
-}
-
-export async function computeFileSHA256(file: File) {
-  const buffer = await file.arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-256", buffer);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 export function markdownForUploadedFile(file: File, url: string) {

@@ -106,6 +106,8 @@ export type CatalogResourcePage = {
   total: number;
   limit: number;
   offset: number;
+  hasMore?: boolean;
+  nextCursor?: string;
 };
 
 type ResourcePageLoaderOptions = {
@@ -115,6 +117,7 @@ type ResourcePageLoaderOptions = {
   registry: string;
   limit: number;
   offset: number;
+  cursor?: string;
 };
 
 export type ResourcePageLoader = (

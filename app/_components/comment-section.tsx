@@ -15,6 +15,7 @@ import {
   loadCommentFloor,
   loadComments,
   loadCommentThread,
+  parseCommentEditConflict,
   setCommentPinned,
   setCommentReaction,
   setCommentWatch,
@@ -310,11 +311,16 @@ function CommentTree(props: CommentTreeProps) {
   }, [props.items]);
 
   function jumpTo(id: string, remember = true) {
+    const destination = document.querySelector<HTMLElement>(`[data-comment-id='${CSS.escape(id)}']`);
+    if (!destination) {
+      window.location.assign(`/comments/${encodeURIComponent(id)}`);
+      return;
+    }
     if (remember) {
       const visibleElement = document.querySelector<HTMLElement>("[data-comment-visible='true']");
       setReturnTo(visibleElement?.id.replace("comment-", "") || "");
     }
-    document.querySelector<HTMLElement>(`[data-comment-id='${CSS.escape(id)}']`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    destination.scrollIntoView({ behavior: "smooth", block: "center" });
     setHighlighted(id);
     window.setTimeout(() => setHighlighted((current) => current === id ? "" : current), 2000);
   }
@@ -359,9 +365,26 @@ function CommentTree(props: CommentTreeProps) {
     const nextBody = window.prompt(t("mods.comments.editPrompt"), comment.body);
     if (!nextBody?.trim() || nextBody.trim() === comment.body) return;
     try {
-      const result = await updateComment(comment.id, nextBody.trim(), props.token);
+      const result = await updateComment(comment.id, nextBody.trim(), comment.updatedAt, props.token);
       props.onItemsChange(props.items.map((item) => item.id === result.id ? result : item));
     } catch (error) {
+      const current = error instanceof ApiError && error.status === 409 && error.code === "COMMENT_EDIT_CONFLICT"
+        ? parseCommentEditConflict(error.details)
+        : undefined;
+      if (current) {
+        props.onItemsChange(props.items.map((item) => item.id === comment.id ? {
+          ...item,
+          body: current.body,
+          updatedAt: current.updatedAt,
+          deleted: current.deleted,
+          ...(current.deleted ? {
+            attachments: [], canEdit: false, canDelete: false, canPin: false,
+            canReply: false, canReact: false, canReport: false,
+          } : {}),
+        } : item));
+        props.onMessage(t("mods.comments.editConflict"));
+        return;
+      }
       props.onMessage(error instanceof Error ? error.message : t("mods.comments.editFailed"));
     }
   }
@@ -556,25 +579,80 @@ function CommentCard({
 
 export function CommentThread({ commentId }: { commentId: string }) {
   const { t } = useI18n();
-  const { ready, token } = useAuthSnapshot();
+  const { ready, token, user } = useAuthSnapshot();
   const [items, setItems] = useState<CommentItem[]>([]);
   const [target, setTarget] = useState<CommentTarget | null>(null);
+  const [nextCursor, setNextCursor] = useState("");
+  const [pathTruncated, setPathTruncated] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
+  const [loadedThreadKey, setLoadedThreadKey] = useState("");
+  const threadVersion = useRef(0);
+  const loadingMoreRequest = useRef(false);
+  const threadKey = ready ? `${commentId}\u0000${user?.id || "anonymous"}` : "";
+  const threadLoaded = loadedThreadKey === threadKey && threadKey !== "";
   useEffect(() => {
     if (!ready) return;
+    const version = ++threadVersion.current;
     let cancelled = false;
-    loadCommentThread(commentId, token || undefined).then((result) => {
-      if (!cancelled) {
+    loadingMoreRequest.current = false;
+    loadCommentThread(commentId, undefined, token || undefined).then((result) => {
+      if (!cancelled && threadVersion.current === version) {
         setItems(result.items);
         setTarget(result.target);
+        setNextCursor(result.nextCursor);
+        setPathTruncated(result.pathTruncated);
+        setLoadingMore(false);
+        setError("");
+        setLoadedThreadKey(threadKey);
       }
-    }).catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : t("mods.comments.loadFailed")); });
+    }).catch((reason) => {
+      if (!cancelled && threadVersion.current === version) {
+        setItems([]);
+        setTarget(null);
+        setNextCursor("");
+        setPathTruncated(false);
+        setLoadingMore(false);
+        setError(reason instanceof Error ? reason.message : t("mods.comments.loadFailed"));
+        setLoadedThreadKey(threadKey);
+      }
+    });
     return () => { cancelled = true; };
-  }, [commentId, ready, t, token]);
+  }, [commentId, ready, t, threadKey, token]);
+
+  async function loadMoreThread() {
+    if (!threadLoaded || !nextCursor || loadingMoreRequest.current) return;
+    const version = threadVersion.current;
+    const cursor = nextCursor;
+    loadingMoreRequest.current = true;
+    setLoadingMore(true);
+    try {
+      const result = await loadCommentThread(commentId, cursor, token || undefined);
+      if (threadVersion.current !== version) return;
+      setItems((current) => mergeComments(current, result.items));
+      setNextCursor(result.nextCursor);
+    } catch (reason) {
+      if (threadVersion.current === version) {
+        setError(reason instanceof Error ? reason.message : t("mods.comments.loadFailed"));
+      }
+    } finally {
+      if (threadVersion.current === version) {
+        loadingMoreRequest.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }
+
+  const visibleItems = threadLoaded ? items : [];
+  const visibleTarget = threadLoaded ? target : null;
+  const visibleError = threadLoaded ? error : "";
+  const visibleNextCursor = threadLoaded ? nextCursor : "";
   return <main className="min-h-screen bg-[var(--background)] px-4 py-8 text-[var(--foreground)]"><section className="mx-auto max-w-5xl">
-    {target ? <><Link className="font-bold text-[var(--accent)] hover:underline" href={target.url}>← {target.title}</Link><h1 className="mt-4 text-3xl font-black">{t("mods.comments.branchTitle")}</h1></> : null}
-    {error ? <p className="surface mt-5 p-5">{error}</p> : null}
-    {items.length ? <CommentTree items={items} loading={false} token={token} sort="oldest" replyTo={null} replyBody="" submitting={false} acceptedCommentId="" canAcceptAnswer={false} onItemsChange={setItems} onMessage={setError} onReply={() => setError(t("mods.comments.replyOnOriginal"))} onReplyBodyChange={() => undefined} onReplyCancel={() => undefined} onReplySubmit={() => undefined} /> : !error ? <p className="mt-5 text-[var(--muted)]">{t("common.loading")}</p> : null}
+    {visibleTarget ? <><Link className="font-bold text-[var(--accent)] hover:underline" href={visibleTarget.url}>← {visibleTarget.title}</Link><h1 className="mt-4 text-3xl font-black">{t("mods.comments.branchTitle")}</h1></> : null}
+    {threadLoaded && pathTruncated ? <p className="mt-4 text-sm text-[var(--muted)]">{t("mods.comments.pathTruncated")}</p> : null}
+    {visibleError ? <p className="surface mt-5 p-5">{visibleError}</p> : null}
+    {visibleItems.length ? <CommentTree items={visibleItems} loading={false} token={token} sort="oldest" replyTo={null} replyBody="" submitting={false} acceptedCommentId="" canAcceptAnswer={false} onItemsChange={setItems} onMessage={setError} onReply={() => setError(t("mods.comments.replyOnOriginal"))} onReplyBodyChange={() => undefined} onReplyCancel={() => undefined} onReplySubmit={() => undefined} /> : !visibleError ? <p className="mt-5 text-[var(--muted)]">{t("common.loading")}</p> : null}
+    {visibleNextCursor ? <button className="button-secondary focus-ring mt-5" disabled={loadingMore} type="button" onClick={() => void loadMoreThread()}>{loadingMore ? t("common.loading") : t("mods.comments.loadMore")}</button> : null}
   </section></main>;
 }
 

@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import {
   type DragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -14,16 +13,15 @@ import {
 import { advancementConnectedGroups } from "../_lib/advancement-graph";
 import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage } from "../_lib/content-language";
+import { createModContentCategoryReparentPolicy } from "../_lib/mod-content-category-tree.mts";
+import { buildModContentLayoutRenderIndex } from "../_lib/mod-content-layout-render-index.mts";
 import {
-  loadAllModContentSectionResources,
-  modContentResourceAssetURL,
+  loadModContentLayoutSnapshot,
+  patchModContentLayout,
+  type ModContentLayoutSummary,
   type ModContentSection,
-  type ModContentSectionResource,
-  updateModContentLayout,
 } from "../_lib/mod-content-api";
-import { modExportAssetURL } from "../_lib/mod-export-api";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
-import { clusterSimilarResources } from "../_lib/similar-resource-groups";
 
 type AdvancementNodeLayout = {
   parentResourcePublicId: string;
@@ -76,7 +74,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   const [initialLocale] = useState(locale);
   const [section, setSection] = useState<ModContentSection>();
   const [categories, setCategories] = useState<ModContentSection[]>([]);
-  const [resources, setResources] = useState<ModContentSectionResource[]>([]);
+  const [resources, setResources] = useState<ModContentLayoutSummary[]>([]);
   const [advancementLayouts, setAdvancementLayouts] = useState<AdvancementLayouts>({});
   const [advancementHistory, setAdvancementHistory] = useState<AdvancementLayouts[]>([]);
   const [draggedResource, setDraggedResource] = useState("");
@@ -86,7 +84,12 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   const [newCategoryParent, setNewCategoryParent] = useState(sectionId);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(true);
-  const [loadedComplete, setLoadedComplete] = useState(false);
+  const [pageReady, setPageReady] = useState(false);
+  const [pageCursor, setPageCursor] = useState("");
+  const [nextCursor, setNextCursor] = useState("");
+  const [hasMore, setHasMore] = useState(false);
+  const [cursorHistory, setCursorHistory] = useState<string[]>([]);
+  const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -98,10 +101,10 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
     queueMicrotask(() => {
       if (cancelled) return;
       setBusy(true);
-      setLoadedComplete(false);
+      setPageReady(false);
       setError("");
     });
-    void loadAllModContentSectionResources(siteId, sectionId, { locale: initialLocale }, tokenRef.current)
+    void loadModContentLayoutSnapshot(siteId, sectionId, { locale: initialLocale, limit: 500 }, tokenRef.current)
       .then((page) => {
         if (cancelled) return;
         setSection(page.section);
@@ -110,7 +113,12 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
         setAdvancementLayouts(createAdvancementLayouts(page.items));
         setAdvancementHistory([]);
         setNewCategoryParent(page.section.publicId);
-        setLoadedComplete(true);
+        setPageCursor("");
+        setNextCursor(page.nextCursor || "");
+        setHasMore(page.hasMore);
+        setCursorHistory([]);
+        setDirty(false);
+        setPageReady(true);
         setBusy(false);
       })
       .catch((cause) => {
@@ -144,6 +152,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
     }
     setAdvancementHistory((history) => [...history, cloneAdvancementLayouts(previous)].slice(-50));
     setAdvancementLayouts(next);
+    setDirty(true);
     setError("");
   }
 
@@ -157,7 +166,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   }
 
   async function save() {
-    if (!section || !loadedComplete) {
+    if (!section || !pageReady) {
       setError(t("modContent.sectionActions.incompleteLayout"));
       return;
     }
@@ -165,7 +174,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
     setError("");
     try {
       const normalizedResources = normalizeResourceOrdinals(resources);
-      const result = await updateModContentLayout(siteId, section.publicId, {
+      const result = await patchModContentLayout(siteId, section.publicId, {
         versionPublicId: section.versionPublicId,
         rootSectionPublicId: section.publicId,
         displayMode: section.displayMode,
@@ -199,6 +208,25 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
     }
   }
 
+  function navigateLayoutPage(cursor: string, direction: "next" | "previous") {
+    setBusy(true);
+    setError("");
+    void loadModContentLayoutSnapshot(siteId, sectionId, { locale: initialLocale, limit: 500, cursor }, tokenRef.current)
+      .then((page) => {
+        setResources(page.items);
+        setAdvancementLayouts(createAdvancementLayouts(page.items));
+        setAdvancementHistory([]);
+        setNextCursor(page.nextCursor || "");
+        setHasMore(page.hasMore);
+        if (direction === "next") setCursorHistory((history) => [...history, pageCursor]);
+        else setCursorHistory((history) => history.slice(0, -1));
+        setPageCursor(cursor);
+        setDirty(false);
+      })
+      .catch((cause) => setError(errorText(cause)))
+      .finally(() => setBusy(false));
+  }
+
   if (!section && busy) {
     return <main className="grid min-h-screen place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]">
       <p className="text-[var(--muted)]">{t("common.loading")}</p>
@@ -214,7 +242,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
           {section ? <p className="mt-2 text-sm text-[var(--muted)]">{localizedSectionName(section, locale)} · {section.versionPublicId}</p> : null}
         </div>
         <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={closeEditor}>{t("common.cancel")}</button>
-        <button className="button-primary focus-ring" disabled={busy || !loadedComplete} type="button" onClick={() => void save()}>{t("modContent.sectionActions.submitLayout")}</button>
+        <button className="button-primary focus-ring" disabled={busy || !pageReady} type="button" onClick={() => void save()}>{t("modContent.sectionActions.submitLayout")}</button>
       </header>
 
       {error ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{error}</p> : null}
@@ -222,13 +250,15 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
         <p className="mt-5 text-sm leading-6 text-[var(--muted)]">
           {t(isAdvancement ? "modContent.sectionActions.advancementArrangeHint" : "modContent.sectionActions.arrangeHint")}
         </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <button className="button-secondary" disabled={busy || dirty || !cursorHistory.length} type="button" onClick={() => navigateLayoutPage(cursorHistory.at(-1) || "", "previous")}>{t("common.previous")}</button>
+          <button className="button-secondary" disabled={busy || dirty || !hasMore || !nextCursor} type="button" onClick={() => navigateLayoutPage(nextCursor, "next")}>{t("common.next")}</button>
+        </div>
         {isAdvancement
           ? <AdvancementLayoutEditor
             canUndo={advancementHistory.length > 0}
-            defaultLocale={section.defaultLocale}
             dragged={draggedAdvancement}
             layouts={advancementLayouts}
-            locale={locale}
             resources={resources}
             onDrag={setDraggedAdvancement}
             onLayoutsCommit={commitAdvancementLayouts}
@@ -239,7 +269,6 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
           : <CategoryLayoutEditor
             categories={categories}
             categoryLocale={categoryLocale}
-            defaultLocale={section.defaultLocale}
             depthByID={depthByID}
             draggedResource={draggedResource}
             locale={locale}
@@ -247,12 +276,12 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
             newCategoryParent={newCategoryParent}
             resources={resources}
             root={section}
-            onCategoriesChange={setCategories}
+            onCategoriesChange={(value) => { setCategories(value); setDirty(true); }}
             onCategoryLocaleChange={setCategoryLocale}
             onDraggedResourceChange={setDraggedResource}
             onNewCategoryNameChange={setNewCategoryName}
             onNewCategoryParentChange={setNewCategoryParent}
-            onResourcesChange={setResources}
+            onResourcesChange={(value) => { setResources(value); setDirty(true); }}
           />}
         <label className="mt-6 grid gap-2 text-sm font-bold">
           <span>{t("modContent.reason")}</span>
@@ -260,7 +289,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
         </label>
         <footer className="mt-6 flex justify-end gap-2 border-t border-[var(--line)] pt-5">
           <button className="button-secondary" disabled={busy} type="button" onClick={closeEditor}>{t("common.cancel")}</button>
-          <button className="button-primary" disabled={busy || !loadedComplete} type="button" onClick={() => void save()}>{t("modContent.sectionActions.submitLayout")}</button>
+          <button className="button-primary" disabled={busy || !pageReady} type="button" onClick={() => void save()}>{t("modContent.sectionActions.submitLayout")}</button>
         </footer>
       </> : null}
     </div>
@@ -272,7 +301,6 @@ function CategoryLayoutEditor({
   categories,
   resources,
   locale,
-  defaultLocale,
   categoryLocale,
   newCategoryName,
   newCategoryParent,
@@ -287,16 +315,15 @@ function CategoryLayoutEditor({
 }: {
   root: ModContentSection;
   categories: ModContentSection[];
-  resources: ModContentSectionResource[];
+  resources: ModContentLayoutSummary[];
   locale: string;
-  defaultLocale: string;
   categoryLocale: string;
   newCategoryName: string;
   newCategoryParent: string;
   draggedResource: string;
   depthByID: Map<string, number>;
   onCategoriesChange: (value: ModContentSection[]) => void;
-  onResourcesChange: (value: ModContentSectionResource[]) => void;
+  onResourcesChange: (value: ModContentLayoutSummary[]) => void;
   onCategoryLocaleChange: (value: string) => void;
   onNewCategoryNameChange: (value: string) => void;
   onNewCategoryParentChange: (value: string) => void;
@@ -307,7 +334,9 @@ function CategoryLayoutEditor({
   const [batchTargetSectionID, setBatchTargetSectionID] = useState(root.publicId);
   const [keywordByCategory, setKeywordByCategory] = useState<Record<string, string>>({});
   const [draggedCategoryID, setDraggedCategoryID] = useState("");
-  const orderedSections = [root, ...flattenCategoryTree(root.publicId, categories)];
+  const orderedSections = useMemo(() => [root, ...flattenCategoryTree(root.publicId, categories)], [root, categories]);
+  const categoryReparentPolicy = useMemo(() => createModContentCategoryReparentPolicy(root.publicId, categories), [root.publicId, categories]);
+  const layoutRenderIndex = useMemo(() => buildModContentLayoutRenderIndex(resources, root.publicId), [resources, root.publicId]);
 
   function addCategory() {
     const name = newCategoryName.trim();
@@ -346,12 +375,8 @@ function CategoryLayoutEditor({
   }
 
   function reparentCategory(categoryID: string, parentID: string) {
-    if (!categoryID || categoryID === parentID) return;
-    if (descendantsOf(categoryID, categories).has(parentID)) return;
-    const next = normalizeCategoryOrdinals(categories.map((item) => item.publicId === categoryID
-      ? { ...item, parentPublicId: parentID }
-      : item));
-    if ([...categoryDepths(root.publicId, next).values()].some((depth) => depth > 4)) return;
+    const next = categoryReparentPolicy.reparent(categoryID, parentID);
+    if (!next) return;
     onCategoriesChange(next);
     setDraggedCategoryID("");
   }
@@ -368,7 +393,7 @@ function CategoryLayoutEditor({
 
   function dropResource(targetSectionID: string) {
     if (!draggedResource) return;
-    const moving = resources.find((item) => item.resourcePublicId === draggedResource);
+    const moving = layoutRenderIndex.resourceByID.get(draggedResource);
     if (!moving) return;
     const without = resources.filter((item) => item.resourcePublicId !== draggedResource);
     const targetItems = without.filter((item) => item.sectionPublicId === targetSectionID).sort((a, b) => a.ordinal - b.ordinal).map((item) => ({ ...item }));
@@ -383,8 +408,8 @@ function CategoryLayoutEditor({
 
   function groupResources(targetResourceID: string) {
     if (!draggedResource || draggedResource === targetResourceID) return;
-    const source = resources.find((item) => item.resourcePublicId === draggedResource);
-    const target = resources.find((item) => item.resourcePublicId === targetResourceID);
+    const source = layoutRenderIndex.resourceByID.get(draggedResource);
+    const target = layoutRenderIndex.resourceByID.get(targetResourceID);
     if (!source || !target) return;
     const groupID = target.similarGroupId || `new_${crypto.randomUUID()}`;
     const targetSectionID = target.sectionPublicId || root.publicId;
@@ -400,11 +425,12 @@ function CategoryLayoutEditor({
   }
 
   function moveResource(resourceID: string, delta: number) {
-    const resource = resources.find((item) => item.resourcePublicId === resourceID);
+    const resource = layoutRenderIndex.resourceByID.get(resourceID);
     if (!resource) return;
     const sectionID = resource.sectionPublicId || root.publicId;
-    const siblings = resources.filter((item) => (item.sectionPublicId || root.publicId) === sectionID).sort((a, b) => a.ordinal - b.ordinal);
-    const index = siblings.findIndex((item) => item.resourcePublicId === resourceID);
+    const sectionIndex = layoutRenderIndex.sections.get(sectionID);
+    const siblings = sectionIndex?.entries || [];
+    const index = sectionIndex?.positionByResourceID.get(resourceID) ?? -1;
     const target = siblings[index + delta];
     if (!target) return;
     onResourcesChange(normalizeResourceOrdinals(resources.map((item) => item.resourcePublicId === resourceID
@@ -413,7 +439,7 @@ function CategoryLayoutEditor({
   }
 
   function moveResourceToCategory(resourceID: string, targetSectionID: string) {
-    const targetOrdinal = resources.filter((item) => (item.sectionPublicId || root.publicId) === targetSectionID).length;
+    const targetOrdinal = layoutRenderIndex.sections.get(targetSectionID)?.entries.length || 0;
     onResourcesChange(normalizeSimilarResourceGroups(normalizeResourceOrdinals(resources.map((item) => item.resourcePublicId === resourceID
       ? { ...item, sectionPublicId: targetSectionID, ordinal: targetOrdinal }
       : item))));
@@ -438,7 +464,7 @@ function CategoryLayoutEditor({
   function classifyByKeyword(targetSectionID: string) {
     const keyword = (keywordByCategory[targetSectionID] || "").trim().toLocaleLowerCase(locale);
     if (!keyword) return;
-    const matches = new Set(resources.filter((resource) => resourceSearchNames(resource, locale, defaultLocale)
+    const matches = new Set(resources.filter((resource) => resourceSearchNames(resource)
       .some((name) => name.toLocaleLowerCase(locale).includes(keyword))).map((resource) => resource.resourcePublicId));
     moveResourcesToCategory(matches, targetSectionID);
   }
@@ -467,27 +493,26 @@ function CategoryLayoutEditor({
     </div>
     <div className="mt-5 grid gap-3">
       {orderedSections.map((category) => {
-        const entries = resources.filter((item) => (item.sectionPublicId || root.publicId) === category.publicId).sort((a, b) => a.ordinal - b.ordinal);
+        const sectionIndex = layoutRenderIndex.sections.get(category.publicId);
+        const entries = sectionIndex?.entries || [];
         const isRoot = category.publicId === root.publicId;
-        const descendantIDs = isRoot ? new Set<string>() : descendantsOf(category.publicId, categories);
-        const possibleParents = [root, ...categories].filter((item) => item.publicId !== category.publicId && !descendantIDs.has(item.publicId) && (depthByID.get(item.publicId) || 0) < 4);
+        const possibleParents = isRoot ? [] : [root, ...categories].filter((item) => categoryReparentPolicy.canReparent(category.publicId, item.publicId));
         return <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3" key={category.publicId} style={{ marginInlineStart: `${isRoot ? 0 : Math.min(4, depthByID.get(category.publicId) || 1) * 18}px` }} onDragOver={(event) => event.preventDefault()} onDrop={() => dropResource(category.publicId)}>
           <header className="flex flex-wrap items-center gap-2">
             {isRoot ? <strong className="min-w-0 flex-1">{t("modContent.sectionActions.rootCategory")}</strong> : <input aria-label={`${t("modContent.sectionActions.name")}: ${categoryName(category, categoryLocale)}`} className="field min-w-44 flex-1 py-2 font-bold" value={categoryName(category, categoryLocale)} onChange={(event) => updateCategoryName(category, event.target.value)} />}
-            {!isRoot ? <><select aria-label={t("modContent.sectionActions.parentCategory")} className="field w-auto py-2 text-sm" value={category.parentPublicId} onChange={(event) => onCategoriesChange(normalizeCategoryOrdinals(categories.map((item) => item.publicId === category.publicId ? { ...item, parentPublicId: event.target.value } : item)))}>{possibleParents.map((item) => <option key={item.publicId} value={item.publicId}>{item.publicId === root.publicId ? t("modContent.sectionActions.rootCategory") : categoryName(item, categoryLocale)}</option>)}</select><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, -1)}>↑</button><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, 1)}>↓</button><button className="button-secondary px-3 text-[var(--red)]" type="button" onClick={() => deleteCategory(category)}>{t("common.delete")}</button></> : null}
+            {!isRoot ? <><select aria-label={t("modContent.sectionActions.parentCategory")} className="field w-auto py-2 text-sm" value={category.parentPublicId} onChange={(event) => reparentCategory(category.publicId, event.target.value)}>{possibleParents.map((item) => <option key={item.publicId} value={item.publicId}>{item.publicId === root.publicId ? t("modContent.sectionActions.rootCategory") : categoryName(item, categoryLocale)}</option>)}</select><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, -1)}>↑</button><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, 1)}>↓</button><button className="button-secondary px-3 text-[var(--red)]" type="button" onClick={() => deleteCategory(category)}>{t("common.delete")}</button></> : null}
           </header>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <input aria-label={t("modContent.sectionActions.keywordClassification")} className="field min-w-0 flex-1 py-2 text-sm" placeholder={t("modContent.sectionActions.keywordPlaceholder")} value={keywordByCategory[category.publicId] || ""} onChange={(event) => setKeywordByCategory((current) => ({ ...current, [category.publicId]: event.target.value }))} />
             <button className="button-secondary shrink-0 px-3 py-2 text-sm" disabled={!(keywordByCategory[category.publicId] || "").trim()} type="button" onClick={() => classifyByKeyword(category.publicId)}>{t("modContent.sectionActions.keywordClassification")}</button>
           </div>
           <div className="mt-3 flex min-h-20 flex-wrap content-start gap-2 rounded-lg border border-dashed border-[var(--line)] p-2">
-            {clusterSimilarResources(entries, (resource) => resource.similarGroupId).map((cluster) => {
+            {(sectionIndex?.clusters || []).map((cluster) => {
               const groupID = cluster.length > 1 ? cluster[0].similarGroupId || "" : "";
               const chips = cluster.map((resource) => {
-                const index = entries.findIndex((item) => item.resourcePublicId === resource.resourcePublicId);
+                const index = sectionIndex?.positionByResourceID.get(resource.resourcePublicId) ?? -1;
                 return <ResourceChip
                   categories={orderedSections}
-                  defaultLocale={defaultLocale}
                   dragged={draggedResource === resource.resourcePublicId}
                   key={resource.resourcePublicId}
                   locale={locale}
@@ -580,8 +605,6 @@ function CategoryRelationshipEditor({ root, categories, locale, draggedCategoryI
 function AdvancementLayoutEditor({
   resources,
   layouts,
-  locale,
-  defaultLocale,
   dragged,
   canUndo,
   onLayoutsPreview,
@@ -590,10 +613,8 @@ function AdvancementLayoutEditor({
   onDrag,
   onError,
 }: {
-  resources: ModContentSectionResource[];
+  resources: ModContentLayoutSummary[];
   layouts: AdvancementLayouts;
-  locale: string;
-  defaultLocale: string;
   dragged?: DraggedAdvancement;
   canUndo: boolean;
   onLayoutsPreview: (value: AdvancementLayouts) => void;
@@ -742,14 +763,12 @@ function AdvancementLayoutEditor({
     </div>
     <div ref={groupWorkspaceRef} className="relative space-y-4" onPointerCancel={finishGroupSelection} onPointerDown={beginGroupSelection} onPointerMove={moveGroupSelection} onPointerUp={finishGroupSelection}>
       {groups.map((group) => <AdvancementLayoutBoard
-        defaultLocale={defaultLocale}
         dragged={dragged}
         group={group}
         keyboardPort={keyboardPort}
         key={group[0]?.layout.groupId}
         layouts={layouts}
         linkDrag={linkDrag}
-        locale={locale}
         selectedGroupIDs={selectedGroupIDs}
         onBeginLinkDrag={beginLinkDrag}
         onCancelLinkDrag={cancelLinkDrag}
@@ -783,15 +802,13 @@ function AdvancementLayoutEditor({
 }
 
 type AdvancementPosition = {
-  resource: ModContentSectionResource;
+  resource: ModContentLayoutSummary;
   layout: AdvancementNodeLayout;
 };
 
 function AdvancementLayoutBoard({
   group,
   layouts,
-  locale,
-  defaultLocale,
   dragged,
   linkDrag,
   keyboardPort,
@@ -808,8 +825,6 @@ function AdvancementLayoutBoard({
 }: {
   group: AdvancementPosition[];
   layouts: AdvancementLayouts;
-  locale: string;
-  defaultLocale: string;
   dragged?: DraggedAdvancement;
   linkDrag?: DraggedAdvancementLink;
   keyboardPort?: { resourcePublicId: string; side: AdvancementPortSide };
@@ -922,8 +937,8 @@ function AdvancementLayoutBoard({
           const parent = pointByID.get(layout.parentResourcePublicId);
           if (!child || !parent) return null;
           const path = advancementBoardLinkPath(parent, child);
-          const parentName = resourceName(group.find((item) => item.resource.resourcePublicId === layout.parentResourcePublicId)!.resource, locale, defaultLocale);
-          const childName = resourceName(resource, locale, defaultLocale);
+          const parentName = resourceName(group.find((item) => item.resource.resourcePublicId === layout.parentResourcePublicId)!.resource);
+          const childName = resourceName(resource);
           const label = t("modContent.sectionActions.removeAdvancementLink", { parent: parentName, child: childName });
           return <g className="group" key={resource.resourcePublicId}>
             <title>{label}</title>
@@ -953,8 +968,7 @@ function AdvancementLayoutBoard({
       </svg>
       {group.map(({ resource }) => {
         const point = pointByID.get(resource.resourcePublicId)!;
-        const iconURL = resourceIconURL(resource);
-        const name = resourceName(resource, locale, defaultLocale);
+        const name = resourceName(resource);
         return <article
           className="absolute rounded-lg border-2 border-[#777064] bg-[var(--panel)] text-[var(--foreground)] shadow-lg"
           key={resource.resourcePublicId}
@@ -978,8 +992,8 @@ function AdvancementLayoutBoard({
             onPointerUp={finishDrag}
             onPointerCancel={cancelDrag}
           >
-            {iconURL ? <Image unoptimized alt="" className="h-10 w-10 shrink-0 object-contain [image-rendering:pixelated]" height={40} src={iconURL} width={40} /> : <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-[var(--panel-subtle)]">?</span>}
-            <span className="min-w-0"><strong className="block truncate text-sm">{name}</strong><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{resource.canonicalId}</code></span>
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-[var(--panel-subtle)] text-xs font-black" aria-hidden="true">#</span>
+            <span className="min-w-0"><strong className="block truncate text-sm">{name}</strong><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{resource.resourcePublicId}</code></span>
           </div>
           <AdvancementPort
             active={keyboardPort?.resourcePublicId === resource.resourcePublicId && keyboardPort.side === "output"}
@@ -1040,10 +1054,9 @@ function AdvancementPort({
   </button>;
 }
 
-function ResourceChip({ resource, locale, defaultLocale, categories, dragged, selected, canMoveUp, canMoveDown, onCategoryChange, onDragStart, onMove, onDrop, onSelectedChange }: {
-  resource: ModContentSectionResource;
+function ResourceChip({ resource, locale, categories, dragged, selected, canMoveUp, canMoveDown, onCategoryChange, onDragStart, onMove, onDrop, onSelectedChange }: {
+  resource: ModContentLayoutSummary;
   locale: string;
-  defaultLocale: string;
   categories: ModContentSection[];
   dragged: boolean;
   selected: boolean;
@@ -1056,12 +1069,11 @@ function ResourceChip({ resource, locale, defaultLocale, categories, dragged, se
   onSelectedChange: (selected: boolean) => void;
 }) {
   const { t } = useI18n();
-  const iconURL = resourceIconURL(resource);
   return <div className={`grid max-w-full gap-2 rounded-lg border bg-[var(--panel)] p-2 sm:grid-cols-[auto_minmax(160px,1fr)_minmax(150px,220px)_auto] ${dragged ? "border-[var(--accent)] opacity-50" : selected ? "border-[var(--accent)]" : "border-[var(--line)]"}`} draggable onDragStart={onDragStart} onDragOver={(event) => event.preventDefault()} onDrop={onDrop}>
     <input aria-label={t("modContent.sectionActions.selectResource")} checked={selected} className="h-5 w-5 self-center" type="checkbox" onChange={(event) => onSelectedChange(event.target.checked)} />
     <div className="flex min-w-0 cursor-grab items-center gap-2 active:cursor-grabbing">
-      {iconURL ? <Image unoptimized alt="" className="h-8 w-8 object-contain [image-rendering:pixelated]" height={32} src={iconURL} width={32} /> : <span className="grid h-8 w-8 place-items-center rounded bg-[var(--panel-subtle)] text-xs">?</span>}
-      <span className="min-w-0"><strong className="block truncate text-sm">{resourceName(resource, locale, defaultLocale)}</strong><code className="block truncate text-[10px] text-[var(--muted)]">{resource.canonicalId}</code></span>
+      <span className="grid h-8 w-8 place-items-center rounded bg-[var(--panel-subtle)] text-xs font-black" aria-hidden="true">#</span>
+      <span className="min-w-0"><strong className="block truncate text-sm">{resourceName(resource)}</strong><code className="block truncate text-[10px] text-[var(--muted)]">{resource.resourcePublicId}</code></span>
     </div>
     <select aria-label={t("modContent.sectionActions.moveToCategory")} className="field py-1 text-xs" value={resource.sectionPublicId} onChange={(event) => onCategoryChange(event.target.value)}>
       {categories.map((category, index) => <option key={category.publicId} value={category.publicId}>{index === 0 ? t("modContent.sectionActions.rootCategory") : categoryName(category, locale)}</option>)}
@@ -1073,18 +1085,15 @@ function ResourceChip({ resource, locale, defaultLocale, categories, dragged, se
   </div>;
 }
 
-function createAdvancementLayouts(resources: ModContentSectionResource[]): AdvancementLayouts {
-  const publicIDByCanonicalID = new Map(resources.map((resource) => [resource.canonicalId || "", resource.resourcePublicId]));
+function createAdvancementLayouts(resources: ModContentLayoutSummary[]): AdvancementLayouts {
   const layouts: AdvancementLayouts = {};
   resources.forEach((resource, index) => {
-    const display = record(record(resource.definition).display);
-    const definition = record(resource.definition);
-    const parentCanonicalID = stringValue(definition.parentId) || stringValue(definition.parent);
+    const advancement = resource.advancement;
     layouts[resource.resourcePublicId] = {
-      parentResourcePublicId: publicIDByCanonicalID.get(parentCanonicalID) || "",
-      groupId: stringValue(definition.layoutGroupId),
-      x: finiteCoordinate(display.x, index % 5),
-      y: finiteCoordinate(display.y, Math.floor(index / 5)),
+      parentResourcePublicId: advancement?.parentResourcePublicId || "",
+      groupId: advancement?.groupId || `advancement:${resource.resourcePublicId}`,
+      x: advancement?.x ?? index % 5,
+      y: advancement?.y ?? Math.floor(index / 5),
     };
   });
   const positions = resources.map((resource) => ({ resource, layout: layouts[resource.resourcePublicId] }));
@@ -1176,19 +1185,20 @@ function normalizeCategoryOrdinals(categories: ModContentSection[]) {
   return categories.map((item) => ({ ...item, ordinal: ordinals.get(item.publicId) || 0 }));
 }
 
-function normalizeResourceOrdinals(resources: ModContentSectionResource[]) {
-  const grouped = new Map<string, ModContentSectionResource[]>();
+function normalizeResourceOrdinals(resources: ModContentLayoutSummary[]) {
+  const grouped = new Map<string, ModContentLayoutSummary[]>();
   for (const resource of resources) grouped.set(resource.sectionPublicId, [...(grouped.get(resource.sectionPublicId) || []), resource]);
   const ordinals = new Map<string, number>();
   for (const entries of grouped.values()) {
     entries.sort((a, b) => a.ordinal - b.ordinal || a.resourcePublicId.localeCompare(b.resourcePublicId));
-    entries.forEach((item, index) => ordinals.set(item.resourcePublicId, index));
+    const baseOrdinal = Math.max(0, Math.min(...entries.map((item) => item.ordinal)));
+    entries.forEach((item, index) => ordinals.set(item.resourcePublicId, baseOrdinal + index));
   }
   return resources.map((item) => ({ ...item, ordinal: ordinals.get(item.resourcePublicId) || 0 }));
 }
 
-function normalizeSimilarResourceGroups(resources: ModContentSectionResource[]) {
-  const members = new Map<string, ModContentSectionResource[]>();
+function normalizeSimilarResourceGroups(resources: ModContentLayoutSummary[]) {
+  const members = new Map<string, ModContentLayoutSummary[]>();
   for (const resource of resources) {
     if (resource.similarGroupId) members.set(resource.similarGroupId, [...(members.get(resource.similarGroupId) || []), resource]);
   }
@@ -1211,21 +1221,6 @@ function categoryDepths(rootID: string, categories: ModContentSection[]) {
     return value;
   };
   categories.forEach((item) => resolve(item.publicId));
-  return result;
-}
-
-function descendantsOf(publicID: string, categories: ModContentSection[]) {
-  const result = new Set<string>();
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const category of categories) {
-      if (!result.has(category.publicId) && (category.parentPublicId === publicID || result.has(category.parentPublicId))) {
-        result.add(category.publicId);
-        changed = true;
-      }
-    }
-  }
   return result;
 }
 
@@ -1252,14 +1247,8 @@ function categoryName(category: ModContentSection, locale: string) {
     || category.publicId;
 }
 
-function resourceName(resource: ModContentSectionResource, locale: string, defaultLocale: string) {
-  const names = resource.names || {};
-  for (const candidate of [locale, defaultLocale, "en-US"]) {
-    const normalized = normalizeContentLanguage(candidate);
-    const match = Object.entries(names).find(([key]) => normalizeContentLanguage(key) === normalized);
-    if (match?.[1]) return match[1];
-  }
-  return Object.values(names).find(Boolean) || resource.canonicalId || resource.resourcePublicId;
+function resourceName(resource: ModContentLayoutSummary) {
+  return resource.label || resource.resourcePublicId;
 }
 
 function clientSelectionBounds(selection: AdvancementGroupSelection) {
@@ -1282,11 +1271,11 @@ function rectanglesIntersect(left: { left: number; top: number; right: number; b
   return left.left <= right.right && left.right >= right.left && left.top <= right.bottom && left.bottom >= right.top;
 }
 
-function resourceSearchNames(resource: ModContentSectionResource, locale: string, defaultLocale: string) {
+function resourceSearchNames(resource: ModContentLayoutSummary) {
   return [...new Set([
-    resourceName(resource, locale, defaultLocale),
-    ...Object.values(resource.names || {}),
-    resource.canonicalId,
+    resourceName(resource),
+    resource.label,
+    resource.resourcePublicId,
   ].filter((name): name is string => Boolean(name)))];
 }
 
@@ -1298,27 +1287,10 @@ function localizedSectionName(section: ModContentSection, locale: string) {
     || section.templateCode;
 }
 
-function resourceIconURL(resource: ModContentSectionResource) {
-  if (resource.iconFileId) return modContentResourceAssetURL(resource.resourcePublicId, resource.versionPublicId, "icon-small");
-  return resource.revisionId && resource.iconPath ? modExportAssetURL(resource.revisionId, resource.iconPath) : "";
-}
-
-function finiteCoordinate(value: unknown, fallback: number) {
-  const result = Number(value);
-  return Number.isFinite(result) ? result : fallback;
-}
-
 function roundGraphCoordinate(value: number) {
   return Math.round(Math.max(-100, Math.min(100, value)) * 10) / 10;
 }
 
-function record(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function stringValue(value: unknown) {
-  return typeof value === "string" ? value : "";
-}
 
 function errorText(reason: unknown) {
   return reason instanceof Error ? reason.message : String(reason);

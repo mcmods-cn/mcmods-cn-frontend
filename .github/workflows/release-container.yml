@@ -1,0 +1,42 @@
+name: Release frontend container
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
+      NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+      NEXT_PUBLIC_YGGDRASIL_API_ROOT: ${{ vars.NEXT_PUBLIC_YGGDRASIL_API_ROOT }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Require production public origins
+        shell: bash
+        run: |
+          test -n "$NEXT_PUBLIC_API_BASE_URL"
+          test -n "$NEXT_PUBLIC_SITE_URL"
+          test -n "$NEXT_PUBLIC_YGGDRASIL_API_ROOT"
+      - name: Authenticate to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+      - name: Build and publish immutable image
+        shell: bash
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tag="${GITHUB_REF_NAME//\//-}"
+          docker build --pull \
+            --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
+            --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
+            --build-arg NEXT_PUBLIC_YGGDRASIL_API_ROOT="$NEXT_PUBLIC_YGGDRASIL_API_ROOT" \
+            --tag "${image}:${tag}" --tag "${image}:sha-${GITHUB_SHA}" .
+          docker push "${image}:${tag}"
+          docker push "${image}:sha-${GITHUB_SHA}"

@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import {
   ActivityEvent,
   CreatorClaim,
+  CreatorClaimPage,
   Currency,
   EconomyConfig,
   LevelConfig,
@@ -13,8 +14,10 @@ import {
   TaskDefinition,
   translatedRecord,
 } from "../_lib/community-api";
+import { creatorClaimPagePath } from "../_lib/creator-claim-pagination.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { formatBytes } from "../_lib/oss-upload";
+import { canUseTaskRewardCurrency, renameTaskCurrencyReward, taskRewardCurrencyCodesAreUnique } from "../_lib/task-currency-rewards.mts";
 import { CatalogResourceIconPicker } from "./catalog-resource-icon";
 
 type TranslationFields = {
@@ -80,20 +83,60 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState<string | null>(null);
+	const [cursor, setCursor] = useState("");
+	const [cursorHistory, setCursorHistory] = useState<string[]>([]);
+	const [nextCursor, setNextCursor] = useState("");
+	const [hasMore, setHasMore] = useState(false);
+	const requestController = useRef<AbortController | null>(null);
+	const requestGeneration = useRef(0);
 
-  const load = useCallback(async () => {
+	const load = useCallback(async (targetCursor = "", targetHistory?: string[]) => {
+		requestController.current?.abort();
+		const controller = new AbortController();
+		requestController.current = controller;
+		const generation = ++requestGeneration.current;
     setLoading(true);
     try {
-      const response = await apiRequest<{ items: CreatorClaim[] }>("/api/v1/admin/creator-claims", {}, token);
+			const response = await apiRequest<CreatorClaimPage>(
+				creatorClaimPagePath(targetCursor),
+				{ signal: controller.signal },
+				token,
+			);
+			if (generation !== requestGeneration.current) return null;
       setItems(response.items);
+			setCursor(targetCursor);
+			setNextCursor(response.nextCursor);
+			setHasMore(response.hasMore);
+			if (targetHistory) setCursorHistory(targetHistory);
+			return response;
     } catch (error) {
+			if (error instanceof Error && error.name === "AbortError") return null;
       notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+			return null;
     } finally {
-      setLoading(false);
+			if (generation === requestGeneration.current) setLoading(false);
     }
   }, [t, token]);
 
-  useInitialLoad(load);
+	useEffect(() => {
+		const timer = window.setTimeout(() => void load("", []), 0);
+		return () => {
+			window.clearTimeout(timer);
+			requestGeneration.current += 1;
+			requestController.current?.abort();
+		};
+	}, [load]);
+
+	function previousPage() {
+		if (loading || cursorHistory.length === 0) return;
+		const targetHistory = cursorHistory.slice(0, -1);
+		void load(cursorHistory.at(-1) ?? "", targetHistory);
+	}
+
+	function nextPage() {
+		if (loading || !hasMore || !nextCursor) return;
+		void load(nextCursor, [...cursorHistory, cursor]);
+	}
 
   async function review(item: CreatorClaim, status: "approved" | "rejected") {
     setReviewing(item.id);
@@ -106,7 +149,11 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
         },
         token,
       );
-      setItems((current) => current.filter((claim) => claim.id !== item.id));
+			const refreshed = await load(cursor, cursorHistory);
+			if (refreshed?.items.length === 0 && cursorHistory.length > 0) {
+				const targetHistory = cursorHistory.slice(0, -1);
+				await load(cursorHistory.at(-1) ?? "", targetHistory);
+			}
       notifyAdmin(
         status === "approved" ? t("admin.community.claimApproved") : t("admin.community.claimRejected"),
         t("admin.noticeTitle"),
@@ -132,7 +179,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
       title={t("admin.community.creatorClaims")}
       description={t("admin.community.creatorClaimsDescription")}
       action={
-        <button className="button-secondary focus-ring" type="button" onClick={() => void load()}>
+				<button className="button-secondary focus-ring" disabled={loading} type="button" onClick={() => void load(cursor, cursorHistory)}>
           {t("common.refresh")}
         </button>
       }
@@ -199,6 +246,16 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
           </article>
         ))}
       </div>
+			{cursorHistory.length > 0 || hasMore ? (
+				<nav className="mt-5 flex items-center justify-between gap-3" aria-label={t("admin.reviews.paginationLabel")}>
+					<button className="button-secondary focus-ring" disabled={loading || cursorHistory.length === 0} type="button" onClick={previousPage}>
+						{t("common.previous")}
+					</button>
+					<button className="button-secondary focus-ring" disabled={loading || !hasMore || !nextCursor} type="button" onClick={nextPage}>
+						{t("common.next")}
+					</button>
+				</nav>
+			) : null}
     </AdminPanel>
   );
 }
@@ -866,7 +923,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
               <select
                 className="field"
                 value={draft.itemType}
-                onChange={(event) => setDraft({ ...draft, itemType: event.target.value })}
+                onChange={(event) => setDraft({ ...draft, itemType: event.target.value as ShopItem["itemType"] })}
               >
                 <option value="profile_background">{t("admin.community.profileBackgroundItem")}</option>
                 <option value="project_heat_boost">{t("admin.community.projectHeatBoostItem")}</option>
@@ -1084,6 +1141,10 @@ export function TaskManagementPanel({ token }: { token: string }) {
   useInitialLoad(load);
 
   async function save() {
+    if (!taskRewardCurrencyCodesAreUnique(draft.rewards.currencies ?? {})) {
+      notifyAdmin(t("admin.community.duplicateTaskCurrencyReward"), t("admin.noticeTitle"), "danger");
+      return;
+    }
     setSaving(true);
     try {
       const payload = withLocalizedPersistenceFields(draft, locale);
@@ -1301,14 +1362,16 @@ export function TaskManagementPanel({ token }: { token: string }) {
                     className="field"
                     value={code}
                     onChange={(event) => {
-                      const next = { ...(draft.rewards.currencies ?? {}) };
-                      delete next[code];
-                      next[event.target.value] = amount;
+                      const next = renameTaskCurrencyReward(draft.rewards.currencies ?? {}, code, event.target.value);
+                      if (!next) {
+                        notifyAdmin(t("admin.community.duplicateTaskCurrencyReward"), t("admin.noticeTitle"), "danger");
+                        return;
+                      }
                       setDraft({ ...draft, rewards: { ...draft.rewards, currencies: next } });
                     }}
                   >
                     {currencies.map((currency) => (
-                      <option key={currency.publicId} value={currency.code}>
+                      <option disabled={!canUseTaskRewardCurrency(draft.rewards.currencies ?? {}, code, currency.code)} key={currency.publicId} value={currency.code}>
                         {translatedRecord(currency.translations, locale, "name", currency.name)}
                       </option>
                     ))}

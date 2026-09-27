@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { MinecraftVersionConfig } from "../_lib/mod-api";
 import { getCachedMinecraftVersionConfig, loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
 import { useI18n } from "../_lib/i18n-provider";
+import { toggleMinecraftVersionCodes } from "../_lib/minecraft-version-selection.mts";
 
 type MinecraftVersionPickerProps = {
   values: string[];
@@ -106,22 +107,22 @@ export function MinecraftVersionPicker({
       setOpen(false);
       return;
     }
-    setPendingValues((current) => current.includes(code)
-      ? current.filter((value) => value !== code)
-      : [...current, code]);
+    setPendingValues((current) => toggleMinecraftVersionCodes(
+      current,
+      [code],
+      available.map((version) => version.code),
+      disabledSet,
+    ));
   }
 
   function chooseGroup(codes: readonly string[]) {
     if (!multiple) return;
-    setPendingValues((current) => {
-      const selected = new Set(current);
-      const allSelected = codes.every((code) => selected.has(code));
-      for (const code of codes) {
-        if (allSelected) selected.delete(code);
-        else selected.add(code);
-      }
-      return available.map((version) => version.code).filter((code) => selected.has(code));
-    });
+    setPendingValues((current) => toggleMinecraftVersionCodes(
+      current,
+      codes,
+      available.map((version) => version.code),
+      disabledSet,
+    ));
   }
 
   function openPicker() {

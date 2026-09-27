@@ -84,6 +84,12 @@ export type CommentWatchListItem = {
   lastActivityAt: string;
 };
 
+export type CommentEditConflict = {
+  body: string;
+  updatedAt: string;
+  deleted: boolean;
+};
+
 export function targetCommentsPath(targetType: CommentTargetType, targetKey: string) {
   return `/api/v1/comment-targets/${encodeURIComponent(targetType)}/${encodeURIComponent(targetKey)}/comments`;
 }
@@ -143,9 +149,10 @@ export function loadCommentReplies(commentId: string, cursor: string | undefined
   );
 }
 
-export function loadCommentThread(commentId: string, token?: string) {
-  return apiRequest<{ items: CommentItem[]; focusId: string; target: CommentTarget }>(
-    `/api/v1/comments/${encodeURIComponent(commentId)}/thread`,
+export function loadCommentThread(commentId: string, cursor: string | undefined, token?: string) {
+  const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  return apiRequest<{ items: CommentItem[]; focusId: string; target: CommentTarget; nextCursor: string; pathTruncated: boolean }>(
+    `/api/v1/comments/${encodeURIComponent(commentId)}/thread${query}`,
     {},
     token,
   );
@@ -173,12 +180,20 @@ export function deleteComment(commentId: string, token: string) {
   return apiRequest(`/api/v1/comments/${encodeURIComponent(commentId)}`, { method: "DELETE" }, token);
 }
 
-export function updateComment(commentId: string, body: string, token: string) {
+export function updateComment(commentId: string, body: string, baseUpdatedAt: string, token: string) {
   return apiRequest<CommentItem>(
     `/api/v1/comments/${encodeURIComponent(commentId)}`,
-    { method: "PATCH", body: JSON.stringify({ body }) },
+    { method: "PATCH", body: JSON.stringify({ body, baseUpdatedAt }) },
     token,
   );
+}
+
+export function parseCommentEditConflict(value: unknown): CommentEditConflict | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Partial<CommentEditConflict>;
+  if (typeof candidate.body !== "string" || typeof candidate.updatedAt !== "string" ||
+      Number.isNaN(Date.parse(candidate.updatedAt)) || typeof candidate.deleted !== "boolean") return undefined;
+  return { body: candidate.body, updatedAt: candidate.updatedAt, deleted: candidate.deleted };
 }
 
 export function setCommentPinned(commentId: string, pinned: boolean, token: string) {

@@ -40,6 +40,9 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
   const [service, setService] = useState<SkinServiceInfo | null>(null);
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [wardrobe, setWardrobe] = useState<SkinTexture[]>([]);
+  const [wardrobeTotal, setWardrobeTotal] = useState(0);
+  const [wardrobeHasMore, setWardrobeHasMore] = useState(false);
+  const [wardrobeNextCursor, setWardrobeNextCursor] = useState("");
   const [sessions, setSessions] = useState<LauncherSession[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [newProfileName, setNewProfileName] = useState("");
@@ -58,7 +61,7 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     const results = await Promise.allSettled([
       loadSkinService(token),
       loadMyPlayerProfiles(token),
-      loadWardrobe(token),
+      loadWardrobe(token, { limit: 100 }),
       loadLauncherSessions(token),
     ]);
     const [serviceResult, profileResult, wardrobeResult, sessionResult] = results;
@@ -67,7 +70,12 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
       setProfiles(profileResult.value);
       setSelectedId((current) => profileResult.value.some((item) => item.publicId === current) ? current : profileResult.value[0]?.publicId || "");
     }
-    if (wardrobeResult.status === "fulfilled") setWardrobe(wardrobeResult.value);
+    if (wardrobeResult.status === "fulfilled") {
+      setWardrobe(wardrobeResult.value.items);
+      setWardrobeTotal(wardrobeResult.value.total);
+      setWardrobeHasMore(wardrobeResult.value.hasMore);
+      setWardrobeNextCursor(wardrobeResult.value.nextCursor);
+    }
     if (sessionResult.status === "fulfilled") setSessions(sessionResult.value);
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") setMessage(errorMessage(failure.reason, t("skins.profileLoadFailed")));
@@ -93,8 +101,28 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     return () => { cancelled = true; };
   }, [selected]);
 
-  const skins = useMemo(() => wardrobe.filter((item) => item.kind === "skin"), [wardrobe]);
-  const capes = useMemo(() => wardrobe.filter((item) => item.kind === "cape"), [wardrobe]);
+  const skins = useMemo(() => wardrobeTextureOptions(wardrobe, selected?.skin, "skin"), [selected?.skin, wardrobe]);
+  const capes = useMemo(() => wardrobeTextureOptions(wardrobe, selected?.cape, "cape"), [selected?.cape, wardrobe]);
+
+  async function loadMoreWardrobe() {
+    if (!wardrobeHasMore || !wardrobeNextCursor || busy) return;
+    setBusy("wardrobe:more");
+    try {
+      const page = await loadWardrobe(token, { limit: 100, cursor: wardrobeNextCursor });
+      setWardrobe((items) => {
+        const byID = new Map(items.map((item) => [item.publicId, item]));
+        for (const item of page.items) byID.set(item.publicId, item);
+        return [...byID.values()];
+      });
+      setWardrobeTotal(page.total);
+      setWardrobeHasMore(page.hasMore);
+      setWardrobeNextCursor(page.nextCursor);
+    } catch (reason) {
+      notifySite(errorMessage(reason, t("skins.profileLoadFailed")), t("skins.wardrobe"), "danger");
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function createProfile() {
     if (!playerProfileNamePattern.test(newProfileName.trim())) return;
@@ -162,6 +190,7 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     try {
       await removeFromWardrobe(texture.publicId, token);
       setWardrobe((items) => items.filter((item) => item.publicId !== texture.publicId));
+      setWardrobeTotal((total) => Math.max(0, total - 1));
       notifySite(t("skins.wardrobeRemoved"), texture.name, "success");
     } catch (reason) {
       notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
@@ -306,9 +335,10 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
       </div>
 
       <section className="surface rounded-lg p-5">
-        <h2 className="text-xl font-black">{t("skins.wardrobe")}</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-3"><h2 className="text-xl font-black">{t("skins.wardrobe")}</h2><span className="text-xs text-[var(--muted)]">{t("skins.wardrobeLoaded", { loaded: wardrobe.length, total: wardrobeTotal })}</span></div>
         <p className="mt-1 text-sm text-[var(--muted)]">{t("skins.wardrobeDescription")}</p>
         {wardrobe.length ? <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{wardrobe.map((texture) => <article className="overflow-hidden rounded-lg border border-[var(--line)]" key={texture.publicId}><Link href={`/skins/${texture.publicId}`}><SkinPreview2D className="h-48 w-full p-4" kind={texture.kind} label={texture.name} model={texture.model} src={skinTextureURL(texture)} /></Link><div className="p-3"><div className="flex items-start justify-between gap-2"><span className="min-w-0"><Link className="block truncate font-black hover:text-[var(--accent)]" href={`/skins/${texture.publicId}`}>{texture.name}</Link><span className="text-xs text-[var(--muted)]">{texture.kind === "cape" ? t("skins.kindCape") : texture.model === "slim" ? t("skins.modelSlim") : t("skins.modelDefault")}</span></span><button className="text-xs font-bold text-[var(--red)]" disabled={busy === `wardrobe:${texture.publicId}`} type="button" onClick={() => void removeWardrobeItem(texture)}>{t("common.delete")}</button></div></div></article>)}</div> : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-10 text-center text-sm text-[var(--muted)]">{t("skins.wardrobeEmpty")}</p>}
+        {wardrobeHasMore ? <div className="mt-5 text-center"><button className="button-secondary focus-ring" disabled={Boolean(busy)} type="button" onClick={() => void loadMoreWardrobe()}>{busy === "wardrobe:more" ? t("common.loading") : t("skins.wardrobeLoadMore")}</button></div> : null}
       </section>
 
       <section className="surface rounded-lg p-5">
@@ -345,6 +375,14 @@ function formatTime(value: string | undefined, locale: string) {
   if (!value) return "-";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function wardrobeTextureOptions(items: SkinTexture[], selected: SkinTexture | null | undefined, kind: "skin" | "cape") {
+  const options = items.filter((item) => item.kind === kind);
+  if (selected?.kind === kind && !options.some((item) => item.publicId === selected.publicId)) {
+    return [selected, ...options];
+  }
+  return options;
 }
 
 function errorMessage(reason: unknown, fallback: string) {

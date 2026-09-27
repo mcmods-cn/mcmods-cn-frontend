@@ -15,6 +15,7 @@ import {
   ServerDetail,
   ServerLink,
   ServerMod,
+  ServerModDeclaration,
   ServerPrimaryTag,
   ServerProbeResult,
   submitServer,
@@ -253,7 +254,6 @@ export function ServerSubmissionWizard({
           projectKey: `server:${initialServer.id}`,
           projectTitle: draft.name.trim(),
           targetUrl: `/servers/${initialServer.id}`,
-          reviewStatus: initialServer.reviewStatus === "approved" ? "approved" : "pending",
           reviewTargetType: "server",
           reviewTargetPublicId: initialServer.id,
         });
@@ -270,7 +270,6 @@ export function ServerSubmissionWizard({
         projectKey: `server:${result.id}`,
         projectTitle: draft.name.trim(),
         targetUrl: `/servers/${result.id}`,
-        reviewStatus: result.reviewStatus,
         reviewTargetType: "server",
         reviewTargetPublicId: result.id,
       });
@@ -409,6 +408,7 @@ export function ServerSubmissionWizard({
               <Field label={t("servers.wizard.body")}>
                 <ToolsPlayground
                   embedded
+                  documentId={`server:${initialServer?.id || "draft"}:body`}
                   editorTitle={t("servers.wizard.body")}
                   uploadSource="server-content"
                   value={draft.bodyMarkdown}
@@ -518,12 +518,13 @@ function BooleanCard({ checked, label, onChange }: { checked: boolean; label: st
 }
 
 function serverModsFromResources(resources: readonly CatalogResourceRef[], detected: readonly DetectedServerMod[]) {
-  const result = new Map<string, DetectedServerMod>();
+  const result = new Map<string, ServerModDeclaration>();
   const detectedByID = new Map(detected.map((mod) => [mod.id.toLowerCase(), mod]));
   for (const resource of resources) {
     const id = modIdentifierFromResource(resource);
     if (!validModIdentifier(id) || result.has(id)) continue;
-    result.set(id, detectedByID.get(id) ?? { id, source: "manual", confidence: "declared" });
+    const detectedMod = detectedByID.get(id);
+    result.set(id, { id, ...(detectedMod?.version ? { version: detectedMod.version } : {}) });
   }
   return [...result.values()];
 }

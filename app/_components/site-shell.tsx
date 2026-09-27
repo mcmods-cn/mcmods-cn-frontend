@@ -10,6 +10,7 @@ import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { canAccessAdmin, canAccessReviewQueue, clearAuth, type AuthUser, useAuthSnapshot } from "../_lib/auth";
 import { isBackendUnavailable, reportBackendAvailability } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
+import { realtimeQueryCoordinator, realtimeQueryKeys } from "../_lib/realtime-query-cache.mts";
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
 
@@ -76,10 +77,10 @@ export function SiteShell({ children }: SiteShellProps) {
 }
 
 function RealtimeBridge() {
-  const { token } = useAuthSnapshot();
+  const { token, user } = useAuthSnapshot();
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !user) return;
     let cancelled = false;
     let source: EventSource | null = null;
     let timer: number | null = null;
@@ -106,8 +107,7 @@ function RealtimeBridge() {
           }
           let data: unknown = null;
           try { data = JSON.parse(message.data); } catch { data = message.data; }
-          window.dispatchEvent(new CustomEvent("mcmods-realtime", { detail: { id: message.lastEventId, type, data } }));
-          window.dispatchEvent(new Event("mcmods-unread-change"));
+          realtimeQueryCoordinator.routeRealtimeEvent(user.id, { id: message.lastEventId, type, data });
         });
       }
       source.onerror = () => {
@@ -120,7 +120,7 @@ function RealtimeBridge() {
     connect();
     document.addEventListener("visibilitychange", visibility);
     return () => { cancelled = true; close(); document.removeEventListener("visibilitychange", visibility); };
-  }, [token]);
+  }, [token, user]);
 
   return null;
 }
@@ -133,19 +133,18 @@ function SitePresence() {
   useEffect(() => {
     let cancelled = false;
     let visitorId = window.localStorage.getItem(presenceStorageKey) ?? "";
-    if (!visitorId) {
-      visitorId = typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-      window.localStorage.setItem(presenceStorageKey, visitorId);
-    }
     const touch = () => {
       if (cancelled || document.visibilityState !== "visible") return;
-      void apiRequest<{ online: boolean }>(
+      void apiRequest<{ online: boolean; visitorId?: string }>(
         "/api/v1/site/presence",
         { method: "POST", body: JSON.stringify({ visitorId }) },
         token,
-      ).catch(() => undefined);
+      ).then((response) => {
+        if (response.visitorId) {
+          visitorId = response.visitorId;
+          window.localStorage.setItem(presenceStorageKey, visitorId);
+        }
+      }).catch(() => undefined);
     };
     touch();
     const timer = window.setInterval(touch, 60_000);
@@ -277,25 +276,30 @@ function SiteHeader() {
   const [navigationEdges, setNavigationEdges] = useState({ left: true, right: false });
 
   useEffect(() => {
-    if (!token) return;
+    if (!token || !user) return;
     let cancelled = false;
-    const load = () => {
+    const queryKey = realtimeQueryKeys.unreadSummary(user.id);
+    const load = (force = false) => {
       if (document.visibilityState !== "visible") return;
-      void apiRequest<{ total: number }>("/api/v1/me/unread-summary", {}, token)
+      void realtimeQueryCoordinator.readQuery(
+        queryKey,
+        () => apiRequest<{ total: number }>("/api/v1/me/unread-summary", {}, token),
+        { maxAgeMs: force ? 0 : 1_000 },
+      )
         .then((result) => {
           if (!cancelled) setUnread(result.total);
         })
         .catch(() => undefined);
     };
     load();
-    const timer = window.setInterval(load, 300_000);
-    window.addEventListener("mcmods-unread-change", load);
+    const timer = window.setInterval(() => load(true), 300_000);
+    const unsubscribe = realtimeQueryCoordinator.subscribe(queryKey, load);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
-      window.removeEventListener("mcmods-unread-change", load);
+      unsubscribe();
     };
-  }, [token]);
+  }, [token, user]);
 
   useEffect(() => {
     const navigation = navigationRef.current;

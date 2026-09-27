@@ -1,17 +1,23 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import { normalizeIconfontIntegrity, normalizeIconfontURL } from "../_lib/iconfont-url.mts";
 
 const iconfontEvent = "mcmods-iconfont-change";
 
-export function IconfontLoader({ symbolUrl }: { symbolUrl?: string }) {
+export function IconfontLoader({ symbolUrl, integrity }: { symbolUrl?: string; integrity?: string }) {
   useEffect(() => {
     const url = normalizeIconfontURL(symbolUrl);
-    if (!url || Array.from(document.scripts).some((item) => item.dataset.mcmodsIconfont === url)) return;
+    const sri = normalizeIconfontIntegrity(integrity);
+    const identity = `${url}#${sri}`;
+    if (!url || !sri || Array.from(document.scripts).some((item) => item.dataset.mcmodsIconfont === identity)) return;
     const script = document.createElement("script");
     script.src = url;
     script.async = true;
-    script.dataset.mcmodsIconfont = url;
+    script.integrity = sri;
+    script.crossOrigin = "anonymous";
+    script.referrerPolicy = "no-referrer";
+    script.dataset.mcmodsIconfont = identity;
     script.addEventListener("load", notifyIconfontChange);
     script.addEventListener("error", notifyIconfontChange);
     document.head.appendChild(script);
@@ -19,7 +25,7 @@ export function IconfontLoader({ symbolUrl }: { symbolUrl?: string }) {
       script.removeEventListener("load", notifyIconfontChange);
       script.removeEventListener("error", notifyIconfontChange);
     };
-  }, [symbolUrl]);
+  }, [integrity, symbolUrl]);
   return null;
 }
 
@@ -41,16 +47,4 @@ function subscribeIconfont(onStoreChange: () => void) {
 
 function notifyIconfontChange() {
   window.dispatchEvent(new Event(iconfontEvent));
-}
-
-function normalizeIconfontURL(value?: string) {
-  if (!value) return "";
-  const candidate = value.startsWith("//") ? `https:${value}` : value;
-  try {
-    const url = new URL(candidate);
-    if (url.protocol !== "https:" || !url.hostname.endsWith("alicdn.com")) return "";
-    return url.toString();
-  } catch {
-    return "";
-  }
 }

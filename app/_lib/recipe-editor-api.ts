@@ -1,9 +1,8 @@
 import { apiRequest } from "./api";
-import type { LocalizationVersion, ReviewStatus, TranslationProvenance } from "./editor-types";
+import { parseLocalizedContentVersions, parseOptionalPublishedReviewStatus, parsePublishedReviewStatus } from "./localization-boundary.mts";
 import type {
   CatalogEditResult,
   RecipeMutation,
-  RecipeLocalizedFields,
   RecipeRecord,
   RecipeSourceVersionOption,
   RecipeTemplateMutation,
@@ -13,7 +12,6 @@ import type {
 
 type RawMutationResult = Partial<CatalogEditResult> & {
   publicId?: string;
-  status?: string;
 };
 
 export async function loadRecipeTypeOptions(token = "", signal?: AbortSignal) {
@@ -125,9 +123,9 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
       }];
     })),
     defaultLocale: stringValue(row.defaultLocale) || undefined,
-    localizations: normalizeLocalizations(row.localizations),
+    localizations: parseLocalizedContentVersions(row.localizations),
     publishedRevisionId: stringValue(row.publishedRevisionId) || undefined,
-    reviewStatus: optionalReviewStatus(row.reviewStatus),
+    reviewStatus: parseOptionalPublishedReviewStatus(row.reviewStatus),
   };
 }
 
@@ -203,7 +201,7 @@ function normalizeMutationResult(value: RawMutationResult, fallbackPublicId = ""
     operation: stringValue(value.operation),
     revisionId: stringValue(value.revisionId) || undefined,
     changeRequestId: stringValue(value.changeRequestId),
-    reviewStatus: value.reviewStatus === "pending" || value.status === "pending" ? "pending" : value.reviewStatus === "rejected" ? "rejected" : "approved",
+    reviewStatus: parsePublishedReviewStatus(value.reviewStatus),
     activityEventId: stringValue(value.activityEventId),
   };
 }
@@ -263,9 +261,9 @@ function normalizeRecipeTemplate(value: unknown, recipeTypePublicId: string, det
     }),
     slotCount: optionalNumber(row.slotCount) ?? arrayValue(row.slots).length,
     defaultLocale: stringValue(row.defaultLocale) || undefined,
-    localizations: normalizeLocalizations(row.localizations),
+    localizations: parseLocalizedContentVersions(row.localizations),
     publishedRevisionId: stringValue(row.publishedRevisionId) || undefined,
-    reviewStatus: optionalReviewStatus(row.reviewStatus),
+    reviewStatus: parseOptionalPublishedReviewStatus(row.reviewStatus),
   };
 }
 
@@ -308,38 +306,4 @@ function localizedName(value: unknown) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
   return "";
-}
-
-function normalizeLocalizations(value: unknown): LocalizationVersion<RecipeLocalizedFields>[] {
-  return arrayValue(value).map((localization) => {
-    const item = objectValue(localization);
-    const provenance = stringValue(item.provenance);
-    const reviewStatus = stringValue(item.reviewStatus);
-    return {
-      locale: stringValue(item.locale),
-      fields: {
-        name: stringValue(item.name),
-        summary: stringValue(item.summary),
-        contentMarkdown: stringValue(item.contentMarkdown),
-      },
-      revisionId: stringValue(item.publishedRevisionId) || undefined,
-      provenance: normalizeProvenance(provenance),
-      reviewStatus: normalizeReviewStatus(reviewStatus),
-      generatedFromLocale: stringValue(item.sourceLocale) || undefined,
-      editable: item.editable !== false,
-    };
-  });
-}
-
-function normalizeProvenance(value: string): TranslationProvenance {
-  return value === "ai" || value === "human_corrected" || value === "original" || value === "import" ? value : "human";
-}
-
-function normalizeReviewStatus(value: string): ReviewStatus {
-  return value === "pending" || value === "rejected" || value === "draft" ? value : "approved";
-}
-
-function optionalReviewStatus(value: unknown): ReviewStatus | undefined {
-  const status = stringValue(value);
-  return status ? normalizeReviewStatus(status) : undefined;
 }

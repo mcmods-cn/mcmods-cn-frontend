@@ -5,30 +5,96 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { BackendModRevision, BackendModRevisionComparison, BackendModRevisionList, CreateModPayload } from "../_lib/mod-api";
+import { modRevisionHistoryPagePath, toggleModRevisionSelection } from "../_lib/mod-history-pagination.mts";
 import { useI18n } from "../_lib/i18n-provider";
 
 export function ModHistory({ siteId }: { siteId: string }) {
+  return <ModHistoryPage key={siteId} siteId={siteId} />;
+}
+
+function ModHistoryPage({ siteId }: { siteId: string }) {
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
-  const [items, setItems] = useState<BackendModRevision[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [page, setPage] = useState<BackendModRevisionList | null>(null);
+  const [selected, setSelected] = useState<BackendModRevision[]>([]);
+  const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
   const [message, setMessage] = useState("");
+  const currentCursor = cursorHistory[cursorHistory.length - 1] || "";
+  const items = page?.items ?? [];
 
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
-    apiRequest<BackendModRevisionList>(`/api/v1/mods/${encodeURIComponent(siteId)}/revisions`, {}, token)
-      .then((result) => { if (!cancelled) setItems(result.items); })
-      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("mods.history.loadFailed")); });
-    return () => { cancelled = true; };
-  }, [ready, siteId, t, token]);
+    const controller = new AbortController();
+    apiRequest<BackendModRevisionList>(modRevisionHistoryPagePath(siteId, currentCursor), { signal: controller.signal }, token)
+      .then((result) => {
+        if (!cancelled) {
+          setPage(result);
+          setMessage("");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled && (!(error instanceof DOMException) || error.name !== "AbortError")) {
+          setMessage(error instanceof Error ? error.message : t("mods.history.loadFailed"));
+        }
+      });
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [currentCursor, ready, siteId, t, token]);
 
-  function toggle(id: string) {
-    setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current.slice(-1), id]);
+  function toggle(item: BackendModRevision) {
+    setSelected((current) => toggleModRevisionSelection(current, item));
   }
 
-  const sortedSelection = items.filter((item) => selected.includes(item.id)).sort((left, right) => left.version - right.version);
-  return <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-[var(--foreground)]"><div className="mx-auto max-w-6xl"><header className="flex flex-wrap items-end justify-between gap-4"><div><Link className="text-sm font-bold text-[var(--accent)]" href={`/mods/${siteId}`}>{t("mods.history.back")}</Link><h1 className="mt-2 text-3xl font-black">{t("mods.history.title")}</h1><p className="mt-2 text-sm text-[var(--muted)]">{t("mods.history.description")}</p></div><div className="flex gap-2"><Link className="button-secondary focus-ring" href={`/mods/${siteId}/edit`}>{t("mods.history.edit")}</Link>{sortedSelection.length === 2 ? <Link className="button-primary focus-ring" href={`/mods/${siteId}/compare?before=${sortedSelection[0].id}&after=${sortedSelection[1].id}`}>{t("mods.history.compare")}</Link> : <button className="button-primary" disabled type="button">{t("mods.history.selectTwo")}</button>}</div></header>{message ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 text-[var(--red)]">{message}</p> : null}<div className="mt-6 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]"><div className="min-w-[900px]"><div className="grid grid-cols-[48px_80px_120px_150px_1fr_180px] gap-3 border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 text-sm font-black"><span /><span>{t("mods.history.version")}</span><span>{t("mods.history.status")}</span><span>{t("mods.history.submitter")}</span><span>{t("mods.history.reason")}</span><span>{t("mods.history.time")}</span></div>{items.map((item) => <label key={item.id} className="grid cursor-pointer grid-cols-[48px_80px_120px_150px_1fr_180px] items-center gap-3 border-b border-[var(--line)] px-4 py-4 last:border-b-0 hover:bg-[var(--panel-subtle)]"><input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} /><strong>v{item.version}</strong><Status status={item.status} />{item.submittedBy ? <Link className="truncate text-sm font-bold text-[var(--accent)] hover:underline" href={`/user/${item.submittedBy}`}>{item.submittedByName || item.submittedBy}</Link> : <span className="truncate text-sm text-[var(--muted)]">{item.submittedByName || "system"}</span>}<span className="text-sm text-[var(--muted)]">{item.changeReason || t("mods.history.initialSubmission")}</span><time className="text-sm">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</time></label>)}</div></div></div></main>;
+  const sortedSelection = [...selected].sort((left, right) => left.version - right.version);
+  const showPagination = cursorHistory.length > 1 || Boolean(page?.hasMore);
+  return (
+    <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-[var(--foreground)]">
+      <div className="mx-auto max-w-6xl">
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <Link className="text-sm font-bold text-[var(--accent)]" href={`/mods/${siteId}`}>{t("mods.history.back")}</Link>
+            <h1 className="mt-2 text-3xl font-black">{t("mods.history.title")}</h1>
+            <p className="mt-2 text-sm text-[var(--muted)]">{t("mods.history.description")}</p>
+          </div>
+          <div className="flex gap-2">
+            <Link className="button-secondary focus-ring" href={`/mods/${siteId}/edit`}>{t("mods.history.edit")}</Link>
+            {sortedSelection.length === 2 ? (
+              <Link className="button-primary focus-ring" href={`/mods/${siteId}/compare?before=${sortedSelection[0].id}&after=${sortedSelection[1].id}`}>{t("mods.history.compare")}</Link>
+            ) : <button className="button-primary" disabled type="button">{t("mods.history.selectTwo")}</button>}
+          </div>
+        </header>
+        {message ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 text-[var(--red)]">{message}</p> : null}
+        {!page && !message ? <p className="mt-5 text-sm text-[var(--muted)]">{t("common.loading")}</p> : null}
+        <div className="mt-6 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]">
+          <div className="min-w-[900px]">
+            <div className="grid grid-cols-[48px_80px_120px_150px_1fr_180px] gap-3 border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 text-sm font-black">
+              <span /><span>{t("mods.history.version")}</span><span>{t("mods.history.status")}</span><span>{t("mods.history.submitter")}</span><span>{t("mods.history.reason")}</span><span>{t("mods.history.time")}</span>
+            </div>
+            {items.map((item) => (
+              <label key={item.id} className="grid cursor-pointer grid-cols-[48px_80px_120px_150px_1fr_180px] items-center gap-3 border-b border-[var(--line)] px-4 py-4 last:border-b-0 hover:bg-[var(--panel-subtle)]">
+                <input type="checkbox" checked={selected.some((value) => value.id === item.id)} onChange={() => toggle(item)} />
+                <strong>v{item.version}</strong>
+                <Status status={item.status} />
+                {item.submittedBy ? <Link className="truncate text-sm font-bold text-[var(--accent)] hover:underline" href={`/user/${item.submittedBy}`}>{item.submittedByName || item.submittedBy}</Link> : <span className="truncate text-sm text-[var(--muted)]">{item.submittedByName || "system"}</span>}
+                <span className="text-sm text-[var(--muted)]">{item.changeReason || t("mods.history.initialSubmission")}</span>
+                <time className="text-sm">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</time>
+              </label>
+            ))}
+          </div>
+        </div>
+        {showPagination ? (
+          <div className="mt-5 flex items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+            <button className="button-secondary focus-ring" disabled={!page || cursorHistory.length <= 1} type="button" onClick={() => { setPage(null); setCursorHistory((history) => history.slice(0, -1)); }}>{t("common.previous")}</button>
+            <span className="text-sm font-bold text-[var(--muted)]">{cursorHistory.length}</span>
+            <button className="button-secondary focus-ring" disabled={!page?.hasMore || !page.nextCursor} type="button" onClick={() => { setPage(null); setCursorHistory((history) => [...history, page?.nextCursor || ""]); }}>{t("common.next")}</button>
+          </div>
+        ) : null}
+      </div>
+    </main>
+  );
 }
 
 export function ModRevisionCompare({ siteId, before, after }: { siteId: string; before: string; after: string }) {

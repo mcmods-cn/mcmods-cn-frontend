@@ -3,13 +3,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { contentLanguageCandidates, normalizeContentLanguage } from "../_lib/content-language";
+import { NO_MOD_CONTENT_CAPABILITIES, type ModContentCapabilities } from "../_lib/mod-content-capabilities.mts";
 import {
-  loadAllModContentSectionResources,
+  loadModContentAdvancementGraph,
+  loadModContentSectionResources,
   loadModContentTemplates,
   modContentResourceAssetURL,
+  type ModContentLayoutSummary,
   type ModContentSection,
   type ModContentSectionResource,
   type ModContentTemplate,
@@ -25,24 +27,27 @@ import { CustomContentTemplateSettings } from "./custom-content-template-setting
 export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; sectionId: string }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
+  const capabilityRequestKey = `${siteId}\u0000${sectionId}\u0000${token}`;
   const [section, setSection] = useState<ModContentSection>();
   const [categories, setCategories] = useState<ModContentSection[]>([]);
   const [versionLabel, setVersionLabel] = useState("");
   const [resources, setResources] = useState<ModContentSectionResource[]>([]);
+  const [advancementResources, setAdvancementResources] = useState<ModContentLayoutSummary[]>([]);
   const [total, setTotal] = useState(0);
+  const [nextCursor, setNextCursor] = useState("");
+  const [graphCursor, setGraphCursor] = useState("");
+  const [cursorHistory, setCursorHistory] = useState<string[]>([]);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
-  const [canManage, setCanManage] = useState(false);
+  const [capabilityState, setCapabilityState] = useState<{ key: string; value: ModContentCapabilities }>();
   const [templates, setTemplates] = useState<ModContentTemplate[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    if (!token) return;
-    apiRequest(`/api/v1/mods/${encodeURIComponent(siteId)}/editor`, {}, token)
-      .then(() => { if (!cancelled) setCanManage(true); })
-      .catch(() => { if (!cancelled) setCanManage(false); });
     loadModContentTemplates(siteId, token)
       .then((items) => { if (!cancelled) setTemplates(items); })
       .catch(() => { if (!cancelled) setTemplates([]); });
@@ -51,44 +56,114 @@ export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; s
 
   useEffect(() => {
     let cancelled = false;
-    const timer = window.setTimeout(() => loadAllModContentSectionResources(siteId, sectionId, { locale, query }, token).then((page) => {
-      if (cancelled) return;
-      setSection(page.section);
-      setCategories(page.categories || []);
-      setVersionLabel(page.versionLabel);
-      setResources(page.items);
-      setTotal(page.total);
-      setError("");
-    }).catch((reason) => {
+    const apiQuery = query.trim().length >= 3 ? query.trim() : "";
+    const timer = window.setTimeout(() => loadModContentSectionResources(siteId, sectionId, { locale, query: apiQuery }, token)
+      .then(async (initialPage) => initialPage.section.templateCode === "advancement"
+        ? { kind: "graph" as const, page: await loadModContentAdvancementGraph(siteId, sectionId, { locale, query: apiQuery }, token) }
+        : { kind: "cards" as const, page: initialPage })
+      .then(({ kind, page }) => {
+        if (cancelled) return;
+        setSection(page.section);
+        setCategories(page.categories || []);
+        setVersionLabel(page.versionLabel);
+        if (kind === "graph") {
+          setAdvancementResources(page.items);
+          setResources([]);
+        } else {
+          setResources(page.items);
+          setAdvancementResources([]);
+        }
+        setTotal(page.total);
+        setNextCursor(page.nextCursor || "");
+        setHasMore(page.hasMore);
+        setGraphCursor("");
+        setCursorHistory([]);
+        setCapabilityState({ key: capabilityRequestKey, value: page.capabilities });
+        setError("");
+      }).catch((reason) => {
       if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
     }), 180);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [locale, query, refreshKey, sectionId, siteId, token]);
+  }, [capabilityRequestKey, locale, query, refreshKey, sectionId, siteId, token]);
 
+  const displayedResources = resources;
+  const hasDisplayedResources = section?.templateCode === "advancement"
+    ? advancementResources.length > 0
+    : displayedResources.length > 0;
   const indexedResources = useMemo(
-    () => section ? resources.map((resource) => sectionResourceIndexEntry(siteId, section, resource, locale)) : [],
-    [locale, resources, section, siteId],
+    () => !section ? [] : section.templateCode === "advancement"
+      ? advancementResources.map((resource) => layoutSummaryIndexEntry(siteId, section, resource))
+      : displayedResources.map((resource) => sectionResourceIndexEntry(siteId, section, resource, locale)),
+    [advancementResources, displayedResources, locale, section, siteId],
   );
+  const capabilities = capabilityState?.key === capabilityRequestKey ? capabilityState.value : NO_MOD_CONTENT_CAPABILITIES;
   if (!section) return <main className="grid min-h-[65vh] place-items-center p-6">{error || t("common.loading")}</main>;
   const title = localizedSectionName(section, locale, t);
   const customTemplate = section.templateBuiltin ? undefined : templates.find((item) => item.publicId === section.templatePublicId);
   const addHref = `/mods/${encodeURIComponent(siteId)}/resources/new?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`;
 
+  function navigateAdvancementPage(cursor: string, direction: "next" | "previous") {
+    setLoadingMore(true);
+    const apiQuery = query.trim().length >= 3 ? query.trim() : "";
+    void loadModContentAdvancementGraph(siteId, sectionId, { locale, query: apiQuery, cursor }, token)
+      .then((page) => {
+        setAdvancementResources(page.items);
+        setNextCursor(page.nextCursor || "");
+        setHasMore(page.hasMore);
+        if (direction === "next") setCursorHistory((current) => [...current, graphCursor]);
+        else setCursorHistory((current) => current.slice(0, -1));
+        setGraphCursor(cursor);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))
+      .finally(() => setLoadingMore(false));
+  }
+
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><div className="mx-auto max-w-[1500px]">
     <header className="flex flex-wrap items-end gap-4 border-b border-[var(--line)] pb-5">
       <div className="min-w-0 flex-1"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("modContent.sectionPage.back")}</Link><h1 className="mt-2 text-3xl font-black">{title}</h1><p className="mt-2 text-sm text-[var(--muted)]">{versionLabel || section.versionPublicId} · {t("modContent.sectionPage.entryCount", { count: total })}</p></div>
-      <div className="flex w-full flex-wrap gap-2 sm:w-auto"><input className="field min-w-0 flex-1 sm:w-80" type="search" value={query} placeholder={t("modContent.sectionPage.search")} onChange={(event) => setQuery(event.target.value)} />{token && canManage ? <><ModContentSectionActions onChanged={() => setRefreshKey((value) => value + 1)} section={section} siteId={siteId} />{customTemplate ? <CustomContentTemplateSettings siteId={siteId} template={customTemplate} token={token} onSaved={(result) => { setStatusMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); if (result.reviewStatus === "approved") setRefreshKey((value) => value + 1); }} /> : null}</> : null}<Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/data/edit?version=${encodeURIComponent(section.versionPublicId)}`}>{t("common.edit")}</Link></div>
+      <div className="flex w-full flex-wrap gap-2 sm:w-auto"><input className="field min-w-0 flex-1 sm:w-80" type="search" value={query} placeholder={t("modContent.sectionPage.search")} onChange={(event) => { setQuery(event.target.value); setHasMore(false); setNextCursor(""); }} />{capabilities.manageLayout || capabilities.createResource ? <ModContentSectionActions canArrange={capabilities.manageLayout} canCreateResource={capabilities.createResource} onChanged={() => setRefreshKey((value) => value + 1)} section={section} siteId={siteId} /> : null}{capabilities.manageLayout && customTemplate ? <CustomContentTemplateSettings siteId={siteId} template={customTemplate} token={token} onSaved={(result) => { setStatusMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); if (result.reviewStatus === "approved") setRefreshKey((value) => value + 1); }} /> : null}{capabilities.manageLayout ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/data/edit?version=${encodeURIComponent(section.versionPublicId)}`}>{t("common.edit")}</Link> : null}</div>
     </header>
     {statusMessage ? <p className="mt-4 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] p-3 font-bold text-[var(--accent)]" role="status">{statusMessage}</p> : null}
     {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{error}</p> : null}
-    {!resources.length ? <div className="mt-6 rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel)] p-10 text-center text-[var(--muted)]"><p>{query ? t("modContent.sectionPage.noMatches") : t("modContent.sectionPage.empty")}</p>{!query && token && canManage ? <Link className="button-primary focus-ring mt-5 inline-flex" href={addHref}>{t("modContent.sectionActions.add")}</Link> : null}</div> : section.templateCode === "advancement"
+    {!hasDisplayedResources ? <div className="mt-6 rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel)] p-10 text-center text-[var(--muted)]"><p>{query ? t("modContent.sectionPage.noMatches") : t("modContent.sectionPage.empty")}</p>{!query && capabilities.createResource ? <Link className="button-primary focus-ring mt-5 inline-flex" href={addHref}>{t("modContent.sectionActions.add")}</Link> : null}</div> : section.templateCode === "advancement"
       ? <AdvancementResourceIndex entries={indexedResources} />
       : section.displayMode === "compact"
-      ? <CompactResourceIndex groups={compactResourceGroups(section, categories, resources, indexedResources, locale, t)} />
+      ? <CompactResourceIndex groups={compactResourceGroups(section, categories, displayedResources, indexedResources, locale, t)} />
       : categories.length
-      ? <CategorizedSectionResources categories={categories} locale={locale} resources={resources} root={section} siteId={siteId} />
-      : <div className="mt-6 grid gap-px overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3"><SectionResourceCollection locale={locale} resources={resources} section={section} siteId={siteId} /></div>}
+      ? <CategorizedSectionResources categories={categories} locale={locale} resources={displayedResources} root={section} siteId={siteId} />
+      : <div className="mt-6 grid gap-px overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 xl:grid-cols-3"><SectionResourceCollection locale={locale} resources={displayedResources} section={section} siteId={siteId} /></div>}
+    {section.templateCode === "advancement" ? <div className="mt-6 flex justify-center gap-2">
+      <button className="button-secondary focus-ring" disabled={loadingMore || !cursorHistory.length} type="button" onClick={() => navigateAdvancementPage(cursorHistory.at(-1) || "", "previous")}>{t("common.previous")}</button>
+      <button className="button-secondary focus-ring" disabled={loadingMore || !hasMore || !nextCursor} type="button" onClick={() => navigateAdvancementPage(nextCursor, "next")}>{t("common.next")}</button>
+    </div> : hasMore && nextCursor ? <div className="mt-6 text-center"><button className="button-secondary focus-ring" disabled={loadingMore} type="button" onClick={() => {
+      setLoadingMore(true);
+      const apiQuery = query.trim().length >= 3 ? query.trim() : "";
+      void loadModContentSectionResources(siteId, sectionId, { locale, query: apiQuery, cursor: nextCursor }, token)
+        .then((page) => {
+          setResources((current) => [...current, ...page.items]);
+          setNextCursor(page.nextCursor || "");
+          setHasMore(page.hasMore);
+        })
+        .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))
+        .finally(() => setLoadingMore(false));
+    }}>{loadingMore ? t("common.loading") : t("common.next")}</button></div> : null}
   </div></main>;
+}
+
+function layoutSummaryIndexEntry(siteId: string, section: ModContentSection, resource: ModContentLayoutSummary): ResourceIndexEntry {
+  return {
+    key: resource.resourcePublicId,
+    id: resource.resourcePublicId,
+    name: resource.label || resource.resourcePublicId,
+    iconURL: "",
+    href: `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resource.resourcePublicId)}?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`,
+    parentId: resource.advancement?.parentResourcePublicId,
+    x: resource.advancement?.x,
+    y: resource.advancement?.y,
+    frame: resource.advancement?.frame,
+    similarGroupId: resource.similarGroupId,
+  };
 }
 
 function compactResourceGroups(

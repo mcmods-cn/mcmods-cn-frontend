@@ -21,7 +21,7 @@ export function SkinLibrary() {
   const [model, setModel] = useState<"" | SkinModel>("");
   const [sort, setSort] = useState<CatalogSortField>("published");
   const [sortDirection, setSortDirection] = useState<CatalogSortDirection>("desc");
-  const [offset, setOffset] = useState(0);
+  const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
   const [records, setRecords] = useState<SkinListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -30,22 +30,23 @@ export function SkinLibrary() {
     if (!ready) return;
     let cancelled = false;
     queueMicrotask(() => { if (!cancelled) { setLoading(true); setError(""); } });
-    loadSkins({ q: submittedQuery, kind, model: kind === "cape" ? "" : model, sort, order: sortDirection, limit: pageSize, offset }, token || undefined)
+    const cursor = cursorHistory[cursorHistory.length - 1] || "";
+    loadSkins({ q: submittedQuery, kind, model: kind === "cape" ? "" : model, sort, order: sortDirection, limit: pageSize, cursor }, token || undefined)
       .then((result) => { if (!cancelled) setRecords(result); })
       .catch((reason: unknown) => { if (!cancelled) setError(reason instanceof Error ? reason.message : t("skins.loadFailed")); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [kind, model, offset, ready, sort, sortDirection, submittedQuery, t, token]);
+  }, [cursorHistory, kind, model, ready, sort, sortDirection, submittedQuery, t, token]);
 
   function search(event: FormEvent) {
     event.preventDefault();
-    setOffset(0);
+    setCursorHistory([""]);
     setSubmittedQuery(query.trim());
   }
 
-  const total = records?.total ?? 0;
-  const start = total ? offset + 1 : 0;
-  const end = Math.min(total, offset + (records?.items.length ?? 0));
+  const start = records?.items.length ? (cursorHistory.length - 1) * pageSize + 1 : 0;
+  const end = start ? start + (records?.items.length ?? 0) - 1 : 0;
+  const showPagination = cursorHistory.length > 1 || Boolean(records?.hasMore);
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -57,25 +58,25 @@ export function SkinLibrary() {
       >
           <form className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_150px_150px_minmax(280px,auto)_auto]" onSubmit={search}>
             <input className="field h-12" value={query} placeholder={t("skins.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
-            <select className="field h-12" value={kind} onChange={(event) => { setKind(event.target.value as "" | SkinKind); setOffset(0); }}>
+            <select className="field h-12" value={kind} onChange={(event) => { setKind(event.target.value as "" | SkinKind); setCursorHistory([""]); }}>
               <option value="">{t("skins.allKinds")}</option>
               <option value="skin">{t("skins.kindSkin")}</option>
               <option value="cape">{t("skins.kindCape")}</option>
             </select>
-            <select className="field h-12" disabled={kind === "cape"} value={model} onChange={(event) => { setModel(event.target.value as "" | SkinModel); setOffset(0); }}>
+            <select className="field h-12" disabled={kind === "cape"} value={model} onChange={(event) => { setModel(event.target.value as "" | SkinModel); setCursorHistory([""]); }}>
               <option value="">{t("skins.allModels")}</option>
               <option value="default">{t("skins.modelDefault")}</option>
               <option value="slim">{t("skins.modelSlim")}</option>
             </select>
-            <CatalogSortControl className="min-h-12 lg:flex-nowrap" direction={sortDirection} field={sort} fields={skinSortFields} onDirectionChange={(value) => { setSortDirection(value); setOffset(0); }} onFieldChange={(value) => { setSort(value); setOffset(0); }} />
+            <CatalogSortControl className="min-h-12 lg:flex-nowrap" direction={sortDirection} field={sort} fields={skinSortFields} onDirectionChange={(value) => { setSortDirection(value); setCursorHistory([""]); }} onFieldChange={(value) => { setSort(value); setCursorHistory([""]); }} />
             <button className="button-primary focus-ring h-12 px-6" type="submit">{t("home.searchAction")}</button>
           </form>
       </CatalogHero>
 
       <section className="mx-auto max-w-7xl px-4 py-7">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm text-[var(--muted)]">
-          <span>{t("skins.results", { start, end, total })}</span>
-          <button className="font-bold text-[var(--accent)] hover:underline" type="button" onClick={() => { setOffset(0); setSubmittedQuery(""); setQuery(""); setKind(""); setModel(""); setSort("published"); setSortDirection("desc"); }}>{t("skins.resetFilters")}</button>
+          <span>{t("skins.cursorResults", { start, end })}</span>
+          <button className="font-bold text-[var(--accent)] hover:underline" type="button" onClick={() => { setCursorHistory([""]); setSubmittedQuery(""); setQuery(""); setKind(""); setModel(""); setSort("published"); setSortDirection("desc"); }}>{t("skins.resetFilters")}</button>
         </div>
         {error ? <p className="surface rounded-lg border border-[var(--red)]/40 bg-[var(--red)]/10 p-4 text-sm font-bold text-[var(--red)]">{error}</p> : null}
         {loading ? <p className="py-20 text-center font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
@@ -83,11 +84,11 @@ export function SkinLibrary() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {records?.items.map((texture) => <SkinCard key={texture.publicId} locale={locale} texture={texture} />)}
         </div>
-        {total > pageSize ? (
+        {showPagination ? (
           <nav className="mt-7 flex items-center justify-center gap-3" aria-label={t("skins.pagination")}>
-            <button className="button-secondary focus-ring" disabled={offset <= 0 || loading} type="button" onClick={() => setOffset((value) => Math.max(0, value - pageSize))}>{t("skins.previous")}</button>
-            <span className="text-sm font-bold text-[var(--muted)]">{Math.floor(offset / pageSize) + 1} / {Math.max(1, Math.ceil(total / pageSize))}</span>
-            <button className="button-secondary focus-ring" disabled={offset + pageSize >= total || loading} type="button" onClick={() => setOffset((value) => value + pageSize)}>{t("skins.next")}</button>
+            <button className="button-secondary focus-ring" disabled={cursorHistory.length <= 1 || loading} type="button" onClick={() => setCursorHistory((history) => history.slice(0, -1))}>{t("skins.previous")}</button>
+            <span className="text-sm font-bold text-[var(--muted)]">{t("skins.cursorPage", { page: cursorHistory.length })}</span>
+            <button className="button-secondary focus-ring" disabled={!records?.hasMore || !records.nextCursor || loading} type="button" onClick={() => setCursorHistory((history) => [...history, records?.nextCursor || ""])}>{t("skins.next")}</button>
           </nav>
         ) : null}
       </section>

@@ -1,6 +1,9 @@
 import { apiRequest } from "./api";
 import { apiRecord as record, apiText as text } from "./api-normalizers";
-import type { CatalogEditorLocalization } from "./catalog-editor-api";
+import type { LocalizedContentFields, LocalizationVersion, ReviewStatus } from "./editor-types";
+import { parseLocalizedContentVersions, parseOptionalPublishedReviewStatus } from "./localization-boundary.mts";
+
+type CatalogEditorLocalization = LocalizationVersion<LocalizedContentFields>;
 
 // These codes are the canonical values produced by the backend importer and
 // catalog identity layer. The editor still accepts extension codes typed by
@@ -33,7 +36,7 @@ export type CatalogResourceEditorDocument = {
   canonicalId: string;
   defaultLocale: string;
   publishedRevisionId?: string;
-  reviewStatus?: "pending" | "approved" | "rejected";
+  reviewStatus?: Exclude<ReviewStatus, "draft">;
   localizations: CatalogEditorLocalization[];
   definition: Record<string, unknown>;
   iconFileId?: string;
@@ -60,40 +63,14 @@ function normalizeResourceDocument(value: unknown): CatalogResourceEditorDocumen
     canonicalId: text(source.canonicalId),
     defaultLocale: text(source.defaultLocale) || "en-US",
     publishedRevisionId: text(source.publishedRevisionId) || undefined,
-    reviewStatus: reviewStatus(source.reviewStatus),
-    localizations: localizations(source.localizations),
+    reviewStatus: parseOptionalPublishedReviewStatus(source.reviewStatus),
+    localizations: parseLocalizedContentVersions(source.localizations),
     definition: record(source.definition),
     iconFileId,
     renderFileId,
     iconUrl: text(source.iconUrl) || (iconFileId ? `${resourcesPath}/${encodeURIComponent(publicId)}/icon` : undefined),
     renderUrl: text(source.renderUrl) || (renderFileId ? `${resourcesPath}/${encodeURIComponent(publicId)}/render` : undefined),
   };
-}
-
-function localizations(value: unknown): CatalogEditorLocalization[] {
-  if (!Array.isArray(value)) return [];
-  return value.map((entry): CatalogEditorLocalization => {
-    const source = record(entry);
-    const provenance = source.provenance;
-    return {
-      locale: text(source.locale),
-      fields: {
-        name: text(source.name),
-        summary: text(source.summary),
-        contentMarkdown: text(source.contentMarkdown),
-      },
-      revisionId: text(source.publishedRevisionId) || undefined,
-      provenance: provenance === "ai" || provenance === "human_corrected" || provenance === "import" ? provenance : "human",
-      reviewStatus: reviewStatus(source.reviewStatus) ?? "approved",
-      generatedFromLocale: text(source.sourceLocale) || undefined,
-      editable: source.editable !== false,
-      updatedAt: text(source.updatedAt) || undefined,
-    };
-  }).filter((entry) => entry.locale);
-}
-
-function reviewStatus(value: unknown) {
-  return value === "pending" || value === "approved" || value === "rejected" ? value : undefined;
 }
 
 export type GlobalResourceBinding = {

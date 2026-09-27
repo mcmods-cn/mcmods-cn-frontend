@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
-import { communityPostCollection, communityPostCoverURL, communityProjectTypes, loadCommunityPosts, type CommunityPost, type CommunityPostKind, type CommunityPostReference, type CommunityProjectType } from "../_lib/community-post-api";
+import { communityPostCollection, communityPostCoverURL, communityProjectTypes, loadCommunityPosts, type CommunityPostKind, type CommunityPostReference, type CommunityPostSummary, type CommunityProjectType } from "../_lib/community-post-api";
 import { type CatalogPreferences, useCatalogControls } from "../_lib/catalog-state";
 import { type CatalogSortField, coreCatalogSortFields, normalizeCatalogSortDirection, normalizeCatalogSortField } from "../_lib/catalog-sort";
 import { catalogResourceIconURL } from "../_lib/editor-api";
@@ -18,7 +18,6 @@ import {
   CatalogFilterSidebar,
   CatalogMobileFilterDrawer,
   CatalogPageFallback,
-  CatalogPagination,
   CatalogRadioList,
   CatalogSortControl,
 } from "./catalog-list-ui";
@@ -36,15 +35,16 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
   const { t } = useI18n();
   const { token, user } = useAuthSnapshot();
   const resultsTopRef = useRef<HTMLElement | null>(null);
-  const [items, setItems] = useState<CommunityPost[]>([]);
+  const [items, setItems] = useState<CommunityPostSummary[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState<{ hasMore: boolean; nextCursor: string } | null>(null);
+  const [communityPostCursorHistory, setCommunityPostCursorHistory] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
   const {
     paramsKey, preferences, mobileFiltersOpen, setMobileFiltersOpen, queryDraft, setQueryDraft,
-    replaceParams, clearFilters, submitSearch, changePreference, changePage,
+    replaceParams, clearFilters, submitSearch, changePreference,
   } = useCatalogControls<CatalogSortField>({
     preferenceStorageKey: `mcmods-community-${kind}-catalog-preferences`,
     expandedStorageKey: `mcmods-community-${kind}-catalog-groups`,
@@ -55,6 +55,14 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
     onPageChange: () => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
   });
   const filters = useMemo(() => parseCommunityFilters(new URLSearchParams(paramsKey), preferences), [paramsKey, preferences]);
+  const currentCursor = communityPostCursorHistory.at(-1) ?? "";
+  const filterScope = useMemo(() => JSON.stringify(filters), [filters]);
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) setCommunityPostCursorHistory([]); });
+    return () => { cancelled = true; };
+  }, [filterScope, kind]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,12 +77,12 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
       sort: filters.sort,
       order: filters.sortDirection,
       limit: filters.pageSize,
-      offset: (filters.page - 1) * filters.pageSize,
+      cursor: currentCursor,
     }, token, controller.signal)
       .then((result) => {
         if (!cancelled) {
           setItems(result.items);
-          setTotal(result.total);
+          setPage({ hasMore: result.hasMore, nextCursor: result.nextCursor });
           setCategories(result.categories ?? []);
           setMessage("");
         }
@@ -82,14 +90,13 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
       .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : String(error)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [filters.category, filters.page, filters.pageSize, filters.projects, filters.query, filters.sort, filters.sortDirection, filters.versionMode, filters.versions, kind, reload, token]);
+  }, [currentCursor, filters.category, filters.pageSize, filters.projects, filters.query, filters.sort, filters.sortDirection, filters.versionMode, filters.versions, kind, reload, token]);
 
-  const pages = Math.max(1, Math.ceil(total / filters.pageSize));
   const canCreate = hasPermission(user, `community.${kind}.create`);
   const filterPanel = (onClose?: () => void) => <CatalogFilterPanel
     clearLabel={t("communityPosts.catalog.clear")}
     closeLabel={t("common.close")}
-    showResultsLabel={onClose ? t("communityPosts.catalog.showResults", { count: total }) : undefined}
+    showResultsLabel={onClose ? t("communityPosts.catalog.pageItems", { count: items.length }) : undefined}
     title={t("communityPosts.catalog.filters")}
     onClear={clearFilters}
     onClose={onClose}
@@ -121,16 +128,16 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
       <form className="mt-6 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}><input className="field h-12" type="search" value={queryDraft} placeholder={t("communityPosts.search")} onChange={(event) => setQueryDraft(event.target.value)} /><button className="button-primary focus-ring h-12 px-6" type="submit">{t("common.search")}</button></form>
     </div></section>
     <div className="mx-auto max-w-7xl px-4 py-6">
-      <div className="mb-4 flex items-center justify-between gap-3 lg:hidden"><button className="button-secondary focus-ring" type="button" onClick={() => setMobileFiltersOpen(true)}>{t("communityPosts.catalog.filters")}</button><span className="text-sm font-semibold text-[var(--muted)]">{t("communityPosts.catalog.results", { count: total })}</span></div>
+      <div className="mb-4 flex items-center justify-between gap-3 lg:hidden"><button className="button-secondary focus-ring" type="button" onClick={() => setMobileFiltersOpen(true)}>{t("communityPosts.catalog.filters")}</button><span className="text-sm font-semibold text-[var(--muted)]">{t("communityPosts.catalog.pageItems", { count: items.length })}</span></div>
       <div className="grid gap-6 lg:grid-cols-[272px_minmax(0,1fr)]">
         <CatalogFilterSidebar>{filterPanel()}</CatalogFilterSidebar>
         <section className="min-w-0" ref={resultsTopRef}>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-4"><h2 className="text-xl font-black">{t("communityPosts.catalog.results", { count: total })}</h2><CatalogSortControl direction={filters.sortDirection} field={filters.sort} fields={communityCatalogSorts} onDirectionChange={(sortDirection) => changePreference({ sortDirection })} onFieldChange={(sort) => changePreference({ sort })} /></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-4"><h2 className="text-xl font-black">{t("communityPosts.catalog.pageItems", { count: items.length })}</h2><CatalogSortControl direction={filters.sortDirection} field={filters.sort} fields={communityCatalogSorts} onDirectionChange={(sortDirection) => changePreference({ sortDirection })} onFieldChange={(sort) => changePreference({ sort })} /></div>
           {message ? <div className="mt-4 rounded-lg border border-[var(--red)] bg-[var(--panel)] p-5"><p className="font-bold text-[var(--red)]">{message}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => setReload((value) => value + 1)}>{t("communityPosts.catalog.retry")}</button></div> : null}
           {loading ? <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label={t("common.loading")}>{Array.from({ length: 6 }, (_, index) => <div className="h-72 animate-pulse rounded-xl border border-[var(--line)] bg-[var(--panel)]" key={index} />)}</div> : null}
           {!loading && !message && items.length ? <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <CommunityPostCard item={item} key={item.id} />)}</div> : null}
           {!loading && !message && !items.length ? <CatalogEmptyState clearLabel={t("communityPosts.catalog.clear")} description={t("communityPosts.catalog.emptyHint")} title={t("communityPosts.empty")} onClear={clearFilters} /> : null}
-          {!loading && !message ? <CatalogPagination currentPage={filters.page} totalPages={pages} pageSize={filters.pageSize} labels={{ previous: t("common.previous"), next: t("common.next"), pageSize: t("communityPosts.catalog.pageSize"), pageSummary: t("communityPosts.catalog.pageSummary", { page: filters.page, pages }), itemSummary: t("communityPosts.catalog.itemSummary", { start: total ? (filters.page - 1) * filters.pageSize + 1 : 0, end: Math.min(filters.page * filters.pageSize, total), total }) }} onPageChange={changePage} onPageSizeChange={(pageSize) => changePreference({ pageSize })} /> : null}
+          {!loading && !message && page && (communityPostCursorHistory.length > 0 || page.hasMore) ? <div className="mt-6 flex items-center justify-between gap-3"><button className="button-secondary focus-ring" disabled={communityPostCursorHistory.length === 0} type="button" onClick={() => setCommunityPostCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("communityPosts.catalog.cursorPage", { page: communityPostCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={!page.hasMore || !page.nextCursor} type="button" onClick={() => setCommunityPostCursorHistory((history) => [...history, page.nextCursor])}>{t("common.next")}</button></div> : null}
         </section>
       </div>
     </div>
@@ -149,8 +156,7 @@ function parseCommunityFilters(params: URLSearchParams, preferences: CatalogPref
     versionMode: params.get("versionMode") === "all" ? "all" as const : "any" as const,
     projects: parseCommunityProjectFilters(params.get("project")),
     sort,
-    sortDirection: normalizeCatalogSortDirection(params.get("order"), preferences.sortDirection, rawSort),
-    page: Math.max(1, Number(params.get("page")) || 1),
+    sortDirection: normalizeCatalogSortDirection(params.get("order"), preferences.sortDirection, normalizedSort),
     pageSize: [20, 40, 60].includes(Number(params.get("size"))) ? Number(params.get("size")) : preferences.pageSize,
   };
 }
@@ -213,7 +219,7 @@ function projectFilterToResource(projectRef: string): CatalogResourceRef {
   };
 }
 
-function CommunityPostCard({ item }: { item: CommunityPost }) {
+function CommunityPostCard({ item }: { item: CommunityPostSummary }) {
   const { locale, t } = useI18n();
   const href = `/${communityPostCollection(item.kind)}/${item.id}`;
   return <Link className="focus-ring group overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] transition hover:-translate-y-0.5 hover:border-[var(--accent)]" href={href}>
@@ -225,10 +231,10 @@ function CommunityPostCard({ item }: { item: CommunityPost }) {
 export function RelatedCommunityPosts({ modId, resourceId, compact = false, kind }: { modId?: string; resourceId?: string; compact?: boolean; kind?: CommunityPostKind }) {
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
-  const [groups, setGroups] = useState<Record<CommunityPostKind, CommunityPost[]>>({ tutorial: [], issue: [], news: [], discussion: [] });
+  const [groups, setGroups] = useState<Record<CommunityPostKind, CommunityPostSummary[]>>({ tutorial: [], issue: [], news: [], discussion: [] });
   useEffect(() => {
     const controller = new AbortController();
-    const options = { modId, resourceId, limit: compact ? 8 : 12, offset: 0 };
+    const options = { modId, resourceId, limit: compact ? 8 : 12 };
     const requestedKinds: CommunityPostKind[] = kind ? [kind] : ["tutorial", "issue", "news", "discussion"];
     Promise.all(requestedKinds.map(async (requestedKind) => [requestedKind, (await loadCommunityPosts(requestedKind, options, token, controller.signal)).items] as const))
       .then((results) => setGroups({ tutorial: [], issue: [], news: [], discussion: [], ...Object.fromEntries(results) }))
@@ -241,12 +247,12 @@ export function RelatedCommunityPosts({ modId, resourceId, compact = false, kind
   return <div className="grid gap-8">{visibleKinds.map((value) => <RelatedCardGroup key={value} title={t(relatedTitleKey(value))} items={groups[value]} />)}</div>;
 }
 
-function RelatedCardGroup({ title, items }: { title: string; items: CommunityPost[] }) {
+function RelatedCardGroup({ title, items }: { title: string; items: CommunityPostSummary[] }) {
   if (!items.length) return null;
   return <section><h2 className="mb-4 text-xl font-black">{title}</h2><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <CommunityPostCard item={item} key={item.id} />)}</div></section>;
 }
 
-function RelatedLinkList({ title, items }: { title: string; items: CommunityPost[] }) {
+function RelatedLinkList({ title, items }: { title: string; items: CommunityPostSummary[] }) {
   if (!items.length) return null;
   return <div><h3 className="text-sm font-black text-[var(--muted)]">{title}</h3><div className="mt-1 grid">{items.map((item) => <Link className="truncate py-1.5 font-bold hover:text-[var(--accent)] hover:underline" href={`/${communityPostCollection(item.kind)}/${item.id}`} key={item.id} title={item.title}>{item.title}</Link>)}</div></div>;
 }

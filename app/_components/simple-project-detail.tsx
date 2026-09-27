@@ -2,9 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { ApiError, apiRequest } from "../_lib/api";
+import { useCallback, useMemo } from "react";
+import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { useI18n } from "../_lib/i18n-provider";
@@ -23,32 +22,31 @@ import { ProjectAutoUpdateSettings } from "./project-auto-update-settings";
 import { UnifiedReportButton, type ReportTargetType } from "./unified-report-dialog";
 import { ProjectFollowButton } from "./project-follow-button";
 import { ProjectEditorApplicationButton } from "./project-editor-application";
+import { ProjectDetailLoadFeedback, useProjectDetailQuery } from "./project-detail-load-boundary";
+import { useProjectDetailTab } from "./use-project-detail-tab";
 
-type ProjectTab = "introduction" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
+const PROJECT_DETAIL_TABS = ["introduction", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as const;
+type ProjectTab = (typeof PROJECT_DETAIL_TABS)[number];
 
 export function SimpleProjectDetailLoader({ projectType, siteId }: { projectType: SimpleProjectType; siteId: string }) {
   const { ready, token } = useAuthSnapshot();
   const { t } = useI18n();
-  const [record, setRecord] = useState<SimpleProjectRecord>();
-  const [notFound, setNotFound] = useState(false);
-  useEffect(() => {
-    if (!ready) return;
-    const controller = new AbortController();
-    apiRequest<SimpleProjectRecord>(`/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}`, { signal: controller.signal }, token)
-      .then(setRecord)
-      .catch((error) => { if (error instanceof ApiError && error.status === 404) setNotFound(true); });
-    return () => controller.abort();
-  }, [projectType, ready, siteId, token]);
-  if (!record) return <main className="grid min-h-[60vh] place-items-center px-4 text-center"><h1 className="text-2xl font-black">{notFound ? t("largeProjects.detail.notFound") : t("common.loading")}</h1></main>;
-  return <SimpleProjectDetail record={record} />;
+  const load = useCallback((signal: AbortSignal) => {
+    return apiRequest<SimpleProjectRecord>(
+      `/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}`,
+      { signal },
+      token,
+    );
+  }, [projectType, siteId, token]);
+  const { state, retry } = useProjectDetailQuery<SimpleProjectRecord>(ready, load);
+  if (state.status === "ready") return <SimpleProjectDetail record={state.data} />;
+  return <ProjectDetailLoadFeedback errorTitle={t("largeProjects.detail.loadFailed")} notFoundTitle={t("largeProjects.detail.notFound")} onRetry={retry} state={state} />;
 }
 
 function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
-  const searchParams = useSearchParams();
-  const [selectedTab, setSelectedTab] = useState<ProjectTab>();
-  const tab = selectedTab ?? (searchParams.get("tab") === "changelog" ? "changelog" : "introduction");
+  const { tab, selectTab } = useProjectDetailTab<ProjectTab>(PROJECT_DETAIL_TABS, "introduction");
   const config = simpleProjectConfig(record.projectType);
   const localization = localizedSimpleProject(record, locale);
   const name = localization.name || record.siteId;
@@ -62,7 +60,7 @@ function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
     <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
       <div className="mb-4"><ProjectFollowButton publicId={record.id} /></div>
       <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("mods.detail.compatibility")}</h2><div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4"><Detail label={t("largeProjects.fields.minecraftVersions")} value={record.minecraftVersions.join("、")} /><Detail label={t("largeProjects.fields.loaders")} value={record.loaders.map((value) => t(`largeProjects.options.${value}`)).join("、")} />{information.map((item) => <Detail key={item.label} label={t(item.label)} value={item.values.map((value) => t(`largeProjects.options.${value}`)).join("、")} />)}</div></section>
-      <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("largeProjects.detail.sections")}>{(["introduction", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as ProjectTab[]).map((item) => <button className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} key={item} type="button" onClick={() => setSelectedTab(item)}><strong className="block whitespace-nowrap">{t(`largeProjects.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
+      <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("largeProjects.detail.sections")}>{PROJECT_DETAIL_TABS.map((item) => <button aria-current={tab === item ? "page" : undefined} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} key={item} type="button" onClick={() => selectTab(item)}><strong className="block whitespace-nowrap">{t(`largeProjects.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0">
         {tab === "introduction" ? <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText={localization.summary} markdown={localization.bodyMarkdown} /></section> : null}
         {tab === "downloads" ? <ProjectDownloads projectType={record.projectType} projectId={record.id} projectName={name} token={token} suggestedVersions={record.minecraftVersions} suggestedLoaders={record.loaders} /> : null}

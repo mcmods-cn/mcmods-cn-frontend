@@ -6,6 +6,7 @@ import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { loadPublicUserProfile, type PublicUserProfile } from "../_lib/user-api";
+import { advanceUserNetworkCursor, rewindUserNetworkCursor, userNetworkPagePath } from "../_lib/user-network-pagination.mts";
 
 type NetworkType = "followers" | "following" | "blocked";
 
@@ -18,9 +19,12 @@ type UserConnection = {
 
 type UserConnectionsPayload = {
   items: UserConnection[];
-  page: number;
-  pageSize: number;
-  total: number;
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  limit?: number;
+  hasMore?: boolean;
+  nextCursor?: string;
 };
 
 export function UserNetworkList({ network, userId }: { network: NetworkType; userId: string }) {
@@ -29,7 +33,10 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
   const [profile, setProfile] = useState<PublicUserProfile | null>(null);
   const [payload, setPayload] = useState<UserConnectionsPayload | null>(null);
   const [page, setPage] = useState(1);
+  const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
   const [message, setMessage] = useState("");
+  const currentCursor = cursorHistory[cursorHistory.length - 1] || "";
+  const canLoadNetwork = profile !== null && (network !== "blocked" || profile.isOwn);
 
   useEffect(() => {
     if (!ready) return;
@@ -42,11 +49,22 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
         if (network === "blocked" && !nextProfile.isOwn) {
           setPayload(null);
           setMessage(t("user.blacklistPrivate"));
-          return;
         }
+      } catch (error) {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : t("user.networkLoadFailed"));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [network, ready, t, token, userId]);
+
+  useEffect(() => {
+    if (!ready || !canLoadNetwork) return;
+    let cancelled = false;
+    void (async () => {
+      try {
         const endpoint = network === "blocked"
           ? `/api/v1/users/me/blocks?page=${page}&pageSize=24`
-          : `/api/v1/users/${encodeURIComponent(userId)}/${network}?page=${page}&pageSize=24`;
+          : userNetworkPagePath(userId, network, 24, currentCursor);
         const nextPayload = await apiRequest<UserConnectionsPayload>(endpoint, {}, token || undefined);
         if (cancelled) return;
         setPayload(nextPayload);
@@ -56,7 +74,7 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
       }
     })();
     return () => { cancelled = true; };
-  }, [network, page, ready, t, token, userId]);
+  }, [canLoadNetwork, currentCursor, network, page, ready, t, token, userId]);
 
   async function unblockUser(item: UserConnection) {
     if (!token) return;
@@ -65,7 +83,7 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
       setPayload((current) => current ? {
         ...current,
         items: current.items.filter((value) => value.id !== item.id),
-        total: Math.max(0, current.total - 1),
+        total: Math.max(0, (current.total || 0) - 1),
       } : current);
       setProfile((current) => current ? { ...current, blocked: Math.max(0, current.blocked - 1) } : current);
       setMessage(t("user.unblockSucceeded"));
@@ -75,6 +93,7 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
   }
 
   const pages = useMemo(() => Math.max(1, Math.ceil((payload?.total || 0) / (payload?.pageSize || 24))), [payload]);
+  const showPagination = Boolean(payload && (network === "blocked" ? pages > 1 : cursorHistory.length > 1 || payload.hasMore));
   const profileHref = `/user/${encodeURIComponent(userId)}`;
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-8 text-[var(--foreground)]">
@@ -93,11 +112,11 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
               {payload.items.map((item) => <UserConnectionCard item={item} key={item.id} onUnblock={network === "blocked" ? unblockUser : undefined} />)}
             </div>
           ) : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t(networkEmptyKey(network))}</p>}
-          {payload && pages > 1 ? (
+          {showPagination ? (
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
-              <button className="button-secondary focus-ring" disabled={page <= 1} type="button" onClick={() => { setPayload(null); setPage((value) => Math.max(1, value - 1)); }}>{t("common.previous")}</button>
-              <span className="text-sm font-bold text-[var(--muted)]">{t("user.networkPage", { page, pages })}</span>
-              <button className="button-secondary focus-ring" disabled={page >= pages} type="button" onClick={() => { setPayload(null); setPage((value) => Math.min(pages, value + 1)); }}>{t("common.next")}</button>
+              <button className="button-secondary focus-ring" disabled={network === "blocked" ? page <= 1 : cursorHistory.length <= 1} type="button" onClick={() => { setPayload(null); if (network === "blocked") setPage((value) => Math.max(1, value - 1)); else setCursorHistory(rewindUserNetworkCursor); }}>{t("common.previous")}</button>
+              <span className="text-sm font-bold text-[var(--muted)]">{network === "blocked" ? t("user.networkPage", { page, pages }) : t("user.networkCursorPage", { page: cursorHistory.length })}</span>
+              <button className="button-secondary focus-ring" disabled={network === "blocked" ? page >= pages : !payload?.hasMore} type="button" onClick={() => { setPayload(null); if (network === "blocked") setPage((value) => Math.min(pages, value + 1)); else setCursorHistory((history) => advanceUserNetworkCursor(history, payload?.nextCursor || "")); }}>{t("common.next")}</button>
             </div>
           ) : null}
         </section>

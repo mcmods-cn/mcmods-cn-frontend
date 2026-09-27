@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { localizedCatalogResourceName } from "../../_lib/content-language";
-import { loadCatalogResources } from "../../_lib/editor-api";
+import { loadCatalogResourcePresentations, loadCatalogResources } from "../../_lib/editor-api";
 import type { CatalogResourcePage, CatalogResourceRef, ResourcePageLoader } from "../../_lib/editor-types";
 import { useI18n } from "../../_lib/i18n-provider";
 import { namespaceFromIdentifier } from "../../_lib/catalog-resource-identifiers";
@@ -75,6 +75,7 @@ function OpenResourcePickerDialog({
   const [kind, setKind] = useState(initialKind || (kindOptions.length === 1 ? kindOptions[0].value : ""));
   const [registry, setRegistry] = useState(initialRegistry || (registryOptions.length === 1 ? registryOptions[0].value : ""));
   const [page, setPage] = useState(1);
+  const [pageCursors, setPageCursors] = useState([""]);
   const [result, setResult] = useState<CatalogResourcePage>({ items: [], total: 0, limit: 40, offset: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -96,6 +97,7 @@ function OpenResourcePickerDialog({
       registry,
       limit: pageSize,
       offset: (page - 1) * pageSize,
+      cursor: pageCursors[page - 1] ?? "",
     }, token, controller.signal)
       .then((next) => {
         if (cancelled) return;
@@ -112,14 +114,14 @@ function OpenResourcePickerDialog({
       cancelled = true;
       controller.abort();
     };
-  }, [kind, loadPage, locale, manualMode, page, registry, submittedQuery, token]);
+  }, [kind, loadPage, locale, manualMode, page, pageCursors, registry, submittedQuery, token]);
 
   useEffect(() => {
     const pending = value.filter(needsResourceHydration);
     if (!pending.length) return;
     let cancelled = false;
     const controller = new AbortController();
-    void hydrateSelectedResources(pending, loadPage, locale, token, controller.signal).then((resolved) => {
+    void loadCatalogResourcePresentations(pending, locale, token, controller.signal).then((resolved) => {
       if (cancelled || !resolved.length) return;
       setSelected((current) => resolveSelectedResources(current, resolved));
     }).catch((reason: unknown) => {
@@ -129,9 +131,10 @@ function OpenResourcePickerDialog({
       cancelled = true;
       controller.abort();
     };
-  }, [loadPage, locale, token, value]);
+  }, [locale, token, value]);
 
-  const pages = Math.max(1, Math.ceil(result.total / pageSize));
+  const cursorBased = typeof result.hasMore === "boolean";
+  const pages = cursorBased ? page + (result.hasMore ? 1 : 0) : Math.max(1, Math.ceil((result.total ?? 0) / pageSize));
   const selectedItems = useMemo(() => [...selected.values()], [selected]);
   const invalidManual = manualInputs.some((input) => input.trim() && !validateUnresolved(input.trim()));
 
@@ -139,6 +142,7 @@ function OpenResourcePickerDialog({
     event.preventDefault();
     setLoading(true);
     setPage(1);
+    setPageCursors([""]);
     setSubmittedQuery(query.trim());
   }
 
@@ -202,8 +206,8 @@ function OpenResourcePickerDialog({
       /> : <>
         <form className="grid gap-2 border-b border-[var(--line)] p-4 md:grid-cols-[minmax(0,1fr)_180px_220px_auto]" onSubmit={search}>
           <input className="field" type="search" value={query} placeholder={labels.searchPlaceholder ?? t("common.search")} onChange={(event) => setQuery(event.target.value)} />
-          {kindOptions.length ? <select aria-label={labels.kind} className="field" value={kind} onChange={(event) => { setLoading(true); setPage(1); setKind(event.target.value); }}><option value="">{labels.kind ?? t("common.all")}</option>{kindOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
-          {registryOptions.length ? <select aria-label={labels.registry} className="field" value={registry} onChange={(event) => { setLoading(true); setPage(1); setRegistry(event.target.value); }}><option value="">{labels.registry ?? t("common.all")}</option>{registryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
+          {kindOptions.length ? <select aria-label={labels.kind} className="field" value={kind} onChange={(event) => { setLoading(true); setPage(1); setPageCursors([""]); setKind(event.target.value); }}><option value="">{labels.kind ?? t("common.all")}</option>{kindOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
+          {registryOptions.length ? <select aria-label={labels.registry} className="field" value={registry} onChange={(event) => { setLoading(true); setPage(1); setPageCursors([""]); setRegistry(event.target.value); }}><option value="">{labels.registry ?? t("common.all")}</option>{registryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
           <button className="button-primary focus-ring" type="submit">{t("common.search")}</button>
         </form>
 
@@ -225,7 +229,7 @@ function OpenResourcePickerDialog({
         <div className="border-t border-[var(--line)] px-4 py-3">
           <div className="mb-2 flex items-center justify-between gap-3 text-xs font-bold text-[var(--muted)]">
             <span>{labels.selected ?? t("common.select")}: {selected.size}</span>
-            <span>{page} / {pages}</span>
+            <span>{cursorBased ? page : `${page} / ${pages}`}</span>
           </div>
           <SelectedIconStrip items={selectedItems} locale={locale} onRemove={toggle} />
         </div>
@@ -233,7 +237,18 @@ function OpenResourcePickerDialog({
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] p-4">
           <div className="flex flex-wrap gap-2">
             <button className="button-secondary focus-ring" disabled={loading || page <= 1} type="button" onClick={() => { setLoading(true); setPage((current) => Math.max(1, current - 1)); }}>{t("common.previous")}</button>
-            <button className="button-secondary focus-ring" disabled={loading || page >= pages} type="button" onClick={() => { setLoading(true); setPage((current) => Math.min(pages, current + 1)); }}>{t("common.next")}</button>
+            <button className="button-secondary focus-ring" disabled={loading || (cursorBased ? !result.hasMore || !result.nextCursor : page >= pages)} type="button" onClick={() => {
+              if (cursorBased) {
+                if (!result.hasMore || !result.nextCursor) return;
+                setPageCursors((current) => {
+                  const next = current.slice(0, page);
+                  next[page] = result.nextCursor ?? "";
+                  return next;
+                });
+              }
+              setLoading(true);
+              setPage((current) => Math.min(pages, current + 1));
+            }}>{t("common.next")}</button>
           </div>
           <div className="flex flex-wrap gap-2">
             {allowUnresolved ? <button className="button-secondary focus-ring" type="button" onClick={() => setManualMode(true)}>{labels.notFound ?? "没有我寻找的资源？"}</button> : null}
@@ -309,35 +324,6 @@ function needsResourceHydration(resource: CatalogResourceRef) {
   return resource.unresolved || (!resource.resolvedName && Object.values(resource.names).every((name) => !name.trim()));
 }
 
-async function hydrateSelectedResources(
-  resources: readonly CatalogResourceRef[],
-  loadPage: ResourcePageLoader,
-  locale: string,
-  token: string,
-  signal: AbortSignal,
-) {
-  const resolved: CatalogResourceRef[] = [];
-  let cursor = 0;
-  async function worker() {
-    while (cursor < resources.length) {
-      const resource = resources[cursor++];
-      const identifier = resource.rawIdentifier || resource.id || resource.publicId;
-      const page = await loadPage({
-        query: identifier,
-        locale,
-        kind: resource.kind === "resource" ? "" : resource.kind,
-        registry: resource.registry,
-        limit: 40,
-        offset: 0,
-      }, token, signal);
-      const match = page.items.find((candidate) => resourceMatches(candidate, resource));
-      if (match) resolved.push(match);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(6, resources.length) }, () => worker()));
-  return resolved;
-}
-
 function resolveSelectedResources(current: Map<string, CatalogResourceRef>, candidates: readonly CatalogResourceRef[]) {
   let next: Map<string, CatalogResourceRef> | undefined;
   for (const [key, selectedResource] of current) {
@@ -354,7 +340,8 @@ function resolveSelectedResources(current: Map<string, CatalogResourceRef>, cand
 function resourceMatches(candidate: CatalogResourceRef, selectedResource: CatalogResourceRef) {
   if (candidate.publicId.toLowerCase() === selectedResource.publicId.toLowerCase()) return true;
   const identifier = (selectedResource.rawIdentifier || selectedResource.id).trim().toLowerCase();
-  return identifier !== "" && candidate.id.trim().toLowerCase() === identifier;
+  const kindMatches = selectedResource.kind === "" || selectedResource.kind === "resource" || candidate.kind === selectedResource.kind;
+  return identifier !== "" && kindMatches && candidate.id.trim().toLowerCase() === identifier;
 }
 
 function defaultIdentifierValidator(identifier: string) {

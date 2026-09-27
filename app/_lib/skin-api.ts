@@ -33,9 +33,24 @@ export type SkinTexture = {
 
 export type SkinListResponse = {
   items: SkinTexture[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
+export type SkinWardrobePage = {
+  items: SkinTexture[];
   total: number;
   limit: number;
-  offset: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
+export type SkinWardrobeQuery = {
+  kind?: "" | SkinKind;
+  model?: "" | SkinModel;
+  limit?: number;
+  cursor?: string;
 };
 
 export type SkinServiceInfo = {
@@ -83,7 +98,7 @@ export type SkinQuery = {
   sort?: CatalogSortField;
   order?: CatalogSortDirection;
   limit?: number;
-  offset?: number;
+  cursor?: string;
 };
 
 export type CreateSkinInput = {
@@ -119,7 +134,7 @@ export function loadSkins(query: SkinQuery, token?: string) {
   if (query.sort) params.set("sort", query.sort);
   if (query.order) params.set("order", query.order);
   params.set("limit", String(query.limit ?? 36));
-  params.set("offset", String(query.offset ?? 0));
+  if (query.cursor) params.set("cursor", query.cursor);
   return apiRequest<SkinListResponse>(`/api/v1/skins?${params}`, {}, token);
 }
 
@@ -145,9 +160,13 @@ export function deleteSkin(publicId: string, token: string) {
   return apiRequest<{ deleted?: boolean }>(`/api/v1/skins/${encodeURIComponent(publicId)}`, { method: "DELETE" }, token);
 }
 
-export async function loadWardrobe(token: string) {
-  const response = await apiRequest<ItemsResponse<SkinTexture>>("/api/v1/users/me/skin-wardrobe", {}, token);
-  return normalizeItems(response);
+export function loadWardrobe(token: string, query: SkinWardrobeQuery = {}) {
+  const params = new URLSearchParams();
+  if (query.kind) params.set("kind", query.kind);
+  if (query.model) params.set("model", query.model);
+  params.set("limit", String(query.limit ?? 100));
+  if (query.cursor) params.set("cursor", query.cursor);
+  return apiRequest<SkinWardrobePage>(`/api/v1/users/me/skin-wardrobe?${params}`, {}, token);
 }
 
 export function addToWardrobe(publicId: string, token: string) {

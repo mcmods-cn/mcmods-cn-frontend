@@ -2,8 +2,19 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js'
 import { parseBlueprint, type BlueprintBlock, type StructureBlueprint } from './blueprint'
-import { buildStructureScene, disposeStructureGroup } from './structureScene'
+import {
+  buildStructureScene,
+  disposeStructureGroup,
+  setStructureMeshLayerView,
+  structureBlockAtInstance,
+} from './structureScene'
 import type { AssetSource, RendererProgress } from './types'
+import {
+  abortError,
+  forwardAbort,
+  structureBuildGate,
+  throwIfAborted,
+} from './structureLoadControl.mts'
 
 export interface StructureRendererLoadResult {
   blueprint: StructureBlueprint
@@ -14,6 +25,9 @@ export interface StructureRendererLoadResult {
   renderedCullableFaceInstances: number
   culledFaceInstances: number
   drawCallCount: number
+  instanceCount: number
+  contextCapacity: number
+  trackedInstanceBytes: number
   missingStates: Array<{ state: string; reason: string; blocks: number }>
 }
 
@@ -52,6 +66,7 @@ export class StructureRenderer {
   private blueprint?: StructureBlueprint
   private frame = 0
   private loadGeneration = 0
+  private loadController?: AbortController
   private disposed = false
   private pointerStart?: { x: number; y: number }
   private firstPerson = false
@@ -107,44 +122,63 @@ export class StructureRenderer {
     this.assetSource = source
   }
 
-  async load(input: Uint8Array, name: string): Promise<StructureRendererLoadResult> {
+  async load(input: Uint8Array, name: string, signal?: AbortSignal): Promise<StructureRendererLoadResult> {
     if (this.disposed) throw new Error('StructureRenderer 已释放')
+    this.loadController?.abort(abortError('结构加载已被新任务替换'))
+    const controller = new AbortController()
+    this.loadController = controller
+    const detachExternalSignal = forwardAbort(signal, controller)
+    const loadSignal = controller.signal
     const generation = ++this.loadGeneration
     this.clearStructure()
-    const blueprint = parseBlueprint(input, name)
-    this.blueprint = blueprint
-    this.fitCamera()
-    this.createGrid(blueprint.size)
 
     try {
-      const built = await buildStructureScene(this.assetSource, blueprint, (finished, total, state) => {
-        if (generation !== this.loadGeneration || this.disposed) return
-        this.options.onProgress?.({ finishedStates: finished, totalStates: total, currentState: state })
-      }, { cullInvisibleFaces: this.options.cullInvisibleFaces !== false })
-      if (generation !== this.loadGeneration || this.disposed) {
-        disposeStructureGroup(built.group)
-        throw new DOMException('结构加载已被新任务替换', 'AbortError')
-      }
-      this.structureGroup = built.group
-      this.scene.add(built.group)
-      this.setLayerView(0, Math.max(0, blueprint.size[1] - 1), 'visible')
-      const result: StructureRendererLoadResult = {
-        blueprint,
-        modeledStateCount: built.modeledStateCount,
-        fallbackStateCount: built.fallbackStateCount,
-        fallbackBlockCount: built.fallbackBlockCount,
-        cullableFaceInstances: built.cullableFaceInstances,
-        renderedCullableFaceInstances: built.renderedCullableFaceInstances,
-        culledFaceInstances: built.culledFaceInstances,
-        drawCallCount: built.drawCallCount,
-        missingStates: built.missingStates,
-      }
-      this.options.onLoaded?.(result)
-      return result
+      return await structureBuildGate.run(loadSignal, async () => {
+        throwIfAborted(loadSignal)
+        const blueprint = parseBlueprint(input, name, loadSignal)
+        throwIfAborted(loadSignal)
+        this.blueprint = blueprint
+        this.fitCamera()
+        this.createGrid(blueprint.size)
+        const built = await buildStructureScene(this.assetSource, blueprint, (finished, total, state) => {
+          if (generation !== this.loadGeneration || this.disposed || loadSignal.aborted) return
+          this.options.onProgress?.({ finishedStates: finished, totalStates: total, currentState: state })
+        }, {
+          cullInvisibleFaces: this.options.cullInvisibleFaces !== false,
+          signal: loadSignal,
+        })
+        if (generation !== this.loadGeneration || this.disposed || loadSignal.aborted) {
+          disposeStructureGroup(built.group)
+          throw abortError('结构加载已被新任务替换')
+        }
+        this.structureGroup = built.group
+        this.scene.add(built.group)
+        this.setLayerView(0, Math.max(0, blueprint.size[1] - 1), 'visible')
+        const result: StructureRendererLoadResult = {
+          blueprint,
+          modeledStateCount: built.modeledStateCount,
+          fallbackStateCount: built.fallbackStateCount,
+          fallbackBlockCount: built.fallbackBlockCount,
+          cullableFaceInstances: built.cullableFaceInstances,
+          renderedCullableFaceInstances: built.renderedCullableFaceInstances,
+          culledFaceInstances: built.culledFaceInstances,
+          drawCallCount: built.drawCallCount,
+          instanceCount: built.instanceCount,
+          contextCapacity: built.contextCapacity,
+          trackedInstanceBytes: built.trackedInstanceBytes,
+          missingStates: built.missingStates,
+        }
+        this.options.onLoaded?.(result)
+        return result
+      })
     } catch (reason) {
       const error = reason instanceof Error ? reason : new Error(String(reason))
+      if (generation === this.loadGeneration && !this.disposed) this.clearStructure()
       if (error.name !== 'AbortError') this.options.onError?.(error)
       throw error
+    } finally {
+      detachExternalSignal()
+      if (this.loadController === controller) this.loadController = undefined
     }
   }
 
@@ -157,54 +191,12 @@ export class StructureRenderer {
   }
 
   setLayerView(minLayer: number, maxLayer: number, outsideMode: OutsideLayerMode = 'transparent', showBelow = true, showAbove = true) {
-    if (!this.structureGroup) return
-    const lower = Math.min(minLayer, maxLayer)
-    const upper = Math.max(minLayer, maxLayer)
-    const originals: THREE.InstancedMesh[] = []
+    if (!this.structureGroup || !this.blueprint) return
     this.structureGroup.traverse((object) => {
-      if (object instanceof THREE.InstancedMesh && !object.userData.layerContext) originals.push(object)
+      if (object instanceof THREE.InstancedMesh && !object.userData.layerContext) {
+        setStructureMeshLayerView(object, this.blueprint!.blocks, minLayer, maxLayer, outsideMode, showBelow, showAbove)
+      }
     })
-    for (const mesh of originals) {
-      const blocks = (mesh.userData.allBlueprintBlocks ?? mesh.userData.blueprintBlocks) as BlueprintBlock[] | undefined
-      const matrices = mesh.userData.blueprintMatrices as THREE.Matrix4[] | undefined
-      if (!blocks || !matrices) continue
-      mesh.userData.allBlueprintBlocks = blocks
-      let context = mesh.userData.layerContextMesh as THREE.InstancedMesh | undefined
-      if (!context) {
-        context = new THREE.InstancedMesh(mesh.geometry, transparentMaterial(mesh.material), blocks.length)
-        context.name = `${mesh.name}#layer-context`
-        context.userData.layerContext = true
-        context.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
-        mesh.parent?.add(context)
-        mesh.userData.layerContextMesh = context
-      }
-      const selectedBlocks: BlueprintBlock[] = []
-      const contextBlocks: BlueprintBlock[] = []
-      let selectedCount = 0
-      let contextCount = 0
-      blocks.forEach((block, index) => {
-        const inRange = block.position[1] >= lower && block.position[1] <= upper
-        if (inRange || outsideMode === 'visible') {
-          mesh.setMatrixAt(selectedCount++, matrices[index])
-          selectedBlocks.push(block)
-        } else if (outsideMode === 'transparent' && ((showBelow && block.position[1] === lower - 1) || (showAbove && block.position[1] === upper + 1))) {
-          context!.setMatrixAt(contextCount++, matrices[index])
-          contextBlocks.push(block)
-        }
-      })
-      mesh.count = selectedCount
-      mesh.userData.blueprintBlocks = selectedBlocks
-      mesh.instanceMatrix.needsUpdate = true
-      mesh.computeBoundingBox()
-      mesh.computeBoundingSphere()
-      context.count = contextCount
-      context.userData.blueprintBlocks = contextBlocks
-      context.instanceMatrix.needsUpdate = true
-      if (contextCount) {
-        context.computeBoundingBox()
-        context.computeBoundingSphere()
-      }
-    }
   }
 
   resetCamera() {
@@ -279,6 +271,8 @@ export class StructureRenderer {
   dispose() {
     if (this.disposed) return
     this.disposed = true
+    this.loadController?.abort(abortError('StructureRenderer 已释放'))
+    this.loadController = undefined
     this.loadGeneration++
     cancelAnimationFrame(this.frame)
     this.observer.disconnect()
@@ -349,8 +343,9 @@ export class StructureRenderer {
       this.options.onSelectBlock?.(null)
       return
     }
-    const blocks = hit.object.userData.blueprintBlocks as BlueprintBlock[] | undefined
-    const block = blocks?.[hit.instanceId]
+    const block = this.blueprint && hit.object instanceof THREE.InstancedMesh
+      ? structureBlockAtInstance(hit.object, hit.instanceId, this.blueprint.blocks)
+      : undefined
     if (!block) return
     this.selection = new THREE.Box3Helper(
       new THREE.Box3(
@@ -397,6 +392,7 @@ export class StructureRenderer {
       materials.forEach((material) => material.dispose())
       this.grid = undefined
     }
+    this.blueprint = undefined
     this.options.onSelectBlock?.(null)
   }
 
@@ -428,17 +424,6 @@ export class StructureRenderer {
     this.renderer.render(this.scene, this.camera)
     this.frame = requestAnimationFrame(this.animate)
   }
-}
-
-function transparentMaterial(material: THREE.Material | THREE.Material[]): THREE.Material | THREE.Material[] {
-  const clone = (entry: THREE.Material) => {
-    const result = entry.clone()
-    result.transparent = true
-    result.opacity = 0.16
-    result.depthWrite = false
-    return result
-  }
-  return Array.isArray(material) ? material.map(clone) : clone(material)
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {

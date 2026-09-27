@@ -1,0 +1,70 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Blueprint scene browser buffer benchmark</title>
+<body>pending
+<script>
+  const count = 600_000;
+  const layerCount = 200;
+  const before = performance.now();
+  const source = new Uint32Array(count);
+  const blockLayers = new Int32Array(count);
+  const counts = new Uint32Array(layerCount);
+  for (let index = 0; index < count; index++) {
+    source[index] = index;
+    const layer = index % layerCount;
+    blockLayers[index] = layer;
+    counts[layer]++;
+  }
+  const offsets = new Uint32Array(layerCount + 1);
+  const cursors = new Uint32Array(layerCount);
+  for (let layer = 0; layer < layerCount; layer++) {
+    offsets[layer + 1] = offsets[layer] + counts[layer];
+    cursors[layer] = offsets[layer];
+  }
+  const packed = new Uint32Array(count);
+  for (let index = 0; index < count; index++) {
+    const block = source[index];
+    const layer = blockLayers[block];
+    packed[cursors[layer]++] = block;
+  }
+  const matrices = new Float32Array(count * 16);
+  const context = new Float32Array(6_000 * 16);
+  for (let index = 0; index < count; index++) {
+    const base = index * 16;
+    matrices[base] = 1;
+    matrices[base + 5] = 1;
+    matrices[base + 10] = 1;
+    matrices[base + 15] = 1;
+    matrices[base + 12] = packed[index] % 1_000;
+    matrices[base + 13] = blockLayers[packed[index]];
+  }
+  const built = performance.now();
+  const ranges = [
+    [offsets[100], offsets[101]],
+    [offsets[99], offsets[100]],
+    [offsets[101], offsets[102]],
+  ];
+  let write = 0;
+  for (const [start, end] of ranges) {
+    for (let index = start; index < end; index++) {
+      const base = write++ * 16;
+      const block = packed[index];
+      context[base] = 1;
+      context[base + 5] = 1;
+      context[base + 10] = 1;
+      context[base + 15] = 1;
+      context[base + 12] = block % 1_000;
+      context[base + 13] = blockLayers[block];
+    }
+  }
+  const finished = performance.now();
+  document.body.textContent = JSON.stringify({
+    instances: count,
+    touched: write,
+    buildMs: Number((built - before).toFixed(3)),
+    layerSwitchMs: Number((finished - built).toFixed(3)),
+    typedBytes: source.byteLength + blockLayers.byteLength + counts.byteLength + offsets.byteLength
+      + cursors.byteLength + packed.byteLength + matrices.byteLength + context.byteLength,
+    usedJSHeap: performance.memory?.usedJSHeapSize ?? null,
+  });
+</script>

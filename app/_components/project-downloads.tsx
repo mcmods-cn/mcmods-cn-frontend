@@ -26,6 +26,10 @@ type ProjectDownloadsProps = {
 
 const allFilter = "*";
 const sourceOptions: Array<ProjectFileSource | typeof allFilter> = [allFilter, "internal", "modrinth", "curseforge"];
+const projectFileSources: ProjectFileSource[] = ["internal", "modrinth", "curseforge"];
+const projectFilePageLimit = 20;
+
+type ProjectFilesData = Omit<ProjectFilesResponse, "source" | "limit" | "hasMore" | "nextCursor">;
 
 export function ProjectDownloads({
   projectType,
@@ -36,8 +40,10 @@ export function ProjectDownloads({
   suggestedLoaders = [],
 }: ProjectDownloadsProps) {
   const { locale, t } = useI18n();
-  const [data, setData] = useState<ProjectFilesResponse>();
+  const [data, setData] = useState<ProjectFilesData>();
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [sourceCursors, setSourceCursors] = useState<Partial<Record<ProjectFileSource, string>>>({});
   const [message, setMessage] = useState("");
   const [version, setVersion] = useState(allFilter);
   const [loader, setLoader] = useState(allFilter);
@@ -49,7 +55,9 @@ export function ProjectDownloads({
     setLoading(true);
     setMessage("");
     try {
-      setData(await apiRequest<ProjectFilesResponse>(basePath, {}, token));
+      const pages = await Promise.all(projectFileSources.map((item) => loadProjectFilePage(basePath, item, "", token)));
+      setData(combineProjectFilePages(pages));
+      setSourceCursors(Object.fromEntries(pages.map((page) => [page.source, page.hasMore ? page.nextCursor : ""])));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("mods.detail.downloads.loadFailed"));
     } finally {
@@ -58,6 +66,27 @@ export function ProjectDownloads({
   }, [basePath, t, token]);
 
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+
+  const loadMore = useCallback(async () => {
+    const sources = source === allFilter
+      ? projectFileSources.filter((item) => sourceCursors[item])
+      : sourceCursors[source] ? [source] : [];
+    if (!sources.length) return;
+    setLoadingMore(true);
+    setMessage("");
+    try {
+      const pages = await Promise.all(sources.map((item) => loadProjectFilePage(basePath, item, sourceCursors[item] ?? "", token)));
+      setData((current) => current ? mergeProjectFilePages(current, pages) : combineProjectFilePages(pages));
+      setSourceCursors((current) => ({
+        ...current,
+        ...Object.fromEntries(pages.map((page) => [page.source, page.hasMore ? page.nextCursor : ""])),
+      }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("mods.detail.downloads.loadFailed"));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [basePath, source, sourceCursors, t, token]);
 
   const filtered = useMemo(() => (data?.items ?? []).filter((file) => {
     if (source !== allFilter && file.source !== source) return false;
@@ -68,6 +97,9 @@ export function ProjectDownloads({
   const groups = useMemo(() => groupProjectFiles(filtered, version), [filtered, version]);
   const versions = useMemo(() => uniqueOptions(data?.versions ?? [], suggestedVersions), [data?.versions, suggestedVersions]);
   const loaders = useMemo(() => uniqueOptions(data?.loaders ?? [], suggestedLoaders), [data?.loaders, suggestedLoaders]);
+  const hasMoreForSelection = source === allFilter
+    ? projectFileSources.some((item) => Boolean(sourceCursors[item]))
+    : Boolean(sourceCursors[source]);
 
   async function download(file: ProjectFile) {
     setDownloadingId(`${file.source}:${file.id}`);
@@ -85,7 +117,6 @@ export function ProjectDownloads({
         setData((current) => current ? {
           ...current,
           items: current.items.map((item) => item.id === file.id && item.source === "internal" ? { ...item, downloadCount: item.downloadCount + 1 } : item),
-          totals: { ...current.totals, internalDownloads: current.totals.internalDownloads + 1 },
         } : current);
       }
     } catch (error) {
@@ -109,7 +140,7 @@ export function ProjectDownloads({
   return <div className="space-y-5">
     <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]">
       <div className="border-b border-[var(--line)] p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-black">{t("mods.detail.downloads.title")}</h2>{data ? <span className="text-sm font-bold text-[var(--muted)]">{t("mods.detail.downloads.internalTotal", { count: formatCount(data.totals.internalDownloads, locale) })}</span> : null}</div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-xl font-black">{t("mods.detail.downloads.title")}</h2></div>
         <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("mods.detail.downloads.subtitle")}</p>
       </div>
       <div className="space-y-4 p-4 sm:p-5">
@@ -142,6 +173,8 @@ export function ProjectDownloads({
       />)}</div>
     </section>)}</div> : <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-10 text-center text-[var(--muted)]">{t("mods.detail.downloads.noFiles")}</div>}
 
+    {!loading && hasMoreForSelection ? <button className="button-secondary focus-ring w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("mods.detail.downloads.loadingMore") : t("mods.detail.downloads.loadMore")}</button> : null}
+
     {data?.canUpload ? <ProjectFileUpload
       basePath={basePath}
       loaders={loaders}
@@ -165,7 +198,7 @@ function ProjectFileRow({ file, locale, deletingAllowed, downloading, onDownload
 }) {
   const { t } = useI18n();
   const name = file.displayName || file.fileName;
-  const scanBlocked = file.source === "internal" && file.scanStatus !== "clean";
+  const scanBlocked = file.source === "internal" && file.scanStatus !== "clean" && file.scanStatus !== "trusted_generated";
   const downloadLabel = scanBlocked
     ? t(file.scanStatus === "rejected" ? "mods.detail.downloads.scanRejected" : "mods.detail.downloads.scanPending")
     : downloading
@@ -313,6 +346,44 @@ function groupProjectFiles(items: ProjectFile[], selectedVersion: string) {
 
 function uniqueOptions(...lists: string[][]) {
   return Array.from(new Set(lists.flat().map((item) => item.trim()).filter(Boolean)));
+}
+
+async function loadProjectFilePage(basePath: string, source: ProjectFileSource, cursor: string, token: string) {
+  const parameters = new URLSearchParams({ source, limit: String(projectFilePageLimit) });
+  if (cursor) parameters.set("cursor", cursor);
+  return apiRequest<ProjectFilesResponse>(`${basePath}?${parameters}`, {}, token);
+}
+
+function combineProjectFilePages(pages: ProjectFilesResponse[]): ProjectFilesData {
+  return mergeProjectFilePages({
+    items: [], versions: [], loaders: [],
+    providers: { internal: true, modrinth: false, curseforge: false },
+    warnings: {}, canUpload: false, uploadPermission: "",
+  }, pages);
+}
+
+function mergeProjectFilePages(current: ProjectFilesData, pages: ProjectFilesResponse[]): ProjectFilesData {
+  const items = new Map(current.items.map((item) => [`${item.source}:${item.id}`, item]));
+  const warnings = { ...current.warnings };
+  for (const page of pages) {
+    for (const item of page.items) items.set(`${item.source}:${item.id}`, item);
+    delete warnings[page.source];
+    Object.assign(warnings, page.warnings);
+  }
+  return {
+    items: Array.from(items.values()).sort(compareProjectFiles),
+    versions: uniqueOptions(current.versions, ...pages.map((page) => page.versions)),
+    loaders: uniqueOptions(current.loaders, ...pages.map((page) => page.loaders)),
+    providers: Object.assign({ ...current.providers }, ...pages.map((page) => page.providers)),
+    warnings,
+    canUpload: pages[0]?.canUpload ?? current.canUpload,
+    uploadPermission: pages[0]?.uploadPermission ?? current.uploadPermission,
+  };
+}
+
+function compareProjectFiles(left: ProjectFile, right: ProjectFile) {
+  const dateDifference = new Date(right.publishedAt).valueOf() - new Date(left.publishedAt).valueOf();
+  return dateDifference || left.fileName.localeCompare(right.fileName) || left.source.localeCompare(right.source);
 }
 
 function splitValues(value: string) {
