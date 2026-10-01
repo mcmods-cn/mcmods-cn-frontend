@@ -61,6 +61,7 @@ export function StructureCanvas({
   const hostRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<StructureRenderer | null>(null)
   const layerViewRef = useRef({ min: layerMin, max: layerMax, mode: outsideLayerMode, showContextBelow, showContextAbove })
+  const firstPersonRef = useRef(firstPerson)
   const onLoadedRef = useRef(onLoaded)
   const onRenderedCoverRef = useRef(onRenderedCover)
   const onSelectBlockRef = useRef(onSelectBlock)
@@ -77,43 +78,62 @@ export function StructureCanvas({
     const host = hostRef.current
     if (!host) return
     let cancelled = false
-    setError('')
-    setProgress({ finishedStates: 0, totalStates: 0, currentState: t('mods.exportImport.renderer.reading') })
-    const renderer = new StructureRenderer(host, assetSource, {
-      autoRotate,
-      showGrid,
-      cullInvisibleFaces,
-      onProgress: (value) => { if (!cancelled) setProgress(value) },
-      onLoaded: (value) => {
-        if (!cancelled) {
-          setProgress(undefined)
-          onLoadedRef.current?.(value)
-          if (onRenderedCoverRef.current) {
-            renderer.captureImage()
-              .then((cover) => onRenderedCoverRef.current?.(cover))
-              .catch(() => undefined)
+    let teardown: (() => void) | undefined
+    const initialize = () => {
+      if (cancelled) return
+      setError('')
+      setProgress({ finishedStates: 0, totalStates: 0, currentState: t('mods.exportImport.renderer.reading') })
+      let renderer: StructureRenderer
+      try {
+        renderer = new StructureRenderer(host, assetSource, {
+          autoRotate,
+          showGrid,
+          cullInvisibleFaces,
+          onProgress: (value) => { if (!cancelled) setProgress(value) },
+          onLoaded: (value) => {
+            if (!cancelled) {
+              setProgress(undefined)
+              onLoadedRef.current?.(value)
+              if (onRenderedCoverRef.current) {
+                renderer.captureImage()
+                  .then((cover) => { if (!cancelled) return onRenderedCoverRef.current?.(cover) })
+                  .catch(() => undefined)
+              }
+            }
+          },
+          onSelectBlock: (block) => { if (!cancelled) onSelectBlockRef.current?.(block) },
+          onError: (reason) => { if (!cancelled) setError(reason.message) },
+        })
+      } catch (reason) {
+        setProgress(undefined)
+        setError(reason instanceof Error ? reason.message : String(reason))
+        return
+      }
+      renderer.setFirstPerson(firstPersonRef.current)
+      rendererRef.current = renderer
+      source.load()
+        .then((bytes) => { if (!cancelled) return renderer.load(bytes, source.name) })
+        .then(() => {
+          if (cancelled) return
+          const layer = layerViewRef.current
+          renderer.setLayerView(layer.min, layer.max, layer.mode, layer.showContextBelow, layer.showContextAbove)
+        })
+        .catch((reason: unknown) => {
+          if (!cancelled && !(reason instanceof DOMException && reason.name === 'AbortError')) {
+            setError(reason instanceof Error ? reason.message : String(reason))
           }
-        }
-      },
-      onSelectBlock: (block) => { if (!cancelled) onSelectBlockRef.current?.(block) },
-      onError: (reason) => { if (!cancelled) setError(reason.message) },
-    })
-    rendererRef.current = renderer
-    source.load()
-      .then((bytes) => renderer.load(bytes, source.name))
-      .then(() => {
-        const layer = layerViewRef.current
-        renderer.setLayerView(layer.min, layer.max, layer.mode, layer.showContextBelow, layer.showContextAbove)
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled && !(reason instanceof DOMException && reason.name === 'AbortError')) {
-          setError(reason instanceof Error ? reason.message : String(reason))
-        }
-      })
+        })
+      teardown = () => {
+        rendererRef.current = null
+        renderer.dispose()
+      }
+    }
+    // Allocate WebGL only after the mounted host can participate in layout.
+    const initializationFrame = requestAnimationFrame(initialize)
     return () => {
       cancelled = true
-      rendererRef.current = null
-      renderer.dispose()
+      cancelAnimationFrame(initializationFrame)
+      teardown?.()
     }
   }, [assetSource, source, source.key, source.name, autoRotate, showGrid, cullInvisibleFaces, t])
 
@@ -122,7 +142,10 @@ export function StructureCanvas({
     rendererRef.current?.setLayerView(layerMin, layerMax, outsideLayerMode, showContextBelow, showContextAbove)
   }, [layerMin, layerMax, outsideLayerMode, showContextBelow, showContextAbove])
 
-  useEffect(() => rendererRef.current?.setFirstPerson(firstPerson), [firstPerson])
+  useEffect(() => {
+    firstPersonRef.current = firstPerson
+    rendererRef.current?.setFirstPerson(firstPerson)
+  }, [firstPerson])
 
   const percent = progress?.totalStates
     ? Math.round(progress.finishedStates / progress.totalStates * 100)

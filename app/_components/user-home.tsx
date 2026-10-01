@@ -61,6 +61,11 @@ type UserOverview = {
 };
 
 export function UserHome() {
+  const { user } = useAuthSnapshot();
+  return <UserHomeWorkspace key={user?.id || "guest"} />;
+}
+
+function UserHomeWorkspace() {
   const { locale, t } = useI18n();
   const { token, user } = useAuthSnapshot();
   const router = useRouter();
@@ -712,23 +717,23 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
       </div>
       {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">{message}</p> : null}
       <div className="mt-5 grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <aside className="grid content-start gap-2">
+        <aside className="grid min-w-0 content-start gap-2">
           {loading ? <p className="p-3 font-bold text-[var(--muted)]">{t("common.loading")}</p> : collections.map((collection) => (
-            <div className={`flex items-center rounded-lg border ${selectedId === collection.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`} key={collection.id}>
+            <div className={`flex min-w-0 items-center rounded-lg border ${selectedId === collection.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`} key={collection.id}>
               <button className="focus-ring min-w-0 flex-1 px-3 py-3 text-left" type="button" onClick={() => setSelectedId(collection.id)}>
                 <span className="block truncate font-bold">{collection.isDefault ? t("favorites.defaultFolder") : collection.name}</span>
                 <span className="text-xs text-[var(--muted)]">{t("favorites.itemCount", { count: collection.itemCount })} · {collection.isPublic ? t("favorites.public") : t("favorites.private")}</span>
               </button>
-              <button className="focus-ring rounded p-2 text-xs font-bold text-[var(--accent)]" title={t("favorites.changeVisibility")} type="button" onClick={() => void toggleCollectionVisibility(collection)}>
+              <button className="focus-ring min-h-11 shrink-0 rounded p-2 text-xs font-bold text-[var(--accent)]" title={t("favorites.changeVisibility")} type="button" onClick={() => void toggleCollectionVisibility(collection)}>
                 {collection.isPublic ? t("favorites.makePrivate") : t("favorites.makePublic")}
               </button>
-              {!collection.isDefault ? <button className="focus-ring mr-2 rounded p-2 text-sm text-red-600" title={t("common.delete")} type="button" onClick={() => void removeCollection(collection)}>×</button> : null}
+              {!collection.isDefault ? <button className="focus-ring mr-2 min-h-11 min-w-11 shrink-0 rounded p-2 text-sm text-red-600" title={t("common.delete")} type="button" onClick={() => void removeCollection(collection)}>×</button> : null}
             </div>
           ))}
         </aside>
         <section className="min-w-0 rounded-lg border border-[var(--line)] p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-black">{selected?.isDefault ? t("favorites.defaultFolder") : selected?.name ?? t("favorites.title")}</h3>
+            <h3 className="min-w-0 break-words font-black">{selected?.isDefault ? t("favorites.defaultFolder") : selected?.name ?? t("favorites.title")}</h3>
             {selected ? <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-[var(--line)] px-2 py-1 text-xs font-bold">{selected.isPublic ? t("favorites.public") : t("favorites.private")}</span><FavoriteModpackExport collectionId={selected.id} collectionName={selected.isDefault ? t("favorites.defaultFolder") : selected.name} initialTaskId={exportTaskId} token={token} /></div> : null}
           </div>
           {items.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item) => <Link className="focus-ring rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)} key={`${item.entityType}:${item.entityKey}`}><span className="block truncate font-bold">{item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityKey}</span><span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.entityType} · {item.entityKey}</span></Link>)}</div> : <p className="py-12 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}

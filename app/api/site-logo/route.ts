@@ -34,11 +34,21 @@ export async function POST(request: NextRequest) {
 
 async function canWriteSiteSettings(request: NextRequest) {
   const authorization = request.headers.get("authorization")?.trim() ?? "";
-  if (!authorization.startsWith("Bearer ")) return false;
+  const headers = new Headers();
+  if (/^Bearer [^.\s]+\.[^.\s]+\.[^.\s]+$/i.test(authorization)) {
+    headers.set("Authorization", authorization);
+  } else {
+    const session = request.cookies.get("mcmods_session");
+    // This local route mutates disk, so cookie authentication also requires an
+    // exact same-origin request before the backend permission lookup.
+    if (!session?.value || request.headers.get("origin") !== request.nextUrl.origin) return false;
+    headers.set("Cookie", `mcmods_session=${session.value}`);
+  }
   try {
     const response = await fetch(`${apiBaseURL}/api/v1/admin/config/general/logo-upload-access`, {
       cache: "no-store",
-      headers: { Authorization: authorization },
+      headers,
+      signal: AbortSignal.timeout(10_000),
     });
     return response.ok;
   } catch {

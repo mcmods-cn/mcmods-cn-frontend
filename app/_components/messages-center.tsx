@@ -55,6 +55,11 @@ type NotificationTarget = { href: string; label: string };
 const notificationKinds: NotificationKind[] = ["system", "reply_mention", "comment_watch_reply", "review", "new_follower"];
 
 export function MessagesCenter() {
+  const { token } = useAuthSnapshot();
+  return <MessagesCenterSession key={token} />;
+}
+
+function MessagesCenterSession() {
   const { t, locale } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const router = useRouter();
@@ -74,7 +79,8 @@ export function MessagesCenter() {
   const [aiBalance, setAIBalance] = useState<AITokenBalance | null>(null);
   const [status, setStatus] = useState("");
   const lastMessageIDRef = useRef("");
-  const messagesLoadingRef = useRef(false);
+  const selectedConversationRef = useRef<string | null>(null);
+  const messageRequestRef = useRef<{ conversationID: string; controller: AbortController } | null>(null);
   const conversationsLoadingRef = useRef(false);
 
   const selectedConversation = conversations.find((item) => item.id === selectedConversationID) ?? null;
@@ -105,12 +111,25 @@ export function MessagesCenter() {
     setAIBalance(await apiRequest<AITokenBalance>("/api/v1/notifications/ai-balance", {}, token));
   }, [token]);
 
+  const selectConversation = useCallback((conversationID: string) => {
+    if (selectedConversationRef.current === conversationID) return;
+    selectedConversationRef.current = conversationID;
+    messageRequestRef.current?.controller.abort();
+    messageRequestRef.current = null;
+    lastMessageIDRef.current = "";
+    setMessages([]);
+    setMessageDraft("");
+    setSelectedConversationID(conversationID);
+  }, []);
+
   const loadMessages = useCallback(async (conversationID: string) => {
-    if (!token || messagesLoadingRef.current) return;
-    messagesLoadingRef.current = true;
+    if (!token || selectedConversationRef.current !== conversationID || messageRequestRef.current?.conversationID === conversationID) return;
+    const request = { conversationID, controller: new AbortController() };
+    messageRequestRef.current = request;
     try {
       const after = lastMessageIDRef.current ? `?after=${encodeURIComponent(lastMessageIDRef.current)}` : "";
-      const result = await apiRequest<DirectMessage[]>(`/api/v1/messages/conversations/${conversationID}${after}`, {}, token);
+      const result = await apiRequest<DirectMessage[]>(`/api/v1/messages/conversations/${conversationID}${after}`, { signal: request.controller.signal }, token);
+      if (request.controller.signal.aborted || messageRequestRef.current !== request || selectedConversationRef.current !== conversationID) return;
       if (result.length > 0) {
         lastMessageIDRef.current = result[result.length - 1].id;
         setMessages((current) => {
@@ -120,7 +139,11 @@ export function MessagesCenter() {
         });
       } else if (!after) setMessages([]);
       window.dispatchEvent(new Event("mcmods-unread-change"));
-    } finally { messagesLoadingRef.current = false; }
+    } catch (error) {
+      if (!request.controller.signal.aborted) throw error;
+    } finally {
+      if (messageRequestRef.current === request) messageRequestRef.current = null;
+    }
   }, [token]);
 
   useEffect(() => {
@@ -133,18 +156,22 @@ export function MessagesCenter() {
     return () => window.clearTimeout(timer);
   }, [loadConversations, loadNotifications, loadUnreadNotifications, t, token]);
 
+  const reportLoadError = useCallback((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+  }, [t]);
+
   useEffect(() => {
     if (!token) return;
     const receive = (event: Event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
       if (detail?.type?.startsWith("notification.")) {
-        void Promise.all([loadNotifications(), loadUnreadNotifications()]);
+        void Promise.all([loadNotifications(), loadUnreadNotifications()]).catch(reportLoadError);
       }
-      if (detail?.type === "message.created") void loadConversations();
+      if (detail?.type === "message.created") void loadConversations().catch(reportLoadError);
     };
     window.addEventListener("mcmods-realtime", receive);
     return () => window.removeEventListener("mcmods-realtime", receive);
-  }, [loadConversations, loadNotifications, loadUnreadNotifications, token]);
+  }, [loadConversations, loadNotifications, loadUnreadNotifications, reportLoadError, token]);
 
   useEffect(() => {
     if (!token || !targetUserID || targetUserID === user?.id) return;
@@ -156,43 +183,43 @@ export function MessagesCenter() {
     ).then(async (result) => {
       if (cancelled) return;
       setMode("chats");
-      setSelectedConversationID(result.id);
+      selectConversation(result.id);
       await loadConversations();
     }).catch((error) => setStatus(error instanceof Error ? error.message : t("messages.startFailed")));
     return () => {
       cancelled = true;
     };
-  }, [loadConversations, t, targetUserID, token, user?.id]);
+  }, [loadConversations, selectConversation, t, targetUserID, token, user?.id]);
 
   useEffect(() => {
     if (!selectedConversationID || !token) return;
     lastMessageIDRef.current = "";
     const initialTimer = window.setTimeout(() => {
-      setMessages([]);
       void loadMessages(selectedConversationID).catch((error) => setStatus(error instanceof Error ? error.message : t("messages.loadFailed")));
     }, 0);
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
-      void loadMessages(selectedConversationID);
-      void loadConversations();
+      void Promise.all([loadMessages(selectedConversationID), loadConversations()]).catch(reportLoadError);
     };
     const timer = window.setInterval(refresh, 60_000);
     const presence = window.setInterval(() => {
-      if (document.visibilityState === "visible") void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token);
+      if (document.visibilityState === "visible") void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token).catch(reportLoadError);
     }, 20_000);
     const realtime = (event: Event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
       if (detail?.type === "message.created" || detail?.type === "unread.changed") refresh();
     };
     window.addEventListener("mcmods-realtime", realtime);
-    void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token);
+    void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token).catch(reportLoadError);
     return () => {
       window.clearTimeout(initialTimer);
       window.clearInterval(timer);
       window.clearInterval(presence);
       window.removeEventListener("mcmods-realtime", realtime);
+      messageRequestRef.current?.controller.abort();
+      messageRequestRef.current = null;
     };
-  }, [loadConversations, loadMessages, selectedConversationID, t, token]);
+  }, [loadConversations, loadMessages, reportLoadError, selectedConversationID, t, token]);
 
   async function markRead(item: NotificationItem) {
     if (!token || item.read) return;
@@ -243,7 +270,7 @@ export function MessagesCenter() {
       if (!started.cached && started.taskId) {
         translation = await waitForTranslation(started.taskId, token);
       }
-      if (translation) setTranslations((current) => ({ ...current, [item.id]: translation! }));
+      if (translation) setTranslations((current) => ({ ...current, [`${locale}:${item.id}`]: translation! }));
       await loadBalance();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("messages.translationFailed"));
@@ -255,14 +282,18 @@ export function MessagesCenter() {
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token || !selectedConversationID || !selectedConversation?.canMessage || !messageDraft.trim()) return;
+    const conversationID = selectedConversationID;
+    const submittedDraft = messageDraft;
     try {
       const result = await apiRequest<{ message: DirectMessage }>(
         `/api/v1/messages/conversations/${selectedConversationID}`,
         { method: "POST", body: JSON.stringify({ body: messageDraft }) },
         token,
       );
-      setMessages((current) => [...current, result.message]);
-      setMessageDraft("");
+      if (selectedConversationRef.current === conversationID) {
+        setMessages((current) => current.some((item) => item.id === result.message.id) ? current : [...current, result.message]);
+        setMessageDraft((current) => current === submittedDraft ? "" : current);
+      }
       await loadConversations();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("messages.sendFailed"));
@@ -306,7 +337,7 @@ export function MessagesCenter() {
                 </button>
               </div>
               {notifications.map((item) => {
-                const translated = translations[item.id];
+                const translated = translations[`${locale}:${item.id}`];
                 const target = notificationTarget(item, t("messages.openRelatedContent"));
                 const title = translated?.title || item.title;
                 const body = translated?.body || item.body;
@@ -364,7 +395,7 @@ export function MessagesCenter() {
               <div className="border-b border-[var(--line)] p-4 font-bold">{t("messages.conversations")}</div>
               <div className="max-h-[620px] overflow-y-auto">
                 {conversations.map((item) => (
-                  <button key={item.id} className={`focus-ring flex w-full items-start gap-3 border-b border-[var(--line)] p-4 text-left ${selectedConversationID === item.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setSelectedConversationID(item.id)}>
+                  <button key={item.id} className={`focus-ring flex w-full items-start gap-3 border-b border-[var(--line)] p-4 text-left ${selectedConversationID === item.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => selectConversation(item.id)}>
                     <UserAvatar avatarUrl={item.avatarUrl} onlineStatus={item.onlineStatus} size={40} username={item.username} />
                     <span className="min-w-0 flex-1">
 <span className="flex items-center justify-between gap-2"><strong className="truncate">{item.username}</strong>{item.unreadCount > 0 ? <b className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">{item.unreadCount}</b> : null}</span>

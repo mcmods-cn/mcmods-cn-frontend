@@ -22,17 +22,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
 
   useEffect(() => {
-    window.localStorage.setItem("mcmods-theme", theme);
+    try { window.localStorage.setItem("mcmods-theme", theme); } catch { /* Theme remains usable when persistence is unavailable. */ }
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
-    setTheme((current) => {
-      const next = current === "dark" ? "light" : "dark";
-      window.localStorage.setItem("mcmods-theme", next);
-      document.documentElement.classList.toggle("dark", next === "dark");
-      return next;
-    });
+    setTheme((current) => current === "dark" ? "light" : "dark");
   }, []);
 
   const value = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
@@ -52,7 +47,8 @@ function getInitialTheme(): Theme {
   if (typeof window === "undefined") {
     return "light";
   }
-  const saved = window.localStorage.getItem("mcmods-theme");
+  let saved: string | null = null;
+  try { saved = window.localStorage.getItem("mcmods-theme"); } catch { /* Use the OS preference if browser storage is blocked. */ }
   if (saved === "light" || saved === "dark") {
     return saved;
   }

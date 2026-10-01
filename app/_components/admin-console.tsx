@@ -6,7 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { canAccessAdmin, clearAuth, hasPermission, useAuthSnapshot } from "../_lib/auth";
-import { ApiError, apiRequest } from "../_lib/api";
+import { ApiError, apiRequest, isBearerAccessToken } from "../_lib/api";
+import { safeMissingTranslation } from "../_lib/ai-translation-fill";
 import { isBackendUnavailable } from "../_lib/backend-status";
 import type { LevelConfig, RoleTrack } from "../_lib/community-api";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
@@ -271,7 +272,7 @@ type AITaskModelConfig = {
 
 type AITaskStatus = {
   id: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "retrying" | "completed" | "failed" | "cancelled";
   result?: AITranslationResult;
   error?: string;
 };
@@ -1959,6 +1960,8 @@ function PermissionCatalogEditor({
   const [saving, setSaving] = useState(false);
   const [aiCompleting, setAICompleting] = useState(false);
   const [message, setMessage] = useState("");
+  const latestDraft = useRef(draft);
+  useEffect(() => { latestDraft.current = draft; }, [draft]);
 
   const visible = draft.filter((permission) => {
     const keyword = query.trim().toLowerCase();
@@ -2020,6 +2023,7 @@ function PermissionCatalogEditor({
       notifyAdminNotice(t("admin.ai.noMissingTranslations"));
       return;
     }
+    const sources = new Map(candidates.map((permission) => [permission.code, editableLocalizedText(permission, sourceLocale)]));
     setAICompleting(true);
     try {
       const result = await runAITranslationTask(token, aiTranslationTaskTypes.permission, {
@@ -2028,21 +2032,31 @@ function PermissionCatalogEditor({
         items: candidates.map((permission) => ({ key: permission.code, ...editableLocalizedText(permission, sourceLocale) })),
       });
       const translated = new Map((result.items ?? []).map((item) => [item.key, item]));
-      let completed = 0;
-      const nextDraft = draft.map((permission) => {
+      function mergePermission(permission: Permission) {
         const item = translated.get(permission.code);
-        if (!item) return permission;
+        const source = sources.get(permission.code);
+        if (!item || !source) return permission;
+        const currentSource = editableLocalizedText(permission, sourceLocale);
         const target = editableLocalizedText(permission, targetLocale);
-        const name = target.name || item.name?.trim() || "";
-        const description = target.description || item.description?.trim() || "";
+        const name = safeMissingTranslation(source.name, currentSource.name, target.name, item.name) ?? target.name;
+        const description = safeMissingTranslation(source.description, currentSource.description, target.description, item.description) ?? target.description;
         if (name === target.name && description === target.description) return permission;
-        completed += 1;
-        return {
-          ...permission,
-          translations: setLocalizedText(permission.translations, targetLocale, { name, description }),
-        };
-      });
-      setDraft(nextDraft);
+        return { ...permission, translations: setLocalizedText(permission.translations, targetLocale, { name, description }) };
+      }
+      const completed = latestDraft.current.filter((permission) => mergePermission(permission) !== permission).length;
+      if (!completed) {
+        const stillMissing = latestDraft.current.some((permission) => {
+          const source = sources.get(permission.code);
+          if (!source) return false;
+          const currentSource = editableLocalizedText(permission, sourceLocale);
+          const target = editableLocalizedText(permission, targetLocale);
+          return (source.name === currentSource.name && source.name.trim() !== "" && target.name.trim() === "")
+            || (source.description === currentSource.description && source.description.trim() !== "" && target.description.trim() === "");
+        });
+        notifyAdminNotice(t(stillMissing ? "admin.ai.invalidTranslations" : "admin.ai.noMissingTranslations"), t("admin.noticeTitle"), stillMissing ? "danger" : undefined);
+        return;
+      }
+      setDraft((current) => current.map(mergePermission));
       notifyAdminNotice(t("admin.ai.translationCompleted", { count: completed }));
     } catch (error) {
       notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
@@ -2194,7 +2208,7 @@ function UserRolePanel({
   }, [selectedUser, token]);
 
   async function saveUserPermissions() {
-    if (!selectedUser) return;
+    if (!selectedUser || !details || saving) return;
     if (!token) {
       setMessage(t("admin.permissionLoginRequired"));
       return;
@@ -2322,7 +2336,7 @@ function UserRolePanel({
               <p className="mt-2 text-sm text-[var(--muted)]">{t("admin.noRoleAssigned")}</p>
             )}
           </div>
-          <button className="button-primary focus-ring" disabled={!selectedUser || saving} type="button" onClick={saveUserPermissions}>
+          <button className="button-primary focus-ring" disabled={!selectedUser || !details || saving} type="button" onClick={saveUserPermissions}>
             {saving ? t("admin.saving") : t("admin.saveUserPermissions")}
           </button>
         </div>
@@ -2648,14 +2662,36 @@ function ModImportConfigPanel({ token }: { token: string }) {
   );
 }
 
+function useAIConfigDraft(initialConfig: AIConfig, token: string, normalize: (config: AIConfig) => AIConfig) {
+  const [draft, setDraft] = useState(() => normalize(initialConfig));
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    apiRequest<AIConfig>("/api/v1/admin/ai/config", {}, token).then((config) => {
+      if (!cancelled) { setDraft(normalize(config)); setLoaded(true); setError(""); }
+    }).catch((reason) => { if (!cancelled) setError(cleanError(reason)); });
+    return () => { cancelled = true; };
+  }, [normalize, reload, token]);
+  return { draft, setDraft, loaded, error, retry: () => { setError(""); setReload((value) => value + 1); } };
+}
+
+function AIConfigLoadState({ error, onRetry }: { error: string; onRetry: () => void }) {
+  const { t } = useI18n();
+  return <section className="surface rounded-lg p-5" role={error ? "alert" : "status"}>{error || t("common.loading")}{error ? <button className="button-secondary focus-ring ml-3" type="button" onClick={onRetry}>{t("common.retry")}</button> : null}</section>;
+}
+
 function AIProvidersPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState(() => normalizeAIProtocols(initialConfig));
+  const { draft, setDraft, loaded, error, retry } = useAIConfigDraft(initialConfig, token, normalizeAIProtocols);
   const [saving, setSaving] = useState(false);
 
   async function save() {
     await saveAIConfig(draft, token, setDraft, setSaving, t);
   }
+
+  if (!loaded) return <AIConfigLoadState error={error} onRetry={retry} />;
 
   return (
     <div className="grid gap-4">
@@ -2704,21 +2740,10 @@ function AIProvidersPanel({ initialConfig, token }: { initialConfig: AIConfig; t
 
 function AIModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState(() => normalizeAIModelProviders(initialConfig));
+  const { draft, setDraft, loaded, error, retry } = useAIConfigDraft(initialConfig, token, normalizeAIModelProviders);
   const [saving, setSaving] = useState(false);
   const availableProviders = draft.providers.filter((provider) => provider.code.trim());
-
-  useEffect(() => {
-    let cancelled = false;
-    apiRequest<AIConfig>("/api/v1/admin/ai/config", {}, token)
-      .then((config) => {
-        if (!cancelled) setDraft(normalizeAIModelProviders(config));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+  if (!loaded) return <AIConfigLoadState error={error} onRetry={retry} />;
 
   return (
     <div className="grid gap-4">
@@ -2773,22 +2798,11 @@ function AIModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; toke
 
 function AITaskModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState(() => normalizeAIProtocols(initialConfig));
+  const { draft, setDraft, loaded, error, retry } = useAIConfigDraft(initialConfig, token, normalizeAIProtocols);
   const [saving, setSaving] = useState(false);
   const enabledProviderCodes = new Set(draft.providers.filter((provider) => provider.enabled).map((provider) => provider.code));
   const availableModels = draft.models.filter((model) => model.enabled && enabledProviderCodes.has(model.provider));
-
-  useEffect(() => {
-    let cancelled = false;
-    apiRequest<AIConfig>("/api/v1/admin/ai/config", {}, token)
-      .then((config) => {
-        if (!cancelled) setDraft(normalizeAIProtocols(config));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+  if (!loaded) return <AIConfigLoadState error={error} onRetry={retry} />;
 
   return (
     <div className="grid gap-4">
@@ -2863,40 +2877,56 @@ function AICostsPanel({ token }: { token: string }) {
 
 function AITaskLogsPanel({ token }: { token: string }) {
   const { t } = useI18n();
+  const { user } = useAuthSnapshot();
   const [rows, setRows] = useState<LogRow[]>([]);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const [message, setMessage] = useState("");
+  const [busyTask, setBusyTask] = useState("");
+  const mutationInFlight = useRef(false);
+  const requestSequence = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(() => {
+    const sequence = ++requestSequence.current;
     const params = new URLSearchParams();
     if (query) params.set("q", query);
     if (status) params.set("status", status);
-    try {
-      setRows(await apiRequest<LogRow[]>(`/api/v1/admin/ai/tasks?${params.toString()}`, {}, token));
-    } catch (error) {
-      setMessage(cleanError(error));
-    }
+    return apiRequest<LogRow[]>(`/api/v1/admin/ai/tasks?${params}`, {}, token).then((data) => {
+      if (sequence === requestSequence.current) { setRows(data); setMessage(""); }
+    }).catch((error) => {
+      if (sequence === requestSequence.current) setMessage(cleanError(error));
+    });
   }, [query, status, token]);
 
   useEffect(() => {
-    let cancelled = false;
-    const params = new URLSearchParams();
-    if (query) params.set("q", query);
-    if (status) params.set("status", status);
-    apiRequest<LogRow[]>(`/api/v1/admin/ai/tasks?${params.toString()}`, {}, token)
-      .then((data) => {
-        if (!cancelled) setRows(data);
-      })
-      .catch((error) => {
-        if (!cancelled) setMessage(cleanError(error));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [query, status, token]);
+    void load();
+    return () => { requestSequence.current += 1; };
+  }, [load]);
+  useEffect(() => {
+    if (!rows.some((row) => ["queued", "running", "retrying"].includes(String(row.status)))) return;
+    const timer = window.setTimeout(() => void load(), 2500);
+    return () => window.clearTimeout(timer);
+  }, [load, rows]);
+
+  async function changeTask(row: LogRow, action: "retry" | "cancel") {
+    if (mutationInFlight.current) return;
+    if (!hasPermission(user, action === "retry" ? "ai.task.enqueue" : "ai.write")) return;
+    if (!window.confirm(t(action === "retry" ? "admin.ai.retryTaskConfirm" : "admin.ai.cancelTaskConfirm"))) return;
+    const id = String(row.task_uid ?? row.id);
+    mutationInFlight.current = true;
+    setBusyTask(id);
+    setMessage("");
+    try {
+      await apiRequest(`/api/v1/admin/ai/tasks/${encodeURIComponent(id)}/${action}`, { method: "POST", body: "{}" }, token);
+      await load();
+    } catch (error) { setMessage(cleanError(error)); }
+    finally { mutationInFlight.current = false; setBusyTask(""); }
+  }
 
   async function createTestTask() {
+    if (mutationInFlight.current || !hasPermission(user, "ai.task.enqueue")) return;
+    mutationInFlight.current = true;
+    setBusyTask("new");
     setMessage("");
     try {
       await apiRequest<{ id: string; taskUid: string; status: string }>(
@@ -2913,7 +2943,7 @@ function AITaskLogsPanel({ token }: { token: string }) {
       await load();
     } catch (error) {
       setMessage(cleanError(error));
-    }
+    } finally { mutationInFlight.current = false; setBusyTask(""); }
   }
 
   return (
@@ -2923,7 +2953,7 @@ function AITaskLogsPanel({ token }: { token: string }) {
           <h2 className="text-xl font-bold">{t("admin.ai.taskLogs")}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.ai.taskLogsDesc")}</p>
         </div>
-        <button className="button-primary focus-ring" type="button" onClick={createTestTask}>
+        <button className="button-primary focus-ring" disabled={Boolean(busyTask) || !hasPermission(user, "ai.task.enqueue")} type="button" onClick={createTestTask}>
           {t("admin.ai.createTestTask")}
         </button>
       </div>
@@ -2935,6 +2965,8 @@ function AITaskLogsPanel({ token }: { token: string }) {
           <option value="running">running</option>
           <option value="completed">completed</option>
           <option value="failed">failed</option>
+          <option value="retrying">retrying</option>
+          <option value="cancelled">cancelled</option>
         </select>
         <button className="button-secondary focus-ring" type="button" onClick={load}>
           {t("admin.logs.query")}
@@ -2945,7 +2977,7 @@ function AITaskLogsPanel({ token }: { token: string }) {
         <table className="w-full min-w-[980px] text-left text-sm">
           <thead>
             <tr>
-              {["ID", t("admin.ai.taskType"), t("admin.ai.provider"), t("admin.ai.model"), t("admin.status"), t("admin.ai.tokens"), t("admin.ai.cost"), t("admin.createdAt")].map((heading) => (
+              {["ID", t("admin.ai.taskType"), t("admin.ai.provider"), t("admin.ai.model"), t("admin.status"), t("admin.ai.tokens"), t("admin.ai.cost"), t("admin.createdAt"), t("admin.operation")].map((heading) => (
                 <th key={heading} className="border-b border-[var(--line)] py-2">{heading}</th>
               ))}
             </tr>
@@ -2961,6 +2993,10 @@ function AITaskLogsPanel({ token }: { token: string }) {
                 <td className="border-b border-[var(--line)] py-2">{displayCell(row.input_tokens)} / {displayCell(row.output_tokens)}</td>
                 <td className="border-b border-[var(--line)] py-2">{displayCell(row.cost_micros)}</td>
                 <td className="border-b border-[var(--line)] py-2">{displayCell(row.created_at)}</td>
+                <td className="border-b border-[var(--line)] py-2">
+                  {row.status === "failed" && hasPermission(user, "ai.task.enqueue") ? <button className="button-secondary focus-ring" disabled={Boolean(busyTask)} type="button" onClick={() => void changeTask(row, "retry")}>{t("admin.ai.retryTask")}</button> : null}
+                  {["queued", "running", "retrying"].includes(String(row.status)) && hasPermission(user, "ai.write") ? <button className="button-secondary focus-ring" disabled={Boolean(busyTask)} type="button" onClick={() => void changeTask(row, "cancel")}>{t("admin.ai.cancelTask")}</button> : null}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -3349,7 +3385,7 @@ function GeneralSettingsPanel({ initialConfig, token }: { initialConfig: { siteN
       form.set("file", file);
       const response = await fetch("/api/site-logo", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: isBearerAccessToken(token) ? { Authorization: `Bearer ${token}` } : undefined,
         body: form,
       });
       const result = await response.json().catch(() => ({})) as { url?: string; error?: string };
@@ -3738,7 +3774,8 @@ function UsersPanelV2({
     event.preventDefault();
     setCreating(true);
     setMessage("");
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const roles = String(form.get("roles") ?? "")
       .split(",")
       .map((role) => role.trim())
@@ -3753,7 +3790,7 @@ function UsersPanelV2({
     try {
       await apiRequest<User>("/api/v1/admin/users", { method: "POST", body: JSON.stringify(payload) }, token);
       await refreshUsers();
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage(t("admin.userCreated"));
     } catch (error) {
       setMessage(cleanError(error));
@@ -4220,15 +4257,18 @@ function NotificationTemplatePanel({ token }: { token: string }) {
   const [targetLocale, setTargetLocale] = useState<Locale>(locale === "zh-CN" ? "en-US" : locale);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     apiRequest<{ templates: NotificationTemplateDefinition[] }>("/api/v1/admin/config/notifications", {}, token)
-      .then((result) => { if (!cancelled) setTemplates(result.templates ?? []); })
-      .catch((error) => { if (!cancelled) notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"); })
+      .then((result) => { if (!cancelled) { setTemplates(result.templates ?? []); setLoaded(true); setError(""); } })
+      .catch((error) => { if (!cancelled) setError(cleanError(error)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [t, token]);
+  }, [reload, token]);
 
   function updateTemplate(index: number, language: string, field: keyof NotificationTemplateTranslation, value: string) {
     setTemplates((current) => current.map((template, templateIndex) => {
@@ -4239,6 +4279,7 @@ function NotificationTemplatePanel({ token }: { token: string }) {
   }
 
   async function save() {
+    if (!loaded || saving) return;
     setSaving(true);
     try {
       const result = await apiRequest<{ templates: NotificationTemplateDefinition[] }>(
@@ -4255,6 +4296,7 @@ function NotificationTemplatePanel({ token }: { token: string }) {
     }
   }
 
+  if (!loaded && error) return <AIConfigLoadState error={error} onRetry={() => { setError(""); setLoading(true); setReload((value) => value + 1); }} />;
   if (loading) return <section className="surface rounded-lg p-5 font-bold text-[var(--muted)]">{t("common.loading")}</section>;
 
   return <section className="space-y-4">
@@ -4406,6 +4448,9 @@ function TranslationManagerPanel({ token }: { token: string }) {
   const [query, setQuery] = useState("");
   const [missingOnly, setMissingOnly] = useState(false);
   const [aiCompleting, setAICompleting] = useState(false);
+  const latestTranslations = useRef({ getTranslation, getOwnTranslation });
+  const editingValues = useRef(new Map<string, string>());
+  useEffect(() => { latestTranslations.current = { getTranslation, getOwnTranslation }; }, [getTranslation, getOwnTranslation]);
 
   const visibleKeys = translationKeys.filter((key) => {
     if (isResourceDataPageTranslationKey(key)) return false;
@@ -4421,6 +4466,7 @@ function TranslationManagerPanel({ token }: { token: string }) {
   });
 
   function saveTranslation(key: string, value: string) {
+    editingValues.current.set(`${targetLocale}:${key}`, value);
     setTranslation(targetLocale, key, value);
   }
 
@@ -4436,17 +4482,31 @@ function TranslationManagerPanel({ token }: { token: string }) {
       notifyAdminNotice(t("admin.ai.noMissingTranslations"));
       return;
     }
+    const sources = new Map(candidates.map((key) => [key, getTranslation(sourceLocale, key)]));
     setAICompleting(true);
     try {
       const result = await runAITranslationTask(token, aiTranslationTaskTypes.i18n, {
         sourceLocale,
         targetLocale,
-        items: candidates.map((key) => ({ key, text: getTranslation(sourceLocale, key) })),
+        items: candidates.map((key) => ({ key, text: sources.get(key) })),
       });
       const translations: Record<string, string> = {};
       for (const item of result.items ?? []) {
-        const value = item.text?.trim() ?? "";
-        if (candidates.includes(item.key) && value) translations[item.key] = value;
+        const source = sources.get(item.key);
+        if (source === undefined) continue;
+        const current = latestTranslations.current;
+        const target = editingValues.current.get(`${targetLocale}:${item.key}`) ?? current.getOwnTranslation(targetLocale, item.key);
+        const value = safeMissingTranslation(source, current.getTranslation(sourceLocale, item.key), target, item.text);
+        if (value !== undefined) translations[item.key] = value;
+      }
+      if (!Object.keys(translations).length) {
+        const stillMissing = candidates.some((key) => {
+          const current = latestTranslations.current;
+          return current.getTranslation(sourceLocale, key) === sources.get(key)
+            && !(editingValues.current.get(`${targetLocale}:${key}`) ?? current.getOwnTranslation(targetLocale, key)).trim();
+        });
+        notifyAdminNotice(t(stillMissing ? "admin.ai.invalidTranslations" : "admin.ai.noMissingTranslations"), t("admin.noticeTitle"), stillMissing ? "danger" : undefined);
+        return;
       }
       setTranslations(targetLocale, translations);
       notifyAdminNotice(t("admin.ai.translationCompleted", { count: Object.keys(translations).length }));
@@ -4543,12 +4603,13 @@ function TranslationManagerPanel({ token }: { token: string }) {
                       className="field min-h-24 resize-y leading-6"
                       defaultValue={target}
                       placeholder={target ? "" : t("admin.missingTranslation")}
+                      onChange={(event) => editingValues.current.set(`${targetLocale}:${key}`, event.currentTarget.value)}
                       onBlur={(event) => saveTranslation(key, event.currentTarget.value)}
                     />
                     {edited ? <span className="mt-1 block text-xs text-[var(--accent)]">{t("admin.editedLocally")}</span> : null}
                   </td>
                   <td className="border-b border-[var(--line)] px-4 py-4 align-top">
-                    <button className="button-secondary focus-ring whitespace-nowrap" type="button" onClick={() => resetTranslation(targetLocale, key)}>
+                    <button className="button-secondary focus-ring whitespace-nowrap" type="button" onClick={() => { editingValues.current.delete(`${targetLocale}:${key}`); resetTranslation(targetLocale, key); }}>
                       {t("admin.resetTranslation")}
                     </button>
                   </td>
@@ -5246,7 +5307,17 @@ function RuntimeLogsPanel({ token, title }: { token: string; title: string }) {
   );
 }
 
-function LogCleanupPanel({ token }: { token: string }) {
+function isLogRetentionConfig(value: unknown): value is LogRetentionConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)
+    || !("enabled" in value) || typeof value.enabled !== "boolean"
+    || !("defaultDays" in value) || typeof value.defaultDays !== "number"
+    || !Number.isInteger(value.defaultDays) || value.defaultDays < 1 || value.defaultDays > 3650
+    || !("categoryDays" in value) || !value.categoryDays || typeof value.categoryDays !== "object"
+    || Array.isArray(value.categoryDays)) return false;
+  return Object.values(value.categoryDays).every((days: unknown) => typeof days === "number" && Number.isInteger(days) && days >= 1 && days <= 3650);
+}
+
+export function LogCleanupPanel({ token }: { token: string }) {
   const { t } = useI18n();
   const [retention, setRetention] = useState<LogRetentionConfig | null>(null);
   const [message, setMessage] = useState("");
@@ -5263,7 +5334,7 @@ function LogCleanupPanel({ token }: { token: string }) {
   const categories = useMemo(() => retention ? Object.keys(retention.categoryDays).sort() : [], [retention]);
 
   async function saveRetention() {
-    if (!retention) return;
+    if (!retention || saving) return;
     setSaving(true);
     setMessage("");
     try {
@@ -5276,7 +5347,14 @@ function LogCleanupPanel({ token }: { token: string }) {
       const deletedCount = Object.values(result.deleted ?? {}).reduce((sum, value) => sum + Number(value || 0), 0);
       setMessage(t("admin.logs.policySaved", { count: deletedCount }));
     } catch (error) {
-      setMessage(cleanError(error));
+      const details = error instanceof ApiError && error.code === "LOG_CLEANUP_FAILED" ? error.details : null;
+      if (details && typeof details === "object" && "saved" in details && details.saved === true
+        && "config" in details && isLogRetentionConfig(details.config)) {
+        setRetention(details.config);
+        setMessage(t("admin.logs.policySavedCleanupFailed"));
+      } else {
+        setMessage(cleanError(error));
+      }
     } finally {
       setSaving(false);
     }
@@ -5831,7 +5909,7 @@ async function runAITranslationTask(token: string, taskType: string, payload: Re
   while (Date.now() < deadline) {
     const task = await apiRequest<AITaskStatus>(`/api/v1/admin/ai/tasks/${created.id}`, {}, token);
     if (task.status === "completed") return task.result ?? { items: [] };
-    if (task.status === "failed") throw new Error(task.error || "AI translation task failed");
+    if (task.status === "failed" || task.status === "cancelled") throw new Error(task.error || `AI translation task ${task.status}`);
     await new Promise((resolve) => window.setTimeout(resolve, 800));
   }
   throw new Error("AI translation task timed out");
@@ -6083,7 +6161,6 @@ function notifyAdminNotice(message: string, title?: string, tone: "info" | "dang
   if (typeof window === "undefined" || !message.trim() || (tone === "danger" && isBackendUnavailable())) return;
   window.dispatchEvent(new CustomEvent("mcmods-admin-notice", { detail: { message, title, tone } }));
 }
-
 
 
 

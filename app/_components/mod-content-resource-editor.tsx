@@ -77,7 +77,12 @@ type ModResourceAutoDraft = {
   selectedSectionId: string;
 };
 
-export function ModContentResourceEditor({
+export function ModContentResourceEditor(props: Parameters<typeof ModContentResourceEditorWorkspace>[0]) {
+  const { user } = useAuthSnapshot();
+  return <ModContentResourceEditorWorkspace key={JSON.stringify([props.mode, props.siteId, props.resourceId, props.versionId, props.sectionId, user?.id])} {...props} />;
+}
+
+function ModContentResourceEditorWorkspace({
   mode,
   siteId,
   resourceId = "",
@@ -123,6 +128,8 @@ export function ModContentResourceEditor({
   const [uploadingMarkdownAsset, setUploadingMarkdownAsset] = useState(false);
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [reload, setReload] = useState(0);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState("");
@@ -226,6 +233,7 @@ export function ModContentResourceEditor({
           setLocalizations([emptyLocalization(initialLocale)]);
           setBaselineDefinition({});
         }
+        setLoaded(true);
       } catch (cause) {
         if (!cancelled) setError(errorText(cause));
       } finally {
@@ -233,7 +241,7 @@ export function ModContentResourceEditor({
       }
     })();
     return () => { cancelled = true; };
-  }, [authenticated, initialLocale, missingCreateTarget, mode, ready, resourceId, sectionId, siteId, versionId]);
+  }, [authenticated, initialLocale, missingCreateTarget, mode, ready, reload, resourceId, sectionId, siteId, versionId]);
 
   useEffect(() => () => {
     if (iconPreview.startsWith("blob:")) URL.revokeObjectURL(iconPreview);
@@ -290,7 +298,7 @@ export function ModContentResourceEditor({
     draftKey: `mod-resource:${siteId}:${mode}:${resourceId || `${versionId}:${sectionId}`}`,
     projectKey: `mod:${siteId}`,
     editUrl: resourceEditorEditURL(mode, siteId, resourceId, activeVersionId, selectedSectionId),
-    enabled: ready && Boolean(token) && !loading && !missingCreateTarget,
+    enabled: ready && Boolean(token) && loaded && !loading && !missingCreateTarget,
     kind: "mod_resource",
     title: fields.name.trim() || canonicalId.trim() || t(mode === "create" ? "modContent.sectionActions.addTitle" : "modContent.resourceEdit.title"),
     token,
@@ -313,6 +321,7 @@ export function ModContentResourceEditor({
   });
   const canSubmit = Boolean(
     token
+    && loaded
     && kindCode.trim()
     && effectiveEntryTypeCode.trim()
     && canonicalId.trim()
@@ -455,7 +464,7 @@ export function ModContentResourceEditor({
   }
 
   async function archive() {
-    if (mode !== "edit" || !token || !resourceId || !activeVersionId || busy || deleting || submittedPending) return;
+    if (!loaded || mode !== "edit" || !token || !resourceId || !activeVersionId || busy || deleting || submittedPending) return;
     if (!window.confirm(t("resourceEditor.archiveConfirm"))) return;
     setDeleting(true);
     setError("");
@@ -486,6 +495,7 @@ export function ModContentResourceEditor({
   if (!user || !token) return <LoginRequiredState nextPath={mode === "edit" ? `/mods/${siteId}/resources/${resourceId}/edit` : `/mods/${siteId}/resources/new`} description={t("catalogEditor.loginRequired")} />;
   if (missingCreateTarget) return <PageFeedback title={t("modContent.resourceEdit.missingTarget")} />;
   if (loading) return <PageFeedback title={t("common.loading")} />;
+  if (!loaded) return <><PageFeedback title={t("common.error")} description={error} tone="danger" /><div className="pb-8 text-center"><button className="button-secondary focus-ring" type="button" onClick={() => { setError(""); setLoading(true); setReload((value) => value + 1); }}>{t("common.retry")}</button></div></>;
 
   return <EditorShell
     aside={<EditorAside
@@ -931,15 +941,17 @@ function DefinitionFieldEditor({
 }
 
 function RangeFieldEditor({ label, minimum, maximum, readOnly, onChange }: { label: string; minimum?: number; maximum?: number; readOnly: boolean; onChange: (minimum: number | undefined, maximum: number | undefined, valid: boolean) => void }) {
-  const [draft, setDraft] = useState({ minimum: minimum === undefined ? "" : String(minimum), maximum: maximum === undefined ? "" : String(maximum) });
+  const external = { minimum: minimum === undefined ? "" : String(minimum), maximum: maximum === undefined ? "" : String(maximum) };
+  const [draftState, setDraftState] = useState({ external, value: external });
+  const draft = draftState.external.minimum === external.minimum && draftState.external.maximum === external.maximum ? draftState.value : external;
   function update(next: { minimum: string; maximum: string }) {
-    setDraft(next);
     const parsedMinimum = next.minimum.trim() === "" ? undefined : Number(next.minimum);
     const parsedMaximum = next.maximum.trim() === "" ? undefined : Number(next.maximum);
     const valid = (parsedMinimum === undefined && parsedMaximum === undefined)
       || (typeof parsedMinimum === "number" && Number.isFinite(parsedMinimum)
         && typeof parsedMaximum === "number" && Number.isFinite(parsedMaximum)
         && parsedMinimum <= parsedMaximum);
+    setDraftState({ external: valid ? { minimum: parsedMinimum === undefined ? "" : String(parsedMinimum), maximum: parsedMaximum === undefined ? "" : String(parsedMaximum) } : external, value: next });
     onChange(parsedMinimum, parsedMaximum, valid);
   }
   return <fieldset className="grid gap-2 text-sm font-bold md:col-span-2">

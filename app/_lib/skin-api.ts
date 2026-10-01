@@ -134,7 +134,7 @@ export function createSkin(input: CreateSkinInput, token: string) {
   }, token);
 }
 
-export function updateSkin(publicId: string, input: Partial<Omit<CreateSkinInput, "fileId">> & { reason?: string }, token: string) {
+export function updateSkin(publicId: string, input: Partial<Omit<CreateSkinInput, "fileId" | "kind">> & { reason?: string }, token: string) {
   return apiRequest<SkinTexture | { updated: boolean; reviewRequired: boolean; revisionId: string; changeRequestId?: string }>(`/api/v1/skins/${encodeURIComponent(publicId)}`, {
     method: "PUT",
     body: JSON.stringify(input),

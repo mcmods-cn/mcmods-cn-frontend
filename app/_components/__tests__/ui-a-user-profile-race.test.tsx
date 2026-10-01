@@ -1,0 +1,56 @@
+import React from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { UserProfile } from "../user-profile";
+const mocks = vi.hoisted(() => ({ viewerId: "viewer", api: vi.fn(), profile: vi.fn(), players: vi.fn() }));
+vi.mock("../../_lib/api", () => ({ apiRequest: mocks.api }));
+vi.mock("../../_lib/auth", () => ({ useAuthSnapshot: () => ({ ready: true, token: "cookie-session", user: { id: mocks.viewerId } }) }));
+vi.mock("../../_lib/i18n-provider", () => ({ useI18n: () => ({ locale: "en-US", t: (key: string) => key }) }));
+vi.mock("../../_lib/user-api", () => ({ loadPublicUserProfile: mocks.profile }));
+vi.mock("../../_lib/skin-api", () => ({ loadPublicPlayerProfiles: mocks.players, skinTextureURL: () => "" }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams() }));
+vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a> }));
+vi.mock("../user-home", () => ({ UserHome: () => null }));
+vi.mock("../skin-preview", () => ({ SkinPreview2D: () => null }));
+vi.mock("../user-profile-overview", () => ({ UserProfileOverview: () => null }));
+vi.mock("../user-avatar", () => ({ UserAvatar: () => null }));
+vi.mock("../unified-report-dialog", () => ({ UnifiedReportButton: () => null }));
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+beforeEach(() => { vi.resetAllMocks(); mocks.viewerId = "viewer"; mocks.players.mockResolvedValue([]); });
+function profile(id: string) { return { id, username: `${id} User`, createdAt: "2026-01-01T00:00:00Z", isOwn: false, followers: 0, following: 0, canFollow: true, canBlock: true, isFollowing: false, isBlocked: false }; }
+it("ignores an old user read that completes after a new profile", async () => {
+  let resolveOld: (value: unknown) => void = () => {};
+  mocks.profile.mockImplementation((id: string) => id === "A" ? new Promise((resolve) => { resolveOld = resolve; }) : Promise.resolve(profile(id)));
+  const { rerender } = render(<UserProfile userId="A" />);
+  await waitFor(() => expect(mocks.profile).toHaveBeenCalledWith("A", "cookie-session"));
+  rerender(<UserProfile userId="B" />);
+  await screen.findByRole("heading", { name: "B User" });
+  await act(async () => resolveOld(profile("A")));
+  expect(screen.getByRole("heading", { name: "B User" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "A User" })).toBeNull();
+});
+it("reloads viewer-specific permissions after a cookie account switch on the same profile", async () => {
+  let resolveOld: (value: unknown) => void = () => {};
+  mocks.profile.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; })).mockResolvedValue({ ...profile("A"), username: "New viewer result" });
+  const { rerender } = render(<UserProfile userId="A" />);
+  await waitFor(() => expect(mocks.profile).toHaveBeenCalledTimes(1));
+  mocks.viewerId = "other-viewer";
+  rerender(<UserProfile userId="A" />);
+  await screen.findByRole("heading", { name: "New viewer result" });
+  await act(async () => resolveOld(profile("A")));
+  expect(screen.getByRole("heading", { name: "New viewer result" })).toBeTruthy();
+});
+it.each(["follow", "block"] as const)("ignores an old profile's delayed %s result after navigation", async (action) => {
+  let resolveOld: (value: unknown) => void = () => {};
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  mocks.profile.mockImplementation((id: string) => Promise.resolve(profile(id)));
+  mocks.api.mockImplementation(() => new Promise((resolve) => { resolveOld = resolve; }));
+  const { rerender } = render(<UserProfile userId="A" />);
+  fireEvent.click(await screen.findByRole("button", { name: action === "follow" ? "user.follow" : "user.block" }));
+  rerender(<UserProfile userId="B" />);
+  await screen.findByRole("heading", { name: "B User" });
+  await act(async () => resolveOld({ following: true, blocked: true }));
+  expect(screen.getByRole("heading", { name: "B User" })).toBeTruthy();
+  expect(screen.queryByRole("heading", { name: "A User" })).toBeNull();
+  expect(mocks.profile.mock.calls.filter(([id]) => id === "A")).toHaveLength(1);
+});

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
@@ -15,6 +15,11 @@ import { UserAvatar } from "./user-avatar";
 import { UnifiedReportButton } from "./unified-report-dialog";
 
 export function UserProfile({ userId }: { userId: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <UserProfileWorkspace key={JSON.stringify([userId, token, user?.id])} userId={userId} />;
+}
+
+function UserProfileWorkspace({ userId }: { userId: string }) {
   const { t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const searchParams = useSearchParams();
@@ -23,15 +28,21 @@ export function UserProfile({ userId }: { userId: string }) {
   const [playerProfiles, setPlayerProfiles] = useState<PlayerProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const mounted = useRef(true);
+  const interactionPending = useRef(false);
+  const [interacting, setInteracting] = useState(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   useEffect(() => {
     if (!ready) return;
+    let cancelled = false;
     const timer = window.setTimeout(() => {
       setLoading(true);
       Promise.allSettled([
         loadPublicUserProfile(userId, token || undefined),
         loadPublicPlayerProfiles(userId, token || undefined),
       ]).then(([profileResult, playersResult]) => {
+        if (cancelled) return;
         if (profileResult.status === "fulfilled") {
           setProfile(profileResult.value);
           setMessage("");
@@ -39,44 +50,51 @@ export function UserProfile({ userId }: { userId: string }) {
           setMessage(profileResult.reason instanceof Error ? profileResult.reason.message : t("user.profileLoadFailed"));
         }
         if (playersResult.status === "fulfilled") setPlayerProfiles(playersResult.value);
-      }).finally(() => setLoading(false));
+      }).finally(() => { if (!cancelled) setLoading(false); });
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [ready, t, token, userId]);
 
   async function toggleFollow() {
-    if (!token || !profile) return;
+    if (!token || !profile || interactionPending.current || (!profile.canFollow && !profile.isFollowing)) return;
+    interactionPending.current = true;
+    setInteracting(true);
     try {
       const result = await apiRequest<{ following: boolean }>(
         `/api/v1/users/${profile.id}/follow`,
         { method: profile.isFollowing ? "DELETE" : "POST" },
         token,
       );
+      if (!mounted.current) return;
       setProfile({
         ...profile,
         isFollowing: result.following,
         followers: Math.max(0, profile.followers + (result.following ? 1 : -1)),
       });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("user.followFailed"));
-    }
+      if (mounted.current) setMessage(error instanceof Error ? error.message : t("user.followFailed"));
+    } finally { interactionPending.current = false; if (mounted.current) setInteracting(false); }
   }
 
   async function toggleBlock() {
-    if (!token || !profile || !profile.canBlock) return;
+    if (!token || !profile || !profile.canBlock || interactionPending.current) return;
     if (!profile.isBlocked && !window.confirm(t("user.blockConfirm", { name: profile.username }))) return;
+    interactionPending.current = true;
+    setInteracting(true);
     try {
       await apiRequest<{ blocked: boolean }>(
         `/api/v1/users/${profile.id}/block`,
         { method: profile.isBlocked ? "DELETE" : "PUT" },
         token,
       );
+      if (!mounted.current) return;
       const nextProfile = await loadPublicUserProfile(profile.id, token);
+      if (!mounted.current) return;
       setProfile(nextProfile);
       setMessage(t(profile.isBlocked ? "user.unblockSucceeded" : "user.blockSucceeded"));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t(profile.isBlocked ? "user.unblockFailed" : "user.blockFailed"));
-    }
+      if (mounted.current) setMessage(error instanceof Error ? error.message : t(profile.isBlocked ? "user.unblockFailed" : "user.blockFailed"));
+    } finally { interactionPending.current = false; if (mounted.current) setInteracting(false); }
   }
 
   if (loading) {
@@ -121,14 +139,14 @@ export function UserProfile({ userId }: { userId: string }) {
                 </Link>
               ) : user ? (
                 <>
-                  <button className="button-primary focus-ring" disabled={!profile.canFollow && !profile.isFollowing} type="button" onClick={() => void toggleFollow()}>
+                  <button className="button-primary focus-ring" disabled={interacting || (!profile.canFollow && !profile.isFollowing)} type="button" onClick={() => void toggleFollow()}>
                     {profile.isFollowing ? t("user.unfollow") : t("user.follow")}
                   </button>
                   <Link className={`button-secondary focus-ring ${profile.canMessage ? "" : "pointer-events-none opacity-50"}`} href={`/messages?user=${profile.id}`}>
                     {t("user.privateMessage")}
                   </Link>
                   {profile.canBlock ? (
-                    <button className="button-secondary focus-ring text-[var(--danger)]" type="button" onClick={() => void toggleBlock()}>
+                    <button className="button-secondary focus-ring text-[var(--danger)]" disabled={interacting} type="button" onClick={() => void toggleBlock()}>
                       {profile.isBlocked ? t("user.unblock") : t("user.block")}
                     </button>
                   ) : null}

@@ -61,6 +61,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [submissionOpen, setSubmissionOpen] = useState(false);
+  const requestRef = useRef<AbortController | null>(null);
   const {
     paramsKey, preferences, expandedGroups, mobileFiltersOpen, setMobileFiltersOpen,
     queryDraft, setQueryDraft, notice, setNotice, replaceParams, toggleListParam, clearFilters,
@@ -85,6 +86,9 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
 
   const load = useCallback(async () => {
     if (!ready) return;
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
     setLoading(true);
     try {
       const requestParams = new URLSearchParams(paramsKey);
@@ -95,22 +99,27 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
       requestParams.set("order", filters.sortDirection);
       requestParams.set("limit", String(filters.pageSize));
       requestParams.set("offset", String((filters.page - 1) * filters.pageSize));
-      const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?${requestParams}`, {}, token);
+      const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?${requestParams}`, { signal: controller.signal }, token);
+      if (controller.signal.aborted || requestRef.current !== controller) return;
       setItems(result.items);
       setBackendTotal(result.total);
       setMessage("");
     } catch (error) {
+      if (controller.signal.aborted || requestRef.current !== controller) return;
       setItems([]);
       setBackendTotal(0);
       setMessage(error instanceof Error ? error.message : t("largeProjects.catalog.loadFailed"));
     } finally {
-      setLoading(false);
+      if (requestRef.current === controller && !controller.signal.aborted) setLoading(false);
     }
   }, [filters.page, filters.pageSize, filters.sort, filters.sortDirection, paramsKey, projectType, ready, t, token]);
 
   useEffect(() => {
     const task = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(task);
+    return () => {
+      window.clearTimeout(task);
+      requestRef.current?.abort();
+    };
   }, [load]);
 
   async function shareProject(item: SimpleProjectRecord) {

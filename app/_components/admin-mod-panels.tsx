@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { MinecraftVersionConfig } from "../_lib/mod-api";
 import { cacheMinecraftVersionConfig, loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
@@ -182,6 +182,9 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "editor
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [reviewing, setReviewing] = useState(false);
+  const requestController = useRef<AbortController | null>(null);
   const [facets, setFacets] = useState<ReviewQueueResponse["facets"]>({ categories: [], operations: [], projectTypes: [] });
   const pageSize = 50;
   const contentSearch = new URLSearchParams();
@@ -191,29 +194,47 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "editor
   if (search) contentSearch.set("q", search);
   contentSearch.set("limit", String(pageSize));
   contentSearch.set("offset", String(page * pageSize));
-  const endpoint = kind === "content" ? `/api/v1/reviews/content?${contentSearch}` : "/api/v1/admin/project-editor-applications";
+  const endpoint = kind === "content" ? `/api/v1/reviews/content?${contentSearch}` : `/api/v1/admin/project-editor-applications?limit=${pageSize}&offset=${page * pageSize}`;
   const load = useCallback(async () => {
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
+    setLoading(true);
     try {
-      const result = await apiRequest<{ items: Array<ModContentReviewItem | ProjectEditorApplication>; total?: number; facets?: ReviewQueueResponse["facets"] }>(endpoint, {}, token);
+      const result = await apiRequest<{ items: Array<ModContentReviewItem | ProjectEditorApplication>; total?: number; facets?: ReviewQueueResponse["facets"] }>(endpoint, { signal: controller.signal }, token);
+      if (controller.signal.aborted) return;
+      const resultTotal = result.total ?? (kind === "content" ? result.items.length : 0);
+      setTotal(resultTotal);
+      if (page > 0 && page * pageSize >= resultTotal) {
+        setPage(Math.max(0, Math.ceil(resultTotal / pageSize) - 1));
+        return;
+      }
       setItems(result.items);
       if (kind === "content") {
         if (result.facets) setFacets(result.facets);
-        setTotal(result.total ?? result.items.length);
       }
       setMessage("");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("admin.reviews.loadFailed"));
+      if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : t("admin.reviews.loadFailed"));
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [endpoint, kind, t, token]);
-  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+  }, [endpoint, kind, page, t, token]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => { window.clearTimeout(timer); requestController.current?.abort(); };
+  }, [load]);
 
   async function review(item: ModContentReviewItem | ProjectEditorApplication, status: "approved" | "rejected") {
     const url = "reviewUrl" in item ? item.reviewUrl : `/api/v1/admin/project-editor-applications/${item.id}`;
+    setReviewing(true);
     try {
       await apiRequest(url, { method: "PATCH", body: JSON.stringify({ status, note: notes[item.id] ?? "" }) }, token);
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.reviews.reviewFailed"));
+    } finally {
+      setReviewing(false);
     }
   }
 
@@ -244,9 +265,10 @@ return <section>
     </select>
     <div className="flex gap-2"><button className="button-primary focus-ring" type="submit">{t("common.search")}</button><button className="button-secondary focus-ring" type="button" onClick={() => { setPage(0); setCategory(""); setOperation(""); setProjectType(""); setSearchInput(""); setSearch(""); }}>{t("common.clear")}</button></div>
   </form> : null}
+  {loading ? <p className="mt-4 text-sm font-bold" role="status">{t("common.loading")}</p> : null}
   {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
-  <div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t("admin.reviews.applicationKinds.editor"); const summary = content ? item.summary : item.proofMarkdown; const name = item.username; const projectName = content ? item.modName : item.targetName; const historyHref = content ? contentReviewHistoryHref(item) : item.targetUrl; return <article key={`${content ? item.source : "editor"}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="mb-2 flex flex-wrap gap-2">{content ? <><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{reviewFacetLabel(t, "categories", item.category)}</span><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold">{reviewFacetLabel(t, "operations", item.operation)}</span>{item.reviewerScope === "project" ? <span className="rounded-full border border-[var(--accent)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{t("admin.reviews.projectScoped")}</span> : null}</> : null}</div><h3 className="break-words text-lg font-black">{projectName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>{content && item.projectId ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.projectType}: {item.projectId}</p> : !content ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.targetType}: {item.targetId}</p> : null}</div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && (item.source === "blueprint" || item.source === "skin") ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div>
-  {kind === "content" && total > pageSize ? <nav className="mt-5 flex items-center justify-between gap-3" aria-label={t("admin.reviews.paginationLabel")}><button className="button-secondary focus-ring" disabled={page === 0} type="button" onClick={() => setPage((current) => Math.max(0, current - 1))}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("admin.reviews.pageSummary", { page: page + 1, pages: Math.max(1, Math.ceil(total / pageSize)), total })}</span><button className="button-secondary focus-ring" disabled={(page + 1) * pageSize >= total} type="button" onClick={() => setPage((current) => current + 1)}>{t("common.next")}</button></nav> : null}
+  <div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t("admin.reviews.applicationKinds.editor"); const summary = content ? item.summary : item.proofMarkdown; const name = item.username; const projectName = content ? item.modName : item.targetName; const historyHref = content ? contentReviewHistoryHref(item) : item.targetUrl; return <article key={`${content ? item.source : "editor"}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="mb-2 flex flex-wrap gap-2">{content ? <><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{reviewFacetLabel(t, "categories", item.category)}</span><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold">{reviewFacetLabel(t, "operations", item.operation)}</span>{item.reviewerScope === "project" ? <span className="rounded-full border border-[var(--accent)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{t("admin.reviews.projectScoped")}</span> : null}</> : null}</div><h3 className="break-words text-lg font-black">{projectName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>{content && item.projectId ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.projectType}: {item.projectId}</p> : !content ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.targetType}: {item.targetId}</p> : null}</div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && (item.source === "blueprint" || item.source === "skin") ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" disabled={loading || reviewing} type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" disabled={loading || reviewing} type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div>
+  {total > pageSize ? <nav className="mt-5 flex items-center justify-between gap-3" aria-label={t("admin.reviews.paginationLabel")}><button className="button-secondary focus-ring" disabled={loading || reviewing || page === 0} type="button" onClick={() => setPage((current) => Math.max(0, current - 1))}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("admin.reviews.pageSummary", { page: page + 1, pages: Math.max(1, Math.ceil(total / pageSize)), total })}</span><button className="button-secondary focus-ring" disabled={loading || reviewing || (page + 1) * pageSize >= total} type="button" onClick={() => setPage((current) => current + 1)}>{t("common.next")}</button></nav> : null}
 </section>;
 }
 export function ProjectReviewQueuePage() {

@@ -25,24 +25,26 @@ import { ProjectEditorApplicationButton } from "./project-editor-application";
 type ModpackTab = "introduction" | "mods" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
 export function ModpackDetailLoader({ siteId }: { siteId: string }) {
-  const { ready, token } = useAuthSnapshot();
+  const { ready, token, user } = useAuthSnapshot();
   const { t } = useI18n();
-  const [record, setRecord] = useState<BackendModpackRecord>();
-  const [notFound, setNotFound] = useState(false);
-
+  const [result, setResult] = useState<{ scope: string; value?: BackendModpackRecord; error?: string; notFound?: boolean }>();
+  const [reload, setReload] = useState(0);
+  const scope = JSON.stringify([siteId, token, user?.id, reload]);
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
-    apiRequest<BackendModpackRecord>(`/api/v1/modpacks/${encodeURIComponent(siteId)}`, {}, token)
-      .then((value) => { if (!cancelled) setRecord(value); })
-      .catch((error) => { if (!cancelled && error instanceof ApiError && error.status === 404) setNotFound(true); });
-    return () => { cancelled = true; };
-  }, [ready, siteId, token]);
-
-  if (record) return <ModpackDetail record={record} />;
-  return <main className="grid min-h-[60vh] place-items-center px-4 text-center"><h1 className="text-2xl font-black">{notFound ? t("modpacks.detail.notFound") : t("common.loading")}</h1></main>;
+    const controller = new AbortController();
+    apiRequest<BackendModpackRecord>(`/api/v1/modpacks/${encodeURIComponent(siteId)}`, { signal: controller.signal }, token).then((value) => {
+      if (!cancelled) setResult({ scope, value });
+    }).catch((error) => {
+      if (!cancelled) setResult({ scope, notFound: error instanceof ApiError && error.status === 404, error: error instanceof Error ? error.message : t("common.error") });
+    });
+    return () => { cancelled = true; controller.abort(); };
+  }, [ready, scope, siteId, t, token]);
+  if (!ready || result?.scope !== scope) return <main className="grid min-h-[60vh] place-items-center px-4 text-center"><h1 className="text-2xl font-black">{t("common.loading")}</h1></main>;
+  if (!result.value) return <main className="grid min-h-[60vh] place-items-center px-4 text-center"><div role="alert"><h1 className="text-2xl font-black">{result.notFound ? t("modpacks.detail.notFound") : result.error}</h1>{!result.notFound ? <button className="button-secondary focus-ring mt-4" type="button" onClick={() => setReload((value) => value + 1)}>{t("common.retry")}</button> : null}</div></main>;
+  return <ModpackDetail key={scope} record={result.value} />;
 }
-
 function ModpackDetail({ record }: { record: BackendModpackRecord }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();

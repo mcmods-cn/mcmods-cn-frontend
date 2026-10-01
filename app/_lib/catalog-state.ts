@@ -122,7 +122,11 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
   const changePreference = useCallback((next: Partial<CatalogPreferences<TSort>>) => {
     const value = { ...preferences, ...next };
     setPreferences(value);
-    window.localStorage.setItem(options.preferenceStorageKey, JSON.stringify(value));
+    try {
+      window.localStorage.setItem(options.preferenceStorageKey, JSON.stringify(value));
+    } catch {
+      // Preferences are optional; the current state and URL still apply.
+    }
     replaceParams({
       ...(next.view ? { view: next.view } : {}),
       ...(next.pageSize ? { size: next.pageSize } : {}),
@@ -136,7 +140,11 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
       const next = new Set(current);
       if (open) next.add(group);
       else next.delete(group);
-      window.localStorage.setItem(options.expandedStorageKey, JSON.stringify([...next]));
+      try {
+        window.localStorage.setItem(options.expandedStorageKey, JSON.stringify([...next]));
+      } catch {
+        // Filter groups remain interactive without durable browser storage.
+      }
       return next;
     });
   }, [options.expandedStorageKey]);

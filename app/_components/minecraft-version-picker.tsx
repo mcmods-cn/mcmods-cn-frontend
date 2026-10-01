@@ -134,11 +134,11 @@ export function MinecraftVersionPicker({
     setOpen(false);
   }
 
-  const compressedValues = compressMinecraftVersionSelection(values, selectableGroups);
+  const compressedValues = compressMinecraftVersionSelection(values, selectableGroups, (group) => groupLabel(group, t));
   const fullSummary = values.length ? compressedValues.map((item) => item.label).join(" / ") : t(emptyLabelKey);
   const summary = values.length ? summarizeMinecraftVersions(compressedValues.map((item) => item.label)) : fullSummary;
   const selectedValues = multiple ? pendingValues : values;
-  const compressedSelected = compressMinecraftVersionSelection(selectedValues, selectableGroups);
+  const compressedSelected = compressMinecraftVersionSelection(selectedValues, selectableGroups, (group) => groupLabel(group, t));
 
   return (
     <>
@@ -212,6 +212,7 @@ export type CompressedMinecraftVersionSelection = {
 export function compressMinecraftVersionSelection(
   values: readonly string[],
   groups: readonly (readonly [string, readonly { code: string }[]])[],
+  formatGroup: (group: string) => string = (group) => group.startsWith("release:") ? `${group.slice("release:".length)}.X` : group,
 ): CompressedMinecraftVersionSelection[] {
   const selected = new Set(values);
   const consumed = new Set<string>();
@@ -220,7 +221,7 @@ export function compressMinecraftVersionSelection(
     const codes = versions.map((version) => version.code);
     if (codes.length > 1 && codes.every((code) => selected.has(code))) {
       codes.forEach((code) => consumed.add(code));
-      result.push({ group, label: publicVersionGroupLabel(group), codes });
+      result.push({ group, label: formatGroup(group), codes });
     }
   }
   for (const value of values) {
@@ -286,18 +287,4 @@ function groupLabel(group: string, t: (key: string, params?: Record<string, stri
   if (group === "other") return t("minecraftVersionPicker.otherGroup");
   if (group.startsWith("snapshot:")) return t("minecraftVersionPicker.snapshotYearGroup", { year: group.slice("snapshot:".length) });
   return t("minecraftVersionPicker.releaseGroup", { version: group.slice("release:".length) });
-}
-
-function publicVersionGroupLabel(group: string) {
-  if (group.startsWith("release:")) return `${group.slice("release:".length)}.X`;
-  if (group.startsWith("snapshot:")) return `${group.slice("snapshot:".length)} 快照`;
-  const labels: Record<string, string> = {
-    april_fools: "愚人节版本",
-    pre_release: "预发布版",
-    release_candidate: "候选发布版",
-    legacy: "旧版",
-    snapshot: "快照版",
-    other: "其他版本",
-  };
-  return labels[group] ?? group;
 }

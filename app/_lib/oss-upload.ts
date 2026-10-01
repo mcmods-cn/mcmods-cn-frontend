@@ -148,6 +148,7 @@ export async function putFileToOSS(
   onProgress?: (loaded: number, total: number, metrics: OSSUploadMetrics) => void,
   options: OSSPutOptions = {},
 ) {
+  if (options.signal?.aborted) throw new DOMException("OSS upload aborted", "AbortError");
   if (ticket.multipart) {
     await putMultipartFileToOSS(ticket, file, onProgress, options);
     return;

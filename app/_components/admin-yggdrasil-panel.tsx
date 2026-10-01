@@ -51,8 +51,15 @@ export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: A
       const saved = await apiRequest<AdminYggdrasilConfig>("/api/v1/admin/config/yggdrasil", {
         method: "PUT",
         body: JSON.stringify({
-          ...draft,
+          enabled: draft.enabled,
+          publicBaseUrl: draft.publicBaseUrl,
+          textureBaseUrl: draft.textureBaseUrl,
+          serverName: draft.serverName,
           trustedProxyCidrs: draft.trustedProxyCidrs,
+          tokenTtlHours: draft.tokenTtlHours,
+          maxTokens: draft.maxTokens,
+          joinTtlSeconds: draft.joinTtlSeconds,
+          textureMaxBytes: draft.textureMaxBytes,
           privateKeyBase64: privateKeyBase64.trim(),
           rotatePrivateKey,
         }),

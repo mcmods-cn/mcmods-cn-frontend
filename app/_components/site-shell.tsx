@@ -129,16 +129,21 @@ const presenceStorageKey = "mcmods.presence.visitor";
 
 function SitePresence() {
   const { token } = useAuthSnapshot();
+	const visitorRef = useRef<string>("");
 
   useEffect(() => {
     let cancelled = false;
-    let visitorId = window.localStorage.getItem(presenceStorageKey) ?? "";
+    let visitorId = visitorRef.current;
+    if (!visitorId) {
+      try { visitorId = window.localStorage.getItem(presenceStorageKey) ?? ""; } catch { /* Storage can be unavailable in private browsing. */ }
+    }
     if (!visitorId) {
       visitorId = typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
         : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-      window.localStorage.setItem(presenceStorageKey, visitorId);
+      try { window.localStorage.setItem(presenceStorageKey, visitorId); } catch { /* The in-memory visitor identity still permits this page's presence. */ }
     }
+    visitorRef.current = visitorId;
     const touch = () => {
       if (cancelled || document.visibilityState !== "visible") return;
       void apiRequest<{ online: boolean }>(
@@ -382,7 +387,7 @@ function SiteHeader() {
         <div className="flex shrink-0 items-center gap-2">
           <select
             aria-label={t("common.language")}
-            className="hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] px-2 py-2 text-sm font-semibold outline-none lg:block"
+            className="h-11 max-w-24 rounded-lg border border-[var(--line)] bg-[var(--panel)] px-2 py-2 text-sm font-semibold outline-none lg:max-w-none"
             value={locale}
             onChange={(event) => setLocale(event.target.value as Locale)}
           >
