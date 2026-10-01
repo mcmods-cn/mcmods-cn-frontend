@@ -23,7 +23,7 @@ async function run(args, report) {
   if (status !== 0) process.exit(status);
 }
 
-await run(["--grep-invert", lifecycle], "test-results/e2e-core-results.json");
+await run(["--grep-invert", lifecycle], "playwright-report/e2e-core-results.json");
 console.log("Waiting for the shared 60-second crawler read window before the account journey.");
 await setTimeout(60_000);
-await run(["--grep", lifecycle], "test-results/e2e-account-results.json");
+await run(["--grep", lifecycle], "playwright-report/e2e-account-results.json");
