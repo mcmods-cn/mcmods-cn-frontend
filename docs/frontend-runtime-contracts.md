@@ -8,6 +8,8 @@
 
 客户端 `/auth/me` 初始化结果带本地身份代次检查；退出、新登录或其他标签页切换身份后，早先请求不得恢复旧账号。退出后的页面不会自动再次初始化会话；新的明确登录事件才恢复初始化。
 
+异步个人资料结果通过 `saveAuth(result, expectedUserID)` 写回，仅当当前全局账号ID和返回账号ID同时匹配预期身份时接受；拒绝返回false，不修改身份、代次、权限版本或跨页广播。条件写回只更新 username/avatarUrl/signature，保留最新会话token、email、roles、rules及两种授权版本。它不取消同身份正在进行的权限刷新；晚返回的 `/me` 应用最新授权，并保留期间已更新的三个资料字段。`isCurrentAuthUser` 同步检查实际全局身份，可在上传/请求前后与卸载检查配合使用；不能只等React提交新账号界面。明确登录不传 expectedUserID，保留原有账号切换语义。服务端会话及对象权限仍由后端校验。
+
 ## 严格 CSP 与部署
 
 `proxy.ts` 为每次页面请求生成 nonce。根布局通过 `await connection()` 在真实请求中渲染，使 Next.js 将同一 nonce 加到框架脚本，严格 `script-src` 保持生效。部署时必须同时发布 proxy 与根布局；静态 HTML、ISR/PPR 和无差别缓存页面 HTML 与此 nonce 模式不兼容。SSR 请求数量与资源消耗会增加，需要按实际流量测量，不能从本地测试推断容量。

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
-import { saveAuth, useAuthSnapshot } from "../_lib/auth";
+import { isCurrentAuthUser, saveAuth, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { invalidatePublicUserCard, type AITokenBalance, type OnlineStatus } from "../_lib/user-api";
 import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -85,6 +85,12 @@ function UserHomeWorkspace() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [overview, setOverview] = useState<UserOverview | null>(null);
   const activeSection = accountSection(searchParams.get("section"));
+  const workspaceActive = useRef(true);
+
+  useEffect(() => {
+    workspaceActive.current = true;
+    return () => { workspaceActive.current = false; };
+  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -115,12 +121,14 @@ function UserHomeWorkspace() {
   }, [token]);
 
   async function updateProfile(payload: Record<string, unknown>) {
-    if (!token) return null;
+    const expectedUserID = user?.id;
+    if (!token || !workspaceActive.current || !isCurrentAuthUser(expectedUserID)) return null;
     const nextProfile = await apiRequest<ProfileSettings>(
       "/api/v1/users/me/profile-settings",
       { method: "PUT", body: JSON.stringify(payload) },
       token,
     );
+    if (!workspaceActive.current || !isCurrentAuthUser(expectedUserID)) return null;
     setProfile(nextProfile);
     setUsername(nextProfile.username);
     setSignature(nextProfile.signature);
@@ -128,7 +136,7 @@ function UserHomeWorkspace() {
     setCardSlots(nextProfile.publicCardStatSlots);
     invalidatePublicUserCard(nextProfile.publicId);
     if (user) {
-      saveAuth({ token, user: { ...user, username: nextProfile.username, avatarUrl: nextProfile.avatarUrl, signature: nextProfile.signature } });
+      saveAuth({ token, user: { ...user, username: nextProfile.username, avatarUrl: nextProfile.avatarUrl, signature: nextProfile.signature } }, expectedUserID);
     }
     return nextProfile;
   }
@@ -226,8 +234,10 @@ function UserHomeWorkspace() {
   }
 
   async function uploadAvatar(file: File) {
-    if (!profile || !token) return;
+    const expectedUserID = user?.id;
+    if (!profile || !token || !workspaceActive.current || !isCurrentAuthUser(expectedUserID)) return;
     const apng = await isAPNG(file);
+    if (!workspaceActive.current || !isCurrentAuthUser(expectedUserID)) return;
     const animated = apng || /\.(gif|apng)$/i.test(file.name) || file.type === "image/gif" || file.type === "image/apng";
     if (animated && !profile.canUseAnimatedAvatar) {
       setMessage(t("user.animatedAvatarPermissionRequired"));
@@ -240,6 +250,7 @@ function UserHomeWorkspace() {
         ? new File([file], file.name, { type: "image/apng", lastModified: file.lastModified })
         : file;
       const uploaded = await uploadUserFileToOSS(uploadFile, token, "avatar");
+      if (!workspaceActive.current || !isCurrentAuthUser(expectedUserID)) return;
       await updateProfile({ avatarFileId: uploaded.id });
       setMessage(t("user.avatarUpdated"));
     } catch (error) {
@@ -608,7 +619,14 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
   const exportTaskId = useSearchParams().get("exportTask") ?? "";
   const [collections, setCollections] = useState<FavoriteCollection[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [items, setItems] = useState<FavoriteCollectionItem[]>([]);
+  const [itemsSnapshot, setItemsSnapshot] = useState<{
+    collectionId: string;
+    token: string;
+    attempt: number;
+    items: FavoriteCollectionItem[];
+    error: string;
+  } | null>(null);
+  const [itemsAttempt, setItemsAttempt] = useState(0);
   const [name, setName] = useState("");
   const [newCollectionPublic, setNewCollectionPublic] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -647,10 +665,14 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
     if (!selectedId) return;
     let cancelled = false;
     loadFavoriteItems(token, selectedId)
-      .then((result) => { if (!cancelled) setItems(result); })
-      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("favorites.loadFailed")); });
+      .then((result) => {
+        if (!cancelled) setItemsSnapshot({ collectionId: selectedId, token, attempt: itemsAttempt, items: result, error: "" });
+      })
+      .catch((error) => {
+        if (!cancelled) setItemsSnapshot({ collectionId: selectedId, token, attempt: itemsAttempt, items: [], error: error instanceof Error ? error.message : t("favorites.loadFailed") });
+      });
     return () => { cancelled = true; };
-  }, [selectedId, t, token]);
+  }, [itemsAttempt, selectedId, t, token]);
 
   async function createCollection() {
     const nextName = name.trim();
@@ -686,6 +708,9 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
   }
 
   const selected = collections.find((item) => item.id === selectedId);
+  const itemsCurrent = Boolean(selected && itemsSnapshot?.collectionId === selectedId && itemsSnapshot?.token === token && itemsSnapshot?.attempt === itemsAttempt);
+  const items = itemsCurrent ? itemsSnapshot?.items ?? [] : [];
+  const itemsError = itemsCurrent ? itemsSnapshot?.error ?? "" : "";
   return (
     <section className="surface rounded-lg p-4">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -736,7 +761,14 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
             <h3 className="min-w-0 break-words font-black">{selected?.isDefault ? t("favorites.defaultFolder") : selected?.name ?? t("favorites.title")}</h3>
             {selected ? <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-[var(--line)] px-2 py-1 text-xs font-bold">{selected.isPublic ? t("favorites.public") : t("favorites.private")}</span><FavoriteModpackExport collectionId={selected.id} collectionName={selected.isDefault ? t("favorites.defaultFolder") : selected.name} initialTaskId={exportTaskId} token={token} /></div> : null}
           </div>
-          {items.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item) => <Link className="focus-ring rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)} key={`${item.entityType}:${item.entityKey}`}><span className="block truncate font-bold">{item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityKey}</span><span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.entityType} · {item.entityKey}</span></Link>)}</div> : <p className="py-12 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
+          {selected && !itemsCurrent ? (
+            <p className="py-12 text-center text-sm text-[var(--muted)]" role="status">{t("common.loading")}</p>
+          ) : itemsError ? (
+            <div className="mt-4 rounded-lg border border-[var(--line)] p-3" role="alert">
+              <p>{itemsError}</p>
+              <button className="button-secondary focus-ring mt-3" type="button" onClick={() => setItemsAttempt((current) => current + 1)}>{t("common.retry")}</button>
+            </div>
+          ) : items.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item) => <Link className="focus-ring rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)} key={`${item.entityType}:${item.entityKey}`}><span className="block truncate font-bold">{item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityKey}</span><span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.entityType} · {item.entityKey}</span></Link>)}</div> : <p className="py-12 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
         </section>
       </div>
     </section>

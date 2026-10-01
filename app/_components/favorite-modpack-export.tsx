@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createFavoriteModpackExport,
   downloadFavoriteModpackExport,
@@ -35,7 +35,24 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   const [detail, setDetail] = useState<FavoriteModpackExportDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const downloadedTask = useRef("");
+  const downloadPending = useRef(false);
+
+  const downloadTask = useCallback(async (task: FavoriteModpackExportDetail["task"]) => {
+    if (downloadPending.current) return;
+    downloadPending.current = true;
+    setDownloading(true);
+    setError("");
+    try {
+      await downloadFavoriteModpackExport(token, task.id, exportFilename(task));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      downloadPending.current = false;
+      setDownloading(false);
+    }
+  }, [token]);
 
   useEffect(() => {
     if (!initialTaskId) return;
@@ -136,7 +153,10 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     const refresh = async () => {
       try {
         const next = await loadFavoriteModpackExport(token, task.id);
-        if (!cancelled) setDetail(next);
+        if (!cancelled) {
+          setDetail(next);
+          setError("");
+        }
       } catch (reason) {
         if (!cancelled) setError(reason instanceof Error ? reason.message : t("favorites.loadFailed"));
       } finally {
@@ -153,9 +173,8 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   useEffect(() => {
     if (!detail?.downloadAvailable || detail.task.status !== "ready" || downloadedTask.current === detail.task.id) return;
     downloadedTask.current = detail.task.id;
-    void downloadFavoriteModpackExport(token, detail.task.id, exportFilename(detail.task))
-      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
-  }, [detail, token]);
+    void downloadTask(detail.task);
+  }, [detail, downloadTask]);
 
   return (
     <>
@@ -249,7 +268,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
             {showHistory && !detail ? (
               <ExportHistory busy={busy} history={history} onBack={() => setShowHistory(false)} onSelect={openHistoryTask} />
             ) : null}
-            {detail ? <ExportResult detail={detail} token={token} onBack={() => returnToSettings(detail.task)} /> : null}
+            {detail ? <ExportResult detail={detail} downloading={downloading} onDownload={() => downloadTask(detail.task)} onBack={() => returnToSettings(detail.task)} /> : null}
           </section>
         </div>
       ) : null}
@@ -324,7 +343,7 @@ function ExportPreview({ preview, busy, onCreate }: { preview: FavoriteModpackEx
   );
 }
 
-function ExportResult({ detail, token, onBack }: { detail: FavoriteModpackExportDetail; token: string; onBack: () => void }) {
+function ExportResult({ detail, downloading, onDownload, onBack }: { detail: FavoriteModpackExportDetail; downloading: boolean; onDownload: () => Promise<void>; onBack: () => void }) {
   const { t } = useI18n();
   const [actionError, setActionError] = useState("");
   async function runResultAction(action: () => Promise<unknown>) {
@@ -383,8 +402,9 @@ function ExportResult({ detail, token, onBack }: { detail: FavoriteModpackExport
         {detail.downloadAvailable ? (
           <button
             className="button-primary focus-ring"
+            disabled={downloading}
             type="button"
-            onClick={() => void runResultAction(() => downloadFavoriteModpackExport(token, detail.task.id, exportFilename(detail.task)))}
+            onClick={() => void onDownload()}
           >
             {t("favorites.modpackExport.download")}
           </button>

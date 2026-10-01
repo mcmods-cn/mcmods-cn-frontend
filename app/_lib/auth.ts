@@ -43,15 +43,32 @@ let bootstrapRequest: Promise<AuthUser | null> | null = null;
 let authGeneration = 0;
 let signedOut = false;
 
-export function saveAuth(result: AuthResult) {
-  authGeneration += 1;
-  bootstrapRequest = null;
-  signedOut = false;
-  activeToken = result.token || cookieSessionToken;
-  activeUser = normalizeAuthUser(result.user);
+export function isCurrentAuthUser(expectedUserID: string | undefined): boolean {
+  return Boolean(expectedUserID) && !signedOut && activeUser?.id === expectedUserID;
+}
+
+export function saveAuth(result: AuthResult, expectedUserID?: string): boolean {
+  let nextUser: AuthUser;
+  if (expectedUserID === undefined) {
+    nextUser = normalizeAuthUser(result.user);
+    activeToken = result.token || cookieSessionToken;
+    authGeneration += 1;
+    bootstrapRequest = null;
+    signedOut = false;
+  } else {
+    if (!activeUser || !isCurrentAuthUser(expectedUserID) || result.user.id !== expectedUserID) return false;
+    nextUser = {
+      ...activeUser,
+      username: result.user.username,
+      avatarUrl: result.user.avatarUrl,
+      signature: result.user.signature,
+    };
+  }
+  activeUser = nextUser;
   rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
   broadcastAuthChange("login");
   window.dispatchEvent(new Event("mcmods-auth-change"));
+  return true;
 }
 
 export function clearAuth() {
@@ -192,6 +209,7 @@ async function bootstrapAuth(force = false) {
   if (activeUser && !force) return activeUser;
   if (bootstrapRequest) return bootstrapRequest;
   const generation = authGeneration;
+  const userAtStart = activeUser;
   const request = backendFetch(`${API_BASE_URL}/api/v1/auth/me`, {
     credentials: "include",
     headers: { Accept: "application/json" },
@@ -202,8 +220,13 @@ async function bootstrapAuth(force = false) {
       if (!envelope.data) return null;
       // An older lookup must not revive a logout or replace a later login.
       if (generation !== authGeneration || signedOut) return activeUser;
+      const refreshed = normalizeAuthUser(envelope.data);
       activeToken = cookieSessionToken;
-      activeUser = normalizeAuthUser(envelope.data);
+      // A same-account profile update can finish during a permission refresh.
+      // Apply current authorization while keeping the newer profile fields.
+      activeUser = activeUser && activeUser !== userAtStart && activeUser.id === refreshed.id
+        ? { ...refreshed, username: activeUser.username, avatarUrl: activeUser.avatarUrl, signature: activeUser.signature }
+        : refreshed;
       rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
       return activeUser;
     })
