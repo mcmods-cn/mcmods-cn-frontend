@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { API_BASE_URL, ApiError } from "../_lib/api";
+import { apiErrorMessage } from "../_lib/api-error.mts";
 import { challengeFromDetails, loadAntiAbuseFormToken, type AntiAbuseChallenge, type AntiAbuseFormToken } from "../_lib/anti-abuse-api";
 import {
   CommentItem,
@@ -109,7 +111,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       setCanCreate(Boolean(result.capabilities?.canCreate));
       setMessage("");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.comments.loadFailed"));
+      setMessage(apiErrorMessage(error, t, t("mods.comments.loadFailed")));
     } finally {
       setLoading(false);
     }
@@ -139,7 +141,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       if ("watchOnly" in result) {
         setMessage(t("mods.comments.cyWatched"));
       } else if ("moderation" in result) {
-        setMessage("评论已提交并进入审核，通过后会公开显示。");
+        setMessage(t("commentFeedback.moderation"));
       } else {
         setItems((current) => appendPublishedComment(current, result));
         setTotal((current) => current + 1);
@@ -156,12 +158,12 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
         const value = challengeFromDetails(error.details);
         if (value) {
           setChallenge({ value, content, parentId, idempotencyKey, attachmentFileIds });
-          setMessage("检测到异常提交节奏，需要先完成人机验证。你的内容已保留。");
+          setMessage(t("antiAbuse.challengeRequired"));
           return;
         }
       }
       if (error instanceof ApiError && error.retryAfter > 0) setCooldown(error.retryAfter);
-      setMessage(error instanceof Error ? error.message : t("mods.comments.publishFailed"));
+      setMessage(apiErrorMessage(error, t, t("mods.comments.publishFailed")));
     } finally {
       setSubmitting(false);
     }
@@ -175,7 +177,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
   const jumpToFloor = useCallback(async (rawFloor: string) => {
     const floor = Number(rawFloor);
     if (!Number.isInteger(floor) || floor <= 0 || floor > 1_000_000_000) {
-      setMessage("请输入有效的正整数楼层。");
+      setMessage(t("commentFeedback.floorInvalid"));
       return;
     }
     try {
@@ -185,9 +187,9 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
       window.setTimeout(() => document.getElementById(`floor-${floor}`)?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
       setMessage("");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "未找到该楼层。");
+      setMessage(apiErrorMessage(error, t, t("commentFeedback.floorNotFound")));
     }
-  }, [targetKey, targetType, token]);
+  }, [t, targetKey, targetType, token]);
 
   useEffect(() => {
     if (!ready) return;
@@ -209,9 +211,9 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <form className="flex items-center gap-2" onSubmit={(event) => { event.preventDefault(); void jumpToFloor(floorInput); }}>
-            <label className="sr-only" htmlFor={`comment-floor-${targetType}-${targetKey}`}>跳转楼层</label>
-            <input id={`comment-floor-${targetType}-${targetKey}`} className="field w-24 py-2" inputMode="numeric" min={1} max={1_000_000_000} placeholder="楼层" type="number" value={floorInput} onChange={(event) => setFloorInput(event.target.value)} />
-            <button className="button-secondary focus-ring py-2" type="submit">跳转</button>
+            <label className="sr-only" htmlFor={`comment-floor-${targetType}-${targetKey}`}>{t("commentFeedback.floorInput")}</label>
+            <input id={`comment-floor-${targetType}-${targetKey}`} className="field w-24 py-2" inputMode="numeric" min={1} max={1_000_000_000} placeholder={t("commentFeedback.floorPlaceholder")} type="number" value={floorInput} onChange={(event) => setFloorInput(event.target.value)} />
+            <button className="button-secondary focus-ring py-2" type="submit">{t("commentFeedback.jump")}</button>
           </form>
           <label className="flex items-center gap-2 text-sm font-bold text-[var(--muted)]">
             <span>{t("mods.comments.sort")}</span>
@@ -231,7 +233,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
           <input aria-hidden="true" autoComplete="off" className="absolute -left-[10000px] h-px w-px opacity-0" name={formTokens["comment.create"]?.fieldName || "contact_reference"} tabIndex={-1} value={honeypot} onChange={(event) => setHoneypot(event.target.value)} />
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span>
-            <button className="button-primary focus-ring" disabled={!body.trim() || submitting || uploadingAttachments || cooldown > 0} type="submit">{uploadingAttachments ? t("mods.comments.editor.uploading") : cooldown > 0 ? `${cooldown} 秒后重试` : t("mods.comments.publish")}</button>
+            <button className="button-primary focus-ring" disabled={!body.trim() || submitting || uploadingAttachments || cooldown > 0} type="submit">{uploadingAttachments ? t("mods.comments.editor.uploading") : cooldown > 0 ? t("commentFeedback.retryAfter", { seconds: cooldown }) : t("mods.comments.publish")}</button>
           </div>
         </form>
       ) : !user ? (
@@ -284,6 +286,7 @@ type CommentTreeProps = {
 };
 
 function CommentTree(props: CommentTreeProps) {
+  const router = useRouter();
   const replyInput = useRef<HTMLTextAreaElement>(null);
   const { t } = useI18n();
   const { user } = useAuthSnapshot();
@@ -313,7 +316,7 @@ function CommentTree(props: CommentTreeProps) {
   function jumpTo(id: string, remember = true) {
     const destination = document.querySelector<HTMLElement>(`[data-comment-id='${CSS.escape(id)}']`);
     if (!destination) {
-      window.location.assign(`/comments/${encodeURIComponent(id)}`);
+      router.push(`/comments/${encodeURIComponent(id)}`);
       return;
     }
     if (remember) {
@@ -339,7 +342,7 @@ function CommentTree(props: CommentTreeProps) {
         userReactions: active ? [...item.userReactions, reaction] : item.userReactions.filter((value) => value !== reaction),
       } : item));
     } catch (error) {
-      props.onMessage(error instanceof Error ? error.message : t("mods.comments.reactionFailed"));
+      props.onMessage(apiErrorMessage(error, t, t("mods.comments.reactionFailed")));
     }
   }
 
@@ -356,7 +359,7 @@ function CommentTree(props: CommentTreeProps) {
         : item));
       props.onMessage(t(active ? "mods.comments.watched" : "mods.comments.unwatched"));
     } catch (error) {
-      props.onMessage(error instanceof Error ? error.message : t("mods.comments.watchFailed"));
+      props.onMessage(apiErrorMessage(error, t, t("mods.comments.watchFailed")));
     }
   }
 
@@ -385,7 +388,7 @@ function CommentTree(props: CommentTreeProps) {
         props.onMessage(t("mods.comments.editConflict"));
         return;
       }
-      props.onMessage(error instanceof Error ? error.message : t("mods.comments.editFailed"));
+      props.onMessage(apiErrorMessage(error, t, t("mods.comments.editFailed")));
     }
   }
 
@@ -395,7 +398,7 @@ function CommentTree(props: CommentTreeProps) {
       await deleteComment(comment.id, props.token);
       props.onItemsChange(props.items.map((item) => item.id === comment.id ? { ...item, body: "", deleted: true } : item));
     } catch (error) {
-      props.onMessage(error instanceof Error ? error.message : t("mods.comments.deleteFailed"));
+      props.onMessage(apiErrorMessage(error, t, t("mods.comments.deleteFailed")));
     }
   }
 
@@ -406,7 +409,7 @@ function CommentTree(props: CommentTreeProps) {
       props.onItemsChange(props.items.map((item) => item.id === result.id ? result : item));
       props.onMessage(t(result.pinned ? "mods.comments.pinned" : "mods.comments.unpinned"));
     } catch (error) {
-      props.onMessage(error instanceof Error ? error.message : t("mods.comments.pinFailed"));
+      props.onMessage(apiErrorMessage(error, t, t("mods.comments.pinFailed")));
     }
   }
 
@@ -416,7 +419,7 @@ function CommentTree(props: CommentTreeProps) {
       setReplyCursors((current) => ({ ...current, [comment.id]: result.nextCursor || "" }));
       props.onItemsChange(mergeComments(props.items, result.items).map((item) => item.id === comment.id ? { ...item, hasMoreReplies: Boolean(result.nextCursor) } : item));
     } catch (error) {
-      props.onMessage(error instanceof Error ? error.message : t("mods.comments.loadFailed"));
+      props.onMessage(apiErrorMessage(error, t, t("mods.comments.loadFailed")));
     }
   }
 
@@ -542,7 +545,7 @@ function CommentCard({
           <div className="flex flex-wrap items-baseline gap-x-2">
             <Link className="font-black hover:text-[var(--accent)]" href={`/user/${comment.author.id}`}>{authorName}</Link>
             {comment.author.projectRole ? <span className="rounded-md border border-[var(--accent)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t(`mods.comments.projectRoles.${comment.author.projectRole}`)}</span> : null}
-            {comment.floorNumber ? <a className="text-xs font-black text-[var(--accent)] hover:underline" href={`#floor-${comment.floorNumber}`}>{comment.floorNumber}楼</a> : null}
+            {comment.floorNumber ? <a className="text-xs font-black text-[var(--accent)] hover:underline" href={`#floor-${comment.floorNumber}`}>{t("commentFeedback.floorLabel", { floor: comment.floorNumber })}</a> : null}
             {comment.pinned ? <span className="rounded-md border border-[var(--line)] px-2 py-0.5 text-xs font-bold text-[var(--muted)]">{t("mods.comments.pinnedBadge")}</span> : null}
             {acceptedAnswer ? <span className="rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 text-xs font-bold text-[var(--accent)]">{t("communityPosts.bounty.acceptedAnswer")}</span> : null}
             <time className="text-xs text-[var(--muted)]">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(comment.createdAt))}</time>
@@ -613,7 +616,7 @@ export function CommentThread({ commentId }: { commentId: string }) {
         setNextCursor("");
         setPathTruncated(false);
         setLoadingMore(false);
-        setError(reason instanceof Error ? reason.message : t("mods.comments.loadFailed"));
+        setError(apiErrorMessage(reason, t, t("mods.comments.loadFailed")));
         setLoadedThreadKey(threadKey);
       }
     });
@@ -633,7 +636,7 @@ export function CommentThread({ commentId }: { commentId: string }) {
       setNextCursor(result.nextCursor);
     } catch (reason) {
       if (threadVersion.current === version) {
-        setError(reason instanceof Error ? reason.message : t("mods.comments.loadFailed"));
+        setError(apiErrorMessage(reason, t, t("mods.comments.loadFailed")));
       }
     } finally {
       if (threadVersion.current === version) {

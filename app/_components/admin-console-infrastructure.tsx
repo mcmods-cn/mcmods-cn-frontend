@@ -1034,9 +1034,11 @@ function GeneralSettingsPanel({ initialConfig, token }: { initialConfig: { siteN
     try {
       const form = new FormData();
       form.set("file", file);
+      const delegation = await apiRequest<{ authorization: string }>("/api/v1/admin/config/general/logo-upload-authorization", { method: "POST" }, token);
+      if (!/^SiteLogo [A-Za-z0-9_-]+$/.test(delegation.authorization)) throw new Error(t("tools.playground.uploadMissingUrl"));
       const response = await fetch("/api/site-logo", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: delegation.authorization },
         body: form,
       });
       const result = await response.json().catch(() => ({})) as { url?: string; error?: string };

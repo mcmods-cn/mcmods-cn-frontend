@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "../_lib/api-error.mts";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { followProject, loadProjectFollowStatus, unfollowProject } from "../_lib/project-follow-api";
@@ -34,7 +36,7 @@ export function ProjectFollowButton({ publicId }: { publicId: string }) {
           setError("");
           return;
         }
-        setError(reason instanceof Error ? reason.message : t("projectFollows.loadFailed"));
+        setError(apiErrorMessage(reason, t, t("projectFollows.loadFailed")));
         setFollowed(null);
       });
     return () => controller.abort();
@@ -56,7 +58,7 @@ export function ProjectFollowButton({ publicId }: { publicId: string }) {
           else await followProject(token, publicId);
           setFollowed(followed !== true);
         } catch (reason) {
-          setError(reason instanceof Error ? reason.message : t("projectFollows.saveFailed"));
+          setError(apiErrorMessage(reason, t, t("projectFollows.saveFailed")));
         } finally {
           setBusy(false);
         }

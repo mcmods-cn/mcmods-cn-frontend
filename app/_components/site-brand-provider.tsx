@@ -47,7 +47,7 @@ function normalizeSiteBrand(value: Partial<SiteBrand>): SiteBrand {
 
 function safeHTTPURL(value: unknown) {
   if (typeof value !== "string" || !value.trim()) return "";
-  if (/^\/site-assets\/site-logo-[a-f0-9]{20}\.webp$/.test(value)) return value;
+  if (/^\/site-assets\/site-logo-[a-z0-9]{9}\.png$/.test(value)) return value;
   try {
     const parsed = new URL(value);
     return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : "";

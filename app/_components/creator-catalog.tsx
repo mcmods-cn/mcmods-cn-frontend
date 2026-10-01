@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "../_lib/api-error.mts";
+
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
@@ -56,7 +58,7 @@ export function CreatorCatalog() {
           }
         })
         .catch((error) => {
-          if (!cancelled) setMessage(error instanceof Error ? error.message : t("creators.loadFailed"));
+          if (!cancelled) setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -87,7 +89,7 @@ export function CreatorCatalog() {
       if (result.counts) setCounts(result.counts);
     } catch (error) {
       if (requestGeneration.current === generation) {
-        setMessage(error instanceof Error ? error.message : t("creators.loadFailed"));
+        setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
       }
     } finally {
       if (requestGeneration.current === generation) setLoadingMore(false);

@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "../_lib/api-error.mts";
+
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { apiRequest } from "../_lib/api";
@@ -80,7 +82,7 @@ function ProjectEditorApplicationDialog({ projectId, projectName, projectType, t
       }
       setAttachments((current) => [...current, ...uploaded].slice(0, 10));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.applications.uploadFailed"));
+      setMessage(apiErrorMessage(error, t, t("mods.applications.uploadFailed")));
     } finally {
       setUploading(false);
     }
@@ -104,7 +106,7 @@ function ProjectEditorApplicationDialog({ projectId, projectName, projectType, t
       );
       setMessage(t("mods.applications.submitted"));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.applications.submitFailed"));
+      setMessage(apiErrorMessage(error, t, t("mods.applications.submitFailed")));
     } finally {
       setSubmitting(false);
     }

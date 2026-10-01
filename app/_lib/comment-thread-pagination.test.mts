@@ -16,5 +16,7 @@ test("comment branch loads bounded cursor pages and merges them", async () => {
   assert.match(component, /setNextCursor\(result\.nextCursor\)/);
   assert.match(component, /mergeComments\(current, result\.items\)/);
   assert.match(component, /mods\.comments\.loadMore/);
-  assert.match(component, /window\.location\.assign\(`\/comments\/\$\{encodeURIComponent\(id\)\}`\)/);
+  assert.match(component, /import \{ useRouter \} from "next\/navigation"/);
+  assert.match(component, /router\.push\(`\/comments\/\$\{encodeURIComponent\(id\)\}`\)/);
+  assert.doesNotMatch(component, /window\.location\.assign\(/);
 });

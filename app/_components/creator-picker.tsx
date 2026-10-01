@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "../_lib/api-error.mts";
+
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
@@ -178,7 +180,7 @@ function CreatorPickerDialog({
           }
         })
         .catch((error) => {
-          if (!cancelled) setMessage(error instanceof Error ? error.message : t("creators.loadFailed"));
+          if (!cancelled) setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -211,7 +213,7 @@ function CreatorPickerDialog({
       setNextCursor(result.nextCursor);
     } catch (error) {
       if (requestGeneration.current === generation) {
-        setMessage(error instanceof Error ? error.message : t("creators.loadFailed"));
+        setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
       }
     } finally {
       if (requestGeneration.current === generation) setLoadingMore(false);
@@ -285,7 +287,7 @@ function CreatorPickerDialog({
           <button className="button-primary focus-ring" disabled={!selected.length || inserting} type="button" onClick={() => {
             setInserting(true);
             setMessage("");
-            void onInsert(selected).catch((error) => setMessage(error instanceof Error ? error.message : t("creators.loadFailed"))).finally(() => setInserting(false));
+            void onInsert(selected).catch((error) => setMessage(apiErrorMessage(error, t, t("creators.loadFailed")))).finally(() => setInserting(false));
           }}>{inserting ? t("common.loading") : t("creators.insertSelected")}</button>
         </footer>
       </section>

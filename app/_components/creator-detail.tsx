@@ -1,4 +1,6 @@
 "use client";
+
+import { apiErrorMessage } from "../_lib/api-error.mts";
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
@@ -44,7 +46,7 @@ export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId:
       setRoles(roleResult.items);
     } catch (error) {
       setRecord(null);
-      notifySite(error instanceof Error ? error.message : t("creators.loadFailed"), t("creators.title"), "danger");
+      notifySite(apiErrorMessage(error, t, t("creators.loadFailed")), t("creators.title"), "danger");
     } finally {
       setLoading(false);
     }
@@ -137,7 +139,7 @@ function ClaimCreatorDialog({ creator, token, onClose, onSubmitted }: { creator:
         setProofFiles((current) => current.some((item) => item.id === uploaded.id) ? current : [...current, uploaded]);
       }
     } catch (error) {
-      notifySite(error instanceof Error ? error.message : t("creators.claimUploadFailed"), t("creators.claim"), "danger");
+      notifySite(apiErrorMessage(error, t, t("creators.claimUploadFailed")), t("creators.claim"), "danger");
     } finally {
       setUploading(false);
     }
@@ -150,7 +152,7 @@ function ClaimCreatorDialog({ creator, token, onClose, onSubmitted }: { creator:
       const result = await apiRequest<{ status: "pending" | "approved" }>(`/api/v1/creators/${encodeURIComponent(creator.publicId)}/claims`, { method: "POST", body: JSON.stringify({ proofMarkdown, proofFileIds: proofFiles.map((file) => file.id) }) }, token);
       onSubmitted(result.status);
     } catch (error) {
-      notifySite(error instanceof Error ? error.message : t("creators.claimFailed"), t("creators.claim"), "danger");
+      notifySite(apiErrorMessage(error, t, t("creators.claimFailed")), t("creators.claim"), "danger");
     } finally {
       setSubmitting(false);
     }

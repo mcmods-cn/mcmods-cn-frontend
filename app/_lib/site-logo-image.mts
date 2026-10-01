@@ -11,7 +11,7 @@ const maximumOutputEdge = 512;
 const maximumOutputBytes = 1024 * 1024;
 const acceptedFormats = new Set(["png", "jpeg", "webp", "gif"]);
 
-export async function readBoundedRequestBody(request: Request, maximumBytes = maximumLogoRequestBytes) {
+export async function readBoundedRequestBody(request: Pick<Request, "headers" | "body">, maximumBytes = maximumLogoRequestBytes) {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0) {
     throw new TypeError("maximumBytes must be a non-negative safe integer");
   }

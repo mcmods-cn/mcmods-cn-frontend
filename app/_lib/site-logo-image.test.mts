@@ -92,7 +92,7 @@ test("image validation rejects unsupported formats and excessive decoded dimensi
   await assert.rejects(createSafeSiteLogo(tooManyPixels), /pixel budget/);
 });
 
-test("the upload and serving routes expose only sanitized WebP assets", async () => {
+test("the upload and serving routes use only safe shared versioned assets and never local files", async () => {
   const [uploadRoute, servingRoute, brandProvider] = await Promise.all([
     readFile(new URL("../api/site-logo/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../site-assets/[fileName]/route.ts", import.meta.url), "utf8"),
@@ -102,11 +102,14 @@ test("the upload and serving routes expose only sanitized WebP assets", async ()
   assert.match(uploadRoute, /readBoundedRequestBody\(request/);
   assert.doesNotMatch(uploadRoute, /request\.formData\(\)/);
   assert.match(uploadRoute, /createSafeSiteLogo/);
-  assert.match(uploadRoute, /site-logo-\$\{digest\}\.webp/);
+  assert.match(uploadRoute, /\/api\/v1\/admin\/config\/general\/logo/);
   assert.doesNotMatch(uploadRoute, /rasterExtension/);
-  assert.match(servingRoute, /\^site-logo-\[a-f0-9\]\{20\}\\\.webp\$/);
+  assert.match(servingRoute, /\^site-logo-\(\[a-z0-9\]\{9\}\)\\\.png\$/);
   assert.doesNotMatch(servingRoute, /png\|jpe\?g\|webp\|gif/);
-  assert.match(brandProvider, /site-logo-\[a-f0-9\]\{20\}\\\.webp/);
+  assert.match(brandProvider, /site-logo-\[a-z0-9\]\{9\}\\\.png/);
+  assert.doesNotMatch(uploadRoute + servingRoute, /node:fs|process\.cwd\(|writeFile|mkdir|readFile/);
+  assert.match(servingRoute, /redirect: "manual"/);
+  assert.match(servingRoute, /private, no-store/);
 });
 
 function rawAnimatedFrames(width: number, height: number, pages: number) {

@@ -29,20 +29,41 @@ test("SEC-002 retains patched transitive dependency floors in package and lock f
     readFile(new URL("../../package.json", import.meta.url), "utf8"),
     readFile(new URL("../../package-lock.json", import.meta.url), "utf8"),
   ]);
-  const packageJSON = JSON.parse(packageText) as { overrides?: Record<string, string> };
+  const packageJSON = JSON.parse(packageText) as {
+    overrides?: Record<string, string>;
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+  };
   const lockJSON = JSON.parse(lockText) as { packages?: Record<string, { version?: string }> };
 
   assert.deepEqual(packageJSON.overrides, {
-    "js-yaml": "4.3.1",
+    "baseline-browser-mapping": "2.11.0",
+    "brace-expansion@^1": "1.1.21",
+    "brace-expansion@^5": "5.0.12",
+    "browserslist": "4.28.7",
+    "js-yaml": "4.3.2",
     "nanoid": "3.3.18",
     "postcss": "8.5.23",
-    "sharp": "0.35.3",
+    "sharp": "0.35.4",
   });
   const braceVersions = Object.entries(lockJSON.packages ?? {})
     .filter(([path]) => path.endsWith("node_modules/brace-expansion"))
     .map(([, entry]) => entry.version ?? "");
-  assert.ok(braceVersions.includes("5.0.9"));
-  assert.ok(braceVersions.every((version) => !/^4\./.test(version) && !/^5\.0\.[0-8]$/.test(version)));
-  assert.equal(lockJSON.packages?.["node_modules/js-yaml"]?.version, "4.3.1");
+  assert.ok(braceVersions.includes("5.0.12"));
+  assert.ok(braceVersions.includes("1.1.21"));
+  assert.ok(braceVersions.every((version) => version === "1.1.21" || version === "5.0.12"));
+  for (const [name, expected] of Object.entries({
+    "baseline-browser-mapping": "2.11.0",
+    "browserslist": "4.28.7",
+    "js-yaml": "4.3.2",
+    "sharp": "0.35.4",
+    "next": "16.3.8",
+    "eslint-config-next": "16.3.8",
+  })) {
+    assert.equal(lockJSON.packages?.[`node_modules/${name}`]?.version, expected, `${name} security floor`);
+  }
+  assert.equal(packageJSON.dependencies?.next, "16.3.8");
+  assert.equal(packageJSON.devDependencies?.["eslint-config-next"], packageJSON.dependencies?.next);
+  assert.equal(packageJSON.dependencies?.sharp, packageJSON.overrides?.sharp);
   assert.equal(lockJSON.packages?.["node_modules/nanoid"]?.version, "3.3.18");
 });

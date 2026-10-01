@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { validateAntiAbuseSettings, type AntiAbuseSettings } from "./anti-abuse-settings.mts";
+import en from "../_locales/en-US.ts";
+import zhCN from "../_locales/zh-CN.ts";
 
 function settings(): AntiAbuseSettings {
   return {
@@ -45,6 +47,9 @@ test("the administrator panel renders every persisted setting", async () => {
   for (const key of ["newAccountDays", "trustedAccountDays", "trustedMinimumLevel", "duplicateWindowHours", "temporaryBlockMinutes", "burstSeconds", "objectMinutes"]) {
     assert.match(source, new RegExp(key));
   }
-  assert.match(source, /瞬时窗口（秒）/);
-  assert.match(source, /单对象窗口（分钟）/);
+  assert.match(source, /t\(`antiAbuse\.policy\.\$\{field\.key\}`\)/);
+  assert.equal(zhCN.antiAbuse.policy.burstSeconds, "瞬时窗口（秒）");
+  assert.equal(zhCN.antiAbuse.policy.objectMinutes, "单对象窗口（分钟）");
+  assert.equal(en.antiAbuse.policy.burstSeconds, "Burst window (seconds)");
+  assert.equal(en.antiAbuse.policy.objectMinutes, "Per-object window (minutes)");
 });

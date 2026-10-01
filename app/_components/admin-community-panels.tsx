@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "../_lib/api-error.mts";
+
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import {
@@ -111,7 +113,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
 			return response;
     } catch (error) {
 			if (error instanceof Error && error.name === "AbortError") return null;
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
 			return null;
     } finally {
 			if (generation === requestGeneration.current) setLoading(false);
@@ -159,7 +161,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
         t("admin.noticeTitle"),
       );
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
     } finally {
       setReviewing(null);
     }
@@ -170,7 +172,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
       const result = await apiRequest<{ url: string }>(`/api/v1/admin/creator-claims/${claimId}/attachments/${fileId}/presign`, { method: "POST" }, token);
       window.open(result.url, "_blank", "noopener,noreferrer");
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     }
   }
 
@@ -293,7 +295,7 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
       );
       setItems(response.items);
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     } finally {
       setLoading(false);
     }
@@ -460,7 +462,7 @@ export function EconomyConfigPanel({ token }: { token: string }) {
       setConfig(nextConfig);
       setCurrencies(response.items);
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     }
   }, [t, token]);
 
@@ -478,7 +480,7 @@ export function EconomyConfigPanel({ token }: { token: string }) {
       setConfig(saved);
       notifyAdmin(t("admin.community.economySaved"), t("admin.noticeTitle"));
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
     } finally {
       setSaving(false);
     }
@@ -698,7 +700,7 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
         return selected ? cloneCurrency(selected) : current.publicId ? { ...emptyCurrency } : current;
       });
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     }
   }, [t, token]);
 
@@ -720,7 +722,7 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
       await load();
       notifyAdmin(t("admin.community.currencySaved"), t("admin.noticeTitle"));
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
     } finally {
       setSaving(false);
     }
@@ -838,7 +840,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
         return cloneShopItem(selected);
       });
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     }
   }, [t, token]);
 
@@ -873,7 +875,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
       await load();
       notifyAdmin(t("admin.community.shopItemSaved"), t("admin.noticeTitle"));
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
     } finally {
       setSaving(false);
     }
@@ -1028,7 +1030,7 @@ export function LevelConfigPanel({ token }: { token: string }) {
       setConfig(nextConfig);
       setTracks(nextTracks);
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     }
   }, [t, token]);
 
@@ -1048,7 +1050,7 @@ export function LevelConfigPanel({ token }: { token: string }) {
       setConfig(saved);
       notifyAdmin(t("admin.community.levelSaved"), t("admin.noticeTitle"));
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
     } finally {
       setSaving(false);
     }
@@ -1134,7 +1136,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
         return selected ? cloneTask(selected) : current.publicId ? cloneTask(emptyTask) : current;
       });
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     }
   }, [t, token]);
 
@@ -1158,7 +1160,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
       await load();
       notifyAdmin(t("admin.community.taskSaved"), t("admin.noticeTitle"));
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
     } finally {
       setSaving(false);
     }
@@ -1174,7 +1176,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
       await load();
       notifyAdmin(t("admin.community.taskDeleted"), t("admin.noticeTitle"));
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
+      notifyAdmin(apiErrorMessage(error, t, t("admin.community.saveFailed")), t("admin.noticeTitle"), "danger");
     } finally {
       setSaving(false);
     }
@@ -1709,9 +1711,6 @@ function formatDateTime(value: string) {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
 
 function notifyAdmin(message: string, title: string, tone: "info" | "danger" = "info") {
   if (typeof window === "undefined") return;

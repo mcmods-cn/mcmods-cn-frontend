@@ -36,6 +36,10 @@ jobs:
           npm run typecheck
           npm run lint
           npm run build
+      - name: Install the pinned browser driver runtime
+        run: npx playwright install --with-deps chromium
+      - name: Exercise production React flows in a real browser
+        run: npm run test:browser
 
   container:
     runs-on: ubuntu-latest
