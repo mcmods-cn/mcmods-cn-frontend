@@ -54,6 +54,8 @@ npm run start -- --port 13000 --hostname 127.0.0.1
 NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:18080 npm run test:e2e
 ```
 
-E2E 使用真实本地 API、Cookie 会话及 PostgreSQL 持久化，不替换项目 API。测试仅接受回环地址，依赖测试种子的随机管理员密码；输出目录 `test-results/` 不进入提交。不录制含会话凭据的认证 trace。付费 AI、真实邮件和真实 OSS 不在此验收范围内。
+业务 E2E 使用真实本地 API、Cookie 会话及 PostgreSQL 持久化，不替换项目 API；另一个原生 IndexedDB 场景使用隔离页面，不算项目 API 联通。测试仅接受回环地址，依赖测试种子的随机管理员密码；输出目录 `test-results/` 不进入提交。不录制含会话凭据的认证 trace。付费 AI、真实邮件和真实 OSS 不在此验收范围内。
+
+所有浏览器 context 共用回环 IP。无头浏览器按现有爬虫规则限制为每分钟 60 次读取，多个旅程连续刷新会共用额度。`test:e2e` 以互补筛选分两批执行完整测试，批间等待 60 秒；不放宽安全规则、测试超时或断言。两批 JSON 分别为 `test-results/e2e-core-results.json` 和 `test-results/e2e-account-results.json`。定向测试使用 `npx playwright test ...`，需要自行遵守共享额度；不要并发运行同一隔离后端的浏览器批次。
 
 页面使用逐请求 CSP nonce，因此根 layout 调用 Next `connection()` 后动态渲染，确保生产 HTML 的脚本 nonce 与响应 CSP 一致。生产托管须支持 Next 服务端运行，不能把这些页面当作静态导出文件部署。移动端沿用同一个语言选择器，切换语言保留当前 URL，偏好在浏览器保存。

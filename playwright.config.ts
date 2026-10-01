@@ -13,7 +13,7 @@ export default defineConfig({
   retries: 0,
   timeout: 30_000,
   expect: { timeout: 8_000 },
-  reporter: [["list"], ["json", { outputFile: "test-results/e2e-results.json" }]],
+  reporter: [["list"], ["json", { outputFile: process.env.MCMODS_E2E_REPORT_FILE ?? "test-results/e2e-results.json" }]],
   use: {
     baseURL,
     browserName: "chromium",
