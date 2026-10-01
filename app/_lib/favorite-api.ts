@@ -1,4 +1,4 @@
-import { API_BASE_URL, apiRequest } from "./api";
+import { API_BASE_URL, apiRequest, backendFetch, isBearerAccessToken } from "./api";
 
 export type FavoriteCollection = {
   id: string;
@@ -149,9 +149,9 @@ export function favoriteModpackExportDownloadURL(taskId: string) {
 }
 
 export async function downloadFavoriteModpackExport(token: string, taskId: string, fallbackName: string) {
-  const response = await fetch(favoriteModpackExportDownloadURL(taskId), {
+  const response = await backendFetch(favoriteModpackExportDownloadURL(taskId), {
     credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: isBearerAccessToken(token) ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!response.ok) throw new Error("整合包下载失败或下载链接已过期");
   const blob = await response.blob();

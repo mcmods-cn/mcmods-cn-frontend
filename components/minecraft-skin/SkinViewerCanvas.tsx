@@ -35,94 +35,122 @@ export function SkinViewerCanvas({
     const host = hostRef.current;
     if (!host) return;
     let cancelled = false;
-    let frame = 0;
-    let avatar: THREE.Group | undefined;
-    const loadedTextures = new Set<THREE.Texture>();
-    setLoading(true);
-    setError("");
+    let teardown: (() => void) | undefined;
+    const initialize = () => {
+      if (cancelled) return;
+      let frame = 0;
+      let avatar: THREE.Group | undefined;
+      const loadedTextures = new Set<THREE.Texture>();
+      let textureLoadFailed = false;
+      setLoading(true);
+      setError("");
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 300);
-    camera.position.set(33, 18, 52);
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x000000, 0);
-    host.appendChild(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.enablePan = false;
-    controls.minDistance = 34;
-    controls.maxDistance = 90;
-    controls.target.set(0, -1, 0);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x64748b, 2.2));
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
-    keyLight.position.set(18, 28, 22);
-    scene.add(keyLight);
-
-    const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(13, 48),
-      new THREE.MeshBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.13, depthWrite: false }),
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -16.2;
-    scene.add(ground);
-
-    const resize = () => {
-      const width = Math.max(1, host.clientWidth);
-      const height = Math.max(1, host.clientHeight);
-      renderer.setSize(width, height, false);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(host);
-    resize();
-
-    Promise.all([loadTexture(skinUrl), loadTexture(capeUrl)])
-      .then(([skinTexture, capeTexture]) => {
-        if (skinTexture) loadedTextures.add(skinTexture);
-        if (capeTexture) loadedTextures.add(capeTexture);
-        if (cancelled) {
-          skinTexture?.dispose();
-          capeTexture?.dispose();
-          return;
-        }
-        avatar = buildAvatar(skinTexture, capeTexture, model, showOuterLayer);
-        avatar.rotation.y = -0.34;
-        scene.add(avatar);
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 300);
+      camera.position.set(33, 18, 52);
+      let renderer: THREE.WebGLRenderer;
+      try {
+        renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+      } catch (reason) {
         setLoading(false);
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) {
-          setLoading(false);
-          setError(reason instanceof Error ? reason.message : t("skins.previewLoadFailed"));
+        setError(reason instanceof Error ? reason.message : String(reason));
+        return;
+      }
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setClearColor(0x000000, 0);
+      host.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.enablePan = false;
+      controls.minDistance = 34;
+      controls.maxDistance = 90;
+      controls.target.set(0, -1, 0);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x64748b, 2.2));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.8);
+      keyLight.position.set(18, 28, 22);
+      scene.add(keyLight);
+
+      const ground = new THREE.Mesh(
+        new THREE.CircleGeometry(13, 48),
+        new THREE.MeshBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.13, depthWrite: false }),
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = -16.2;
+      scene.add(ground);
+
+      const resize = () => {
+        const width = Math.max(1, host.clientWidth);
+        const height = Math.max(1, host.clientHeight);
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      };
+      const observer = new ResizeObserver(resize);
+      observer.observe(host);
+      resize();
+
+      const loadTrackedTexture = async (url: string) => {
+        const texture = await loadTexture(url);
+        if (!texture) return null;
+        if (cancelled || textureLoadFailed) {
+          texture.dispose();
+          return null;
         }
-      });
+        loadedTextures.add(texture);
+        return texture;
+      };
+      Promise.all([loadTrackedTexture(skinUrl), loadTrackedTexture(capeUrl)])
+        .then(([skinTexture, capeTexture]) => {
+          if (cancelled) {
+            return;
+          }
+          avatar = buildAvatar(skinTexture, capeTexture, model, showOuterLayer);
+          avatar.rotation.y = -0.34;
+          scene.add(avatar);
+          setLoading(false);
+        })
+        .catch((reason: unknown) => {
+          textureLoadFailed = true;
+          loadedTextures.forEach((texture) => texture.dispose());
+          loadedTextures.clear();
+          if (!cancelled) {
+            setLoading(false);
+            setError(reason instanceof Error ? reason.message : t("skins.previewLoadFailed"));
+          }
+        });
 
-    const clock = new THREE.Clock();
-    const render = () => {
-      const delta = Math.min(clock.getDelta(), 0.1);
-      if (avatar && autoRotateRef.current) avatar.rotation.y += delta * 0.18;
-      controls.update();
-      renderer.render(scene, camera);
-      frame = requestAnimationFrame(render);
+      const clock = new THREE.Clock();
+      const render = () => {
+        const delta = Math.min(clock.getDelta(), 0.1);
+        if (avatar && autoRotateRef.current) avatar.rotation.y += delta * 0.18;
+        controls.update();
+        renderer.render(scene, camera);
+        frame = requestAnimationFrame(render);
+      };
+      render();
+
+      teardown = () => {
+        cancelAnimationFrame(frame);
+        observer.disconnect();
+        controls.dispose();
+        if (avatar) disposeGroup(avatar);
+        ground.geometry.dispose();
+        (ground.material as THREE.Material).dispose();
+        loadedTextures.forEach((texture) => texture.dispose());
+        loadedTextures.clear();
+        renderer.dispose();
+        renderer.domElement.remove();
+      };
     };
-    render();
-
+    // Wait for a painted host layout before allocating the graphics context.
+    const initializationFrame = requestAnimationFrame(initialize);
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      controls.dispose();
-      if (avatar) disposeGroup(avatar);
-      ground.geometry.dispose();
-      (ground.material as THREE.Material).dispose();
-      loadedTextures.forEach((texture) => texture.dispose());
-      renderer.dispose();
-      renderer.domElement.remove();
+      cancelAnimationFrame(initializationFrame);
+      teardown?.();
     };
   }, [capeUrl, model, showOuterLayer, skinUrl, t]);
 

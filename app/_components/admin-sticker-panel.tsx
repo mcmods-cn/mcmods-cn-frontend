@@ -130,28 +130,35 @@ export function AdminStickerPanel({ token }: { token: string }) {
     }
   }
 
+  async function runStickerAction(operation: () => Promise<unknown>) {
+    if (busy) return;
+    setBusy(true);
+    setMessage("");
+    try { await operation(); await load(); }
+    catch (error) { setMessage(error instanceof Error ? error.message : t("admin.stickers.saveFailed")); }
+    finally { setBusy(false); }
+  }
+
   async function togglePack(pack: AdminStickerPack) {
-    await apiRequest(`/api/v1/admin/sticker-packs/${pack.code}`, {
+    await runStickerAction(() => apiRequest(`/api/v1/admin/sticker-packs/${encodeURIComponent(pack.code)}`, {
       method: "PUT",
       body: JSON.stringify({
         status: pack.status === "active" ? "disabled" : "active",
         sortOrder: pack.sortOrder,
         translations: pack.translations,
       }),
-    }, token);
-    await load();
+    }, token));
   }
 
   async function toggleSticker(pack: AdminStickerPack, sticker: AdminSticker) {
-    await apiRequest(`/api/v1/admin/sticker-packs/${pack.code}/stickers/${sticker.code}`, {
+    await runStickerAction(() => apiRequest(`/api/v1/admin/sticker-packs/${encodeURIComponent(pack.code)}/stickers/${encodeURIComponent(sticker.code)}`, {
       method: "PUT",
       body: JSON.stringify({
         status: sticker.status === "active" ? "disabled" : "active",
         sortOrder: sticker.sortOrder,
         translations: sticker.translations,
       }),
-    }, token);
-    await load();
+    }, token));
   }
 
   async function savePack(pack: AdminStickerPack, form: HTMLFormElement) {
@@ -160,7 +167,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
     setBusy(true);
     setMessage("");
     try {
-      await apiRequest(`/api/v1/admin/sticker-packs/${pack.code}`, {
+      await apiRequest(`/api/v1/admin/sticker-packs/${encodeURIComponent(pack.code)}`, {
         method: "PUT",
         body: JSON.stringify({ status: pack.status, sortOrder: Number(values.get("sortOrder")) || 0, translations }),
       }, token);
@@ -181,7 +188,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
     setMessage("");
     try {
       const imageFileId = replacement instanceof File && replacement.size > 0 ? await uploadStickerFile(replacement, pack.code) : "";
-      await apiRequest(`/api/v1/admin/sticker-packs/${pack.code}/stickers/${sticker.code}`, {
+      await apiRequest(`/api/v1/admin/sticker-packs/${encodeURIComponent(pack.code)}/stickers/${encodeURIComponent(sticker.code)}`, {
         method: "PUT",
         body: JSON.stringify({ imageFileId, status: sticker.status, sortOrder: Number(values.get("sortOrder")) || 0, translations }),
       }, token);
@@ -196,14 +203,12 @@ export function AdminStickerPanel({ token }: { token: string }) {
 
   async function deletePack(pack: AdminStickerPack) {
     if (!window.confirm(`${t("common.delete")} ${pack.code}?`)) return;
-    await apiRequest(`/api/v1/admin/sticker-packs/${pack.code}`, { method: "DELETE" }, token);
-    await load();
+    await runStickerAction(() => apiRequest(`/api/v1/admin/sticker-packs/${encodeURIComponent(pack.code)}`, { method: "DELETE" }, token));
   }
 
   async function deleteSticker(pack: AdminStickerPack, sticker: AdminSticker) {
     if (!window.confirm(`${t("common.delete")} ${pack.code}:${sticker.code}?`)) return;
-    await apiRequest(`/api/v1/admin/sticker-packs/${pack.code}/stickers/${sticker.code}`, { method: "DELETE" }, token);
-    await load();
+    await runStickerAction(() => apiRequest(`/api/v1/admin/sticker-packs/${encodeURIComponent(pack.code)}/stickers/${encodeURIComponent(sticker.code)}`, { method: "DELETE" }, token));
   }
 
   return (
@@ -269,11 +274,11 @@ export function AdminStickerPanel({ token }: { token: string }) {
                 <code>{pack.code}</code>
               </div>
               <div className="flex gap-2">
-                <button className="button-secondary focus-ring" type="button" onClick={() => void togglePack(pack)}>
+                <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void togglePack(pack)}>
                   {pack.status === "active" ? t("admin.stickers.disable") : t("admin.stickers.enable")}
                 </button>
                 {pack.stickers.length === 0 ? (
-                  <button className="button-secondary focus-ring text-[var(--danger)]" type="button" onClick={() => void deletePack(pack)}>
+                  <button className="button-secondary focus-ring text-[var(--danger)]" disabled={busy} type="button" onClick={() => void deletePack(pack)}>
                     {t("common.delete")}
                   </button>
                 ) : null}
@@ -291,10 +296,10 @@ export function AdminStickerPanel({ token }: { token: string }) {
                   <p className="mt-2 truncate font-bold">{localizedStickerName(sticker.translations, locale, sticker.code)}</p>
                   <code className="text-xs">{sticker.code}</code>
                   <StickerEditor busy={busy} locales={data.locales} pack={pack} sticker={sticker} onSave={saveSticker} />
-                  <button className="mt-2 block w-full text-sm font-bold text-[var(--accent)]" type="button" onClick={() => void toggleSticker(pack, sticker)}>
+                  <button className="mt-2 block w-full text-sm font-bold text-[var(--accent)]" disabled={busy} type="button" onClick={() => void toggleSticker(pack, sticker)}>
                     {sticker.status === "active" ? t("admin.stickers.disable") : t("admin.stickers.enable")}
                   </button>
-                  <button className="mt-1 block w-full text-sm font-bold text-[var(--danger)]" type="button" onClick={() => void deleteSticker(pack, sticker)}>
+                  <button className="mt-1 block w-full text-sm font-bold text-[var(--danger)]" disabled={busy} type="button" onClick={() => void deleteSticker(pack, sticker)}>
                     {t("common.delete")}
                   </button>
                 </div>

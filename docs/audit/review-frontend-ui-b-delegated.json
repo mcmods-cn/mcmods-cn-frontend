@@ -1,0 +1,797 @@
+{
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "reviewer": "frontend_ui_a",
+  "delegated_from": "frontend_ui_b",
+  "files": [
+    {
+      "path": "app/_components/admin-community-panels.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "48a46aa3447735c3474f8aa67af17cf4132490813336456d9345b23ee6eb9dc6",
+      "baseline_lines": 1701,
+      "baseline_read_ranges": [
+        [
+          1,
+          300
+        ],
+        [
+          301,
+          650
+        ],
+        [
+          651,
+          1000
+        ],
+        [
+          1001,
+          1350
+        ],
+        [
+          1351,
+          1701
+        ]
+      ],
+      "sha256": "45bb03e2e9d1901c42f1599b586ab256a38e22884e9ca397abfab54abfe949a8",
+      "lines": 1735,
+      "read_ranges": [
+        [
+          1,
+          1735
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          3,
+          3
+        ],
+        [
+          221,
+          221
+        ],
+        [
+          224,
+          224
+        ],
+        [
+          239,
+          239
+        ],
+        [
+          241,
+          241
+        ],
+        [
+          243,
+          243
+        ],
+        [
+          247,
+          250
+        ],
+        [
+          401,
+          401
+        ],
+        [
+          410,
+          410
+        ],
+        [
+          413,
+          413
+        ],
+        [
+          420,
+          420
+        ],
+        [
+          437,
+          437
+        ],
+        [
+          969,
+          969
+        ],
+        [
+          978,
+          978
+        ],
+        [
+          981,
+          981
+        ],
+        [
+          990,
+          990
+        ],
+        [
+          1007,
+          1007
+        ],
+        [
+          1049,
+          1051
+        ],
+        [
+          1396,
+          1400
+        ],
+        [
+          76,
+          231
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "后台活动、货币/经济/商店/等级/任务配置",
+      "call_chain": [
+        "react",
+        "../_lib/api",
+        "../_lib/community-api",
+        "../_lib/i18n-provider",
+        "../_lib/oss-upload",
+        "./catalog-resource-icon"
+      ],
+      "api_entrypoints": [
+        "/api/v1/admin/creator-claims",
+        "/api/v1/admin/creator-claims/${item.id}",
+        "/api/v1/admin/creator-claims/${claimId}/attachments/${fileId}/presign",
+        "/api/v1/admin/activity?${query.toString()}",
+        "/api/v1/admin/economy/config",
+        "/api/v1/admin/economy/currencies",
+        "/api/v1/admin/economy/currencies/${draft.publicId}",
+        "/api/v1/admin/shop/items",
+        "/api/v1/admin/shop/items/${draft.publicId}",
+        "/api/v1/admin/levels/config",
+        "/api/v1/admin/role-tracks",
+        "/api/v1/admin/tasks",
+        "/api/v1/admin/tasks/${draft.publicId}"
+      ],
+      "issues": [
+        "FE-UIB-D001",
+        "FE-UIB-D002",
+        "FE-UIB-D003",
+        "FE-CORE-APPLICATIONS-PAGINATION"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-b-delegated-community: 缺阈值角色可配置、经济/等级失败重试、活动查询乱序",
+        "Core pagination改动区间人工重读：offset/limit50、total回退、审核后末页rebase、AbortController隔离。Core tests/application-pagination_core.test.tsx 5组件测试由Core记录；本代理未重复宣称真实PG或浏览器验收。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "45bb03e2e9d1901c42f1599b586ab256a38e22884e9ca397abfab54abfe949a8"
+      }
+    },
+    {
+      "path": "app/_components/mod-content-resource-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "617e88a84f159e97cc66a12ba3c10cdbc83aa1164c46c09ce849288044d9e372",
+      "baseline_lines": 1376,
+      "baseline_read_ranges": [
+        [
+          1,
+          310
+        ],
+        [
+          311,
+          640
+        ],
+        [
+          641,
+          985
+        ],
+        [
+          986,
+          1376
+        ]
+      ],
+      "sha256": "500eca05b298734ea7135a3f4066c8c1b2e9fa9341c83ac0d4abc09fa63588bd",
+      "lines": 1388,
+      "read_ranges": [
+        [
+          1,
+          1388
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          80,
+          85
+        ],
+        [
+          131,
+          132
+        ],
+        [
+          236,
+          236
+        ],
+        [
+          244,
+          244
+        ],
+        [
+          301,
+          301
+        ],
+        [
+          324,
+          324
+        ],
+        [
+          467,
+          467
+        ],
+        [
+          498,
+          498
+        ],
+        [
+          944,
+          946
+        ],
+        [
+          954,
+          954
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "物品/资源定义、多语言、范围字段、图标与审核修订",
+      "call_chain": [
+        "next/image",
+        "next/navigation",
+        "react",
+        "../_lib/auth",
+        "../_lib/content-language",
+        "../_lib/catalog-resource-identifiers",
+        "../_lib/editor-types",
+        "../_lib/mod-content-api",
+        "../_lib/mod-export-api",
+        "../_lib/oss-upload",
+        "../_lib/use-auto-draft",
+        "../_lib/i18n-provider",
+        "./editor/content-language-switcher",
+        "./editor/editor-shell",
+        "./editor/resource-picker-dialog",
+        "./editor/loot-table-visual-editor",
+        "./tools-playground",
+        "../_lib/resource-picker-loaders",
+        "./square-image-crop-dialog",
+        "./page-feedback",
+        "./draft-autosave-status"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIB-D006"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "500eca05b298734ea7135a3f4066c8c1b2e9fa9341c83ac0d4abc09fa63588bd"
+      }
+    },
+    {
+      "path": "app/_components/mod-content-layout-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "592ceef0c0d5d87ad4eadc98e308a2b1afc27390ddb1f9bc983debcc32946ee1",
+      "baseline_lines": 1325,
+      "baseline_read_ranges": [
+        [
+          1,
+          300
+        ],
+        [
+          301,
+          640
+        ],
+        [
+          641,
+          990
+        ],
+        [
+          991,
+          1325
+        ]
+      ],
+      "sha256": "76c2f2d52edc7222c70d1cea723822b4c4fcd90b9f378ef56345a1154e839017",
+      "lines": 1331,
+      "read_ranges": [
+        [
+          1,
+          1331
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          27,
+          27
+        ],
+        [
+          73,
+          78
+        ],
+        [
+          80,
+          80
+        ],
+        [
+          97,
+          97
+        ],
+        [
+          104,
+          104
+        ],
+        [
+          124,
+          124
+        ],
+        [
+          162,
+          162
+        ],
+        [
+          205,
+          206
+        ],
+        [
+          212,
+          212
+        ],
+        [
+          349,
+          349
+        ],
+        [
+          351,
+          351
+        ],
+        [
+          483,
+          483
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "栏目层级、资源顺序、进度图和布局修订",
+      "call_chain": [
+        "next/image",
+        "react",
+        "../_lib/advancement-graph",
+        "../_lib/auth",
+        "../_lib/content-language",
+        "../_lib/mod-content-api",
+        "../_lib/mod-export-api",
+        "../_lib/i18n-provider",
+        "../_lib/similar-resource-groups",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIB-D004",
+        "FE-UIB-D006"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-b-delegated-community: 改名保留描述、cookie账号切换不保留旧布局、失败拒写重试"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "76c2f2d52edc7222c70d1cea723822b4c4fcd90b9f378ef56345a1154e839017"
+      }
+    },
+    {
+      "path": "app/_components/tools-playground.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "681004d8025471b47fefd9382ce17efa7dd492c2456b4b5f637ffe306ab38593",
+      "baseline_lines": 1003,
+      "baseline_read_ranges": [
+        [
+          1,
+          310
+        ],
+        [
+          311,
+          650
+        ],
+        [
+          651,
+          1003
+        ]
+      ],
+      "sha256": "36f09b274ecef146c235ba623b0df4e19473d0158294b45f31f33c777d3a8b5a",
+      "lines": 1025,
+      "read_ranges": [
+        [
+          1,
+          1025
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          90,
+          96
+        ],
+        [
+          106,
+          124
+        ],
+        [
+          198,
+          199
+        ],
+        [
+          205,
+          205
+        ],
+        [
+          211,
+          211
+        ],
+        [
+          214,
+          215
+        ],
+        [
+          217,
+          217
+        ],
+        [
+          219,
+          225
+        ],
+        [
+          228,
+          228
+        ],
+        [
+          231,
+          233
+        ],
+        [
+          237,
+          238
+        ],
+        [
+          240,
+          241
+        ],
+        [
+          243,
+          243
+        ],
+        [
+          246,
+          247
+        ],
+        [
+          249,
+          249
+        ],
+        [
+          258,
+          258
+        ],
+        [
+          270,
+          270
+        ],
+        [
+          576,
+          576
+        ],
+        [
+          588,
+          588
+        ],
+        [
+          666,
+          666
+        ],
+        [
+          867,
+          867
+        ],
+        [
+          989,
+          989
+        ],
+        [
+          998,
+          998
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "Markdown受控编辑器、草稿持久化、附件和drawio编辑",
+      "call_chain": [
+        "react",
+        "next/image",
+        "react-dom",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/drawio",
+        "../_lib/i18n-provider",
+        "../_lib/markdown-config",
+        "../_lib/oss-upload",
+        "./markdown-renderer",
+        "./sticker-picker"
+      ],
+      "api_entrypoints": [
+        "/api/v1/markdown/config",
+        "/api/v1/users/me/markdown-playground",
+        "/api/v1/oss/files/${encodeURIComponent(record.id)}/content"
+      ],
+      "issues": [
+        "FE-UIB-D005"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-b-delegated-tools: 外部恢复不回写旧内容、初始读失败不自动覆盖、写失败停止自动重试并允许手动"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "36f09b274ecef146c235ba623b0df4e19473d0158294b45f31f33c777d3a8b5a"
+      }
+    },
+    {
+      "path": "app/_components/mod-resource-components.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "c2773a3f36d361d8edb409497312a2108cb6b98ecd9a8fd23e787be90afc6d0d",
+      "baseline_lines": 829,
+      "baseline_read_ranges": [
+        [
+          1,
+          300
+        ],
+        [
+          301,
+          610
+        ],
+        [
+          611,
+          829
+        ]
+      ],
+      "sha256": "ff9f16bff2fb1d3bc29544712157be999c1086251332b7972435ac39d3430af8",
+      "lines": 839,
+      "read_ranges": [
+        [
+          1,
+          839
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          417,
+          417
+        ],
+        [
+          473,
+          473
+        ],
+        [
+          513,
+          513
+        ],
+        [
+          647,
+          647
+        ],
+        [
+          659,
+          659
+        ],
+        [
+          712,
+          712
+        ],
+        [
+          734,
+          734
+        ],
+        [
+          752,
+          761
+        ],
+        [
+          763,
+          763
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "导入资源来源、配方、战利品、交易/实体等内容展示",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "../_lib/auth",
+        "../_lib/content-language",
+        "../_lib/loot-table-model",
+        "../_lib/mod-export-api",
+        "../_lib/i18n-provider",
+        "../_lib/mod-content-api",
+        "./recipe-resource-slot",
+        "./unified-recipe-card",
+        "./recipe-edit-link",
+        "./rotating-resource"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIB-D007"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-b-delegated-resource-links: 拒绝3类危险URL、保留相对和HTTPS链接"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "ff9f16bff2fb1d3bc29544712157be999c1086251332b7972435ac39d3430af8"
+      }
+    }
+  ],
+  "coverage": {
+    "included_baseline_files": 5,
+    "fully_reviewed": 5,
+    "partial": 0,
+    "unreviewed": 0,
+    "excluded": 0,
+    "baseline_lines": 6234,
+    "final_lines": 6318
+  },
+  "validation_boundary": "deterministic Vitest/jsdom component tests with mocked own HTTP APIs; not full frontend/backend integration, browser E2E, supplier quality or production DB health.",
+  "additional_files": [
+    {
+      "path": "app/_components/user-profile.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "87684d2ef40d832017fe30be051bb31e490d07e181f440e8d8b5c089e4d61750",
+      "baseline_lines": 181,
+      "baseline_read_ranges": [
+        [
+          1,
+          181
+        ]
+      ],
+      "sha256": "a6410d4cecfed03e3891218a8054b0ddfe0ee6bff3e19264d304918442be5e01",
+      "lines": 199,
+      "read_ranges": [
+        [
+          1,
+          199
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          5,
+          5
+        ],
+        [
+          18,
+          22
+        ],
+        [
+          31,
+          34
+        ],
+        [
+          38,
+          38
+        ],
+        [
+          45,
+          45
+        ],
+        [
+          53,
+          53
+        ],
+        [
+          55,
+          55
+        ],
+        [
+          59,
+          61
+        ],
+        [
+          68,
+          68
+        ],
+        [
+          75,
+          76
+        ],
+        [
+          80,
+          80
+        ],
+        [
+          82,
+          83
+        ],
+        [
+          90,
+          90
+        ],
+        [
+          92,
+          92
+        ],
+        [
+          96,
+          97
+        ],
+        [
+          142,
+          142
+        ],
+        [
+          149,
+          149
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "公开用户资料、玩家档案、关注/屏蔽和个人工作台入口",
+      "call_chain": [
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "../_lib/skin-api",
+        "../_lib/user-api",
+        "./user-home",
+        "./skin-preview",
+        "./user-profile-overview",
+        "./user-avatar",
+        "./unified-report-dialog"
+      ],
+      "api_entrypoints": [
+        "/api/v1/users/${profile.id}/follow",
+        "/api/v1/users/${profile.id}/block"
+      ],
+      "issues": [
+        "FE-UIA-020"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-user-profile-race: A/B读取和follow/block迟到响应、cookie同目标账号切换；初始3测试2FAIL/1PASS，最终4PASS"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "a6410d4cecfed03e3891218a8054b0ddfe0ee6bff3e19264d304918442be5e01"
+      }
+    }
+  ],
+  "additional_coverage": {
+    "included": 1,
+    "fully_reviewed": 1,
+    "partial": 0,
+    "unreviewed": 0
+  },
+  "updated_at": "2026-10-01T14:48:58.150358+00:00"
+}

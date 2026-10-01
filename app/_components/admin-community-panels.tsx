@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import {
   ActivityEvent,
@@ -80,20 +80,39 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const requestController = useRef<AbortController | null>(null);
+  const pageSize = 50;
 
   const load = useCallback(async () => {
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
     setLoading(true);
     try {
-      const response = await apiRequest<{ items: CreatorClaim[] }>("/api/v1/admin/creator-claims", {}, token);
+      const response = await apiRequest<{ items: CreatorClaim[]; total?: number }>(`/api/v1/admin/creator-claims?limit=${pageSize}&offset=${page * pageSize}`, { signal: controller.signal }, token);
+      if (controller.signal.aborted) return;
+      // Older servers return the complete list without pagination metadata.
+      const resultTotal = response.total ?? 0;
+      setTotal(resultTotal);
+      if (page > 0 && page * pageSize >= resultTotal) {
+        setPage(Math.max(0, Math.ceil(resultTotal / pageSize) - 1));
+        return;
+      }
       setItems(response.items);
     } catch (error) {
+      if (controller.signal.aborted) return;
       notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [t, token]);
+  }, [page, t, token]);
 
-  useInitialLoad(load);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => { window.clearTimeout(timer); requestController.current?.abort(); };
+  }, [load]);
 
   async function review(item: CreatorClaim, status: "approved" | "rejected") {
     setReviewing(item.id);
@@ -106,7 +125,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
         },
         token,
       );
-      setItems((current) => current.filter((claim) => claim.id !== item.id));
+      await load();
       notifyAdmin(
         status === "approved" ? t("admin.community.claimApproved") : t("admin.community.claimRejected"),
         t("admin.noticeTitle"),
@@ -132,7 +151,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
       title={t("admin.community.creatorClaims")}
       description={t("admin.community.creatorClaimsDescription")}
       action={
-        <button className="button-secondary focus-ring" type="button" onClick={() => void load()}>
+        <button className="button-secondary focus-ring" disabled={loading || reviewing !== null} type="button" onClick={() => void load()}>
           {t("common.refresh")}
         </button>
       }
@@ -181,7 +200,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
             <div className="mt-4 flex justify-end gap-2">
               <button
                 className="button-secondary focus-ring"
-                disabled={reviewing === item.id}
+                disabled={loading || reviewing !== null}
                 type="button"
                 onClick={() => void review(item, "rejected")}
               >
@@ -189,7 +208,7 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
               </button>
               <button
                 className="button-primary focus-ring"
-                disabled={reviewing === item.id}
+                disabled={loading || reviewing !== null}
                 type="button"
                 onClick={() => void review(item, "approved")}
               >
@@ -199,6 +218,11 @@ export function CreatorClaimsPanel({ token }: { token: string }) {
           </article>
         ))}
       </div>
+      {total > pageSize ? <nav className="mt-5 flex items-center justify-between gap-3" aria-label={t("admin.reviews.paginationLabel")}>
+        <button className="button-secondary focus-ring" disabled={loading || reviewing !== null || page === 0} type="button" onClick={() => setPage((current) => Math.max(0, current - 1))}>{t("common.previous")}</button>
+        <span className="text-sm font-bold text-[var(--muted)]">{t("admin.reviews.pageSummary", { page: page + 1, pages: Math.max(1, Math.ceil(total / pageSize)), total })}</span>
+        <button className="button-secondary focus-ring" disabled={loading || reviewing !== null || (page + 1) * pageSize >= total} type="button" onClick={() => setPage((current) => current + 1)}>{t("common.next")}</button>
+      </nav> : null}
     </AdminPanel>
   );
 }
@@ -218,8 +242,10 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
   });
   const [appliedFilters, setAppliedFilters] = useState(filters);
   const pageSize = 100;
+  const requestSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     try {
       const query = new URLSearchParams({ limit: String(pageSize), offset: String(offset) });
@@ -234,15 +260,18 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
         {},
         token,
       );
-      setItems(response.items);
+      if (sequence === requestSequence.current) setItems(response.items);
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      if (sequence === requestSequence.current) notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }, [appliedFilters, offset, t, token]);
 
-  useInitialLoad(load);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => { window.clearTimeout(timer); requestSequence.current += 1; };
+  }, [load]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -393,6 +422,7 @@ export function EconomyConfigPanel({ token }: { token: string }) {
   const [config, setConfig] = useState<EconomyConfig | null>(null);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -401,16 +431,17 @@ export function EconomyConfigPanel({ token }: { token: string }) {
         apiRequest<{ items: Currency[] }>("/api/v1/admin/economy/currencies", {}, token),
       ]);
       setConfig(nextConfig);
+      setLoadError("");
       setCurrencies(response.items);
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      setLoadError(errorMessage(error, t("admin.community.loadFailed")));
     }
   }, [t, token]);
 
   useInitialLoad(load);
 
   async function save() {
-    if (!config) return;
+    if (!config || saving) return;
     setSaving(true);
     try {
       const saved = await apiRequest<EconomyConfig>(
@@ -427,9 +458,7 @@ export function EconomyConfigPanel({ token }: { token: string }) {
     }
   }
 
-  if (!config) {
-    return <PanelState>{t("common.loading")}</PanelState>;
-  }
+  if (!config) return <ConfigurationLoadState error={loadError} onRetry={() => { setLoadError(""); void load(); }} />;
 
   return (
     <AdminPanel
@@ -961,6 +990,7 @@ export function LevelConfigPanel({ token }: { token: string }) {
   const [config, setConfig] = useState<LevelConfig | null>(null);
   const [tracks, setTracks] = useState<RoleTrack[]>([]);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -969,9 +999,10 @@ export function LevelConfigPanel({ token }: { token: string }) {
         apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", {}, token),
       ]);
       setConfig(nextConfig);
+      setLoadError("");
       setTracks(nextTracks);
     } catch (error) {
-      notifyAdmin(errorMessage(error, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      setLoadError(errorMessage(error, t("admin.community.loadFailed")));
     }
   }, [t, token]);
 
@@ -980,7 +1011,7 @@ export function LevelConfigPanel({ token }: { token: string }) {
   const selectedTrack = tracks.find((track) => track.code === config?.roleTrackCode);
 
   async function save() {
-    if (!config) return;
+    if (!config || saving) return;
     setSaving(true);
     try {
       const saved = await apiRequest<LevelConfig>(
@@ -997,7 +1028,7 @@ export function LevelConfigPanel({ token }: { token: string }) {
     }
   }
 
-  if (!config) return <PanelState>{t("common.loading")}</PanelState>;
+  if (!config) return <ConfigurationLoadState error={loadError} onRetry={() => { setLoadError(""); void load(); }} />;
 
   return (
     <AdminPanel
@@ -1039,11 +1070,9 @@ export function LevelConfigPanel({ token }: { token: string }) {
                 onChange={(event) =>
                   setConfig({
                     ...config,
-                    levelThresholds: updateAt(
-                      config.levelThresholds,
-                      index,
-                      numberValue(event.target.value),
-                    ),
+                    levelThresholds: selectedTrack.roles.map((_, roleIndex) => roleIndex === index
+                      ? numberValue(event.target.value)
+                      : config.levelThresholds[roleIndex] ?? 0),
                   })
                 }
               />
@@ -1386,6 +1415,11 @@ export function TaskManagementPanel({ token }: { token: string }) {
       </div>
     </AdminPanel>
   );
+}
+
+function ConfigurationLoadState({ error, onRetry }: { error: string; onRetry: () => void }) {
+  const { t } = useI18n();
+  return <PanelState>{error ? <><p role="alert">{error}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={onRetry}>{t("common.retry")}</button></> : t("common.loading")}</PanelState>;
 }
 
 function AdminPanel({

@@ -1,0 +1,4588 @@
+{
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "scope_manifest": "docs/audit/review-manifests/frontend_ui_a.json",
+  "files": [
+    {
+      "path": "app/_components/admin-console.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "de5aea2563b68c440e6e52487f1ba1c6e416920326763970b70f6b444696afec",
+      "baseline_lines": 6092,
+      "baseline_read_ranges": [
+        [
+          1,
+          420
+        ],
+        [
+          421,
+          840
+        ],
+        [
+          841,
+          1240
+        ],
+        [
+          1241,
+          1640
+        ],
+        [
+          1641,
+          2040
+        ],
+        [
+          2041,
+          2440
+        ],
+        [
+          2441,
+          2830
+        ],
+        [
+          2831,
+          3220
+        ],
+        [
+          3221,
+          3620
+        ],
+        [
+          3621,
+          4020
+        ],
+        [
+          4021,
+          4420
+        ],
+        [
+          4421,
+          4820
+        ],
+        [
+          4821,
+          5220
+        ],
+        [
+          5221,
+          5630
+        ],
+        [
+          5631,
+          6092
+        ]
+      ],
+      "sha256": "c73e1e3ebe33867d684fa26391484b2eeed3a9f2344a607081b1965085cde7d9",
+      "lines": 6169,
+      "read_ranges": [
+        [
+          1,
+          6169
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          9,
+          10
+        ],
+        [
+          275,
+          275
+        ],
+        [
+          1963,
+          1964
+        ],
+        [
+          2026,
+          2026
+        ],
+        [
+          2035,
+          2035
+        ],
+        [
+          2037,
+          2039
+        ],
+        [
+          2041,
+          2042
+        ],
+        [
+          2044,
+          2059
+        ],
+        [
+          2211,
+          2211
+        ],
+        [
+          2339,
+          2339
+        ],
+        [
+          2665,
+          2684
+        ],
+        [
+          2687,
+          2687
+        ],
+        [
+          2693,
+          2694
+        ],
+        [
+          2743,
+          2743
+        ],
+        [
+          2746,
+          2746
+        ],
+        [
+          2801,
+          2801
+        ],
+        [
+          2805,
+          2805
+        ],
+        [
+          2880,
+          2880
+        ],
+        [
+          2885,
+          2887
+        ],
+        [
+          2889,
+          2890
+        ],
+        [
+          2894,
+          2898
+        ],
+        [
+          2902,
+          2924
+        ],
+        [
+          2927,
+          2929
+        ],
+        [
+          2946,
+          2946
+        ],
+        [
+          2956,
+          2956
+        ],
+        [
+          2968,
+          2969
+        ],
+        [
+          2980,
+          2980
+        ],
+        [
+          2996,
+          2999
+        ],
+        [
+          3388,
+          3388
+        ],
+        [
+          3777,
+          3778
+        ],
+        [
+          3793,
+          3793
+        ],
+        [
+          4260,
+          4262
+        ],
+        [
+          4267,
+          4268
+        ],
+        [
+          4271,
+          4271
+        ],
+        [
+          4282,
+          4282
+        ],
+        [
+          4299,
+          4299
+        ],
+        [
+          4451,
+          4453
+        ],
+        [
+          4469,
+          4469
+        ],
+        [
+          4485,
+          4485
+        ],
+        [
+          4491,
+          4491
+        ],
+        [
+          4495,
+          4509
+        ],
+        [
+          4606,
+          4606
+        ],
+        [
+          4612,
+          4612
+        ],
+        [
+          5895,
+          5895
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "后台导航、RBAC、配置、AI任务、通知模板和翻译管理",
+      "call_chain": [
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/auth",
+        "../_lib/api",
+        "../_lib/ai-translation-fill",
+        "../_lib/backend-status",
+        "../_lib/community-api",
+        "../_lib/i18n-provider",
+        "../_lib/markdown-config",
+        "../_lib/oss-upload",
+        "./admin-community-panels",
+        "./admin-mod-panels",
+        "./admin-server-panels",
+        "./admin-unresolved-references",
+        "./admin-content-attribute-panel",
+        "./admin-yggdrasil-panel",
+        "./admin-dashboard-panel",
+        "./theme-provider",
+        "./site-brand-provider",
+        "./admin-activity-retention-panel",
+        "./admin-anti-abuse-panel",
+        "./admin-governance-automation-panels",
+        "./admin-sticker-panel",
+        "./admin-project-authorship-panel"
+      ],
+      "api_entrypoints": [
+        "/api/v1/admin/dashboard",
+        "/api/v1/admin/config",
+        "/api/v1/admin/permissions",
+        "/api/v1/admin/users",
+        "/api/v1/admin/oss/uploads",
+        "/api/v1/admin/oss/scans",
+        "/api/v1/admin/oss/downloads",
+        "/api/v1/admin/roles",
+        "/api/v1/admin/roles/${encodeURIComponent(currentDraft.code)}",
+        "/api/v1/admin/users/${selectedUser.id}/permissions",
+        "/api/v1/admin/config/nats",
+        "/api/v1/admin/config/mod-imports",
+        "/api/v1/admin/ai/config",
+        "/api/v1/admin/ai/stats",
+        "/api/v1/admin/ai/tasks?${params}",
+        "/api/v1/admin/ai/tasks/${encodeURIComponent(id)}/${action}",
+        "/api/v1/admin/ai/tasks",
+        "/api/v1/admin/permission-defaults",
+        "/api/v1/admin/levels/config",
+        "/api/v1/admin/role-tracks",
+        "/api/v1/admin/role-tracks/${encodeURIComponent(selectedCode)}",
+        "/api/v1/admin/users/${selectedUser}/role-tracks/${encodeURIComponent(selectedTrack)}/${direction}",
+        "/api/v1/admin/config/general",
+        "/api/v1/admin/config/profile"
+      ],
+      "issues": [
+        "FE-UIA-004",
+        "FE-UIA-005",
+        "FE-UIA-006",
+        "FE-UIA-007",
+        "FE-UIA-008",
+        "FE-UIA-009",
+        "FE-UIA-019"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-admin-regressions: 权限读失败拒写、AI等待中人工编辑保留、retry/cancel稳定UID和确认；其他子面板仅静态/类型检查",
+        "Core LogCleanupPanel503部分成功typed details反馈；实际读5310–5400，Core组件2测试red1FAIL→2PASS。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "c73e1e3ebe33867d684fa26391484b2eeed3a9f2344a607081b1965085cde7d9"
+      },
+      "additional_final_recheck_ranges": [
+        [
+          5310,
+          5400
+        ]
+      ]
+    },
+    {
+      "path": "app/_components/user-home.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "fa08f178c43f098fabb352e0566bcbd9bf7019494519e1cf64a0a6d313009594",
+      "baseline_lines": 857,
+      "baseline_read_ranges": [
+        [
+          1,
+          280
+        ],
+        [
+          281,
+          570
+        ],
+        [
+          571,
+          857
+        ]
+      ],
+      "sha256": "347788cf8025fd6d70b571eb6b8046365b84e5dcc10da59ac071e56ce7293c91",
+      "lines": 894,
+      "read_ranges": [
+        [
+          1,
+          894
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          1,
+          894
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "账号工作台、个人信息、草稿和私有文件",
+      "call_chain": [
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "../_lib/user-api",
+        "../_lib/oss-upload",
+        "../_lib/favorite-api",
+        "./user-economy-panel",
+        "./user-player-profiles-panel",
+        "./content-language-preferences",
+        "./timezone-picker",
+        "./user-comment-watches-panel",
+        "./user-drafts-panel",
+        "./user-profile-overview",
+        "./user-avatar",
+        "./user-statistics-panel",
+        "./favorite-modpack-export",
+        "./project-follows-panel"
+      ],
+      "api_entrypoints": [
+        "/api/v1/users/me/notification-settings",
+        "/api/v1/users/me/profile-settings",
+        "/api/v1/users/me/overview",
+        "/api/v1/users/me/files",
+        "/api/v1/users/me/files/quota",
+        "/api/v1/users/me/files/presign"
+      ],
+      "issues": [
+        "FE-UIA-011",
+        "FE-UIA-021",
+        "FE-UIA-022"
+      ],
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ],
+      "final_version": {
+        "head": "ec7d4d5ea8c0be3aa602f98024285a177e7cf382",
+        "working_tree_sha256": "347788cf8025fd6d70b571eb6b8046365b84e5dcc10da59ac071e56ce7293c91"
+      },
+      "review_history": [
+        {
+          "sha256": "7380fee9cb1d9ee74e3c4a785f6a45858e7f85cdbd715546f008be2eb263eebe",
+          "lines": 862,
+          "validation": [
+            "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+            "行为尚未单独动态验证；整体回归由根代理记录。",
+            "真实浏览器长名称基线删除点击被右侧空态拦截；min-width/shrink/touch class修复，eslint exit0；修后浏览器验收由根单独记录。",
+            "根实际production browser普通用户profile保存/刷新持久、private长名收藏夹创建/刷新/正常点击删除204/刷新不存在PASS（case约4.5s、suite实际5.8s）；无forceClick；证据/tmp/mcmods-e2e-ordinary-seventh.log。账号切换scope尚非本次旅程断言。"
+          ],
+          "note": "保留补测前的静态/浏览器边界，不沿用旧SHA作为最终复查"
+        }
+      ],
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。"
+    },
+    {
+      "path": "app/_components/mod-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "a3dbf501fa77e904b7d1e12781f2e8a99f36f3ca631422da37abe31867ce1e4b",
+      "baseline_lines": 759,
+      "baseline_read_ranges": [
+        [
+          1,
+          260
+        ],
+        [
+          261,
+          510
+        ],
+        [
+          511,
+          759
+        ]
+      ],
+      "sha256": "7bfc9e23e95e0cb0981ce2093bd7d7f11917b0174455f8c52fc3ff68a39c4b57",
+      "lines": 772,
+      "read_ranges": [
+        [
+          1,
+          772
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          91,
+          96
+        ],
+        [
+          102,
+          104
+        ],
+        [
+          131,
+          131
+        ],
+        [
+          152,
+          152
+        ],
+        [
+          163,
+          164
+        ],
+        [
+          174,
+          174
+        ],
+        [
+          225,
+          225
+        ],
+        [
+          309,
+          309
+        ],
+        [
+          314,
+          315
+        ],
+        [
+          327,
+          327
+        ],
+        [
+          457,
+          457
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "模组创建/编辑、外部导入、局部化及媒体上传",
+      "call_chain": [
+        "next/link",
+        "next/image",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/mod-api",
+        "../_lib/minecraft-version-api",
+        "../_lib/mod-catalog-data",
+        "../_lib/i18n-provider",
+        "../_lib/oss-upload",
+        "../_lib/project-identifiers",
+        "./minecraft-version-picker",
+        "./creator-picker",
+        "./tools-playground",
+        "./editor/content-language-switcher",
+        "./editor/mod-resource-picker",
+        "./square-image-crop-dialog",
+        "../_lib/editor-types",
+        "./file-drop-zone",
+        "./review-edit-lock",
+        "../_lib/use-auto-draft",
+        "./draft-autosave-status",
+        "./project-editor-fields",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [
+        "/api/v1/mods/${encodeURIComponent(siteId)}/editor",
+        "/api/v1/mod-imports",
+        "/api/v1/mod-imports/${encodeURIComponent(job.id)}",
+        "/api/v1/mods/${encodeURIComponent(siteId)}/revisions",
+        "/api/v1/mods"
+      ],
+      "issues": [
+        "FE-UIA-018"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-load-regressions: 旧内容读失败禁止空编辑/自动草稿、访客登录入口"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "7bfc9e23e95e0cb0981ce2093bd7d7f11917b0174455f8c52fc3ff68a39c4b57"
+      }
+    },
+    {
+      "path": "app/_components/user-economy-panel.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "3d065738352975c0818d3524d2cc2d2f002aec70f82aef866aab0ee32f16297d",
+      "baseline_lines": 677,
+      "baseline_read_ranges": [
+        [
+          1,
+          240
+        ],
+        [
+          241,
+          480
+        ],
+        [
+          481,
+          677
+        ]
+      ],
+      "sha256": "3d065738352975c0818d3524d2cc2d2f002aec70f82aef866aab0ee32f16297d",
+      "lines": 677,
+      "read_ranges": [
+        [
+          1,
+          677
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "余额、商店、签到和任务兑换",
+      "call_chain": [
+        "react",
+        "../_lib/api",
+        "../_lib/community-api",
+        "../_lib/i18n-provider",
+        "./catalog-resource-icon",
+        "../_lib/oss-upload",
+        "../_lib/site-notice",
+        "../_lib/editor-types",
+        "./editor/mod-resource-picker"
+      ],
+      "api_entrypoints": [
+        "/api/v1/users/me/economy",
+        "/api/v1/economy/currencies",
+        "/api/v1/shop/items",
+        "/api/v1/users/me/tasks",
+        "/api/v1/users/me/economy/transactions",
+        "/api/v1/users/me/experience/transactions",
+        "/api/v1/users/me/economy/transactions?cursor=${encodeURIComponent(currencyCursor)}",
+        "/api/v1/users/me/experience/transactions?cursor=${encodeURIComponent(experienceCursor)}",
+        "/api/v1/users/me/economy/checkin",
+        "/api/v1/users/me/economy/transfer",
+        "/api/v1/users/me/shop/purchase",
+        "/api/v1/users/me/shop/use",
+        "/api/v1/users/me/profile-settings"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "3d065738352975c0818d3524d2cc2d2f002aec70f82aef866aab0ee32f16297d"
+      }
+    },
+    {
+      "path": "app/_components/mod-catalog.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "f12ca5db074eb763ee51fc8589dd5b1bf6298e9cfcd0e08d55f2b8b34a3b585d",
+      "baseline_lines": 640,
+      "baseline_read_ranges": [
+        [
+          1,
+          230
+        ],
+        [
+          231,
+          445
+        ],
+        [
+          446,
+          640
+        ]
+      ],
+      "sha256": "f12ca5db074eb763ee51fc8589dd5b1bf6298e9cfcd0e08d55f2b8b34a3b585d",
+      "lines": 640,
+      "read_ranges": [
+        [
+          1,
+          640
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "模组列表、URL筛选、排序分页及详情入口",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/catalog-sort",
+        "../_lib/catalog-state",
+        "../_lib/mod-api",
+        "../_lib/modpack-api",
+        "../_lib/mod-catalog-data",
+        "../_lib/i18n-provider",
+        "../_lib/favorite-api",
+        "./favorite-picker-modal",
+        "./project-submission-modal",
+        "./catalog-list-ui",
+        "./catalog-minecraft-version-filter",
+        "./catalog-contained-mod-filter",
+        "./minecraft-version-picker"
+      ],
+      "api_entrypoints": [
+        "/api/v1/modpacks",
+        "/api/v1/mods"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "f12ca5db074eb763ee51fc8589dd5b1bf6298e9cfcd0e08d55f2b8b34a3b585d"
+      }
+    },
+    {
+      "path": "app/_components/editor/recipe-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "1a3bdb866f0e06513d636c28c6d62e1659fe0e7ed2aa652278d0b4aa44aa4f13",
+      "baseline_lines": 580,
+      "baseline_read_ranges": [
+        [
+          1,
+          210
+        ],
+        [
+          211,
+          420
+        ],
+        [
+          421,
+          580
+        ]
+      ],
+      "sha256": "1a3bdb866f0e06513d636c28c6d62e1659fe0e7ed2aa652278d0b4aa44aa4f13",
+      "lines": 580,
+      "read_ranges": [
+        [
+          1,
+          580
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "配方输入、标签和流体槽、可变内容模板",
+      "call_chain": [
+        "react",
+        "../../_lib/api",
+        "../../_lib/editor-api",
+        "../../_lib/editor-types",
+        "../../_lib/recipe-editor-api",
+        "../../_lib/recipe-editor-types",
+        "../../_lib/i18n-provider",
+        "../minecraft-version-picker",
+        "./content-language-switcher",
+        "./resource-picker-dialog",
+        "./selected-resource-list"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "1a3bdb866f0e06513d636c28c6d62e1659fe0e7ed2aa652278d0b4aa44aa4f13"
+      }
+    },
+    {
+      "path": "app/_components/server-submission-wizard.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "8ab5bf5e463c83503739874576665b519fb16bd0af44bdfaa19c1f407788b1b1",
+      "baseline_lines": 559,
+      "baseline_read_ranges": [
+        [
+          1,
+          220
+        ],
+        [
+          221,
+          559
+        ]
+      ],
+      "sha256": "8ab5bf5e463c83503739874576665b519fb16bd0af44bdfaa19c1f407788b1b1",
+      "lines": 559,
+      "read_ranges": [
+        [
+          1,
+          559
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "服务器提交表单、平台协议、运行状态及媒体",
+      "call_chain": [
+        "react",
+        "../_lib/editor-types",
+        "../_lib/i18n-provider",
+        "../_lib/oss-upload",
+        "../_lib/server-api",
+        "./editor/mod-resource-picker",
+        "./minecraft-language-picker",
+        "./minecraft-version-picker",
+        "./tools-playground",
+        "../_lib/use-auto-draft",
+        "./draft-autosave-status"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "8ab5bf5e463c83503739874576665b519fb16bd0af44bdfaa19c1f407788b1b1"
+      }
+    },
+    {
+      "path": "app/_components/catalog-manual-editors.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "75e03b996fa3e5e28657e0b75d4116d9f79ee1bafb921b3ceaef0ff023fc5423",
+      "baseline_lines": 541,
+      "baseline_read_ranges": [
+        [
+          1,
+          300
+        ],
+        [
+          301,
+          541
+        ]
+      ],
+      "sha256": "75e03b996fa3e5e28657e0b75d4116d9f79ee1bafb921b3ceaef0ff023fc5423",
+      "lines": 541,
+      "read_ranges": [
+        [
+          1,
+          541
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "物品、标签、配方与生物资源人工编辑",
+      "call_chain": [
+        "react",
+        "../_lib/catalog-editor-api",
+        "../_lib/content-language",
+        "../_lib/editor-types",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "./editor/content-language-switcher",
+        "./editor/editor-shell",
+        "./editor/resource-picker-dialog",
+        "./editor/review-status-panel",
+        "./editor/selected-resource-list",
+        "./tools-playground",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "75e03b996fa3e5e28657e0b75d4116d9f79ee1bafb921b3ceaef0ff023fc5423"
+      }
+    },
+    {
+      "path": "app/_components/global-catalog.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "d48dd3af65361144531fd75596d4d9a52c612016bd3c3cd04ef5ca1d24971890",
+      "baseline_lines": 483,
+      "baseline_read_ranges": [
+        [
+          1,
+          245
+        ],
+        [
+          246,
+          483
+        ]
+      ],
+      "sha256": "d48dd3af65361144531fd75596d4d9a52c612016bd3c3cd04ef5ca1d24971890",
+      "lines": 483,
+      "read_ranges": [
+        [
+          1,
+          483
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "全站资源列表、注册表类型及版本过滤",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/auth",
+        "../_lib/catalog-editor-api",
+        "../_lib/content-language",
+        "../_lib/recipe-editor-api",
+        "../_lib/editor-types",
+        "./editor/recipe-editor",
+        "./editor/recipe-template-editor",
+        "../_lib/global-catalog-api",
+        "../_lib/i18n-provider",
+        "../_lib/markdown-config",
+        "./markdown-renderer",
+        "./catalog-manual-editors",
+        "./page-feedback",
+        "./editor/localization-status-badge",
+        "./editor/content-translation-control",
+        "./comment-section",
+        "./global-recipe-card",
+        "./rotating-resource"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "d48dd3af65361144531fd75596d4d9a52c612016bd3c3cd04ef5ca1d24971890"
+      }
+    },
+    {
+      "path": "app/_components/mod-catalog-data.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "5e2ea7cfccd46ef025a63a99fceb2b257f78d40d3c7e3a8ee310a16aa98b2e89",
+      "baseline_lines": 471,
+      "baseline_read_ranges": [
+        [
+          1,
+          260
+        ],
+        [
+          260,
+          471
+        ]
+      ],
+      "sha256": "b7e0afc589771d5ee3ce05c9d390730342f7981e9fffcd84da28e5a7e3fdd196",
+      "lines": 485,
+      "read_ranges": [
+        [
+          1,
+          485
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          4,
+          4
+        ],
+        [
+          190,
+          198
+        ],
+        [
+          212,
+          213
+        ],
+        [
+          215,
+          215
+        ],
+        [
+          221,
+          221
+        ],
+        [
+          297,
+          299
+        ],
+        [
+          302,
+          304
+        ],
+        [
+          322,
+          322
+        ],
+        [
+          354,
+          354
+        ],
+        [
+          356,
+          356
+        ],
+        [
+          358,
+          358
+        ],
+        [
+          362,
+          362
+        ],
+        [
+          367,
+          367
+        ],
+        [
+          385,
+          385
+        ],
+        [
+          389,
+          389
+        ],
+        [
+          453,
+          454
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "版本内容栏目、导入包上传/恢复/取消和任务反馈",
+      "call_chain": [
+        "next/link",
+        "../_lib/auth",
+        "react",
+        "../_lib/content-language",
+        "../_lib/mod-export-api",
+        "../_lib/mod-export-upload-store",
+        "../_lib/mod-content-api",
+        "../_lib/oss-upload",
+        "../_lib/i18n-provider",
+        "./iconfont",
+        "./modid-confirmation-card"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIA-010"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "b7e0afc589771d5ee3ce05c9d390730342f7981e9fffcd84da28e5a7e3fdd196"
+      }
+    },
+    {
+      "path": "app/_components/favorite-modpack-export.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "075bb100a3dcee7d325d1a56f7c77d1f3ea98f0d8e40a6f3f6068e6e1b321906",
+      "baseline_lines": 437,
+      "baseline_read_ranges": [
+        [
+          1,
+          245
+        ],
+        [
+          246,
+          437
+        ]
+      ],
+      "sha256": "9366ab214fcb7502da351ec836461633bea6d2693f492e0ce551420c626d4568",
+      "lines": 470,
+      "read_ranges": [
+        [
+          1,
+          470
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          1,
+          470
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "收藏夹整合包检查、导出、轮询及下载",
+      "call_chain": [
+        "react",
+        "../_lib/favorite-api",
+        "../_lib/oss-upload",
+        "../_lib/i18n-provider",
+        "./minecraft-version-picker"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIA-016"
+      ],
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ],
+      "final_version": {
+        "head": "ec7d4d5ea8c0be3aa602f98024285a177e7cf382",
+        "working_tree_sha256": "9366ab214fcb7502da351ec836461633bea6d2693f492e0ce551420c626d4568"
+      },
+      "review_history": [
+        {
+          "sha256": "def91b80cb771107765293ae35b1ff593f8fa13b69670464427f19815e0b533d",
+          "lines": 450,
+          "validation": [
+            "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+            "行为尚未单独动态验证；整体回归由根代理记录。"
+          ],
+          "note": "保留补测前的静态/浏览器边界，不沿用旧SHA作为最终复查"
+        }
+      ],
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。"
+    },
+    {
+      "path": "app/_components/admin-sticker-panel.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "f27a615685dc1cc00daf9927a5048199a82848db4b93746bc618e3a068411f62",
+      "baseline_lines": 421,
+      "baseline_read_ranges": [
+        [
+          1,
+          230
+        ],
+        [
+          231,
+          421
+        ]
+      ],
+      "sha256": "e20b22d0d9c6a49ac88ee5b00992d7b4f6c3128a04f8fb8f1fd28b0c8100ecd7",
+      "lines": 426,
+      "read_ranges": [
+        [
+          1,
+          426
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          133,
+          141
+        ],
+        [
+          143,
+          143
+        ],
+        [
+          150,
+          150
+        ],
+        [
+          154,
+          154
+        ],
+        [
+          161,
+          161
+        ],
+        [
+          170,
+          170
+        ],
+        [
+          191,
+          191
+        ],
+        [
+          206,
+          206
+        ],
+        [
+          211,
+          211
+        ],
+        [
+          277,
+          277
+        ],
+        [
+          281,
+          281
+        ],
+        [
+          299,
+          299
+        ],
+        [
+          302,
+          302
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "表情包/表情管理、上传与排序启停",
+      "call_chain": [
+        "react",
+        "../_lib/api",
+        "../_lib/i18n-provider",
+        "../_lib/oss-upload"
+      ],
+      "api_entrypoints": [
+        "/api/v1/admin/stickers",
+        "/api/v1/admin/sticker-packs",
+        "/api/v1/admin/oss/uploads/presign",
+        "/api/v1/admin/oss/uploads/complete",
+        "/api/v1/admin/sticker-packs/${encodeURIComponent(selectedPack)}/stickers",
+        "/api/v1/admin/sticker-packs/${encodeURIComponent(pack.code)}",
+        "/api/v1/admin/sticker-packs/${encodeURIComponent(pack.code)}/stickers/${encodeURIComponent(sticker.code)}",
+        "/api/v1/oss/files/${sticker.imageFileId}/content"
+      ],
+      "issues": [
+        "FE-UIA-015"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "e20b22d0d9c6a49ac88ee5b00992d7b4f6c3128a04f8fb8f1fd28b0c8100ecd7"
+      }
+    },
+    {
+      "path": "app/_components/creator-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "dfe1a099161c02bf22301979785537958381fa59f572fcc2289a8a6333d826db",
+      "baseline_lines": 384,
+      "baseline_read_ranges": [
+        [
+          1,
+          210
+        ],
+        [
+          211,
+          384
+        ]
+      ],
+      "sha256": "dfe1a099161c02bf22301979785537958381fa59f572fcc2289a8a6333d826db",
+      "lines": 384,
+      "read_ranges": [
+        [
+          1,
+          384
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "作者/团队元数据、多语言说明及头像编辑",
+      "call_chain": [
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/community-api",
+        "../_lib/i18n-provider",
+        "../_lib/mod-api",
+        "../_lib/oss-upload",
+        "../_lib/site-notice",
+        "../_lib/use-auto-draft",
+        "./creator-picker",
+        "./draft-autosave-status",
+        "./editor/content-language-switcher",
+        "./tools-playground",
+        "./square-image-crop-dialog",
+        "./review-edit-lock",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [
+        "/api/v1/creator-roles",
+        "/api/v1/creators/${encodeURIComponent(publicId)}",
+        "/api/v1/creator-imports",
+        "/api/v1/creators/${encodeURIComponent(detail!.creator.publicId)}",
+        "/api/v1/creators"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "dfe1a099161c02bf22301979785537958381fa59f572fcc2289a8a6333d826db"
+      }
+    },
+    {
+      "path": "app/_components/user-player-profiles-panel.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "5f92edf70cfe4cc7c1dee0d915cf83c74b2885d7491e899b1c14c2255acc4997",
+      "baseline_lines": 352,
+      "baseline_read_ranges": [
+        [
+          1,
+          352
+        ]
+      ],
+      "sha256": "5f92edf70cfe4cc7c1dee0d915cf83c74b2885d7491e899b1c14c2255acc4997",
+      "lines": 352,
+      "read_ranges": [
+        [
+          1,
+          352
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "玩家档案、UUID、皮肤与验证状态",
+      "call_chain": [
+        "next/dynamic",
+        "next/link",
+        "react",
+        "../_lib/i18n-provider",
+        "../_lib/skin-api",
+        "../_lib/site-notice",
+        "./skin-preview"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "5f92edf70cfe4cc7c1dee0d915cf83c74b2885d7491e899b1c14c2255acc4997"
+      }
+    },
+    {
+      "path": "app/_components/user-profile-overview.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "c068ad811fb90fed2cd0529366d21d101248667325c67a717d45c7f6b1fae631",
+      "baseline_lines": 345,
+      "baseline_read_ranges": [
+        [
+          1,
+          260
+        ],
+        [
+          261,
+          345
+        ]
+      ],
+      "sha256": "c068ad811fb90fed2cd0529366d21d101248667325c67a717d45c7f6b1fae631",
+      "lines": 345,
+      "read_ranges": [
+        [
+          1,
+          345
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "公开用户资料、角色、创作与计数",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/api",
+        "../_lib/favorite-api",
+        "../_lib/i18n-provider",
+        "./catalog-resource-icon"
+      ],
+      "api_entrypoints": [
+        "/api/v1/users/${userId}/showcase",
+        "/api/v1/users/${encodeURIComponent(userId)}/contributions?year=${year}"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "c068ad811fb90fed2cd0529366d21d101248667325c67a717d45c7f6b1fae631"
+      }
+    },
+    {
+      "path": "app/_components/server-detail.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "b9ece7a46537ce57a9d3111dddeabb74f58acf46042c65bec87335d27a59c3d5",
+      "baseline_lines": 327,
+      "baseline_read_ranges": [
+        [
+          1,
+          200
+        ],
+        [
+          201,
+          327
+        ]
+      ],
+      "sha256": "b9ece7a46537ce57a9d3111dddeabb74f58acf46042c65bec87335d27a59c3d5",
+      "lines": 327,
+      "read_ranges": [
+        [
+          1,
+          327
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "服务器资料、支持版本和平台连接展示",
+      "call_chain": [
+        "next/link",
+        "react",
+        "next/navigation",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "../_lib/minecraft-languages",
+        "../_lib/markdown-config",
+        "../_lib/server-api",
+        "./markdown-renderer",
+        "./server-submission-wizard",
+        "./rating-panel",
+        "./content-metrics-panel",
+        "./project-changelog",
+        "./unified-report-dialog",
+        "./project-follow-button",
+        "./project-editor-application"
+      ],
+      "api_entrypoints": [
+        "/api/v1/servers/${encodeURIComponent(serverId)}",
+        "/api/v1/servers/${encodeURIComponent(serverId)}/history?range=${range}"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "b9ece7a46537ce57a9d3111dddeabb74f58acf46042c65bec87335d27a59c3d5"
+      }
+    },
+    {
+      "path": "app/_components/admin-mod-panels.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "4d3477f2a003fa6177fd63113f0e5c9e95a040371907de1e50d9994f9c505767",
+      "baseline_lines": 283,
+      "baseline_read_ranges": [
+        [
+          1,
+          283
+        ]
+      ],
+      "sha256": "d72d014c07afbb8e25098224e9ce6851deb67e09104a5e486e9145342c2124a5",
+      "lines": 305,
+      "read_ranges": [
+        [
+          1,
+          305
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          173,
+          278
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "模组分类、加载器及导入后台维护",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/api",
+        "../_lib/mod-api",
+        "../_lib/minecraft-version-api",
+        "../_lib/i18n-provider",
+        "./minecraft-version-picker",
+        "../_lib/oss-upload",
+        "../_lib/auth",
+        "./page-feedback",
+        "./project-editor-application"
+      ],
+      "api_entrypoints": [
+        "/api/v1/admin/config/minecraft-versions",
+        "/api/v1/admin/config/minecraft-versions/sync",
+        "/api/v1/reviews/content?${contentSearch}",
+        "/api/v1/admin/project-editor-applications",
+        "/api/v1/admin/project-editor-applications/${item.id}",
+        "/api/v1/admin/project-editor-applications/${applicationID}/attachments/${attachmentID}/presign"
+      ],
+      "issues": [
+        "FE-CORE-APPLICATIONS-PAGINATION"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。",
+        "Core pagination改动区间人工重读：offset/limit50、total回退、审核后末页rebase、AbortController隔离。Core tests/application-pagination_core.test.tsx 5组件测试由Core记录；本代理未重复宣称真实PG或浏览器验收。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "d72d014c07afbb8e25098224e9ce6851deb67e09104a5e486e9145342c2124a5"
+      }
+    },
+    {
+      "path": "app/_components/site-login-panel.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "80a5b0dcf251bfc4f788a313257715479c9d59f51a6925f0297b799030f36c3a",
+      "baseline_lines": 277,
+      "baseline_read_ranges": [
+        [
+          1,
+          277
+        ]
+      ],
+      "sha256": "80a5b0dcf251bfc4f788a313257715479c9d59f51a6925f0297b799030f36c3a",
+      "lines": 277,
+      "read_ranges": [
+        [
+          1,
+          277
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "登录、注册、密码重设和安全跳转",
+      "call_chain": [
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/auth",
+        "../_lib/api",
+        "../_lib/i18n-provider",
+        "../_lib/navigation",
+        "./minecraft-language-picker",
+        "./timezone-picker"
+      ],
+      "api_entrypoints": [
+        "/api/v1/auth/me",
+        "/api/v1/auth/login",
+        "/api/v1/auth/email-login",
+        "/api/v1/auth/register",
+        "/api/v1/auth/email-code"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "80a5b0dcf251bfc4f788a313257715479c9d59f51a6925f0297b799030f36c3a"
+      }
+    },
+    {
+      "path": "app/_components/editor/mod-resource-picker.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "62aad5d7fbab80d93c0ac645361b0105a08322ef661dc08e480e2fe3f450b26e",
+      "baseline_lines": 256,
+      "baseline_read_ranges": [
+        [
+          1,
+          256
+        ]
+      ],
+      "sha256": "62aad5d7fbab80d93c0ac645361b0105a08322ef661dc08e480e2fe3f450b26e",
+      "lines": 256,
+      "read_ranges": [
+        [
+          1,
+          256
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "模组物品/配方选择、未解析引用及查询",
+      "call_chain": [
+        "react",
+        "../../_lib/api",
+        "../../_lib/editor-types",
+        "../../_lib/mod-api",
+        "../../_lib/modpack-api",
+        "../../_lib/server-api",
+        "../../_lib/simple-project-api",
+        "../../_lib/i18n-provider",
+        "./resource-picker-dialog",
+        "./selected-resource-list"
+      ],
+      "api_entrypoints": [
+        "/api/v1/modpacks?${parameters}",
+        "/api/v1/servers?${parameters}",
+        "/api/v1/content-projects/${projectType}?${parameters}",
+        "/api/v1/mods?${parameters}"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "62aad5d7fbab80d93c0ac645361b0105a08322ef661dc08e480e2fe3f450b26e"
+      }
+    },
+    {
+      "path": "app/_components/rating-panel.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "81a8b652b7f4ac224244cd5ba758345d071697faecd2d8e857563218bed911a0",
+      "baseline_lines": 256,
+      "baseline_read_ranges": [
+        [
+          1,
+          256
+        ]
+      ],
+      "sha256": "08043f091f71b043d2a2b35376cb375ab9ed06e55aba27187377485016155bd2",
+      "lines": 264,
+      "read_ranges": [
+        [
+          1,
+          264
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          5,
+          5
+        ],
+        [
+          34,
+          37
+        ],
+        [
+          39,
+          55
+        ],
+        [
+          59,
+          61
+        ],
+        [
+          63,
+          66
+        ],
+        [
+          103,
+          104
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "评分汇总、编辑评分、评价分页与角色能力",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "react",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "../_lib/rating-api"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIA-003"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-regressions: 前目标延迟结果不覆盖当前评分"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "08043f091f71b043d2a2b35376cb375ab9ed06e55aba27187377485016155bd2"
+      }
+    },
+    {
+      "path": "app/_components/minecraft-language-picker.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "f044c1cbc3ee372192902b700901b8fe2e90e6e6e2f3df9d601bafef82e0ce3a",
+      "baseline_lines": 249,
+      "baseline_read_ranges": [
+        [
+          1,
+          249
+        ]
+      ],
+      "sha256": "f044c1cbc3ee372192902b700901b8fe2e90e6e6e2f3df9d601bafef82e0ce3a",
+      "lines": 249,
+      "read_ranges": [
+        [
+          1,
+          249
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "Minecraft内容语言搜索与选择",
+      "call_chain": [
+        "react",
+        "react-dom",
+        "../_lib/minecraft-languages",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "f044c1cbc3ee372192902b700901b8fe2e90e6e6e2f3df9d601bafef82e0ce3a"
+      }
+    },
+    {
+      "path": "app/_components/modpack-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "cf544f645587adffb10aa8093f2942d6593d28b1b6c8fb850e95ea09eba608a6",
+      "baseline_lines": 235,
+      "baseline_read_ranges": [
+        [
+          1,
+          224
+        ],
+        [
+          209,
+          235
+        ]
+      ],
+      "sha256": "3dfd4ab13dc06d0008b476f4820bcf72f7dcc3583cec40a2e1fdda3f222d5bf2",
+      "lines": 247,
+      "read_ranges": [
+        [
+          1,
+          247
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          39,
+          44
+        ],
+        [
+          53,
+          55
+        ],
+        [
+          71,
+          71
+        ],
+        [
+          87,
+          87
+        ],
+        [
+          96,
+          97
+        ],
+        [
+          102,
+          102
+        ],
+        [
+          136,
+          136
+        ],
+        [
+          210,
+          210
+        ],
+        [
+          212,
+          213
+        ],
+        [
+          216,
+          216
+        ],
+        [
+          228,
+          228
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "整合包创建/编辑、导入及可恢复草稿",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/mod-catalog-data",
+        "../_lib/mod-api",
+        "../_lib/minecraft-version-api",
+        "../_lib/modpack-api",
+        "../_lib/editor-types",
+        "../_lib/i18n-provider",
+        "../_lib/oss-upload",
+        "../_lib/project-identifiers",
+        "./creator-picker",
+        "./file-drop-zone",
+        "./review-edit-lock",
+        "./mod-editor",
+        "./editor/mod-resource-picker",
+        "./square-image-crop-dialog",
+        "./tools-playground",
+        "../_lib/use-auto-draft",
+        "./draft-autosave-status",
+        "./project-editor-fields",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [
+        "/api/v1/modpacks/${encodeURIComponent(siteId)}/editor",
+        "/api/v1/modpack-imports",
+        "/api/v1/modpack-imports/${encodeURIComponent(job.id)}",
+        "/api/v1/modpacks/${encodeURIComponent(siteId)}",
+        "/api/v1/modpacks"
+      ],
+      "issues": [
+        "FE-UIA-018"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-load-regressions: 旧内容读失败禁止空编辑/自动草稿、访客登录入口"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "3dfd4ab13dc06d0008b476f4820bcf72f7dcc3583cec40a2e1fdda3f222d5bf2"
+      }
+    },
+    {
+      "path": "app/_components/aspect-image-crop-dialog.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "b87f8f5b172007bb59a84d8fb12eb666503cef197580f15b27f0fc8b1c6b33b3",
+      "baseline_lines": 230,
+      "baseline_read_ranges": [
+        [
+          1,
+          230
+        ]
+      ],
+      "sha256": "b87f8f5b172007bb59a84d8fb12eb666503cef197580f15b27f0fc8b1c6b33b3",
+      "lines": 230,
+      "read_ranges": [
+        [
+          1,
+          230
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "图片裁剪、尺寸校验、canvas导出与对象URL清理",
+      "call_chain": [
+        "react",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "b87f8f5b172007bb59a84d8fb12eb666503cef197580f15b27f0fc8b1c6b33b3"
+      }
+    },
+    {
+      "path": "app/_components/simple-project-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "6756fc3d7e3d87613a63f124e19cb4fbf8c208ab7e2873e1602e11691a64fa6b",
+      "baseline_lines": 227,
+      "baseline_read_ranges": [
+        [
+          1,
+          150
+        ],
+        [
+          151,
+          227
+        ]
+      ],
+      "sha256": "1e77acaa84306d02c6b0cf86b9c4c5237b3045e707dc6183a9b56517c56d96b8",
+      "lines": 241,
+      "read_ranges": [
+        [
+          1,
+          241
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          29,
+          34
+        ],
+        [
+          49,
+          51
+        ],
+        [
+          62,
+          62
+        ],
+        [
+          64,
+          64
+        ],
+        [
+          67,
+          67
+        ],
+        [
+          74,
+          75
+        ],
+        [
+          77,
+          80
+        ],
+        [
+          88,
+          88
+        ],
+        [
+          176,
+          176
+        ],
+        [
+          208,
+          208
+        ],
+        [
+          210,
+          211
+        ],
+        [
+          214,
+          214
+        ],
+        [
+          229,
+          229
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "插件等项目创建/编辑、父项目和局部化",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/editor-types",
+        "../_lib/i18n-provider",
+        "../_lib/mod-api",
+        "../_lib/mod-catalog-data",
+        "../_lib/oss-upload",
+        "../_lib/project-identifiers",
+        "../_lib/simple-project-api",
+        "./creator-picker",
+        "./editor/mod-resource-picker",
+        "./file-drop-zone",
+        "./minecraft-version-picker",
+        "./mod-editor",
+        "./review-edit-lock",
+        "./square-image-crop-dialog",
+        "./tools-playground",
+        "../_lib/use-auto-draft",
+        "./draft-autosave-status",
+        "./project-editor-fields",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [
+        "/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}/editor",
+        "/api/v1/content-project-imports/${projectType}",
+        "/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}",
+        "/api/v1/content-projects/${projectType}"
+      ],
+      "issues": [
+        "FE-UIA-018"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-load-regressions: 旧内容读失败禁止空编辑/自动草稿、访客登录入口"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "1e77acaa84306d02c6b0cf86b9c4c5237b3045e707dc6183a9b56517c56d96b8"
+      }
+    },
+    {
+      "path": "app/_components/community-post-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "a1617bf88a8229d682389186bac0900b583f05aa90e8ec32af203c0bf705db64",
+      "baseline_lines": 201,
+      "baseline_read_ranges": [
+        [
+          1,
+          201
+        ]
+      ],
+      "sha256": "a1617bf88a8229d682389186bac0900b583f05aa90e8ec32af203c0bf705db64",
+      "lines": 201,
+      "read_ranges": [
+        [
+          1,
+          201
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "讨论/教程/问题等社区内容创建和编辑",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/community-post-api",
+        "../_lib/community-api",
+        "../_lib/editor-types",
+        "../_lib/i18n-provider",
+        "../_lib/oss-upload",
+        "../_lib/use-auto-draft",
+        "./aspect-image-crop-dialog",
+        "./draft-autosave-status",
+        "./editor/resource-picker-dialog",
+        "./editor/mod-resource-picker",
+        "./editor/selected-resource-list",
+        "./minecraft-version-picker",
+        "./tools-playground",
+        "./review-edit-lock",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [
+        "/api/v1/economy/currencies"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "a1617bf88a8229d682389186bac0900b583f05aa90e8ec32af203c0bf705db64"
+      }
+    },
+    {
+      "path": "app/_components/home-page.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "07e29ddd7519c6bb5e3b8de6bb889e60cae93b6b398121b8f1eef3d51dace0d4",
+      "baseline_lines": 193,
+      "baseline_read_ranges": [
+        [
+          1,
+          193
+        ]
+      ],
+      "sha256": "07e29ddd7519c6bb5e3b8de6bb889e60cae93b6b398121b8f1eef3d51dace0d4",
+      "lines": 193,
+      "read_ranges": [
+        [
+          1,
+          193
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "首页资源卡片和统计入口",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/community-post-api",
+        "../_lib/i18n-provider",
+        "../_lib/mod-api",
+        "../_lib/modpack-api",
+        "../_lib/simple-project-api"
+      ],
+      "api_entrypoints": [
+        "/api/v1/mods?sort=heat&order=desc&limit=8&offset=0",
+        "/api/v1/modpacks?sort=published&order=desc&limit=4&offset=0",
+        "/api/v1/content-projects/plugin?sort=published&order=desc&limit=4&offset=0"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "07e29ddd7519c6bb5e3b8de6bb889e60cae93b6b398121b8f1eef3d51dace0d4"
+      }
+    },
+    {
+      "path": "app/_components/permission-comparison.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "f53cd162ea8abb52b0d5bf8e9bd13ba3fb87da2e2566ea0b3cd84ce30cd0030c",
+      "baseline_lines": 185,
+      "baseline_read_ranges": [
+        [
+          1,
+          185
+        ]
+      ],
+      "sha256": "f53cd162ea8abb52b0d5bf8e9bd13ba3fb87da2e2566ea0b3cd84ce30cd0030c",
+      "lines": 185,
+      "read_ranges": [
+        [
+          1,
+          185
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "用户/角色权限比较、有效权限解释",
+      "call_chain": [
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "./page-feedback",
+        "./iconfont"
+      ],
+      "api_entrypoints": [
+        "/api/v1/permissions/compare/options",
+        "/api/v1/permissions/compare"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "f53cd162ea8abb52b0d5bf8e9bd13ba3fb87da2e2566ea0b3cd84ce30cd0030c"
+      }
+    },
+    {
+      "path": "app/_components/mod-detail.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "6acafa63952f8148183eacce2663f03bfdcd5db726f2e84706830211237499ce",
+      "baseline_lines": 183,
+      "baseline_read_ranges": [
+        [
+          1,
+          183
+        ]
+      ],
+      "sha256": "6acafa63952f8148183eacce2663f03bfdcd5db726f2e84706830211237499ce",
+      "lines": 183,
+      "read_ranges": [
+        [
+          1,
+          183
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "模组详情标签、下载、资源和社区联通",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/markdown-config",
+        "../_lib/mod-catalog-data",
+        "../_lib/i18n-provider",
+        "./markdown-renderer",
+        "./mod-catalog-data",
+        "./project-downloads",
+        "./comment-section",
+        "./creator-identity",
+        "./community-post-catalog",
+        "./review-edit-lock",
+        "./rating-panel",
+        "./project-changelog",
+        "./content-metrics-panel",
+        "./project-auto-update-settings",
+        "./unified-report-dialog",
+        "./project-follow-button",
+        "./project-editor-application"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "6acafa63952f8148183eacce2663f03bfdcd5db726f2e84706830211237499ce"
+      }
+    },
+    {
+      "path": "app/_components/editor/content-translation-control.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "a6e3ce2a0b3cf4ccbbc84ab431511395e152464dd43618548c8ca9e8e02b34ab",
+      "baseline_lines": 179,
+      "baseline_read_ranges": [
+        [
+          1,
+          179
+        ]
+      ],
+      "sha256": "a6e3ce2a0b3cf4ccbbc84ab431511395e152464dd43618548c8ca9e8e02b34ab",
+      "lines": 179,
+      "read_ranges": [
+        [
+          1,
+          179
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "业务内容语言、译文来源与翻译任务控制",
+      "call_chain": [
+        "react",
+        "../../_lib/auth",
+        "../../_lib/content-language-api",
+        "../../_lib/editor-api",
+        "../../_lib/editor-types",
+        "../../_lib/i18n-provider",
+        "./localization-status-badge"
+      ],
+      "api_entrypoints": [
+        "/api/v1/content/${encodeURIComponent(publicId)}/translations"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "a6e3ce2a0b3cf4ccbbc84ab431511395e152464dd43618548c8ca9e8e02b34ab"
+      }
+    },
+    {
+      "path": "app/_components/log-share-tool.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "29bc837e179e7c81d79a7765674c27d44a52132bb854732b433da5324f4f659a",
+      "baseline_lines": 172,
+      "baseline_read_ranges": [
+        [
+          1,
+          172
+        ]
+      ],
+      "sha256": "29bc837e179e7c81d79a7765674c27d44a52132bb854732b433da5324f4f659a",
+      "lines": 172,
+      "read_ranges": [
+        [
+          1,
+          172
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "脱敏日志上传、分享时限与下载选项",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/auth",
+        "../_lib/log-share-api",
+        "../_lib/oss-upload",
+        "./file-drop-zone"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "29bc837e179e7c81d79a7765674c27d44a52132bb854732b433da5324f4f659a"
+      }
+    },
+    {
+      "path": "app/_components/unified-recipe-card.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "2da11fec15ae0e2197b7fd464175376c10500a9c2bb720a0f89028d2b385b5db",
+      "baseline_lines": 165,
+      "baseline_read_ranges": [
+        [
+          1,
+          165
+        ]
+      ],
+      "sha256": "2da11fec15ae0e2197b7fd464175376c10500a9c2bb720a0f89028d2b385b5db",
+      "lines": 165,
+      "read_ranges": [
+        [
+          1,
+          165
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "跨配方类型内容、输入/输出/槽位与概率展示",
+      "call_chain": [
+        "next/link"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "2da11fec15ae0e2197b7fd464175376c10500a9c2bb720a0f89028d2b385b5db"
+      }
+    },
+    {
+      "path": "app/_components/skin-upload.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "c6b24273e409046f44c232bca9776b23218e67dfe5aea8729de61761ce5aeb9d",
+      "baseline_lines": 159,
+      "baseline_read_ranges": [
+        [
+          1,
+          159
+        ]
+      ],
+      "sha256": "c6b24273e409046f44c232bca9776b23218e67dfe5aea8729de61761ce5aeb9d",
+      "lines": 159,
+      "read_ranges": [
+        [
+          1,
+          159
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "皮肤文件与元数据上传",
+      "call_chain": [
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/auth",
+        "../_lib/content-language",
+        "../_lib/i18n-provider",
+        "../_lib/editor-types",
+        "../_lib/skin-api",
+        "../_lib/oss-upload",
+        "../_lib/site-notice",
+        "./skin-preview",
+        "./editor/content-language-switcher",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "c6b24273e409046f44c232bca9776b23218e67dfe5aea8729de61761ce5aeb9d"
+      }
+    },
+    {
+      "path": "app/_components/blueprint-detail.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "0615b39848a3c66fca9bf496639ecb274df37a46953af60890e15f2c2112288f",
+      "baseline_lines": 156,
+      "baseline_read_ranges": [
+        [
+          1,
+          156
+        ]
+      ],
+      "sha256": "0615b39848a3c66fca9bf496639ecb274df37a46953af60890e15f2c2112288f",
+      "lines": 156,
+      "read_ranges": [
+        [
+          1,
+          156
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "结构蓝图多语言说明、文件预览与下载",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "react",
+        "../_lib/api",
+        "../_lib/blueprint-api",
+        "../_lib/auth",
+        "../_lib/favorite-api",
+        "../_lib/i18n-provider",
+        "../_lib/editor-api",
+        "../_lib/markdown-config",
+        "../_lib/mod-export-api",
+        "../_lib/oss-upload",
+        "../_lib/site-notice",
+        "./markdown-renderer",
+        "./blueprint-library",
+        "./favorite-picker-modal",
+        "./comment-section",
+        "./blueprint-viewer",
+        "./unified-report-dialog",
+        "./project-follow-button",
+        "./project-editor-application"
+      ],
+      "api_entrypoints": [
+        "/api/v1/blueprints/${encodeURIComponent(publicId)}?${params}",
+        "/api/v1/blueprints/${encodeURIComponent(publicId)}/convert",
+        "/api/v1/blueprints/${encodeURIComponent(publicId)}/retry",
+        "/api/v1/blueprints/${encodeURIComponent(publicId)}/variants/${variantId}/download"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "0615b39848a3c66fca9bf496639ecb274df37a46953af60890e15f2c2112288f"
+      }
+    },
+    {
+      "path": "app/_components/project-changelog-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "ad32eb60b289eedde54b417c318b2301ed759cc71e70104c90e0933145f9b2db",
+      "baseline_lines": 154,
+      "baseline_read_ranges": [
+        [
+          1,
+          154
+        ]
+      ],
+      "sha256": "b66253ff3b6831b83cc5c1b2e56e92f85588ee9e480cc9667c86ead278221e8d",
+      "lines": 153,
+      "read_ranges": [
+        [
+          1,
+          153
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          5,
+          5
+        ],
+        [
+          79,
+          80
+        ],
+        [
+          91,
+          91
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "变更日志目标、日期、分类和多语言提交",
+      "call_chain": [
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "../_lib/project-changelog-api",
+        "../_lib/use-auto-draft",
+        "./draft-autosave-status",
+        "./minecraft-version-picker",
+        "./page-feedback",
+        "./review-edit-lock",
+        "./tools-playground"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIA-012"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-load-regressions: 清空日期不崩溃/不写入"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "b66253ff3b6831b83cc5c1b2e56e92f85588ee9e480cc9667c86ead278221e8d"
+      }
+    },
+    {
+      "path": "app/_components/user-network-list.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "6cb70ea0bcb454fe7fc7d331ccc43ffa40863ff9cc9b69a93b880af86209472e",
+      "baseline_lines": 145,
+      "baseline_read_ranges": [
+        [
+          1,
+          145
+        ]
+      ],
+      "sha256": "6cb70ea0bcb454fe7fc7d331ccc43ffa40863ff9cc9b69a93b880af86209472e",
+      "lines": 145,
+      "read_ranges": [
+        [
+          1,
+          145
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "用户关注/粉丝列表及分页",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "../_lib/user-api"
+      ],
+      "api_entrypoints": [
+        "/api/v1/users/me/blocks?page=${page}&pageSize=24",
+        "/api/v1/users/${encodeURIComponent(userId)}/${network}?page=${page}&pageSize=24",
+        "/api/v1/users/${encodeURIComponent(item.id)}/block"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "6cb70ea0bcb454fe7fc7d331ccc43ffa40863ff9cc9b69a93b880af86209472e"
+      }
+    },
+    {
+      "path": "app/_components/editor/editor-shell.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "8ef4e5ad8f24531826a4cf743ef3c35b6b2034c44becb866161976ce1db55830",
+      "baseline_lines": 144,
+      "baseline_read_ranges": [
+        [
+          1,
+          144
+        ]
+      ],
+      "sha256": "8ef4e5ad8f24531826a4cf743ef3c35b6b2034c44becb866161976ce1db55830",
+      "lines": 144,
+      "read_ranges": [
+        [
+          1,
+          144
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "编辑页头部、侧栏、提交和反馈布局",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "8ef4e5ad8f24531826a4cf743ef3c35b6b2034c44becb866161976ce1db55830"
+      }
+    },
+    {
+      "path": "app/_components/project-editor-application.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "19fc79ff91b74c54eaf74249a1d4e523eaf7f136edd90c71e977faac4429a29b",
+      "baseline_lines": 140,
+      "baseline_read_ranges": [
+        [
+          1,
+          140
+        ]
+      ],
+      "sha256": "19fc79ff91b74c54eaf74249a1d4e523eaf7f136edd90c71e977faac4429a29b",
+      "lines": 140,
+      "read_ranges": [
+        [
+          1,
+          140
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "项目协作者编辑申请、审核状态和入口",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "../_lib/oss-upload"
+      ],
+      "api_entrypoints": [
+        "/api/v1/projects/${encodeURIComponent(projectType)}/${encodeURIComponent(projectId)}/editor-applications"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "19fc79ff91b74c54eaf74249a1d4e523eaf7f136edd90c71e977faac4429a29b"
+      }
+    },
+    {
+      "path": "app/_components/custom-content-template-settings.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "b3ab4768babf8f39e8466807322e374f6d70cb90bb7b1b23d39522c8e8fa42ee",
+      "baseline_lines": 134,
+      "baseline_read_ranges": [
+        [
+          1,
+          134
+        ]
+      ],
+      "sha256": "b3ab4768babf8f39e8466807322e374f6d70cb90bb7b1b23d39522c8e8fa42ee",
+      "lines": 134,
+      "read_ranges": [
+        [
+          1,
+          134
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "自定义内容字段模板、校验和序列化",
+      "call_chain": [
+        "react",
+        "../_lib/mod-content-api",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "b3ab4768babf8f39e8466807322e374f6d70cb90bb7b1b23d39522c8e8fa42ee"
+      }
+    },
+    {
+      "path": "app/_components/skin-library.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "bee8d76435df8fd4f4d11858fb303798ce71c948a851b5c79b0be483c693bc48",
+      "baseline_lines": 129,
+      "baseline_read_ranges": [
+        [
+          1,
+          129
+        ]
+      ],
+      "sha256": "bee8d76435df8fd4f4d11858fb303798ce71c948a851b5c79b0be483c693bc48",
+      "lines": 129,
+      "read_ranges": [
+        [
+          1,
+          129
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "公开皮肤列表、搜索、模型及版本过滤",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/auth",
+        "../_lib/catalog-sort",
+        "../_lib/i18n-provider",
+        "../_lib/skin-api",
+        "./skin-preview",
+        "./catalog-list-ui"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "bee8d76435df8fd4f4d11858fb303798ce71c948a851b5c79b0be483c693bc48"
+      }
+    },
+    {
+      "path": "app/_components/blueprint-library.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "3cb5c2e95ed6194ac140e085cfb8b8d18a031d2fba49c82e9b7f4e5ec758837f",
+      "baseline_lines": 127,
+      "baseline_read_ranges": [
+        [
+          1,
+          127
+        ]
+      ],
+      "sha256": "3cb5c2e95ed6194ac140e085cfb8b8d18a031d2fba49c82e9b7f4e5ec758837f",
+      "lines": 127,
+      "read_ranges": [
+        [
+          1,
+          127
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "蓝图列表、搜索、类型及排序",
+      "call_chain": [
+        "next/link",
+        "next/image",
+        "react",
+        "../_lib/api",
+        "../_lib/blueprint-api",
+        "../_lib/auth",
+        "../_lib/catalog-sort",
+        "../_lib/i18n-provider",
+        "../_lib/site-notice",
+        "./catalog-list-ui"
+      ],
+      "api_entrypoints": [
+        "/api/v1/blueprints?${params}"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "3cb5c2e95ed6194ac140e085cfb8b8d18a031d2fba49c82e9b7f4e5ec758837f"
+      }
+    },
+    {
+      "path": "app/_components/user-comment-watches-panel.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "1df72e63d262caff9ab2c38de7873a7170d2ba90e8a73acc2756e98429bfb085",
+      "baseline_lines": 126,
+      "baseline_read_ranges": [
+        [
+          1,
+          126
+        ]
+      ],
+      "sha256": "1df72e63d262caff9ab2c38de7873a7170d2ba90e8a73acc2756e98429bfb085",
+      "lines": 126,
+      "read_ranges": [
+        [
+          1,
+          126
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "评论关注列表、已读和取消关注",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/comment-api",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "1df72e63d262caff9ab2c38de7873a7170d2ba90e8a73acc2756e98429bfb085"
+      }
+    },
+    {
+      "path": "app/_components/admin-unresolved-references.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "73d6ca4804521ef289439151e75fb1cbcfe49f8ffef595557b22276a69359aef",
+      "baseline_lines": 123,
+      "baseline_read_ranges": [
+        [
+          1,
+          123
+        ]
+      ],
+      "sha256": "73d6ca4804521ef289439151e75fb1cbcfe49f8ffef595557b22276a69359aef",
+      "lines": 123,
+      "read_ranges": [
+        [
+          1,
+          123
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "未解析引用列表、关联和修复动作",
+      "call_chain": [
+        "react",
+        "../_lib/api",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [
+        "/api/v1/admin/unresolved-references?${parameters}"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "73d6ca4804521ef289439151e75fb1cbcfe49f8ffef595557b22276a69359aef"
+      }
+    },
+    {
+      "path": "app/_components/blueprint-upload.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "ed4eb27ffc6bd9b5e3acd143f1957f58e70450b18b6d9d68d43f740e7c95ef7c",
+      "baseline_lines": 118,
+      "baseline_read_ranges": [
+        [
+          1,
+          118
+        ]
+      ],
+      "sha256": "ed4eb27ffc6bd9b5e3acd143f1957f58e70450b18b6d9d68d43f740e7c95ef7c",
+      "lines": 118,
+      "read_ranges": [
+        [
+          1,
+          118
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "结构文件、多语言标题及附属元数据上传",
+      "call_chain": [
+        "next/link",
+        "next/image",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/content-language",
+        "../_lib/i18n-provider",
+        "../_lib/editor-types",
+        "../_lib/oss-upload",
+        "../_lib/site-notice",
+        "./tools-playground",
+        "./editor/content-language-switcher",
+        "./aspect-image-crop-dialog",
+        "./file-drop-zone",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [
+        "/api/v1/blueprints/${encodeURIComponent(publicId)}"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "ed4eb27ffc6bd9b5e3acd143f1957f58e70450b18b6d9d68d43f740e7c95ef7c"
+      }
+    },
+    {
+      "path": "app/_components/modpack-detail.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "29b6cfde66999f1e4973378a953fedf4b80697a8e497cac04c3fbdcc0b200679",
+      "baseline_lines": 115,
+      "baseline_read_ranges": [
+        [
+          1,
+          115
+        ]
+      ],
+      "sha256": "562244995b262c0c00669ed6118609321d22ad5151d5d6bcf11138db9e5b7d0b",
+      "lines": 117,
+      "read_ranges": [
+        [
+          1,
+          117
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          28,
+          28
+        ],
+        [
+          30,
+          32
+        ],
+        [
+          36,
+          46
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "整合包详情加载、文件/模组清单和讨论",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/modpack-api",
+        "../_lib/markdown-config",
+        "../_lib/i18n-provider",
+        "./comment-section",
+        "./community-post-catalog",
+        "./creator-identity",
+        "./markdown-renderer",
+        "./mod-detail",
+        "./project-downloads",
+        "./review-edit-lock",
+        "./rating-panel",
+        "./project-changelog",
+        "./content-metrics-panel",
+        "./project-follow-button",
+        "./project-editor-application"
+      ],
+      "api_entrypoints": [
+        "/api/v1/modpacks/${encodeURIComponent(siteId)}"
+      ],
+      "issues": [
+        "FE-UIA-014"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-load-regressions: 网络失败有反馈及重试"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "562244995b262c0c00669ed6118609321d22ad5151d5d6bcf11138db9e5b7d0b"
+      }
+    },
+    {
+      "path": "app/_components/localized-asset-editor.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "3009605442a4a64d6850b60e202b038f75604003470e5d27d3a13f12da96d5bd",
+      "baseline_lines": 110,
+      "baseline_read_ranges": [
+        [
+          1,
+          110
+        ]
+      ],
+      "sha256": "a3a7360ed9f18399ccf5c1f6799df216fe750a5e04fcf694c7b20c6f658ae254",
+      "lines": 120,
+      "read_ranges": [
+        [
+          1,
+          120
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          4,
+          4
+        ],
+        [
+          19,
+          24
+        ],
+        [
+          27,
+          29
+        ],
+        [
+          40,
+          41
+        ],
+        [
+          51,
+          51
+        ],
+        [
+          57,
+          57
+        ],
+        [
+          61,
+          65
+        ],
+        [
+          67,
+          67
+        ],
+        [
+          71,
+          71
+        ],
+        [
+          82,
+          82
+        ],
+        [
+          85,
+          85
+        ],
+        [
+          88,
+          97
+        ],
+        [
+          105,
+          105
+        ],
+        [
+          108,
+          108
+        ],
+        [
+          110,
+          110
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "皮肤/蓝图现有多语言元数据原子审核修订",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/editor-api",
+        "../_lib/editor-types",
+        "../_lib/i18n-provider",
+        "../_lib/skin-api",
+        "../_lib/blueprint-api",
+        "./editor/content-language-switcher",
+        "./tools-playground",
+        "./review-edit-lock",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [
+        "/api/v1/blueprints/${encodeURIComponent(publicId)}",
+        "/api/v1/${kind === "
+      ],
+      "issues": [
+        "FE-UIA-013"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-load-regressions: 失败拒写、skin/blueprint全语言单PUT、待审反馈"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "a3a7360ed9f18399ccf5c1f6799df216fe750a5e04fcf694c7b20c6f658ae254"
+      }
+    },
+    {
+      "path": "app/_components/sticker-picker.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "fc442cf7e036ae29384fbb23fc99c93e5e6d8e778e0347016b257a001fba7740",
+      "baseline_lines": 109,
+      "baseline_read_ranges": [
+        [
+          1,
+          109
+        ]
+      ],
+      "sha256": "fc442cf7e036ae29384fbb23fc99c93e5e6d8e778e0347016b257a001fba7740",
+      "lines": 109,
+      "read_ranges": [
+        [
+          1,
+          109
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "表情集合、查询和Markdown插入",
+      "call_chain": [
+        "react",
+        "../_lib/i18n-provider",
+        "../_lib/sticker-api"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "fc442cf7e036ae29384fbb23fc99c93e5e6d8e778e0347016b257a001fba7740"
+      }
+    },
+    {
+      "path": "app/_components/simple-project-detail.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "e69b8b1247f5d632d7620ecea63891854cfe62e40427ede64da01413b03f0fa8",
+      "baseline_lines": 108,
+      "baseline_read_ranges": [
+        [
+          1,
+          108
+        ]
+      ],
+      "sha256": "2bfd24aaf4e28ccb7ac4827515ba97955c837db43f9a8dcf00911928ea432a80",
+      "lines": 112,
+      "read_ranges": [
+        [
+          1,
+          112
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          30,
+          30
+        ],
+        [
+          32,
+          34
+        ],
+        [
+          37,
+          37
+        ],
+        [
+          39,
+          48
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "插件等详情加载、资料、版本与社区",
+      "call_chain": [
+        "next/image",
+        "next/link",
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/markdown-config",
+        "../_lib/i18n-provider",
+        "../_lib/simple-project-api",
+        "./comment-section",
+        "./community-post-catalog",
+        "./creator-identity",
+        "./markdown-renderer",
+        "./mod-detail",
+        "./project-downloads",
+        "./project-changelog",
+        "./review-edit-lock",
+        "./rating-panel",
+        "./content-metrics-panel",
+        "./project-auto-update-settings",
+        "./unified-report-dialog",
+        "./project-follow-button",
+        "./project-editor-application"
+      ],
+      "api_entrypoints": [
+        "/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}"
+      ],
+      "issues": [
+        "FE-UIA-014"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-load-regressions: 网络失败有反馈及重试"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "2bfd24aaf4e28ccb7ac4827515ba97955c837db43f9a8dcf00911928ea432a80"
+      }
+    },
+    {
+      "path": "app/_components/file-drop-zone.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "b29c6021667054b5e41b040b4fb0d275b9ee2db8e00f9d4c0e1b84c90571d735",
+      "baseline_lines": 97,
+      "baseline_read_ranges": [
+        [
+          1,
+          97
+        ]
+      ],
+      "sha256": "b29c6021667054b5e41b040b4fb0d275b9ee2db8e00f9d4c0e1b84c90571d735",
+      "lines": 97,
+      "read_ranges": [
+        [
+          1,
+          97
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "文件选择、拖放、大小及扩展名提示",
+      "call_chain": [
+        "react"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "b29c6021667054b5e41b040b4fb0d275b9ee2db8e00f9d4c0e1b84c90571d735"
+      }
+    },
+    {
+      "path": "app/_components/editor/content-language-switcher.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "2dc763debd161215515ea1c2ea5647c41e308117d407c677afe994672477e0e3",
+      "baseline_lines": 89,
+      "baseline_read_ranges": [
+        [
+          1,
+          89
+        ]
+      ],
+      "sha256": "2dc763debd161215515ea1c2ea5647c41e308117d407c677afe994672477e0e3",
+      "lines": 89,
+      "read_ranges": [
+        [
+          1,
+          89
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "内容源语言/解析语言切换与回退标记",
+      "call_chain": [
+        "react",
+        "../../_lib/content-language",
+        "../../_lib/editor-types",
+        "../../_lib/i18n-provider",
+        "./localization-status-badge"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "2dc763debd161215515ea1c2ea5647c41e308117d407c677afe994672477e0e3"
+      }
+    },
+    {
+      "path": "app/_components/review-edit-lock.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "3de29c0b18a9162537000babd4f70b162362d18b523fad5372821a49b11fa89f",
+      "baseline_lines": 88,
+      "baseline_read_ranges": [
+        [
+          1,
+          88
+        ]
+      ],
+      "sha256": "3de29c0b18a9162537000babd4f70b162362d18b523fad5372821a49b11fa89f",
+      "lines": 88,
+      "read_ranges": [
+        [
+          1,
+          88
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "审核资源编辑租约、心跳、拒绝和离开释放",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/api",
+        "../_lib/auth",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [
+        "/api/v1/review-locks/${entityType}/${encodeURIComponent(publicId)}",
+        "/api/v1/review-locks/${entityType}/${encodeURIComponent(publicId)}/subscribe"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "3de29c0b18a9162537000babd4f70b162362d18b523fad5372821a49b11fa89f"
+      }
+    },
+    {
+      "path": "app/_components/favorite-picker-modal.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "04ec9f42a9e2ba1dc1a4aa6ebe807d0b3a3c2d5b75b4f8c19e0e48bcc6c4d9b5",
+      "baseline_lines": 87,
+      "baseline_read_ranges": [
+        [
+          1,
+          87
+        ]
+      ],
+      "sha256": "0b17f44ed440b75fd0c480e6e05816749722af5e42f319fd63fb28de91ae7340",
+      "lines": 110,
+      "read_ranges": [
+        [
+          1,
+          110
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          3,
+          3
+        ],
+        [
+          11,
+          11
+        ],
+        [
+          14,
+          19
+        ],
+        [
+          33,
+          35
+        ],
+        [
+          37,
+          41
+        ],
+        [
+          50,
+          50
+        ],
+        [
+          54,
+          54
+        ],
+        [
+          60,
+          60
+        ],
+        [
+          64,
+          67
+        ],
+        [
+          75,
+          77
+        ],
+        [
+          82,
+          82
+        ],
+        [
+          96,
+          96
+        ],
+        [
+          102,
+          105
+        ],
+        [
+          107,
+          107
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "收藏关系加载、选择、建收藏夹及替换写入",
+      "call_chain": [
+        "react",
+        "../_lib/favorite-api",
+        "../_lib/auth",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIA-001"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-regressions: 初始读失败拒写、重试恢复选择"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "0b17f44ed440b75fd0c480e6e05816749722af5e42f319fd63fb28de91ae7340"
+      }
+    },
+    {
+      "path": "app/_components/recipe-resource-slot.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "dc8949a5d805c0755a34e11a737e046894a7cff07979b2646b155c150fecc9e0",
+      "baseline_lines": 82,
+      "baseline_read_ranges": [
+        [
+          1,
+          82
+        ]
+      ],
+      "sha256": "dc8949a5d805c0755a34e11a737e046894a7cff07979b2646b155c150fecc9e0",
+      "lines": 82,
+      "read_ranges": [
+        [
+          1,
+          82
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "物品/流体槽、数量与引用",
+      "call_chain": [
+        "next/image",
+        "./floating-tooltip"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "dc8949a5d805c0755a34e11a737e046894a7cff07979b2646b155c150fecc9e0"
+      }
+    },
+    {
+      "path": "app/_components/catalog-minecraft-version-filter.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "c6544217d0f83280c0f9b8fd84ea96ca08ce9b9dbe38de82308716d72d61db50",
+      "baseline_lines": 81,
+      "baseline_read_ranges": [
+        [
+          1,
+          81
+        ]
+      ],
+      "sha256": "c6544217d0f83280c0f9b8fd84ea96ca08ce9b9dbe38de82308716d72d61db50",
+      "lines": 81,
+      "read_ranges": [
+        [
+          1,
+          81
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "Minecraft版本组和展开过滤",
+      "call_chain": [
+        "../_lib/mod-api",
+        "../_lib/i18n-provider",
+        "./minecraft-version-picker"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "c6544217d0f83280c0f9b8fd84ea96ca08ce9b9dbe38de82308716d72d61db50"
+      }
+    },
+    {
+      "path": "app/_components/site-brand-provider.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "229ee74d875bc017e653f8bf0d53f324dba83db80e068c8408f3283d93ed1843",
+      "baseline_lines": 68,
+      "baseline_read_ranges": [
+        [
+          1,
+          68
+        ]
+      ],
+      "sha256": "229ee74d875bc017e653f8bf0d53f324dba83db80e068c8408f3283d93ed1843",
+      "lines": 68,
+      "read_ranges": [
+        [
+          1,
+          68
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "站点公开品牌配置与消费者",
+      "call_chain": [
+        "next/navigation",
+        "react",
+        "../_lib/api",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [
+        "/api/v1/site/config"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "229ee74d875bc017e653f8bf0d53f324dba83db80e068c8408f3283d93ed1843"
+      }
+    },
+    {
+      "path": "app/_components/floating-tooltip.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "134e9eccde40ac8bd95ac6c7dae8b19cea33a8354150a9e985da3875c1f39774",
+      "baseline_lines": 63,
+      "baseline_read_ranges": [
+        [
+          1,
+          63
+        ]
+      ],
+      "sha256": "134e9eccde40ac8bd95ac6c7dae8b19cea33a8354150a9e985da3875c1f39774",
+      "lines": 63,
+      "read_ranges": [
+        [
+          1,
+          63
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "浮动提示、坐标和事件清理",
+      "call_chain": [
+        "react",
+        "react-dom"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "134e9eccde40ac8bd95ac6c7dae8b19cea33a8354150a9e985da3875c1f39774"
+      }
+    },
+    {
+      "path": "app/_components/editor/review-status-panel.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "8efc520f27a86f8e4a00fc40002b5f387c167e12940a67eb180f5760626219e9",
+      "baseline_lines": 61,
+      "baseline_read_ranges": [
+        [
+          1,
+          61
+        ]
+      ],
+      "sha256": "8efc520f27a86f8e4a00fc40002b5f387c167e12940a67eb180f5760626219e9",
+      "lines": 61,
+      "read_ranges": [
+        [
+          1,
+          61
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "发布/待审核/拒绝状态与审核上下文",
+      "call_chain": [
+        "../../_lib/editor-types",
+        "../../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "8efc520f27a86f8e4a00fc40002b5f387c167e12940a67eb180f5760626219e9"
+      }
+    },
+    {
+      "path": "app/_components/catalog-contained-mod-filter.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "91311f99d6d8bc84d539ef8efc87faf9c072b02781907e2070cd97138c4c62f8",
+      "baseline_lines": 60,
+      "baseline_read_ranges": [
+        [
+          1,
+          60
+        ]
+      ],
+      "sha256": "91311f99d6d8bc84d539ef8efc87faf9c072b02781907e2070cd97138c4c62f8",
+      "lines": 60,
+      "read_ranges": [
+        [
+          1,
+          60
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "包含模组的资源过滤",
+      "call_chain": [
+        "react",
+        "../_lib/editor-types",
+        "./editor/mod-resource-picker"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "91311f99d6d8bc84d539ef8efc87faf9c072b02781907e2070cd97138c4c62f8"
+      }
+    },
+    {
+      "path": "app/_components/theme-provider.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "7b1826bc92e563ac7fa20462e71c90a693dea7c557054e486c911deb990d5e7c",
+      "baseline_lines": 60,
+      "baseline_read_ranges": [
+        [
+          1,
+          60
+        ]
+      ],
+      "sha256": "a7c5f9765ac5d81ffba1e3b2883132aa0ff0129b971817243aefe5ab7f9e4e85",
+      "lines": 56,
+      "read_ranges": [
+        [
+          1,
+          56
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          25,
+          25
+        ],
+        [
+          30,
+          30
+        ],
+        [
+          50,
+          51
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "主题初始化、OS偏好与本地持久化",
+      "call_chain": [
+        "react"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "a7c5f9765ac5d81ffba1e3b2883132aa0ff0129b971817243aefe5ab7f9e4e85"
+      }
+    },
+    {
+      "path": "app/_components/mod-content-section-actions.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "e316803a3decebf8c7b86a211135163dd0d15fea148d4161827c29457c10eeff",
+      "baseline_lines": 56,
+      "baseline_read_ranges": [
+        [
+          1,
+          56
+        ]
+      ],
+      "sha256": "e316803a3decebf8c7b86a211135163dd0d15fea148d4161827c29457c10eeff",
+      "lines": 56,
+      "read_ranges": [
+        [
+          1,
+          56
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "内容栏目创建/改名/归档与布局入口",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/mod-content-api",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "e316803a3decebf8c7b86a211135163dd0d15fea148d4161827c29457c10eeff"
+      }
+    },
+    {
+      "path": "app/_components/rotating-resource.ts",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "a670248deddb9d30cf1fa0447160c7e5cf77e7eb61d8aa2e791e8f18f3b88e6c",
+      "baseline_lines": 51,
+      "baseline_read_ranges": [
+        [
+          1,
+          51
+        ]
+      ],
+      "sha256": "a670248deddb9d30cf1fa0447160c7e5cf77e7eb61d8aa2e791e8f18f3b88e6c",
+      "lines": 51,
+      "read_ranges": [
+        [
+          1,
+          51
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "物品替换轮播和生命周期",
+      "call_chain": [
+        "react"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "a670248deddb9d30cf1fa0447160c7e5cf77e7eb61d8aa2e791e8f18f3b88e6c"
+      }
+    },
+    {
+      "path": "app/_components/canonical-recipe-card.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "9257c9abe8c0884a8a772a00d8145c50f69e7ec09a587ed69d75237a06a86925",
+      "baseline_lines": 49,
+      "baseline_read_ranges": [
+        [
+          1,
+          49
+        ]
+      ],
+      "sha256": "9257c9abe8c0884a8a772a00d8145c50f69e7ec09a587ed69d75237a06a86925",
+      "lines": 49,
+      "read_ranges": [
+        [
+          1,
+          49
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "规范配方数据复用和真实资源引用",
+      "call_chain": [
+        "../_lib/editor-api",
+        "../_lib/global-catalog-api",
+        "../_lib/i18n-provider",
+        "../_lib/recipe-editor-types",
+        "./rotating-resource",
+        "./unified-recipe-card"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "9257c9abe8c0884a8a772a00d8145c50f69e7ec09a587ed69d75237a06a86925"
+      }
+    },
+    {
+      "path": "app/_components/project-follows-panel.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "e5ce920628eda273d06d575898a116684f683e4180c467d351397da5e416751a",
+      "baseline_lines": 49,
+      "baseline_read_ranges": [
+        [
+          1,
+          49
+        ]
+      ],
+      "sha256": "6ba5d32766b8dac4dbf9128a8cc66ae978db4258fe3afb5c524fffa852018446",
+      "lines": 61,
+      "read_ranges": [
+        [
+          1,
+          61
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          15,
+          15
+        ],
+        [
+          27,
+          40
+        ],
+        [
+          57,
+          57
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "用户项目关注搜索与取消恢复",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/project-follow-api",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIA-002"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-regressions: 取消失败保留项目、明确错误和重试"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "6ba5d32766b8dac4dbf9128a8cc66ae978db4258fe3afb5c524fffa852018446"
+      }
+    },
+    {
+      "path": "app/_components/log-share-viewer.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "0408835779e9ce9dce64d9699db42f2bd41dded1db7e08b3aa3293f513a95492",
+      "baseline_lines": 40,
+      "baseline_read_ranges": [
+        [
+          1,
+          40
+        ]
+      ],
+      "sha256": "630753e36960166b112089bd474be616ba6a3b93c6c6ab769a55866a5ec02322",
+      "lines": 62,
+      "read_ranges": [
+        [
+          1,
+          62
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [
+        [
+          5,
+          5
+        ],
+        [
+          11,
+          15
+        ],
+        [
+          21,
+          22
+        ],
+        [
+          25,
+          40
+        ],
+        [
+          48,
+          49
+        ],
+        [
+          51,
+          53
+        ],
+        [
+          55,
+          57
+        ],
+        [
+          61,
+          61
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "脱敏日志读取、切换、搜索、复制和下载",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/i18n-provider",
+        "../_lib/log-share-api"
+      ],
+      "api_entrypoints": [],
+      "issues": [
+        "FE-UIA-017"
+      ],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "ui-a-load-regressions: 新分享不受旧请求Abort错误污染"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "630753e36960166b112089bd474be616ba6a3b93c6c6ab769a55866a5ec02322"
+      }
+    },
+    {
+      "path": "app/_components/page-feedback.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "56356e6e36ce53874ce58d02ecd293c24399cdcfb3e28bf27e93240916639df4",
+      "baseline_lines": 39,
+      "baseline_read_ranges": [
+        [
+          1,
+          39
+        ]
+      ],
+      "sha256": "56356e6e36ce53874ce58d02ecd293c24399cdcfb3e28bf27e93240916639df4",
+      "lines": 39,
+      "read_ranges": [
+        [
+          1,
+          39
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "统一加载、失败、进度与登录反馈",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "56356e6e36ce53874ce58d02ecd293c24399cdcfb3e28bf27e93240916639df4"
+      }
+    },
+    {
+      "path": "app/_components/project-changelog-entry.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "84305b8ca8d0ae7c58882f3121d7574724aadcfea5053c8e7576694ceb4e5ebd",
+      "baseline_lines": 30,
+      "baseline_read_ranges": [
+        [
+          1,
+          30
+        ]
+      ],
+      "sha256": "84305b8ca8d0ae7c58882f3121d7574724aadcfea5053c8e7576694ceb4e5ebd",
+      "lines": 30,
+      "read_ranges": [
+        [
+          1,
+          30
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "已发布变更日志多语言内容卡片",
+      "call_chain": [
+        "next/link",
+        "react",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "../_lib/markdown-config",
+        "../_lib/project-changelog-api",
+        "./markdown-renderer",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "84305b8ca8d0ae7c58882f3121d7574724aadcfea5053c8e7576694ceb4e5ebd"
+      }
+    },
+    {
+      "path": "app/_components/recipe-edit-link.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "a33795c157cf8a28add5d801896c39f6291ba5e366211c89eddb81f1bab5ed20",
+      "baseline_lines": 28,
+      "baseline_read_ranges": [
+        [
+          1,
+          28
+        ]
+      ],
+      "sha256": "a33795c157cf8a28add5d801896c39f6291ba5e366211c89eddb81f1bab5ed20",
+      "lines": 28,
+      "read_ranges": [
+        [
+          1,
+          28
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "配方资源编辑路径和权限入口",
+      "call_chain": [
+        "next/link",
+        "react"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "a33795c157cf8a28add5d801896c39f6291ba5e366211c89eddb81f1bab5ed20"
+      }
+    },
+    {
+      "path": "app/_components/project-changelog-history.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "feb4a024986394397edf87056cad0ee023945e98dd9c86955cb61cb6eeaa3919",
+      "baseline_lines": 22,
+      "baseline_read_ranges": [
+        [
+          1,
+          22
+        ]
+      ],
+      "sha256": "feb4a024986394397edf87056cad0ee023945e98dd9c86955cb61cb6eeaa3919",
+      "lines": 22,
+      "read_ranges": [
+        [
+          1,
+          22
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "变更日志历史及来源链接",
+      "call_chain": [
+        "react",
+        "../_lib/auth",
+        "../_lib/i18n-provider",
+        "../_lib/project-changelog-api",
+        "./content-history",
+        "./page-feedback"
+      ],
+      "api_entrypoints": [
+        "/api/v1/changelogs/${encodeURIComponent(id)}/history"
+      ],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "feb4a024986394397edf87056cad0ee023945e98dd9c86955cb61cb6eeaa3919"
+      }
+    },
+    {
+      "path": "app/_components/draft-autosave-status.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "baseline_sha256": "5ed757ca1090b79f72d200682474d42aefb66a92630e1806604b4659e9539f24",
+      "baseline_lines": 13,
+      "baseline_read_ranges": [
+        [
+          1,
+          13
+        ]
+      ],
+      "sha256": "5ed757ca1090b79f72d200682474d42aefb66a92630e1806604b4659e9539f24",
+      "lines": 13,
+      "read_ranges": [
+        [
+          1,
+          13
+        ]
+      ],
+      "read_ranges_basis": "完整基线逐行语义审查；未改行逐行与基线比对，新增/修改最终行段及受影响调用链重新阅读。范围非自动扫描结论。",
+      "final_recheck_ranges": [],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "自动草稿保存状态、时间和错误反馈",
+      "call_chain": [
+        "../_lib/use-auto-draft",
+        "../_lib/i18n-provider"
+      ],
+      "api_entrypoints": [],
+      "issues": [],
+      "validation": [
+        "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+        "行为尚未单独动态验证；整体回归由根代理记录。"
+      ],
+      "final_version": {
+        "head": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+        "working_tree_sha256": "5ed757ca1090b79f72d200682474d42aefb66a92630e1806604b4659e9539f24"
+      }
+    }
+  ],
+  "reviewer": "frontend_ui_a",
+  "updated_at": "2026-10-01T18:24:56.155998+00:00",
+  "coverage": {
+    "included_baseline_files": 68,
+    "fully_reviewed": 68,
+    "partial": 0,
+    "unreviewed": 0,
+    "excluded": 0,
+    "baseline_lines": 20526,
+    "final_lines": 20829,
+    "test_coverage_percent": null
+  },
+  "reading_method": "基线分模块完整读取，截断部分补读；所有改变行段与上下文最终复查。指纹计算仅记录身份，不据其自动推断审查完成。",
+  "validation_boundary": "deterministic Vitest/jsdom component tests with mocked own HTTP APIs; not full frontend/backend integration, browser E2E, supplier quality or production DB health.",
+  "new_files_reviewed": [
+    {
+      "path": "app/_lib/ai-translation-fill.ts",
+      "sha256": "1992343807aaf4bd23c1ae1cd2a8561dd2de2848d359b090a5fcff7a93fe5016",
+      "lines": 8,
+      "read_ranges": [
+        [
+          1,
+          8
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "app/_components/__tests__/ui-a-admin-regressions.test.tsx",
+      "sha256": "780cdf3559ca1c97132014dc9d10ee4c064c0509418c3792a3b1537cbeb45ac6",
+      "lines": 83,
+      "read_ranges": [
+        [
+          1,
+          83
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "app/_components/__tests__/ui-a-load-regressions.test.tsx",
+      "sha256": "c60ea07a0dbdfec568d247cb24f7403bf5d2735a9e8216d2492936b8ab544227",
+      "lines": 106,
+      "read_ranges": [
+        [
+          1,
+          106
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "app/_components/__tests__/ui-a-regressions.test.tsx",
+      "sha256": "8b08d85c6b28c2a3430dc561296dc3c613a46fde537bfc419b86facb83b66438",
+      "lines": 90,
+      "read_ranges": [
+        [
+          1,
+          90
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "app/_components/__tests__/ui-a-translation-fill.test.ts",
+      "sha256": "8d83ec4872ee2eb3132538c3b39ef10e002bfc897fd3c22d33057feb4b65d454",
+      "lines": 16,
+      "read_ranges": [
+        [
+          1,
+          16
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "app/_components/__tests__/ui-a-user-profile-race.test.tsx",
+      "sha256": "e4bcc0d4ed10696e5e5f4fec220d93d0447a594ea3f3b69f493c2e56b3e38434",
+      "lines": 56,
+      "read_ranges": [
+        [
+          1,
+          56
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "app/_components/__tests__/ui-b-delegated-community.test.tsx",
+      "sha256": "14ed02b06ebfb2cf70917e6dc8a3f7d23c2538bf793e33aba848df457d9349a3",
+      "lines": 64,
+      "read_ranges": [
+        [
+          1,
+          64
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "app/_components/__tests__/ui-b-delegated-resource-links.test.tsx",
+      "sha256": "d462c7e5085aeea54e9c4e8f0a9eeb5ce0b7e7a2028517864075bebab60f2e5a",
+      "lines": 17,
+      "read_ranges": [
+        [
+          1,
+          17
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "app/_components/__tests__/ui-b-delegated-tools.test.tsx",
+      "sha256": "e1f442caa2df0e8460e6094efb9a748250d2ec301be7424602c16c14b823f12d",
+      "lines": 48,
+      "read_ranges": [
+        [
+          1,
+          48
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "docs/ux-reliability.md",
+      "sha256": "a59e8625376e3f55ab5dbb5bc1cb434e2400aecf4200d8e8c3cec2aa60e03dec",
+      "lines": 21,
+      "read_ranges": [
+        [
+          1,
+          21
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ],
+      "responsibility": "正式账号/收藏/导出行为与兼容性",
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。",
+      "issues": []
+    },
+    {
+      "path": "docs/audit/frontend-ui-a.md",
+      "sha256": "c7419fb78ecd1615a942dcc18630ab166d5ef5b8f9177039b8d6c2261f59feef",
+      "lines": 66,
+      "read_ranges": [
+        [
+          1,
+          66
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ],
+      "responsibility": "22个确认ID、模块矩阵、补测边界报告",
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。",
+      "issues": []
+    },
+    {
+      "path": "docs/audit/frontend-ui-b-delegated.md",
+      "sha256": "3a2512df51472aa3ceb4c242559d90cd8d5b00a24cb75817fb0e51f0a259589d",
+      "lines": 27,
+      "read_ranges": [
+        [
+          1,
+          27
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "validation": "确定性组件/规则回归，或行为/证据文档内容人工复核；不替代真实服务验证"
+    },
+    {
+      "path": "app/_components/__tests__/ui-a-final-interactions.test.tsx",
+      "sha256": "4fe4aa26ecd2164f9c4249af49c36959b04d5f131343030c8420d71af46fec72",
+      "lines": 320,
+      "read_ranges": [
+        [
+          1,
+          320
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "真实AdminConsole/UserHome/Sticker/Export异步与失败恢复组件回归",
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。",
+      "issues": [
+        "FE-UIA-009",
+        "FE-UIA-011",
+        "FE-UIA-015",
+        "FE-UIA-016",
+        "FE-UIA-022"
+      ],
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ]
+    }
+  ]
+}

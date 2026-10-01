@@ -87,8 +87,13 @@ const mediaPresets: MediaPreset[] = [
   { fields: ["geogebra"], id: "geogebra", labelKey: "tools.playground.mediaGeogebra", template: "[GeoGebra:{{geogebra}}]" },
 ];
 
-export function ToolsPlayground({ embedded = false, editorDescription, editorTitle, onBusyChange, onChange, uploadSource = "playground", value }: ToolsPlaygroundProps = {}) {
-  const { t } = useI18n();
+export function ToolsPlayground(props: ToolsPlaygroundProps = {}) {
+  const { user } = useAuthSnapshot();
+  return <ToolsPlaygroundWorkspace key={user?.id ?? "guest"} {...props} />;
+}
+
+function ToolsPlaygroundWorkspace({ embedded = false, editorDescription, editorTitle, onBusyChange, onChange, uploadSource = "playground", value }: ToolsPlaygroundProps = {}) {
+  const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const blueprintInputRef = useRef<HTMLInputElement | null>(null);
@@ -98,7 +103,25 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   const onChangeRef = useRef(onChange);
   const onBusyChangeRef = useRef(onBusyChange);
   const uploadingRef = useRef(false);
-  const [markdown, setMarkdown] = useState(() => value ?? t("tools.playground.defaultMarkdown"));
+  const [internalMarkdown, setInternalMarkdown] = useState(() => value ?? t("tools.playground.defaultMarkdown"));
+  const markdown = value ?? internalMarkdown;
+  const markdownRef = useRef(markdown);
+  const savingRef = useRef(false);
+  const persistedMarkdownRef = useRef<string | undefined>(undefined);
+  const failedMarkdownRef = useRef<string | undefined>(undefined);
+  const loadTranslationRef = useRef(t);
+  useEffect(() => { loadTranslationRef.current = t; }, [t]);
+  const mountedRef = useRef(true);
+  const [draftLoadError, setDraftLoadError] = useState("");
+  const [reload, setReload] = useState(0);
+  const setMarkdown = useCallback((next: string | ((current: string) => string)) => {
+    const resolved = typeof next === "function" ? next(markdownRef.current) : next;
+    markdownRef.current = resolved;
+    setInternalMarkdown(resolved);
+    onChangeRef.current?.(resolved);
+  }, []);
+  useEffect(() => { markdownRef.current = markdown; }, [markdown]);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
   const [rendererConfig, setRendererConfig] = useState<MarkdownRendererConfig>(defaultMarkdownConfig);
   const [editorMessage, setEditorMessage] = useState("");
@@ -119,10 +142,6 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   useEffect(() => {
     onBusyChangeRef.current = onBusyChange;
   }, [onBusyChange]);
-
-  useEffect(() => {
-    if (embedded) onChangeRef.current?.(markdown);
-  }, [embedded, markdown]);
 
   useEffect(() => () => {
     if (previewPositionFrameRef.current !== null) window.cancelAnimationFrame(previewPositionFrameRef.current);
@@ -176,57 +195,58 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
     apiRequest<{ content: string; updatedAt?: string | null }>("/api/v1/users/me/markdown-playground", {}, token)
       .then((draft) => {
         if (cancelled) return;
-        if (draft.content) setMarkdown(draft.content);
+        persistedMarkdownRef.current = draft.content;
+        setMarkdown(draft.content);
         if (draft.updatedAt) setSavedAt(draft.updatedAt);
         setDraftLoaded(true);
       })
       .catch((error) => {
         if (!cancelled) {
-          setEditorMessage(cleanPlaygroundError(error, t("tools.playground.operationFailed")));
-          setDraftLoaded(true);
+          setDraftLoadError(cleanPlaygroundError(error, loadTranslationRef.current("tools.playground.operationFailed")));
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [embedded, t, token]);
+  }, [embedded, reload, setMarkdown, token]);
 
   const saveDraft = useCallback(async () => {
-    if (embedded) return;
-    if (!draftLoaded) return;
-    if (!token) {
-      window.localStorage.setItem("mcmods-markdown-playground-draft", markdown);
-      setEditorMessage(t("tools.playground.savedLocal"));
-      return;
-    }
+    if (embedded || !draftLoaded || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
+    const content = markdownRef.current;
     try {
+      if (!token) {
+        window.localStorage.setItem("mcmods-markdown-playground-draft", content);
+        persistedMarkdownRef.current = content;
+        failedMarkdownRef.current = undefined;
+        setEditorMessage(t("tools.playground.savedLocal"));
+        return;
+      }
       const result = await apiRequest<{ updatedAt: string }>(
         "/api/v1/users/me/markdown-playground",
-        { method: "PUT", body: JSON.stringify({ content: markdown }) },
+        { method: "PUT", body: JSON.stringify({ content }) },
         token,
       );
+      if (!mountedRef.current) return;
+      persistedMarkdownRef.current = content;
+      failedMarkdownRef.current = undefined;
       setSavedAt(result.updatedAt);
       setEditorMessage(t("tools.playground.saved"));
     } catch (error) {
-      setEditorMessage(cleanPlaygroundError(error, t("tools.playground.operationFailed")));
+      failedMarkdownRef.current = content;
+      if (mountedRef.current) setEditorMessage(cleanPlaygroundError(error, t("tools.playground.operationFailed")));
     } finally {
-      setSaving(false);
+      savingRef.current = false;
+      if (mountedRef.current) setSaving(false);
     }
-  }, [draftLoaded, embedded, markdown, t, token]);
+  }, [draftLoaded, embedded, t, token]);
 
   useEffect(() => {
-    if (embedded) return;
-    if (!draftLoaded) return;
-    const timer = window.setTimeout(() => {
-      if (!token) {
-        window.localStorage.setItem("mcmods-markdown-playground-draft", markdown);
-        return;
-      }
-      void saveDraft();
-    }, 1800);
+    if (embedded || !draftLoaded || saving || markdown === persistedMarkdownRef.current || markdown === failedMarkdownRef.current) return;
+    const timer = window.setTimeout(() => { void saveDraft(); }, 1800);
     return () => window.clearTimeout(timer);
-  }, [draftLoaded, embedded, markdown, saveDraft, token]);
+  }, [draftLoaded, embedded, markdown, saveDraft, saving]);
 
   const replaceSelection = useCallback((nextValue: string, selectionStart: number, selectionEnd: number) => {
     setMarkdown(nextValue);
@@ -235,7 +255,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
       textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(selectionStart, selectionEnd);
     });
-  }, []);
+  }, [setMarkdown]);
 
   const closeDrawioEditor = useCallback(() => {
     setDrawioSession(null);
@@ -247,7 +267,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
     const activeSession = drawioSession;
 
     function receiveMessage(event: MessageEvent<unknown>) {
-      if (event.origin !== DRAWIO_ORIGIN) return;
+      if (event.origin !== DRAWIO_ORIGIN || event.source !== drawioFrameRef.current?.contentWindow) return;
       const message = parseDrawioMessage<DrawioEditorMessage>(event.data);
       if (!message) return;
       if (message.event === "init") {
@@ -553,7 +573,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {!embedded ? <button className="button-primary focus-ring" disabled={saving || uploading} type="button" onClick={() => void saveDraft()}>
+            {!embedded ? <button className="button-primary focus-ring" disabled={!draftLoaded || saving || uploading} type="button" onClick={() => void saveDraft()}>
               {saving ? t("tools.playground.saving") : uploading ? t("tools.playground.uploading") : t("common.save")}
             </button> : null}
             <button
@@ -565,6 +585,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
               {t(isFullscreen ? "tools.playground.exitFullscreen" : "tools.playground.enterFullscreen")}
             </button>
           </div>
+          {!embedded && draftLoadError ? <div className="w-full" role="alert"><p>{draftLoadError}</p><button className="button-secondary focus-ring mt-2" type="button" onClick={() => { setDraftLoadError(""); setReload((current) => current + 1); }}>{t("common.retry")}</button></div> : null}
           <div className="w-full md:hidden">{viewModeSwitch}</div>
         </div>
 
@@ -642,7 +663,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
       {drawioSession?.open ? (
         <DrawioModal
           frameRef={drawioFrameRef}
-          src={drawioEditorUrl()}
+          src={drawioEditorUrl(locale)}
           title={t("tools.playground.drawioModalTitle")}
         />
       ) : null}
@@ -843,6 +864,7 @@ function ToolbarButton({ label, title, onClick }: { label: string; title: string
     <button
       className="h-11 min-w-11 px-3 text-sm font-black hover:bg-[rgba(255,255,255,0.12)]"
       title={title}
+      aria-label={title}
       type="button"
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
@@ -964,7 +986,7 @@ function currentLine(value: string, index: number) {
   return value.slice(start, end === -1 ? value.length : end);
 }
 
-function drawioEditorUrl() {
+function drawioEditorUrl(locale: string) {
   const params = new URLSearchParams({
     embed: "1",
     proto: "json",
@@ -973,7 +995,7 @@ function drawioEditorUrl() {
     saveAndExit: "1",
     noExitBtn: "0",
     ui: "atlas",
-    lang: "zh",
+    lang: locale === "zh-TW" ? "zh-tw" : locale.split("-")[0],
   });
   return `${DRAWIO_ORIGIN}/?${params.toString()}`;
 }

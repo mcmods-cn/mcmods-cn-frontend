@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import {
@@ -31,31 +31,39 @@ export function RatingPanel({ targetType, targetId, targetName }: RatingPanelPro
   const [error, setError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [reviewsOpen, setReviewsOpen] = useState(false);
+  const [loadedScope, setLoadedScope] = useState("");
+  const [failedScope, setFailedScope] = useState("");
+  const requestSequence = useRef(0);
+  const scope = JSON.stringify([targetType, targetId, token, user?.id]);
 
-  const loadSummary = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      setSummary(await getRatingSummary(targetType, targetId, token));
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("ratings.loadFailed"));
-    } finally {
-      setLoading(false);
-    }
-  }, [t, targetId, targetType, token]);
+  const loadSummary = useCallback(() => {
+    const sequence = ++requestSequence.current;
+    return getRatingSummary(targetType, targetId, token).then((next) => {
+      if (sequence === requestSequence.current) {
+        setSummary(next);
+        setLoadedScope(scope);
+        setError("");
+      }
+    }).catch((reason) => {
+      if (sequence === requestSequence.current) {
+        setError(reason instanceof Error ? reason.message : t("ratings.loadFailed"));
+        setFailedScope(scope);
+      }
+    }).finally(() => {
+      if (sequence === requestSequence.current) setLoading(false);
+    });
+  }, [scope, t, targetId, targetType, token]);
 
   useEffect(() => {
     if (!ready) return;
-    let cancelled = false;
-    void (async () => {
-      if (!cancelled) await loadSummary();
-    })();
-    return () => { cancelled = true; };
-  }, [loadSummary, ready, targetId, targetType, token]);
+    void loadSummary();
+    return () => { requestSequence.current += 1; };
+  }, [loadSummary, ready, user?.id]);
 
-  if (loading && !summary) return <section className="mt-8 h-64 animate-pulse rounded-xl bg-[var(--panel-subtle)]" aria-label={t("ratings.loading")} />;
-  if (error && !summary) return <section className="mt-8 rounded-xl border border-[var(--danger)] bg-[var(--danger-soft)] p-5 text-sm font-bold text-[var(--danger)]">{t("ratings.loadFailed")}</section>;
-  if (!summary) return null;
+  const currentSummary = summary && loadedScope === scope;
+  if ((!ready || loading || failedScope !== scope) && !currentSummary) return <section className="mt-8 h-64 animate-pulse rounded-xl bg-[var(--panel-subtle)]" aria-label={t("ratings.loading")} />;
+  if (error && !currentSummary) return <section className="mt-8 rounded-xl border border-[var(--danger)] bg-[var(--danger-soft)] p-5 text-sm font-bold text-[var(--danger)]" role="alert">{t("ratings.loadFailed")}<button className="button-secondary focus-ring ml-3" type="button" onClick={() => { setLoading(true); setError(""); void loadSummary(); }}>{t("common.retry")}</button></section>;
+  if (!summary || !currentSummary) return null;
 
   return (
     <section className="mt-8 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4 sm:p-6">
@@ -92,8 +100,8 @@ export function RatingPanel({ targetType, targetId, targetName }: RatingPanelPro
       </div>
 
       {summary.ratingCount === 0 ? <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-5 text-center text-sm font-bold text-[var(--muted)]">{t("ratings.empty")}</p> : null}
-      {editorOpen ? <RatingEditor summary={summary} targetName={targetName} onClose={() => setEditorOpen(false)} onSaved={loadSummary} token={token} /> : null}
-      {reviewsOpen ? <RatingReviews targetType={targetType} targetId={targetId} targetName={targetName} token={token} onClose={() => setReviewsOpen(false)} /> : null}
+      {editorOpen ? <RatingEditor key={scope} summary={summary} targetName={targetName} onClose={() => setEditorOpen(false)} onSaved={loadSummary} token={token} /> : null}
+      {reviewsOpen ? <RatingReviews key={scope} targetType={targetType} targetId={targetId} targetName={targetName} token={token} onClose={() => setReviewsOpen(false)} /> : null}
     </section>
   );
 }

@@ -4,6 +4,7 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 let observedAuthorizationVersion = "";
+let transientClientID = "";
 
 export class ApiError extends Error {
   status: number;
@@ -49,6 +50,10 @@ export async function apiRequest<T>(
     credentials: options.credentials ?? "include",
     headers,
   });
+
+  // Deletes such as project unfollow deliberately return no JSON body.
+  // Keep requiring an envelope for other successful status codes.
+  if (response.status === 204) return undefined as T;
 
   const envelope = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!response.ok) {
@@ -126,11 +131,19 @@ function isMutation(method?: string) {
 
 function browserClientID() {
   const storageKey = "mcmods-client-id";
-  const existing = window.localStorage.getItem(storageKey);
-  if (existing) return existing;
-  const value = globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  window.localStorage.setItem(storageKey, value);
-  return value;
+  try {
+    const existing = window.localStorage.getItem(storageKey);
+    if (existing) return existing;
+  } catch {
+    // Browser privacy settings may block storage while cookie auth still works.
+  }
+  transientClientID ||= globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    window.localStorage.setItem(storageKey, transientClientID);
+  } catch {
+    // Keep the same identifier for this page lifetime without requiring storage.
+  }
+  return transientClientID;
 }
 
 function isAbortError(error: unknown) {

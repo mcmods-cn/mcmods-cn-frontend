@@ -36,7 +36,12 @@ const emptyDraft = (): ModpackDraft => ({
   modrinthProjectId: "", iconUrl: "", bodyMarkdown: "", submissionMethod: "manual", links: [], galleryImages: [], mods: [],
 });
 
-export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" }: { siteId?: string; importMethod?: string; importURL?: string }) {
+export function ModpackEditor(props: Parameters<typeof ModpackEditorWorkspace>[0]) {
+  const { user } = useAuthSnapshot();
+  return <ModpackEditorWorkspace key={JSON.stringify([props.siteId, user?.id])} {...props} />;
+}
+
+function ModpackEditorWorkspace({ siteId, importMethod = "manual", importURL = "" }: { siteId?: string; importMethod?: string; importURL?: string }) {
   const router = useRouter();
   const { t } = useI18n();
   const { ready, token } = useAuthSnapshot();
@@ -45,6 +50,9 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
   const [baseRevisionId, setBaseRevisionId] = useState<string>();
   const [minecraftConfig, setMinecraftConfig] = useState<MinecraftVersionConfig>(fallbackMinecraftConfig);
   const [loading, setLoading] = useState(Boolean(siteId));
+  const [loaded, setLoaded] = useState(!siteId);
+  const contentLoadedRef = useRef(!siteId);
+  const [reload, setReload] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [changeReason, setChangeReason] = useState("");
@@ -60,7 +68,7 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
     draftKey: `modpack:${siteId || "new"}`,
     projectKey: `modpack:${siteId || "new"}`,
     editUrl: siteId ? `/modpacks/${encodeURIComponent(siteId)}/edit` : "/modpacks/new",
-    enabled: ready && Boolean(token) && !loading,
+    enabled: ready && Boolean(token) && loaded && !loading,
     kind: "modpack",
     title: draft.primaryName.trim() || t(siteId ? "modpacks.editor.editTitle" : "modpacks.editor.createTitle"),
     token,
@@ -76,7 +84,7 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
   }, []);
 
   useEffect(() => {
-    if (!ready || !siteId) return;
+    if (!ready || !token || !siteId || contentLoadedRef.current) return;
     let cancelled = false;
     apiRequest<BackendModpackRecord>(`/api/v1/modpacks/${encodeURIComponent(siteId)}/editor`, {}, token)
       .then((record) => {
@@ -85,11 +93,13 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
         setIconPreviewUrl(modpackIconURL(record));
         setPublicId(record.id);
         setBaseRevisionId(record.publishedRevisionId);
+        contentLoadedRef.current = true;
+        setLoaded(true);
       })
       .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("modpacks.editor.loadFailed")); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [ready, siteId, t, token]);
+  }, [ready, reload, siteId, t, token]);
 
   async function importFromProvider(provider: "modrinth" | "curseforge", url: string) {
     if (!token || !url.trim()) return;
@@ -123,7 +133,7 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!token) return;
+    if (!token || !loaded || submitting || iconUploading || galleryUploading) return;
     setSubmitting(true);
     setMessage("");
     try {
@@ -197,11 +207,13 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
     setDraft((current) => ({ ...current, mods: deduplicateMods([...imported, ...selected]) }));
   }
 
-  if (!ready || loading) return <PageFeedback title={importing ? t("modpacks.editor.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
   if (!token) return <LoginRequiredState nextPath={siteId ? `/modpacks/${siteId}/edit` : "/modpacks/new"} />;
+  if (loading) return <PageFeedback title={importing ? t("modpacks.editor.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
+  if (siteId && !loaded) return <><PageFeedback title={t("common.error")} description={message} tone="danger" /><div className="pb-8 text-center"><button className="button-secondary focus-ring" type="button" onClick={() => { setMessage(""); setLoading(true); setReload((value) => value + 1); }}>{t("common.retry")}</button></div></>;
 
   const editor = <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]"><form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}>
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={siteId ? `/modpacks/${siteId}` : "/modpacks"}>{t("modpacks.detail.back")}</Link><h1 className="mt-2 text-3xl font-black">{t(siteId ? "modpacks.editor.editTitle" : "modpacks.editor.createTitle")}</h1></div><div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t("common.save")}</button></div></header>
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={siteId ? `/modpacks/${siteId}` : "/modpacks"}>{t("modpacks.detail.back")}</Link><h1 className="mt-2 text-3xl font-black">{t(siteId ? "modpacks.editor.editTitle" : "modpacks.editor.createTitle")}</h1></div><div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting || iconUploading || galleryUploading} type="submit">{submitting ? t("mods.submission.actions.submitting") : t("common.save")}</button></div></header>
 
     <FormSection title={t("mods.submission.sections.identity")}><div className="grid gap-4 md:grid-cols-2"><Field label={t("mods.submission.fields.siteId")}><input className="field font-mono" required value={draft.siteId} onChange={(event) => setDraft({ ...draft, siteId: normalizeProjectSiteIdInput(event.target.value) })} /></Field>{publicId ? <Field label={t("mods.submission.fields.uniqueId")}><input className="field font-mono" readOnly value={publicId} /></Field> : null}<Field label={t("mods.submission.fields.primaryName")}><input className="field" required maxLength={160} value={draft.primaryName} onChange={(event) => setDraft({ ...draft, primaryName: event.target.value })} /></Field><Field label={t("mods.submission.fields.secondaryName")}><input className="field" maxLength={160} value={draft.secondaryName} onChange={(event) => setDraft({ ...draft, secondaryName: event.target.value })} /></Field><Field label={t("mods.submission.fields.abbreviation")}><input className="field" maxLength={32} value={draft.abbreviation} onChange={(event) => setDraft({ ...draft, abbreviation: event.target.value })} /></Field></div><Field label={t("mods.submission.fields.summary")}><textarea className="field min-h-24" maxLength={500} value={draft.summary} onChange={(event) => setDraft({ ...draft, summary: event.target.value })} /></Field><div className="mt-4 flex items-center gap-4"><div className="grid h-28 w-28 place-items-center overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]">{draft.iconUrl ? <Image unoptimized alt="" className="h-full w-full object-contain" height={128} src={iconPreviewUrl || draft.iconUrl} width={128} /> : "?"}</div><label className="button-secondary focus-ring cursor-pointer">{iconUploading ? t("mods.submission.actions.uploadingIcon") : t("mods.submission.actions.uploadIcon")}<input accept="image/*" className="sr-only" type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setIconCropFile(file); }} /></label></div></FormSection>
 
@@ -213,7 +225,7 @@ export function ModpackEditor({ siteId, importMethod = "manual", importURL = "" 
     <FormSection title={t("mods.submission.sections.body")}><ToolsPlayground embedded editorTitle={t("mods.submission.sections.body")} value={draft.bodyMarkdown} onChange={(bodyMarkdown) => setDraft({ ...draft, bodyMarkdown })} /></FormSection>
     <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft((current) => ({ ...current, galleryImages: current.galleryImages.filter((_, itemIndex) => itemIndex !== index) }))}>{t("common.delete")}</button></div>)}</div></FormSection>
     {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24" value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
-    {message ? <p className="mb-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={submitting} type="submit">{t("common.save")}</button></div>
+    {message ? <p className="mb-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={submitting || iconUploading || galleryUploading} type="submit">{t("common.save")}</button></div>
     <SquareImageCropDialog file={iconCropFile} minimumSize={128} outputSizes={[128]} onCancel={() => setIconCropFile(undefined)} onConfirm={(output) => { setIconCropFile(undefined); void uploadIcon(output); }} />
     <ModResourcePickerDialog open={pickerOpen} token={token} value={draft.mods.filter((item) => item.provider === "manual").map(modpackModToResource)} onClose={() => setPickerOpen(false)} onConfirm={(resources) => { addSelectedMods(resources); setPickerOpen(false); }} />
   </form></main>;

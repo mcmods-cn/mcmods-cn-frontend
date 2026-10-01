@@ -75,6 +75,7 @@ function OpenResourcePickerDialog({
   const [kind, setKind] = useState(initialKind || (kindOptions.length === 1 ? kindOptions[0].value : ""));
   const [registry, setRegistry] = useState(initialRegistry || (registryOptions.length === 1 ? registryOptions[0].value : ""));
   const [page, setPage] = useState(1);
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const [result, setResult] = useState<CatalogResourcePage>({ items: [], total: 0, limit: 40, offset: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -112,7 +113,7 @@ function OpenResourcePickerDialog({
       cancelled = true;
       controller.abort();
     };
-  }, [kind, loadPage, locale, manualMode, page, registry, submittedQuery, token]);
+  }, [kind, loadPage, locale, manualMode, page, registry, searchAttempt, submittedQuery, token]);
 
   useEffect(() => {
     const pending = value.filter(needsResourceHydration);
@@ -140,6 +141,7 @@ function OpenResourcePickerDialog({
     setLoading(true);
     setPage(1);
     setSubmittedQuery(query.trim());
+    setSearchAttempt((current) => current + 1);
   }
 
   function toggle(resource: CatalogResourceRef) {
@@ -202,15 +204,15 @@ function OpenResourcePickerDialog({
       /> : <>
         <form className="grid gap-2 border-b border-[var(--line)] p-4 md:grid-cols-[minmax(0,1fr)_180px_220px_auto]" onSubmit={search}>
           <input className="field" type="search" value={query} placeholder={labels.searchPlaceholder ?? t("common.search")} onChange={(event) => setQuery(event.target.value)} />
-          {kindOptions.length ? <select aria-label={labels.kind} className="field" value={kind} onChange={(event) => { setLoading(true); setPage(1); setKind(event.target.value); }}><option value="">{labels.kind ?? t("common.all")}</option>{kindOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
-          {registryOptions.length ? <select aria-label={labels.registry} className="field" value={registry} onChange={(event) => { setLoading(true); setPage(1); setRegistry(event.target.value); }}><option value="">{labels.registry ?? t("common.all")}</option>{registryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
+          {kindOptions.length ? <select aria-label={labels.kind ?? t("resourcePicker.kind")} className="field" value={kind} onChange={(event) => { setLoading(true); setPage(1); setKind(event.target.value); }}><option value="">{labels.kind ?? t("common.all")}</option>{kindOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
+          {registryOptions.length ? <select aria-label={labels.registry ?? t("resourcePicker.registry")} className="field" value={registry} onChange={(event) => { setLoading(true); setPage(1); setRegistry(event.target.value); }}><option value="">{labels.registry ?? t("common.all")}</option>{registryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
           <button className="button-primary focus-ring" type="submit">{t("common.search")}</button>
         </form>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           {error ? <p className="mb-3 rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]" role="alert">{error}</p> : null}
           {loading ? <p className="grid min-h-52 place-items-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
-          {!loading && !result.items.length ? <p className="grid min-h-52 place-items-center rounded-lg border border-dashed border-[var(--line)] text-sm text-[var(--muted)]">{labels.empty ?? t("common.search")}</p> : null}
+          {!loading && !result.items.length ? <p className="grid min-h-52 place-items-center rounded-lg border border-dashed border-[var(--line)] text-sm text-[var(--muted)]">{labels.empty ?? t("resourcePicker.empty")}</p> : null}
           {!loading && result.items.length ? <div className="grid gap-2 sm:grid-cols-2">
             {result.items.map((resource) => {
               const active = selected.has(resource.publicId);
@@ -236,7 +238,7 @@ function OpenResourcePickerDialog({
             <button className="button-secondary focus-ring" disabled={loading || page >= pages} type="button" onClick={() => { setLoading(true); setPage((current) => Math.min(pages, current + 1)); }}>{t("common.next")}</button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {allowUnresolved ? <button className="button-secondary focus-ring" type="button" onClick={() => setManualMode(true)}>{labels.notFound ?? "没有我寻找的资源？"}</button> : null}
+            {allowUnresolved ? <button className="button-secondary focus-ring" type="button" onClick={() => setManualMode(true)}>{labels.notFound ?? t("resourcePicker.notFound")}</button> : null}
             <button className="button-primary focus-ring" type="button" onClick={() => onConfirm(selectedItems)}>{labels.insert ?? t("common.confirm")}</button>
           </div>
         </footer>
@@ -258,12 +260,14 @@ function ManualIdentifierPanel({
   onChange: (inputs: string[]) => void;
   onReturn: () => void;
 }) {
+  const { t } = useI18n();
   return <div className="flex min-h-0 flex-1 flex-col">
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
-      <h3 className="text-lg font-black">{labels.manualPrompt ?? "请在这里填写资源 ID"}</h3>
+      <h3 className="text-lg font-black">{labels.manualPrompt ?? t("resourcePicker.manualPrompt")}</h3>
       <div className="mt-4 grid gap-3">
         {inputs.map((input, index) => <input
           autoFocus={index === 0}
+          aria-label={t("resourcePicker.manualInput", { number: index + 1 })}
           className="field font-mono"
           key={index}
           placeholder={labels.manualPlaceholder ?? "namespace:identifier"}
@@ -271,11 +275,11 @@ function ManualIdentifierPanel({
           onChange={(event) => onChange(inputs.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
         />)}
       </div>
-      {invalid ? <p className="mt-3 text-sm font-bold text-[var(--red)]">{labels.invalidIdentifier ?? "ID 格式无效"}</p> : null}
-      <button aria-label={labels.addManualInput ?? "新增输入框"} className="button-secondary focus-ring mt-4 h-11 w-11 rounded-full p-0 text-xl" type="button" onClick={() => onChange([...inputs, ""])}>+</button>
+      {invalid ? <p className="mt-3 text-sm font-bold text-[var(--red)]">{labels.invalidIdentifier ?? t("resourcePicker.invalidIdentifier")}</p> : null}
+      <button aria-label={labels.addManualInput ?? t("resourcePicker.addInput")} className="button-secondary focus-ring mt-4 h-11 w-11 rounded-full p-0 text-xl" type="button" onClick={() => onChange([...inputs, ""])}>+</button>
     </div>
     <footer className="flex justify-end border-t border-[var(--line)] p-4">
-      <button className="button-primary focus-ring" disabled={invalid} type="button" onClick={onReturn}>{labels.backToResults ?? "返回"}</button>
+      <button className="button-primary focus-ring" disabled={invalid} type="button" onClick={onReturn}>{labels.backToResults ?? t("resourcePicker.backToResults")}</button>
     </footer>
   </div>;
 }

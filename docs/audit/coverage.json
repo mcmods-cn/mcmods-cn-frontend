@@ -1,0 +1,18 @@
+{
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "tracked_head": "4bb38739d836aebff5de6b09948445a85a19c26a",
+  "final_inventory_files": 481,
+  "baseline_inventory_files": 393,
+  "counts": {
+    "合理排除": 28,
+    "已复查": 126,
+    "已完整审查": 327
+  },
+  "complete_manual_files": 453,
+  "partial_manual_files": 0,
+  "unreviewed_manual_files": 0,
+  "excluded_files": 28,
+  "scope": "Git tracked baseline plus final nonignored project files; deletions retained. Task-only .audit-tools excluded. Locks/binaries/generated evidence exclusions explicit per file.",
+  "verification_scope": "Human content/semantic review is separate from behavior/tests; behavior_verified is limited to each cited assertion, never whole-file exhaustive coverage.",
+  "fingerprint_note": "Self-referential file-ledger/coverage fingerprints omitted; review inventories must match final file SHA256 and cover every line. Reading/scanning alone never marks a file reviewed."
+}

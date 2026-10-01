@@ -24,6 +24,7 @@ import {
 import { modExportAssetURL } from "../_lib/mod-export-api";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { clusterSimilarResources } from "../_lib/similar-resource-groups";
+import { LoginRequiredState } from "./page-feedback";
 
 type AdvancementNodeLayout = {
   parentResourcePublicId: string;
@@ -69,9 +70,14 @@ const advancementRowHeight = 132;
 const advancementNodeWidth = 240;
 const advancementNodeHeight = 96;
 
-export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: string; sectionId: string }) {
+export function ModContentLayoutEditorPage(props: { siteId: string; sectionId: string }) {
+  const { user } = useAuthSnapshot();
+  return <ModContentLayoutEditorWorkspace key={JSON.stringify([props.siteId, props.sectionId, user?.id])} {...props} />;
+}
+
+function ModContentLayoutEditorWorkspace({ siteId, sectionId }: { siteId: string; sectionId: string }) {
   const { locale, t } = useI18n();
-  const { token } = useAuthSnapshot();
+  const { ready, token } = useAuthSnapshot();
   const tokenRef = useRef(token);
   const [initialLocale] = useState(locale);
   const [section, setSection] = useState<ModContentSection>();
@@ -88,19 +94,15 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   const [busy, setBusy] = useState(true);
   const [loadedComplete, setLoadedComplete] = useState(false);
   const [error, setError] = useState("");
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
     tokenRef.current = token;
   }, [token]);
 
   useEffect(() => {
+    if (!ready || !token) return;
     let cancelled = false;
-    queueMicrotask(() => {
-      if (cancelled) return;
-      setBusy(true);
-      setLoadedComplete(false);
-      setError("");
-    });
     void loadAllModContentSectionResources(siteId, sectionId, { locale: initialLocale }, tokenRef.current)
       .then((page) => {
         if (cancelled) return;
@@ -119,7 +121,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
         setBusy(false);
       });
     return () => { cancelled = true; };
-  }, [initialLocale, sectionId, siteId, token]);
+  }, [initialLocale, ready, reload, sectionId, siteId, token]);
 
   const isAdvancement = section?.templateCode === "advancement";
   const depthByID = useMemo(
@@ -157,6 +159,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   }
 
   async function save() {
+    if (busy) return;
     if (!section || !loadedComplete) {
       setError(t("modContent.sectionActions.incompleteLayout"));
       return;
@@ -199,12 +202,14 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
     }
   }
 
-  if (!section && busy) {
+  if (ready && !token) return <LoginRequiredState nextPath={`/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(sectionId)}/arrange`} />;
+  if (!ready || (!section && busy)) {
     return <main className="grid min-h-screen place-items-center bg-[var(--background)] p-6 text-[var(--foreground)]">
       <p className="text-[var(--muted)]">{t("common.loading")}</p>
     </main>;
   }
 
+  if (!loadedComplete) return <main className="grid min-h-screen place-items-center p-6"><section role="alert"><p>{error || t("modContent.sectionActions.incompleteLayout")}</p><button className="button-secondary focus-ring mt-4" type="button" onClick={() => { setError(""); setBusy(true); setReload((current) => current + 1); }}>{t("common.retry")}</button></section></main>;
   return <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-[var(--foreground)]">
     <div className="mx-auto max-w-[1700px]">
       <header className="flex flex-wrap items-center gap-4 border-b border-[var(--line)] pb-5">
@@ -341,8 +346,9 @@ function CategoryLayoutEditor({
 
   function updateCategoryName(category: ModContentSection, value: string) {
     const normalizedLocale = normalizeContentLanguage(categoryLocale);
+    const existing = category.localizations.find((item) => normalizeContentLanguage(item.locale) === normalizedLocale);
     const values = category.localizations.filter((item) => normalizeContentLanguage(item.locale) !== normalizedLocale);
-    updateCategory(category.publicId, { localizations: [...values, { locale: categoryLocale, name: value, summary: "", contentMarkdown: "" }] });
+    updateCategory(category.publicId, { localizations: [...values, { ...existing, locale: categoryLocale, name: value, summary: existing?.summary || "", contentMarkdown: existing?.contentMarkdown || "" }] });
   }
 
   function reparentCategory(categoryID: string, parentID: string) {
@@ -474,7 +480,7 @@ function CategoryLayoutEditor({
         return <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3" key={category.publicId} style={{ marginInlineStart: `${isRoot ? 0 : Math.min(4, depthByID.get(category.publicId) || 1) * 18}px` }} onDragOver={(event) => event.preventDefault()} onDrop={() => dropResource(category.publicId)}>
           <header className="flex flex-wrap items-center gap-2">
             {isRoot ? <strong className="min-w-0 flex-1">{t("modContent.sectionActions.rootCategory")}</strong> : <input aria-label={`${t("modContent.sectionActions.name")}: ${categoryName(category, categoryLocale)}`} className="field min-w-44 flex-1 py-2 font-bold" value={categoryName(category, categoryLocale)} onChange={(event) => updateCategoryName(category, event.target.value)} />}
-            {!isRoot ? <><select aria-label={t("modContent.sectionActions.parentCategory")} className="field w-auto py-2 text-sm" value={category.parentPublicId} onChange={(event) => onCategoriesChange(normalizeCategoryOrdinals(categories.map((item) => item.publicId === category.publicId ? { ...item, parentPublicId: event.target.value } : item)))}>{possibleParents.map((item) => <option key={item.publicId} value={item.publicId}>{item.publicId === root.publicId ? t("modContent.sectionActions.rootCategory") : categoryName(item, categoryLocale)}</option>)}</select><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, -1)}>↑</button><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, 1)}>↓</button><button className="button-secondary px-3 text-[var(--red)]" type="button" onClick={() => deleteCategory(category)}>{t("common.delete")}</button></> : null}
+            {!isRoot ? <><select aria-label={t("modContent.sectionActions.parentCategory")} className="field w-auto py-2 text-sm" value={category.parentPublicId} onChange={(event) => reparentCategory(category.publicId, event.target.value)}>{possibleParents.map((item) => <option key={item.publicId} value={item.publicId}>{item.publicId === root.publicId ? t("modContent.sectionActions.rootCategory") : categoryName(item, categoryLocale)}</option>)}</select><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, -1)}>↑</button><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, 1)}>↓</button><button className="button-secondary px-3 text-[var(--red)]" type="button" onClick={() => deleteCategory(category)}>{t("common.delete")}</button></> : null}
           </header>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <input aria-label={t("modContent.sectionActions.keywordClassification")} className="field min-w-0 flex-1 py-2 text-sm" placeholder={t("modContent.sectionActions.keywordPlaceholder")} value={keywordByCategory[category.publicId] || ""} onChange={(event) => setKeywordByCategory((current) => ({ ...current, [category.publicId]: event.target.value }))} />

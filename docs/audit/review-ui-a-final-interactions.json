@@ -1,0 +1,298 @@
+{
+  "reviewer": "frontend_ui_a",
+  "updated_at": "2026-10-01T18:24:56.155998+00:00",
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "scope": "补充读取/回归，原68分母保留在review-frontend-ui-a.json；hash仅身份凭据非人工完成证明",
+  "files": [
+    {
+      "path": "app/_components/user-home.tsx",
+      "sha256": "347788cf8025fd6d70b571eb6b8046365b84e5dcc10da59ac071e56ce7293c91",
+      "lines": 894,
+      "read_ranges": [
+        [
+          1,
+          894
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "个人资料身份边界与收藏夹当前读取快照",
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。",
+      "issues": [
+        "FE-UIA-011",
+        "FE-UIA-021",
+        "FE-UIA-022"
+      ],
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ]
+    },
+    {
+      "path": "app/_components/favorite-modpack-export.tsx",
+      "sha256": "9366ab214fcb7502da351ec836461633bea6d2693f492e0ce551420c626d4568",
+      "lines": 470,
+      "read_ranges": [
+        [
+          1,
+          470
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "导出轮询/自动及手动下载错误恢复",
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。",
+      "issues": [
+        "FE-UIA-016"
+      ],
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ]
+    },
+    {
+      "path": "app/_components/__tests__/ui-a-final-interactions.test.tsx",
+      "sha256": "4fe4aa26ecd2164f9c4249af49c36959b04d5f131343030c8420d71af46fec72",
+      "lines": 320,
+      "read_ranges": [
+        [
+          1,
+          320
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "真实AdminConsole/UserHome/Sticker/Export异步与失败恢复组件回归",
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。",
+      "issues": [
+        "FE-UIA-009",
+        "FE-UIA-011",
+        "FE-UIA-015",
+        "FE-UIA-016",
+        "FE-UIA-022"
+      ],
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ]
+    },
+    {
+      "path": "docs/ux-reliability.md",
+      "sha256": "a59e8625376e3f55ab5dbb5bc1cb434e2400aecf4200d8e8c3cec2aa60e03dec",
+      "lines": 21,
+      "read_ranges": [
+        [
+          1,
+          21
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "正式账号/收藏/导出行为与兼容性",
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。",
+      "issues": [],
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ]
+    },
+    {
+      "path": "docs/audit/frontend-ui-a.md",
+      "sha256": "c7419fb78ecd1615a942dcc18630ab166d5ef5b8f9177039b8d6c2261f59feef",
+      "lines": 66,
+      "read_ranges": [
+        [
+          1,
+          66
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "22个确认ID、模块矩阵、补测边界报告",
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。",
+      "issues": [],
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ]
+    },
+    {
+      "path": "app/_lib/auth.ts",
+      "sha256": "0d254f20da89c94e94c7fa7ebe93e6f61ac888192e220492bc49499102cc2868",
+      "lines": 272,
+      "read_ranges": [
+        [
+          1,
+          272
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": true,
+      "responsibility": "Core独占auth，只读全文跨caller链复核",
+      "read_basis": "本轮实际全文重读；user-home1–300/301–500/501–649/650–894，截断301–600补读；export1–260/261–470；test1–180/181–311+267–320最终差异补读；正式文档全文；auth1–272。仅明确这些文件，不通过脚本批量推断人工完成。",
+      "issues": [
+        "FE-UIA-011"
+      ],
+      "validation": [
+        "19组件确定性API/OSS transport/auth helper/child fixtures PASS，非真实后端持久化或OSS产物；Core auth7+bootstrap2独立证据不重复计。"
+      ]
+    }
+  ],
+  "checks": [
+    {
+      "command": "npx vitest run app/_components/__tests__/ui-a-final-interactions.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "tests": 19,
+      "started_at": "2026-10-01T18:03:55Z",
+      "duration_seconds": 18.29,
+      "log": "/tmp/frontend-ui-a-final-interactions-supported-final.log"
+    },
+    {
+      "command": "npx eslint app/_components/user-home.tsx app/_components/favorite-modpack-export.tsx app/_components/__tests__/ui-a-final-interactions.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-ui-a-final-interactions-supported-lint.log"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-ui-a-final-interactions-supported-tsc.log"
+    },
+    {
+      "command": "npx vitest run --config /tmp/mcmods-uia-favorite-default-red-4_ouzh07/vitest-red.mts -t FE-UIA-022",
+      "status": "FAIL",
+      "expected_regression": true,
+      "exit_code": 1,
+      "tests_failed": 3,
+      "tests_filtered": 16,
+      "source_basis": "Vite pre-load替换整份user-home.tsx旧源（862行），临时文件逐字节等于0c04f80及2f85189中的同路径；不是只替换FavoriteCollectionsPanel函数。其他导入/断言保持当前版本，仅-t FE-UIA-022运行3例，16例过滤，不能据此声明整旧组件/其他功能全量验证。",
+      "baseline_commit": "0c04f80a2f796b5a5e24420405add4db03147ae7",
+      "log": "/tmp/frontend-ui-a-favorite-default-red.log",
+      "source_snapshot_path": "/tmp/mcmods-uia-favorite-default-red-4_ouzh07/user-home.tsx",
+      "source_snapshot_sha256": "7380fee9cb1d9ee74e3c4a785f6a45858e7f85cdbd715546f008be2eb263eebe",
+      "source_snapshot_lines": 862,
+      "started_at": "2026-10-01T18:04:10Z",
+      "source_matching_commits": [
+        "0c04f80a2f796b5a5e24420405add4db03147ae7",
+        "2f85189af62fcbfa3fb6a98194fabda7fb814f7b"
+      ],
+      "focused_function": {
+        "symbol": "FavoriteCollectionsPanel",
+        "old_read_range": [
+          606,
+          744
+        ],
+        "old_sha256": "d11bfc5e66661ffa12257f8fecb6314b48670c600f064846eeb9dd0ad1f610ad",
+        "final_read_range": [
+          617,
+          776
+        ],
+        "final_sha256": "b6e20478279405fcbc82acfab8266413a17ef10bf1e26daf630971c6eb61bda5"
+      }
+    },
+    {
+      "command": "temporary old-source config before restoring @ alias",
+      "status": "FAIL",
+      "exit_code": 1,
+      "tests": 0,
+      "cause": "harness missing alias/import failure, repaired before actual red test; not business evidence",
+      "log": "/tmp/frontend-ui-a-favorite-default-red-harness-import.log"
+    },
+    {
+      "command": "earlier same-source original13 before011/016 fixes",
+      "status": "FAIL",
+      "expected_regression": true,
+      "exit_code": 1,
+      "tests_failed": 3,
+      "tests_passed": 10,
+      "log": "/tmp/frontend-ui-a-final-interactions-red.log"
+    },
+    {
+      "command": "same original13 after011/016 fixes",
+      "status": "PASS",
+      "exit_code": 0,
+      "tests": 13,
+      "log": "/tmp/frontend-ui-a-final-interactions-green.log"
+    },
+    {
+      "command": "earlier022 empty-folder controlled boundary",
+      "status": "FAIL",
+      "cause": "not normal backend contract (default always retained); superseded by default+A deletion fixture, historical only",
+      "log": "/tmp/frontend-ui-a-favorite-items-red.log"
+    }
+  ],
+  "issues": [
+    {
+      "id": "FE-UIA-009",
+      "severity": "P2",
+      "status": "已修复；已验证通过（仅对应断言）",
+      "component_tests": 2,
+      "remaining": "组件不证明真实后端持久化/OSS/多人并发/多账号浏览器"
+    },
+    {
+      "id": "FE-UIA-011",
+      "severity": "P1",
+      "status": "已修复；已验证通过（仅对应断言）",
+      "component_tests": 6,
+      "remaining": "组件不证明真实后端持久化/OSS/多人并发/多账号浏览器"
+    },
+    {
+      "id": "FE-UIA-015",
+      "severity": "P2",
+      "status": "已修复；已验证通过（仅对应断言）",
+      "component_tests": 4,
+      "remaining": "组件不证明真实后端持久化/OSS/多人并发/多账号浏览器"
+    },
+    {
+      "id": "FE-UIA-016",
+      "severity": "P2",
+      "status": "已修复；已验证通过（仅对应断言）",
+      "component_tests": 4,
+      "remaining": "组件不证明真实后端持久化/OSS/多人并发/多账号浏览器"
+    },
+    {
+      "id": "FE-UIA-022",
+      "severity": "P2",
+      "status": "已修复；已验证通过（仅对应断言）",
+      "component_tests": 3,
+      "remaining": "组件不证明真实后端持久化/OSS/多人并发/多账号浏览器"
+    }
+  ],
+  "cross_agent_evidence": [
+    {
+      "issues": [
+        "FE-UIA-006",
+        "FE-UIA-007"
+      ],
+      "path": "docs/audit/admin-config-load-validation.json",
+      "tests": 4,
+      "log": "/tmp/frontend-admin-config-load-contract-supported-final.log",
+      "boundary": "3AI/1notification real components GET503 gate/retry/fresh snapshot; not allGET/DB/realkeys/concurrency"
+    },
+    {
+      "issues": [
+        "FE-UIA-011"
+      ],
+      "tests": 9,
+      "log": "/tmp/frontend-auth-cas-complete-core-final.log",
+      "boundary": "Core real auth hook/store; separate from mocked auth caller component"
+    }
+  ],
+  "source_frozen": true,
+  "not_run": [
+    "real OSS/paidAI",
+    "backend export artifact persistence",
+    "multiaccount browser journey",
+    "all admin configs/multiadmin concurrency"
+  ],
+  "working_source_commit": "ec7d4d5ea8c0be3aa602f98024285a177e7cf382"
+}

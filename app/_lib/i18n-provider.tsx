@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 import en from "../_locales/en-US";
 import zhCN from "../_locales/zh-CN";
 import zhTW from "../_locales/zh-TW";
@@ -39,6 +39,7 @@ const dictionaries: Record<Locale, TranslationValue> = {
 const localeStorageKey = "mcmods-ui-locale";
 const overrideStorageKey = "mcmods-i18n-overrides";
 type I18nOverrides = Partial<Record<Locale, Record<string, string>>>;
+const transientStorage = new Map<string, string>();
 
 const I18nContext = createContext<{
   locale: Locale;
@@ -59,8 +60,13 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const overrides = useMemo(() => parseOverrides(overrideSnapshot), [overrideSnapshot]);
   const translationKeys = useMemo(() => flattenKeys(en), []);
 
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.documentElement.dir = "ltr";
+  }, [locale]);
+
   const setLocale = useCallback((nextLocale: Locale) => {
-    window.localStorage.setItem(localeStorageKey, nextLocale);
+    writeStoredValue(localeStorageKey, nextLocale);
     window.dispatchEvent(new Event("mcmods-locale-change"));
   }, []);
 
@@ -86,23 +92,23 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   );
 
   const setTranslation = useCallback((nextLocale: Locale, key: string, value: string) => {
-    const nextOverrides = parseOverrides(window.localStorage.getItem(overrideStorageKey) ?? "{}");
+    const nextOverrides = parseOverrides(readStoredValue(overrideStorageKey) ?? "{}");
     nextOverrides[nextLocale] = { ...(nextOverrides[nextLocale] ?? {}), [key]: value };
-    window.localStorage.setItem(overrideStorageKey, JSON.stringify(nextOverrides));
+    writeStoredValue(overrideStorageKey, JSON.stringify(nextOverrides));
     window.dispatchEvent(new Event("mcmods-locale-change"));
   }, []);
 
   const setTranslations = useCallback((nextLocale: Locale, values: Record<string, string>) => {
-    const nextOverrides = parseOverrides(window.localStorage.getItem(overrideStorageKey) ?? "{}");
+    const nextOverrides = parseOverrides(readStoredValue(overrideStorageKey) ?? "{}");
     nextOverrides[nextLocale] = { ...(nextOverrides[nextLocale] ?? {}), ...values };
-    window.localStorage.setItem(overrideStorageKey, JSON.stringify(nextOverrides));
+    writeStoredValue(overrideStorageKey, JSON.stringify(nextOverrides));
     window.dispatchEvent(new Event("mcmods-locale-change"));
   }, []);
 
   const resetTranslation = useCallback((nextLocale: Locale, key: string) => {
-    const nextOverrides = parseOverrides(window.localStorage.getItem(overrideStorageKey) ?? "{}");
+    const nextOverrides = parseOverrides(readStoredValue(overrideStorageKey) ?? "{}");
     if (nextOverrides[nextLocale]) delete nextOverrides[nextLocale]?.[key];
-    window.localStorage.setItem(overrideStorageKey, JSON.stringify(nextOverrides));
+    writeStoredValue(overrideStorageKey, JSON.stringify(nextOverrides));
     window.dispatchEvent(new Event("mcmods-locale-change"));
   }, []);
 
@@ -135,18 +141,18 @@ function subscribeLocale(onStoreChange: () => void) {
 }
 
 function getLocaleSnapshot(): Locale {
-  const saved = window.localStorage.getItem(localeStorageKey);
+  const saved = readStoredValue(localeStorageKey);
   return normalizeUILocale(saved) ?? defaultLocale;
 }
 
 function getOverrideSnapshot() {
-  return window.localStorage.getItem(overrideStorageKey) ?? "{}";
+  return readStoredValue(overrideStorageKey) ?? "{}";
 }
 
 function readMessage(messages: TranslationValue, key: string): string | undefined {
   let current: TranslationValue | undefined = messages;
   for (const segment of key.split(".")) {
-    if (!current || typeof current === "string") return undefined;
+    if (!current || typeof current === "string" || !Object.hasOwn(current, segment)) return undefined;
     current = current[segment];
   }
   return typeof current === "string" ? current : undefined;
@@ -159,15 +165,50 @@ function flattenKeys(messages: TranslationValue, prefix = ""): string[] {
 
 function parseOverrides(value: string): I18nOverrides {
   try {
-    const parsed = JSON.parse(value) as Record<string, Record<string, string>>;
+    const parsed: unknown = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
     const normalized: I18nOverrides = {};
     for (const [locale, messages] of Object.entries(parsed)) {
       const canonical = normalizeUILocale(locale);
-      if (canonical) normalized[canonical] = { ...(normalized[canonical] ?? {}), ...messages };
+      if (!canonical || !messages || typeof messages !== "object" || Array.isArray(messages)) continue;
+      const validMessages = Object.fromEntries(Object.entries(messages).filter((entry): entry is [string, string] => {
+        const [key, message] = entry;
+        const source = readMessage(en, key);
+        return source !== undefined && typeof message === "string" && Boolean(message.trim())
+          && hasCompatibleInterpolationParameters(source, message);
+      }));
+      normalized[canonical] = { ...(normalized[canonical] ?? {}), ...validMessages };
     }
     return normalized;
   } catch {
     return {};
+  }
+}
+
+export function hasCompatibleInterpolationParameters(source: string, translated: string) {
+  return interpolationParameters(source) === interpolationParameters(translated);
+}
+
+function interpolationParameters(message: string) {
+  return [...new Set(Array.from(message.matchAll(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g), (match) => match[1]))].sort().join(",");
+}
+
+function readStoredValue(key: string) {
+  if (transientStorage.has(key)) return transientStorage.get(key) ?? null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return transientStorage.get(key) ?? null;
+  }
+}
+
+function writeStoredValue(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+    transientStorage.delete(key);
+  } catch {
+    // Locale changes remain usable for this page when persistence is blocked.
+    transientStorage.set(key, value);
   }
 }
 
@@ -188,5 +229,6 @@ function normalizeUILocale(value: string | null | undefined): Locale | undefined
 
 function formatMessage(message: string, params?: Record<string, string | number>) {
   if (!params) return message;
-  return Object.entries(params).reduce((result, [key, value]) => result.replaceAll(`{${key}}`, String(value)), message);
+  return message.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (placeholder, key: string) =>
+    Object.hasOwn(params, key) ? String(params[key]) : placeholder);
 }

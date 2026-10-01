@@ -58,9 +58,17 @@ export function CommentMarkdownEditor({
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [dragging, setDragging] = useState(false);
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
+  const attachmentsRef = useRef(attachments);
+  const uploadBatchActive = useRef(false);
   const uploading = uploads.some((item) => !item.error && item.progress < 100);
 
   useEffect(() => onUploadingChange?.(uploading), [onUploadingChange, uploading]);
+  useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
+
+  function changeAttachments(next: CommentEditorAttachment[]) {
+    attachmentsRef.current = next;
+    onAttachmentsChange(next);
+  }
 
   function updateText(next: string, selectionStart: number, selectionEnd = selectionStart) {
     onChange(next.slice(0, maxLength));
@@ -94,33 +102,37 @@ export function CommentMarkdownEditor({
   }
 
   async function uploadFiles(files: File[]) {
-    if (!token || files.length === 0) return;
-    const available = Math.max(0, maxCommentAttachments - attachments.length - uploads.filter((item) => !item.error).length);
+    if (disabled || uploadBatchActive.current || !token || files.length === 0) return;
+    uploadBatchActive.current = true;
+    const available = Math.max(0, maxCommentAttachments - attachmentsRef.current.length);
     const accepted = files.slice(0, available);
     if (accepted.length !== files.length) onError(t("mods.comments.editor.attachmentLimit", { count: maxCommentAttachments }));
-    const nextAttachments = [...attachments];
-    for (const file of accepted) {
-      const key = `${file.name}-${file.size}-${file.lastModified}-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`;
-      setUploads((current) => [...current, { key, name: file.name, sizeBytes: file.size, progress: 0 }]);
-      try {
-        const result = await uploadUserFileToOSS(file, token, "comment", (loaded, total) => {
-          const progress = total > 0 ? Math.min(99, Math.round((loaded / total) * 100)) : 0;
-          setUploads((current) => current.map((item) => item.key === key ? { ...item, progress } : item));
-        });
-        const attachment: CommentEditorAttachment = {
-          id: result.id,
-          name: result.sourceOriginalName || result.originalName || file.name,
-          contentType: result.contentType || file.type || "application/octet-stream",
-          sizeBytes: result.sourceSizeBytes || result.sizeBytes || file.size,
-        };
-        if (!nextAttachments.some((item) => item.id === attachment.id)) nextAttachments.push(attachment);
-        onAttachmentsChange([...nextAttachments]);
-        setUploads((current) => current.filter((item) => item.key !== key));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : t("mods.comments.editor.uploadFailed");
-        setUploads((current) => current.map((item) => item.key === key ? { ...item, error: message, progress: 0 } : item));
-        onError(`${file.name}: ${message}`);
+    try {
+      for (const file of accepted) {
+        const key = `${file.name}-${file.size}-${file.lastModified}-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`;
+        setUploads((current) => [...current, { key, name: file.name, sizeBytes: file.size, progress: 0 }]);
+        try {
+          const result = await uploadUserFileToOSS(file, token, "comment", (loaded, total) => {
+            const progress = total > 0 ? Math.min(99, Math.round((loaded / total) * 100)) : 0;
+            setUploads((current) => current.map((item) => item.key === key ? { ...item, progress } : item));
+          });
+          const attachment: CommentEditorAttachment = {
+            id: result.id,
+            name: result.sourceOriginalName || result.originalName || file.name,
+            contentType: result.contentType || file.type || "application/octet-stream",
+            sizeBytes: result.sourceSizeBytes || result.sizeBytes || file.size,
+          };
+          const current = attachmentsRef.current;
+          if (!current.some((item) => item.id === attachment.id)) changeAttachments([...current, attachment]);
+          setUploads((current) => current.filter((item) => item.key !== key));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : t("mods.comments.editor.uploadFailed");
+          setUploads((current) => current.map((item) => item.key === key ? { ...item, error: message, progress: 0 } : item));
+          onError(`${file.name}: ${message}`);
+        }
       }
+    } finally {
+      uploadBatchActive.current = false;
     }
   }
 
@@ -164,7 +176,7 @@ export function CommentMarkdownEditor({
           <ToolbarButton label={t("mods.comments.editor.code")} disabled={disabled || mode === "preview"} onClick={() => wrapSelection("`", "`", t("mods.comments.editor.selectedText"))}>{"<>"}</ToolbarButton>
           <ToolbarButton label={t("mods.comments.editor.link")} disabled={disabled || mode === "preview"} onClick={() => wrapSelection("[", "](https://)", t("mods.comments.editor.linkText"))}>↗</ToolbarButton>
           <ToolbarButton label={t("mods.comments.editor.attachFile")} disabled={disabled || uploading} onClick={() => fileInputRef.current?.click()}>＋</ToolbarButton>
-          <input className="sr-only" multiple ref={fileInputRef} type="file" onChange={chooseFiles} />
+          <input className="sr-only" disabled={disabled || uploading} multiple ref={fileInputRef} type="file" onChange={chooseFiles} />
         </div>
         <div className="flex rounded-md border border-[var(--line)] bg-[var(--panel)] p-0.5" role="group" aria-label={t("mods.comments.editor.mode")}>
           <button className={`focus-ring rounded px-3 py-1.5 text-xs font-bold ${mode === "edit" ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setMode("edit")}>{t("mods.comments.editor.edit")}</button>
@@ -200,7 +212,7 @@ export function CommentMarkdownEditor({
                 <p className="truncate text-sm font-bold">{attachment.name}</p>
                 <p className="text-xs text-[var(--muted)]">{formatBytes(attachment.sizeBytes)} · {isAutomaticLogAttachment(attachment.name) ? t("mods.comments.editor.logViewer") : t("mods.comments.editor.downloadableFile")}</p>
               </div>
-              <button className="focus-ring shrink-0 text-xs font-bold text-[var(--red)] hover:underline" type="button" onClick={() => onAttachmentsChange(attachments.filter((item) => item.id !== attachment.id))}>{t("common.delete")}</button>
+              <button className="focus-ring shrink-0 text-xs font-bold text-[var(--red)] hover:underline" type="button" disabled={disabled} onClick={() => changeAttachments(attachmentsRef.current.filter((item) => item.id !== attachment.id))}>{t("common.delete")}</button>
             </div>
           ))}
           {uploads.map((upload) => (

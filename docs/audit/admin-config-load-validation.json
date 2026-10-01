@@ -1,0 +1,95 @@
+{
+  "repository": "mcmods-cn-frontend",
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "environment": {
+    "node": "24.19.0",
+    "vitest": "4.1.11",
+    "browser": "jsdom, React Testing Library",
+    "boundary": "真实AdminConsole与配置面板；项目API/auth/router/i18n/dashboard确定性mock；无真实供应商"
+  },
+  "source_under_test": {
+    "path": "app/_components/admin-console.tsx",
+    "sha256": "c73e1e3ebe33867d684fa26391484b2eeed3a9f2344a607081b1965085cde7d9"
+  },
+  "results": [
+    {
+      "command": "npx vitest run app/_components/__tests__/admin-config-load-contract.test.tsx --reporter=verbose",
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 1,
+      "tests": 4,
+      "duration_seconds": 12.82,
+      "first_run": true,
+      "evidence": "/tmp/frontend-admin-config-load-contract-first.log",
+      "fixture_note": "早期positive fixture含不支持scope=user；此PASS只反映mock组件断言，不能反映后端接受。已用真实支持fixture最终重跑。",
+      "test_sha256": "11784d919d74dd41f16c886e03b2a5fd6c15723bfffed7c771af7a69faeb3074"
+    },
+    {
+      "command": "npx eslint app/_components/__tests__/admin-config-load-contract.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-admin-config-load-contract-lint.log"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-admin-config-load-contract-tsc.log"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-admin-config-load-contract-diffcheck.log"
+    },
+    {
+      "command": "npx vitest run app/_components/__tests__/admin-config-load-contract.test.tsx --reporter=verbose (supported site/default hour/day fixtures)",
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 1,
+      "tests": 4,
+      "duration_seconds": 5.75,
+      "evidence": "/tmp/frontend-admin-config-load-contract-supported-final.log",
+      "test_sha256": "4dd47128b405a0ebf65820f90f0509b8aec125e1085c3c49942f60b77e997006"
+    },
+    {
+      "command": "npx eslint app/_components/__tests__/admin-config-load-contract.test.tsx (final)",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-admin-config-load-contract-supported-lint.log"
+    },
+    {
+      "command": "npx tsc --noEmit (final fixture)",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-admin-config-load-contract-supported-tsc.log"
+    },
+    {
+      "command": "git diff --check (final)",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-admin-config-load-contract-supported-diffcheck.log"
+    }
+  ],
+  "red_green": "本轮只补测试；当前已修复源首次PASS，未重放旧源，不复用其他场景红绿记录",
+  "not_verified": [
+    "后端DB持久化/权限/模板版本递增/真实密钥保留",
+    "真实AI供应商/费用/语义质量",
+    "多管理员并发全量PUT",
+    "完整浏览器E2E"
+  ],
+  "backend_followup": {
+    "id": "BE-DB-028",
+    "status": "已修复；真实PG四叶场景由backend_database实际验证PASS，前端代理静态复核调用链",
+    "code": "getAIConfig/updateAIConfig→aiConfigFromSettingsChecked→503 AI_CONFIG_UNAVAILABLE，不覆写不可读配置",
+    "evidence": "/tmp/mcmods-seed-recovery-final3-race.log",
+    "report": "../mcmods-cn-backend/docs/audit/database-ai.md",
+    "leaf_cases": [
+      "invalid encrypted envelope",
+      "valid envelope with invalid config JSON",
+      "absent config uses existing disabled defaults",
+      "closed database unavailable with observer proving encrypted setting unchanged"
+    ],
+    "boundary": "证据归数据库执行者；前端组件mock与真实供应商验证仍分离"
+  }
+}

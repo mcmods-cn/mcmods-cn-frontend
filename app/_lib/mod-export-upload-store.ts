@@ -22,55 +22,78 @@ const databaseName = "mcmods-cn-import-uploads";
 const taskStore = "tasks";
 const fileStore = "files";
 
-export function modExportUploadTaskKey(siteId: string, targetVersionId: string, token: string) {
-  return `exporter:${tokenSubject(token)}:${siteId}:${targetVersionId}`;
+export function modExportUploadTaskKey(siteId: string, targetVersionId: string, token: string, accountId = "") {
+  const identity = accountId || tokenSubject(token);
+  return identity ? `exporter:${encodeURIComponent(identity)}:${encodeURIComponent(siteId)}:${encodeURIComponent(targetVersionId)}` : "";
 }
 
 export async function createPersistedModExportUploadTask(
   task: PersistedModExportUploadTask,
   file: File,
 ) {
+  requireTaskKey(task.key);
   await requestPersistentBrowserStorage();
   const database = await openUploadDatabase();
-  await transactionPromise(database, "readwrite", [taskStore, fileStore], (transaction) => {
-    transaction.objectStore(taskStore).put(task);
-    transaction.objectStore(fileStore).put({ key: task.key, file } satisfies PersistedModExportUploadFile);
-  });
+  try {
+    await transactionPromise(database, "readwrite", [taskStore, fileStore], (transaction) => {
+      transaction.objectStore(taskStore).put(task);
+      transaction.objectStore(fileStore).put({ key: task.key, file } satisfies PersistedModExportUploadFile);
+    });
+  } finally {
+    database.close();
+  }
 }
 
 export async function readPersistedModExportUploadTask(key: string) {
+  if (!key) return undefined;
   const database = await openUploadDatabase();
-  const transaction = database.transaction([taskStore, fileStore], "readonly");
-  const taskRequest = transaction.objectStore(taskStore).get(key);
-  const fileRequest = transaction.objectStore(fileStore).get(key);
-  const [task, fileRecord] = await Promise.all([
-    requestPromise<PersistedModExportUploadTask | undefined>(taskRequest),
-    requestPromise<PersistedModExportUploadFile | undefined>(fileRequest),
-    transactionCompletion(transaction),
-  ]);
-  if (!task || !fileRecord?.file) return undefined;
-  return { task, file: fileRecord.file };
+  try {
+    const transaction = database.transaction([taskStore, fileStore], "readonly");
+    const taskRequest = transaction.objectStore(taskStore).get(key);
+    const fileRequest = transaction.objectStore(fileStore).get(key);
+    const [task, fileRecord] = await Promise.all([
+      requestPromise<PersistedModExportUploadTask | undefined>(taskRequest),
+      requestPromise<PersistedModExportUploadFile | undefined>(fileRequest),
+      transactionCompletion(transaction),
+    ]);
+    if (!task || !fileRecord?.file) return undefined;
+    return { task, file: fileRecord.file };
+  } finally {
+    database.close();
+  }
 }
 
 export async function updatePersistedModExportUploadTask(
   key: string,
   patch: Partial<Omit<PersistedModExportUploadTask, "key" | "siteId" | "targetVersionId" | "createdAt">>,
 ) {
+  requireTaskKey(key);
   const database = await openUploadDatabase();
-  const transaction = database.transaction(taskStore, "readwrite");
-  const completion = transactionCompletion(transaction);
-  const store = transaction.objectStore(taskStore);
-  const current = await requestPromise<PersistedModExportUploadTask | undefined>(store.get(key));
-  if (current) store.put({ ...current, ...patch, updatedAt: Date.now() });
-  await completion;
+  try {
+    const transaction = database.transaction(taskStore, "readwrite");
+    const store = transaction.objectStore(taskStore);
+    const request = store.get(key);
+    request.onsuccess = () => {
+      const current = request.result as PersistedModExportUploadTask | undefined;
+      if (current) store.put({ ...current, ...patch, updatedAt: Date.now() });
+    };
+    await transactionCompletion(transaction);
+  } finally {
+    database.close();
+  }
 }
 
 export async function deletePersistedModExportUploadTask(key: string) {
+  requireTaskKey(key);
   const database = await openUploadDatabase();
-  await transactionPromise(database, "readwrite", [taskStore, fileStore], (transaction) => {
-    transaction.objectStore(taskStore).delete(key);
-    transaction.objectStore(fileStore).delete(key);
-  });
+  try {
+    await transactionPromise(database, "readwrite", [taskStore, fileStore], (transaction) => {
+      transaction.objectStore(taskStore).delete(key);
+      transaction.objectStore(fileStore).delete(key);
+    });
+  } finally {
+    database.close();
+  }
 }
 
 function openUploadDatabase() {
@@ -86,7 +109,10 @@ function openUploadDatabase() {
       }
     };
     request.onerror = () => reject(request.error || new Error("Failed to open the upload task database."));
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
   });
 }
 
@@ -121,10 +147,14 @@ function tokenSubject(token: string) {
     const payload = token.split(".")[1] || "";
     const normalized = payload.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(payload.length / 4) * 4, "=");
     const value = JSON.parse(atob(normalized)) as { sub?: string | number };
-    return String(value.sub || "session").replaceAll(/[^A-Za-z0-9_-]/g, "_");
+    return typeof value.sub === "string" || typeof value.sub === "number" ? String(value.sub) : "";
   } catch {
-    return "session";
+    return "";
   }
+}
+
+function requireTaskKey(key: string) {
+  if (!key) throw new Error("An authenticated account is required to persist an import upload.");
 }
 
 async function requestPersistentBrowserStorage() {

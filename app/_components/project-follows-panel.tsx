@@ -12,6 +12,7 @@ export function ProjectFollowsPanel({ token }: { token: string }) {
   const [type, setType] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [removing, setRemoving] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -23,6 +24,20 @@ export function ProjectFollowsPanel({ token }: { token: string }) {
     }, 180);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [query, t, token, type]);
+
+  async function removeProject(id: string) {
+    if (removing.includes(id)) return;
+    setRemoving((current) => [...current, id]);
+    setError("");
+    try {
+      await unfollowProject(token, id);
+      setItems((current) => current.filter((entry) => entry.id !== id));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("projectFollows.loadFailed"));
+    } finally {
+      setRemoving((current) => current.filter((value) => value !== id));
+    }
+  }
 
   return <section className="surface p-5 sm:p-6">
     <h2 className="text-xl font-black">{t("projectFollows.title")}</h2>
@@ -39,10 +54,7 @@ export function ProjectFollowsPanel({ token }: { token: string }) {
       {items.map((item) => <article className="rounded-lg border border-[var(--line)] p-4" key={`${item.type}:${item.id}`}>
         <Link className="font-black hover:text-[var(--accent)]" href={item.url}>{item.name}</Link>
         <p className="mt-1 text-xs text-[var(--muted)]">{item.type} · {new Date(item.updatedAt).toLocaleString(locale)}</p>
-        <button className="focus-ring mt-3 rounded px-2 py-1 text-sm font-bold text-[var(--danger)]" type="button" onClick={async () => {
-          await unfollowProject(token, item.id);
-          setItems((current) => current.filter((entry) => entry.id !== item.id));
-        }}>{t("projectFollows.unfollow")}</button>
+        <button className="focus-ring mt-3 rounded px-2 py-1 text-sm font-bold text-[var(--danger)]" disabled={removing.includes(item.id)} type="button" onClick={() => void removeProject(item.id)}>{t("projectFollows.unfollow")}</button>
       </article>)}
     </div> : <p className="py-10 text-center text-[var(--muted)]">{t("projectFollows.empty")}</p>}
   </section>;

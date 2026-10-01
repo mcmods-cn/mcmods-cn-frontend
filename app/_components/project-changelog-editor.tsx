@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { supportedLocales, type Locale, useI18n } from "../_lib/i18n-provider";
 import { loadProjectChangelog, loadProjectChangelogs, saveProjectChangelog, type ChangelogCategory, type ChangelogDraft, type ChangelogTarget, type ChangelogTargetType } from "../_lib/project-changelog-api";
@@ -74,11 +74,10 @@ export function ProjectChangelogEditor({ id = "", targetId = "", targetType }: {
   }, [id, initialLocale, locale, ready, t, targetId, targetType, token]);
 
   const targetURL = target?.url || "/";
-  const payload = useMemo(() => preparePayload(draft), [draft]);
 
   async function submit() {
-    if (!token || !target) return;
-    if (!draft.projectVersion.trim() || !draft.minecraftVersions.length || !draft.localizations.find((item) => item.locale === draft.defaultLocale)?.bodyMarkdown.trim()) {
+    if (!token || !target || busy) return;
+    if (!Number.isFinite(new Date(draft.eventAt).getTime()) || !draft.projectVersion.trim() || !draft.minecraftVersions.length || !draft.localizations.find((item) => item.locale === draft.defaultLocale)?.bodyMarkdown.trim()) {
       setMessage(t("changelog.validation.required"));
       return;
     }
@@ -89,7 +88,7 @@ export function ProjectChangelogEditor({ id = "", targetId = "", targetType }: {
     setBusy(true);
     setMessage("");
     try {
-      const result = await saveProjectChangelog(payload, token, { type: target.type, id: target.id }, id);
+      const result = await saveProjectChangelog(preparePayload(draft), token, { type: target.type, id: target.id }, id);
       const destination = `${target.url}?tab=changelog`;
       await autoDraft.completeDraft({ projectKey: `changelog:${target.id}:${result.id}`, projectTitle: `${target.name} - ${draft.projectVersion}`,
         targetUrl: destination, reviewStatus: result.reviewStatus, changeRequestId: result.changeRequestId }).catch(() => undefined);

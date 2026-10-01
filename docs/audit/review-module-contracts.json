@@ -1,0 +1,142 @@
+{
+  "reviewer": "frontend_ui_b",
+  "files": [
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "scripts/audit-contracts.mjs",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "751fde51382b90fed8de539bd658b1fb1337f8cdfb331b52290a8619de2ac144",
+      "lines": 231,
+      "read_ranges": [
+        [
+          1,
+          231
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "TypeScript编译器读取真实共享API调用并生成可追溯静态inventory",
+      "call_chain": [
+        "scripts/audit-go-contracts.go",
+        "docs/audit/module-contract-overrides.json"
+      ],
+      "issues": [],
+      "validation": [
+        "最终文件全文真实读取并语义复查；局部实际测试/工具执行详见前端docs/audit/module-contract-validation.json，不宣称全面行为验证",
+        "实际BOM源文件指纹核对；TypeScript去BOM文本不能冒充原始bytes hash，最终inventory byte SHA独立核查"
+      ]
+    },
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "scripts/audit-go-contracts.go",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "96c3b4ffc55cdfe775fa4605f5325ee09a76d273d2e3cd14d3c2e2a74e0b3ac0",
+      "lines": 160,
+      "read_ranges": [
+        [
+          1,
+          160
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "Go AST读取实际路由注册、请求DTO与response/status metadata，不执行业务代码",
+      "call_chain": [
+        "../mcmods-cn-backend/internal/httpapi/server.go",
+        "scripts/audit-contracts.mjs"
+      ],
+      "issues": [],
+      "validation": [
+        "最终文件全文真实读取并语义复查；局部实际测试/工具执行详见前端docs/audit/module-contract-validation.json，不宣称全面行为验证"
+      ]
+    },
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "docs/audit/module-contract-overrides.json",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "6c640f150bf0621044c1619492396d4f4d56b8df513259b719200b6bd2cb2450",
+      "lines": 161,
+      "read_ranges": [
+        [
+          1,
+          161
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "人工核验九类动态path/method调用链，保留未知语义/行为状态",
+      "call_chain": [
+        "scripts/audit-contracts.mjs",
+        "docs/audit/module-contracts.md"
+      ],
+      "issues": [],
+      "validation": [
+        "最终文件全文真实读取并语义复查；局部实际测试/工具执行详见前端docs/audit/module-contract-validation.json，不宣称全面行为验证"
+      ]
+    },
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "docs/audit/module-contracts.md",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "edc22227c7ff9326e13c6a289baf7454a62b995e995544a9222d0b3fe87d19b6",
+      "lines": 92,
+      "read_ranges": [
+        [
+          1,
+          92
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "跨仓库模块真实角色/调用链与证据边界报告",
+      "call_chain": [
+        "docs/audit/module-contracts.json",
+        "../mcmods-cn-backend/docs/YGGDRASIL_SETTINGS_CONTRACT.md"
+      ],
+      "issues": [
+        "FE-CONTRACT-001",
+        "FE-CONTRACT-002",
+        "FE-CONTRACT-003"
+      ],
+      "validation": [
+        "最终文件全文真实读取并语义复查；局部实际测试/工具执行详见前端docs/audit/module-contract-validation.json，不宣称全面行为验证"
+      ]
+    },
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "app/_components/__tests__/contract-yggdrasil.test.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "01deaab169c24965404a7e31da9a7b22c203eafba3f1305d15d948ececa3b6cf",
+      "lines": 45,
+      "read_ranges": [
+        [
+          1,
+          45
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "真实React组件合成GET状态验证strict11字段payload及明确密钥轮换选项",
+      "call_chain": [
+        "app/_components/admin-yggdrasil-panel.tsx",
+        "../mcmods-cn-backend/internal/httpapi/yggdrasil_settings_contract_test.go"
+      ],
+      "issues": [
+        "FE-CONTRACT-001"
+      ],
+      "validation": [
+        "最终文件全文真实读取并语义复查；局部实际测试/工具执行详见前端docs/audit/module-contract-validation.json，不宣称全面行为验证"
+      ]
+    }
+  ]
+}

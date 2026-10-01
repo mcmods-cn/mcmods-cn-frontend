@@ -1,0 +1,51 @@
+{
+  "repository": "mcmods-cn-frontend",
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "environment": {
+    "node": "v24.19.0",
+    "npm": "11.9.0",
+    "vitest": "4.1.11",
+    "test_scope": "jsdom/真实React及Markdown；新增6i18n场景使用真实I18nProvider；项目API与外部依赖合成mock"
+  },
+  "results": [
+    {
+      "command": "npx vitest run tests/frontend-ui-b*.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 7,
+      "tests": 32,
+      "evidence": "/tmp/frontend-ui-b-all-green.log"
+    },
+    {
+      "command": "npx eslint app/_components/mod-detail-loader.tsx app/_components/project-auto-update-settings.tsx app/_components/admin-governance-automation-panels.tsx app/_components/admin-anti-abuse-panel.tsx app/_components/iconfont.tsx app/_components/markdown-renderer.tsx app/_components/comment-markdown-editor.tsx app/_components/comment-section.tsx app/_components/messages-center.tsx app/_components/editor/resource-picker-dialog.tsx app/_components/simple-project-catalog.tsx app/_components/minecraft-version-picker.tsx app/_locales/en-US.ts app/_locales/zh-CN.ts tests/frontend-ui-b*.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-ui-b-eslint.log"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-ui-b-tsc.log"
+    }
+  ],
+  "not_proven": [
+    "真实前后端联通/持久化/权限",
+    "真实OSS/邮件/AI供应商",
+    "全部用户旅程浏览器验收",
+    "生产健康及八语言语义质量"
+  ],
+  "baseline_red_logs": [
+    "/tmp/frontend-ui-b-red.log",
+    "/tmp/frontend-ui-b-comments-red.log",
+    "/tmp/frontend-ui-b-messages-red.log",
+    "/tmp/frontend-ui-b-uploads-red.log",
+    "/tmp/frontend-ui-b-picker-red.log",
+    "/tmp/frontend-ui-b-catalog-red.log",
+    "/tmp/frontend-ui-b-reaction-red.log",
+    "/tmp/frontend-ui-b-session-red.log",
+    "/tmp/frontend-ui-b-i18n-red.log",
+    "/tmp/frontend-ui-b-risk-metric-red.log"
+  ],
+  "red_fixture_note": "首次附件红灯含beforeEach返回mock导致清理超时；准备阶段alias/fixture错误已分别记录，不作为项目缺陷。"
+}

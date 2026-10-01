@@ -131,6 +131,7 @@ export function MarkdownRenderer({ markdown, config, emptyText, referencePath = 
   const abbreviations = normalized.abbreviations ? extractAbbreviations(source) : new Map<string, string>();
   const tocItems = normalized.toc ? extractToc(source, normalized) : [];
   const remarkPlugins = [
+    remarkRestoreCodeSyntax,
     () => remarkStickerTokens(stickers),
     commentFloorLinks ? () => remarkCommentFloorLinks() : null,
     normalized.enhancedTables || normalized.taskLists || normalized.footnotes ? remarkGfm : null,
@@ -777,19 +778,19 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
   while ((match = matcher.exec(value))) {
     if (match.index > lastIndex) nodes.push({ type: "text", value: value.slice(lastIndex, match.index) });
     if (match[1]) {
-      const token = decodeURIComponent(match[1]);
+      const token = decodeCustomMarker(match[1]);
       const icon = parseIconSyntax(token);
       nodes.push(icon ? createIconNode(icon.name, icon.value, icon.unit) : { type: "text", value: token });
     } else if (match[2]) {
-      const token = decodeURIComponent(match[2]);
-      const video = createVideoEmbedNode(token, isMainlandChina);
-      nodes.push(video ?? { type: "text", value: `[vedio:${token}]` });
+      const token = decodeCustomMarker(match[2]);
+      const video = createVideoEmbedNode(customMarkerPayload(token), isMainlandChina);
+      nodes.push(video ?? { type: "text", value: token });
     } else if (match[3]) {
-      const token = decodeURIComponent(match[3]);
-      const geogebra = createGeoGebraEmbedNode(token);
-      nodes.push(geogebra ?? { type: "text", value: `[GeoGebra:${token}]` });
+      const token = decodeCustomMarker(match[3]);
+      const geogebra = createGeoGebraEmbedNode(customMarkerPayload(token));
+      nodes.push(geogebra ?? { type: "text", value: token });
     } else if (match[4]) {
-      const token = decodeURIComponent(match[4]);
+      const token = decodeCustomMarker(match[4]);
       nodes.push(createTimeNode(token) ?? { type: "text", value: token });
     } else if (match[5]) nodes.push(createIconNode(match[5], match[6], match[7]));
     else if (match[8]) {
@@ -807,24 +808,47 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
         properties: { title: abbreviations.get(match[12]) ?? "" },
         children: [{ type: "text", value: match[12] }],
       });
-    } else if (match[13]) nodes.push(createMarkdownReferenceNode("blueprint", decodeURIComponent(match[13])));
-    else if (match[14]) nodes.push(createMarkdownReferenceNode("intro", decodeURIComponent(match[14])));
-    else if (match[15]) nodes.push(createMarkdownReferenceNode("recipe", decodeURIComponent(match[15])));
+    } else if (match[13]) nodes.push(createMarkdownReferenceNode("blueprint", customMarkerPayload(decodeCustomMarker(match[13]))));
+    else if (match[14]) nodes.push(createMarkdownReferenceNode("intro", customMarkerPayload(decodeCustomMarker(match[14]))));
+    else if (match[15]) nodes.push(createMarkdownReferenceNode("recipe", customMarkerPayload(decodeCustomMarker(match[15]))));
     lastIndex = matcher.lastIndex;
   }
   if (lastIndex < value.length) nodes.push({ type: "text", value: value.slice(lastIndex) });
   return nodes.length > 0 ? nodes : [{ type: "text", value }];
 }
 
+// Markers are plain user-controlled text too: malformed percent sequences
+// must never make rendering fail. Code nodes restore literal extension syntax
+// before highlighting, so documentation snippets remain copyable as written.
+function decodeCustomMarker(value: string) {
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+
+function customMarkerPayload(token: string) {
+  return token.startsWith("[") && token.endsWith("]") ? token.slice(token.indexOf(":") + 1, -1) : token;
+}
+
+function remarkRestoreCodeSyntax() {
+  return (tree: MdastNode) => {
+    for (const kind of ["code", "inlineCode"]) {
+      visitMarkdownTree(tree, kind, (node) => {
+        if (typeof node.value !== "string") return;
+        node.value = node.value.replace(/\uE000MC(ICON|VIDEO|GEOGEBRA|TIME|BLUEPRINT|INTRO|RECIPE)_([^\uE001]+)\uE001/g,
+          (_marker, _type: string, encoded: string) => decodeCustomMarker(encoded));
+      });
+    }
+  };
+}
+
 function protectCustomSyntax(markdown: string) {
   return markdown
     .replace(iconSyntaxPattern, (token) => `${iconMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
-    .replace(videoSyntaxPattern, (_token, payload: string) => `${videoMarkerStart}${encodeURIComponent(payload)}${customMarkerEnd}`)
-    .replace(geogebraSyntaxPattern, (_token, payload: string) => `${geogebraMarkerStart}${encodeURIComponent(payload)}${customMarkerEnd}`)
+    .replace(videoSyntaxPattern, (token) => `${videoMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
+    .replace(geogebraSyntaxPattern, (token) => `${geogebraMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
     .replace(timeSyntaxPattern, (token) => `${timeMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
-    .replace(blueprintSyntaxPattern, (_token, publicId: string) => `${blueprintMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`)
-    .replace(introSyntaxPattern, (_token, publicId: string) => `${introMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`)
-    .replace(recipeSyntaxPattern, (_token, publicId: string) => `${recipeMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`);
+    .replace(blueprintSyntaxPattern, (token) => `${blueprintMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
+    .replace(introSyntaxPattern, (token) => `${introMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
+    .replace(recipeSyntaxPattern, (token) => `${recipeMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`);
 }
 
 function createMarkdownReferenceNode(kind: "blueprint" | "intro" | "recipe", publicId: string): Element {

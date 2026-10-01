@@ -29,84 +29,101 @@ export function BlockModelCanvas({ assetSource, blockId, blockEntityModel, block
     const host = hostRef.current;
     if (!host) return;
     let cancelled = false;
-    let frame = 0;
-    let model: THREE.Group | undefined;
-    setLoading(true);
-    setError("");
+    let teardown: (() => void) | undefined;
+    const initialize = () => {
+      if (cancelled) return;
+      let frame = 0;
+      let model: THREE.Group | undefined;
+      setLoading(true);
+      setError("");
 
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 1000);
-    const renderer = new THREE.WebGLRenderer({ alpha: false, antialias: true });
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0x18211d, 1);
-    host.appendChild(renderer.domElement);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.target.set(0, 0, 0);
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x52605a, 2.4));
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-    keyLight.position.set(4, 7, 5);
-    scene.add(keyLight);
-
-    const resize = () => {
-      const width = Math.max(1, host.clientWidth);
-      const height = Math.max(1, host.clientHeight);
-      renderer.setSize(width, height, false);
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(host);
-    resize();
-
-    const normalizedState = Object.fromEntries(
-      Object.entries(blockState ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
-    );
-    void buildMinecraftBlockModel(assetSource, blockId, normalizedState, blockEntityModel).then((built) => {
-      if (cancelled) {
-        disposeStructureGroup(built);
-        return;
-      }
-      model = built;
-      const bounds = new THREE.Box3().setFromObject(built);
-      const center = bounds.getCenter(new THREE.Vector3());
-      const size = bounds.getSize(new THREE.Vector3());
-      built.position.sub(center);
-      scene.add(built);
-      const radius = Math.max(size.x, size.y, size.z, 1);
-      camera.position.set(radius * 1.35, radius * 1.05, radius * 1.55);
-      camera.near = Math.max(0.01, radius / 100);
-      camera.far = radius * 100;
-      camera.updateProjectionMatrix();
-      camera.lookAt(0, 0, 0);
-      controls.update();
-      renderer.render(scene, camera);
-      setLoading(false);
-    }).catch((reason: unknown) => {
-      if (!cancelled) {
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(36, 1, 0.01, 1000);
+      let renderer: THREE.WebGLRenderer;
+      try {
+        renderer = new THREE.WebGLRenderer({ alpha: false, antialias: true });
+      } catch (reason) {
         setLoading(false);
         setError(reason instanceof Error ? reason.message : String(reason));
+        return;
       }
-    });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setClearColor(0x18211d, 1);
+      host.appendChild(renderer.domElement);
 
-    const render = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      frame = requestAnimationFrame(render);
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.target.set(0, 0, 0);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x52605a, 2.4));
+      const keyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+      keyLight.position.set(4, 7, 5);
+      scene.add(keyLight);
+
+      const resize = () => {
+        const width = Math.max(1, host.clientWidth);
+        const height = Math.max(1, host.clientHeight);
+        renderer.setSize(width, height, false);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+      };
+      const observer = new ResizeObserver(resize);
+      observer.observe(host);
+      resize();
+
+      const normalizedState = Object.fromEntries(
+        Object.entries(blockState ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+      );
+      void buildMinecraftBlockModel(assetSource, blockId, normalizedState, blockEntityModel).then((built) => {
+        if (cancelled) {
+          disposeStructureGroup(built);
+          return;
+        }
+        model = built;
+        const bounds = new THREE.Box3().setFromObject(built);
+        const center = bounds.getCenter(new THREE.Vector3());
+        const size = bounds.getSize(new THREE.Vector3());
+        built.position.sub(center);
+        scene.add(built);
+        const radius = Math.max(size.x, size.y, size.z, 1);
+        camera.position.set(radius * 1.35, radius * 1.05, radius * 1.55);
+        camera.near = Math.max(0.01, radius / 100);
+        camera.far = radius * 100;
+        camera.updateProjectionMatrix();
+        camera.lookAt(0, 0, 0);
+        controls.update();
+        renderer.render(scene, camera);
+        setLoading(false);
+      }).catch((reason: unknown) => {
+        if (!cancelled) {
+          setLoading(false);
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      });
+
+      const render = () => {
+        controls.update();
+        renderer.render(scene, camera);
+        frame = requestAnimationFrame(render);
+      };
+      render();
+
+      teardown = () => {
+        cancelAnimationFrame(frame);
+        observer.disconnect();
+        controls.dispose();
+        if (model) disposeStructureGroup(model);
+        renderer.dispose();
+        renderer.domElement.remove();
+      };
     };
-    render();
-
+    // Wait for a painted host layout before allocating the graphics context.
+    const initializationFrame = requestAnimationFrame(initialize);
     return () => {
       cancelled = true;
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      controls.dispose();
-      if (model) disposeStructureGroup(model);
-      renderer.dispose();
-      renderer.domElement.remove();
+      cancelAnimationFrame(initializationFrame);
+      teardown?.();
     };
   }, [assetSource, blockId, blockEntityModel, blockState]);
 

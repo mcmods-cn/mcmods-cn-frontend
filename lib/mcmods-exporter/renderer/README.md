@@ -1,6 +1,6 @@
 # mcmods_exporter renderer core
 
-本目录是从独立 React 演示站提取的框架无关核心。完整架构、数据库和 API 契约见 [`docs/mcmods-exporter-integration.md`](../../../docs/mcmods-exporter-integration.md)。
+本目录是从独立 React 演示站提取的框架无关核心。客户端资源与生命周期契约见 [`docs/renderer-client-contracts.md`](../../../docs/renderer-client-contracts.md)。数据库与授权由后端仓库维护。
 
 最小调用：
 
@@ -12,7 +12,7 @@ import {
 
 const source = new IndexedHttpAssetSource(
   assetPaths,
-  path => `/api/v1/revisions/${revisionId}/assets/content?path=${encodeURIComponent(path)}`,
+  path => `/api/v1/export-revisions/${encodeURIComponent(revisionId)}/assets/content?path=${encodeURIComponent(path)}`,
 )
 
 const renderer = new StructureRenderer(hostElement, source, {

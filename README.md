@@ -4,14 +4,14 @@ Mcmods-cn 的 Next.js 前端，包含站点主页、登录、用户中心、后�
 
 ## 环境要求
 
-- Node.js 20 或更高版本
+- Node.js 20.19 或更高版本（本次验证使用 24.19.0）
 - npm 10 或更高版本
 - 正在运行的 `mcmods-cn-backend`
 
 ## 本地开发
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -30,12 +30,32 @@ NEXT_PUBLIC_ICONFONT_SYMBOL_URL=https://at.alicdn.com/t/c/font_xxxxx.js
 
 ```bash
 npm run check
+npm test
 npm run build
 npm run start
 ```
 
 - `check`：运行 ESLint 和 TypeScript 类型检查。
+- `test`：运行 Vitest 组件、契约、语言资源和缺陷回归测试。
 - `build`：创建生产构建。
 - `start`：启动已生成的生产构建。
 
 项目统一使用 npm，并提交 `package-lock.json` 以保证依赖版本可复现。
+
+## 隔离联通验收
+
+先按后端 `docs/audit/environment.md` 启动并初始化专用测试服务和真实后端，再在当前 shell 加载该服务的 `env.sh`。不要使用生产连接或生产账号。
+
+```bash
+npx playwright install chromium
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:18080 npm run build
+npm run start -- --port 13000 --hostname 127.0.0.1
+# 在另一个已加载同一测试 env.sh 的 shell 中：
+NEXT_PUBLIC_API_BASE_URL=http://127.0.0.1:18080 npm run test:e2e
+```
+
+业务 E2E 使用真实本地 API、Cookie 会话及 PostgreSQL 持久化，不替换项目 API；另一个原生 IndexedDB 场景使用隔离页面，不算项目 API 联通。测试仅接受回环地址，依赖测试种子的随机管理员密码；输出目录 `test-results/` 不进入提交。不录制含会话凭据的认证 trace。付费 AI、真实邮件和真实 OSS 不在此验收范围内。
+
+所有浏览器 context 共用回环 IP。无头浏览器按现有爬虫规则限制为每分钟 60 次读取，多个旅程连续刷新会共用额度。`test:e2e` 以互补筛选分两批执行完整测试，批间等待 60 秒；不放宽安全规则、测试超时或断言。两批 JSON 分别为 `playwright-report/e2e-core-results.json` 和 `playwright-report/e2e-account-results.json`（独立于每批清空的 `test-results/`）。定向测试使用 `npx playwright test ...`，需要自行遵守共享额度；不要并发运行同一隔离后端的浏览器批次。
+
+页面使用逐请求 CSP nonce，因此根 layout 调用 Next `connection()` 后动态渲染，确保生产 HTML 的脚本 nonce 与响应 CSP 一致。生产托管须支持 Next 服务端运行，不能把这些页面当作静态导出文件部署。移动端沿用同一个语言选择器，切换语言保留当前 URL，偏好在浏览器保存。

@@ -162,7 +162,7 @@ export function setCommentReaction(commentId: string, reaction: string, active: 
 }
 
 export function setCommentWatch(commentId: string, active: boolean, token: string) {
-  return apiRequest<CommentWatchState>(
+  return apiRequest<CommentWatchState | { active: false }>(
     `/api/v1/comments/${encodeURIComponent(commentId)}/watch`,
     { method: active ? "PUT" : "DELETE" },
     token,

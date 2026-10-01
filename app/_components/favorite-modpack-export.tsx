@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createFavoriteModpackExport,
   downloadFavoriteModpackExport,
@@ -35,7 +35,24 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   const [detail, setDetail] = useState<FavoriteModpackExportDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const downloadedTask = useRef("");
+  const downloadPending = useRef(false);
+
+  const downloadTask = useCallback(async (task: FavoriteModpackExportDetail["task"]) => {
+    if (downloadPending.current) return;
+    downloadPending.current = true;
+    setDownloading(true);
+    setError("");
+    try {
+      await downloadFavoriteModpackExport(token, task.id, exportFilename(task));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      downloadPending.current = false;
+      setDownloading(false);
+    }
+  }, [token]);
 
   useEffect(() => {
     if (!initialTaskId) return;
@@ -63,7 +80,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   const selectedVersion = minecraftVersions[0] ?? "";
 
   async function inspect() {
-    if (!selectedVersion) return;
+    if (!selectedVersion || busy) return;
     setBusy(true);
     setError("");
     setDetail(null);
@@ -77,7 +94,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   }
 
   async function createExport() {
-    if (!preview) return;
+    if (!preview || busy || preview.minecraftVersion !== selectedVersion || preview.loader !== loader) return;
     setBusy(true);
     setError("");
     try {
@@ -91,6 +108,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   }
 
   async function showExportHistory() {
+    if (busy) return;
     setBusy(true);
     setError("");
     setDetail(null);
@@ -105,6 +123,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   }
 
   async function openHistoryTask(task: FavoriteModpackExportTask) {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
@@ -134,7 +153,12 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     const refresh = async () => {
       try {
         const next = await loadFavoriteModpackExport(token, task.id);
-        if (!cancelled) setDetail(next);
+        if (!cancelled) {
+          setDetail(next);
+          setError("");
+        }
+      } catch (reason) {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : t("favorites.loadFailed"));
       } finally {
         if (!cancelled) timer = window.setTimeout(refresh, 2500);
       }
@@ -144,14 +168,13 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [detail?.task, open, token]);
+  }, [detail?.task, open, t, token]);
 
   useEffect(() => {
     if (!detail?.downloadAvailable || detail.task.status !== "ready" || downloadedTask.current === detail.task.id) return;
     downloadedTask.current = detail.task.id;
-    void downloadFavoriteModpackExport(token, detail.task.id, exportFilename(detail.task))
-      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
-  }, [detail, token]);
+    void downloadTask(detail.task);
+  }, [detail, downloadTask]);
 
   return (
     <>
@@ -174,7 +197,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
           className="fixed inset-0 z-[120] grid place-items-center bg-black/55 p-3"
           role="presentation"
           onMouseDown={(event) => {
-            if (event.currentTarget === event.target) setOpen(false);
+            if (!busy && event.currentTarget === event.target) setOpen(false);
           }}
         >
           <section
@@ -189,10 +212,10 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
                 <p className="mt-1 text-sm text-[var(--muted)]">{collectionName}</p>
               </div>
               <div className="flex gap-2">
-                <button className="button-secondary focus-ring" type="button" onClick={() => void showExportHistory()}>
+                <button className="button-secondary focus-ring" type="button" disabled={busy} onClick={() => void showExportHistory()}>
                   {t("favorites.modpackExport.history")}
                 </button>
-                <button aria-label={t("common.close")} className="button-secondary focus-ring" type="button" onClick={() => setOpen(false)}>
+                <button aria-label={t("common.close")} className="button-secondary focus-ring" type="button" disabled={busy} onClick={() => setOpen(false)}>
                   ×
                 </button>
               </div>
@@ -204,6 +227,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
                   {t("favorites.modpackExport.minecraftVersion")}
                   <MinecraftVersionPicker
                     multiple={false}
+                    disabled={busy}
                     values={minecraftVersions}
                     onChange={(values) => {
                       setMinecraftVersions(values.slice(0, 1));
@@ -215,6 +239,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
                   {t("favorites.modpackExport.loader")}
                   <select
                     className="field"
+                    disabled={busy}
                     value={loader}
                     onChange={(event) => {
                       setLoader(event.target.value as typeof loader);
@@ -243,7 +268,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
             {showHistory && !detail ? (
               <ExportHistory busy={busy} history={history} onBack={() => setShowHistory(false)} onSelect={openHistoryTask} />
             ) : null}
-            {detail ? <ExportResult detail={detail} token={token} onBack={() => returnToSettings(detail.task)} /> : null}
+            {detail ? <ExportResult detail={detail} downloading={downloading} onDownload={() => downloadTask(detail.task)} onBack={() => returnToSettings(detail.task)} /> : null}
           </section>
         </div>
       ) : null}
@@ -318,8 +343,14 @@ function ExportPreview({ preview, busy, onCreate }: { preview: FavoriteModpackEx
   );
 }
 
-function ExportResult({ detail, token, onBack }: { detail: FavoriteModpackExportDetail; token: string; onBack: () => void }) {
+function ExportResult({ detail, downloading, onDownload, onBack }: { detail: FavoriteModpackExportDetail; downloading: boolean; onDownload: () => Promise<void>; onBack: () => void }) {
   const { t } = useI18n();
+  const [actionError, setActionError] = useState("");
+  async function runResultAction(action: () => Promise<unknown>) {
+    setActionError("");
+    try { await action(); }
+    catch (reason) { setActionError(reason instanceof Error ? reason.message : String(reason)); }
+  }
   const groups = useMemo(() => ({
     exported: detail.items.filter((item) => item.resultType === "exported"),
     dependencies: detail.items.filter((item) => item.resultType === "auto_dependency"),
@@ -354,12 +385,13 @@ function ExportResult({ detail, token, onBack }: { detail: FavoriteModpackExport
       <ExportItemGroup items={groups.dependencies} title={t("favorites.modpackExport.autoDependencies")} />
       <ExportItemGroup items={groups.skipped} title={t("favorites.modpackExport.skippedItems")} />
       <ExportItemGroup items={groups.failed} title={t("favorites.modpackExport.failedItems")} />
+      {actionError ? <p role="alert" className="text-sm text-[var(--red)]">{actionError}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
         {groups.failed.length ? (
           <button
             className="button-secondary focus-ring"
             type="button"
-            onClick={() => void navigator.clipboard.writeText(groups.failed.map((item) => item.sourceProjectName).join("\n"))}
+            onClick={() => void runResultAction(() => navigator.clipboard.writeText(groups.failed.map((item) => item.sourceProjectName).join("\n")))}
           >
             {t("favorites.modpackExport.copyFailed")}
           </button>
@@ -370,8 +402,9 @@ function ExportResult({ detail, token, onBack }: { detail: FavoriteModpackExport
         {detail.downloadAvailable ? (
           <button
             className="button-primary focus-ring"
+            disabled={downloading}
             type="button"
-            onClick={() => void downloadFavoriteModpackExport(token, detail.task.id, exportFilename(detail.task))}
+            onClick={() => void onDownload()}
           >
             {t("favorites.modpackExport.download")}
           </button>

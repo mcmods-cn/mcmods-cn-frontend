@@ -1,0 +1,171 @@
+{
+  "reviewer": "frontend_ui_b",
+  "files": [
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "app/_components/__tests__/ui-b-delegated-boundaries.test.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "34ae6561f5e9ef5888abff05e80fab6d385f9215a1bda5468e1c1fdaaae2bab1",
+      "lines": 133,
+      "read_ranges": [
+        [
+          1,
+          133
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": true,
+      "responsibility": "实际布局与资源编辑器的父重挂接深度/GET失败草稿与写入门禁/重试fresh修订/迟到恢复范围与提交一致性3组件测试",
+      "call_chain": [
+        "app/_components/mod-content-layout-editor.tsx: parent select→reparentCategory→categoryDepths→save/updateModContentLayout",
+        "app/_components/mod-content-resource-editor.tsx: GET load→loaded gate→retry→useAutoDraft→RangeFieldEditor→save/updateModContentResource",
+        "app/_components/editor/editor-shell.tsx: canSubmit→submit",
+        "app/_lib/use-auto-draft.ts: enabled gate→loadUserDraft/visibilitychange→onRestore"
+      ],
+      "issues": [
+        "FE-UIB-D004",
+        "FE-UIB-D006"
+      ],
+      "validation": [
+        "相同最终3断言用隔离Vite加载基线两个组件：3FAIL(exit1)→当前组件3PASS(exit0),2.98s; API wrapper mock，不声称realAPI/数据库/E2E",
+        "selected ESLint/整仓tsc/diffcheck PASS；日志见delegated-boundaries.md"
+      ]
+    },
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "docs/audit/delegated-boundaries.md",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "c61679eeb8a1b0c73c2a5d0339be2d6c620180b27262f6a7841494ce7ea1f118",
+      "lines": 11,
+      "read_ranges": [
+        [
+          1,
+          11
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "红绿复现、范围及初始测试错误披露，mock组件与真实落库/E2E边界",
+      "call_chain": [
+        "app/_components/mod-content-layout-editor.tsx: parent select→reparentCategory→categoryDepths→save/updateModContentLayout",
+        "app/_components/mod-content-resource-editor.tsx: GET load→loaded gate→retry→useAutoDraft→RangeFieldEditor→save/updateModContentResource",
+        "app/_components/editor/editor-shell.tsx: canSubmit→submit",
+        "app/_lib/use-auto-draft.ts: enabled gate→loadUserDraft/visibilitychange→onRestore"
+      ],
+      "issues": [
+        "FE-UIB-D004",
+        "FE-UIB-D006"
+      ],
+      "validation": [
+        "相同最终3断言用隔离Vite加载基线两个组件：3FAIL(exit1)→当前组件3PASS(exit0),2.98s; API wrapper mock，不声称realAPI/数据库/E2E",
+        "selected ESLint/整仓tsc/diffcheck PASS；日志见delegated-boundaries.md"
+      ]
+    },
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "docs/audit/frontend-ui-b-delegated.md",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "f825067840afad48a43806fe649353bec153fb69f3cbb6cc6630b2abb988c9d9",
+      "lines": 27,
+      "read_ranges": [
+        [
+          1,
+          27
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "仅D004/D006验证两行更新；最终完整报告复读与原委派分母不重复计数",
+      "call_chain": [
+        "app/_components/mod-content-layout-editor.tsx: parent select→reparentCategory→categoryDepths→save/updateModContentLayout",
+        "app/_components/mod-content-resource-editor.tsx: GET load→loaded gate→retry→useAutoDraft→RangeFieldEditor→save/updateModContentResource",
+        "app/_components/editor/editor-shell.tsx: canSubmit→submit",
+        "app/_lib/use-auto-draft.ts: enabled gate→loadUserDraft/visibilitychange→onRestore"
+      ],
+      "issues": [
+        "FE-UIB-D004",
+        "FE-UIB-D006"
+      ],
+      "validation": [
+        "相同最终3断言用隔离Vite加载基线两个组件：3FAIL(exit1)→当前组件3PASS(exit0),2.98s; API wrapper mock，不声称realAPI/数据库/E2E",
+        "selected ESLint/整仓tsc/diffcheck PASS；日志见delegated-boundaries.md"
+      ]
+    }
+  ],
+  "source_snapshots": [
+    {
+      "path": "app/_components/mod-content-layout-editor.tsx",
+      "sha256": "76c2f2d52edc7222c70d1cea723822b4c4fcd90b9f378ef56345a1154e839017",
+      "lines": 1331,
+      "scope": "验证相关调用链复核，完整原审查由现有owner ledger记录，不在本增量重复计数"
+    },
+    {
+      "path": "app/_components/mod-content-resource-editor.tsx",
+      "sha256": "500eca05b298734ea7135a3f4066c8c1b2e9fa9341c83ac0d4abc09fa63588bd",
+      "lines": 1388,
+      "scope": "验证相关调用链复核，完整原审查由现有owner ledger记录，不在本增量重复计数"
+    },
+    {
+      "path": "app/_lib/use-auto-draft.ts",
+      "sha256": "c74fbf84d8c94c37ad5d3f2861c4118662d5dc535d269a74f06158444f233c6e",
+      "lines": 169,
+      "scope": "验证相关调用链复核，完整原审查由现有owner ledger记录，不在本增量重复计数"
+    }
+  ],
+  "validation_runs": [
+    {
+      "command": "npm test -- app/_components/__tests__/ui-b-delegated-boundaries.test.tsx",
+      "status": "FAIL",
+      "exit_code": 1,
+      "tests": 3,
+      "passed": 2,
+      "failed": 1,
+      "log": "/tmp/frontend-ui-b-delegated-boundaries-first.log",
+      "reason": "测试误把Testing Library自身50ms轮询计时器当成autosave；已改hidden页面事件实际边界断言，业务源码未改"
+    },
+    {
+      "command": "npx vitest run --config /tmp/mcmods-delegated-component-red-4xhke3he/vitest-baseline.mts",
+      "status": "FAIL",
+      "exit_code": 1,
+      "tests": 3,
+      "passed": 0,
+      "failed": 3,
+      "log": "/tmp/frontend-ui-b-delegated-boundaries-baseline-red.log",
+      "reason": "隔离读取基线组件，复现真实缺陷：下拉越深/GET失败仍编辑/恢复范围未显示"
+    },
+    {
+      "command": "npm test -- app/_components/__tests__/ui-b-delegated-boundaries.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "tests": 3,
+      "passed": 3,
+      "failed": 0,
+      "duration_seconds": 2.98,
+      "log": "/tmp/frontend-ui-b-delegated-boundaries-final.log"
+    },
+    {
+      "command": "npx eslint app/_components/__tests__/ui-b-delegated-boundaries.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-ui-b-delegated-boundaries-lint.log"
+    },
+    {
+      "command": "npm run typecheck",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-ui-b-delegated-boundaries-tsc.log"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-ui-b-delegated-boundaries-diffcheck.log"
+    }
+  ]
+}

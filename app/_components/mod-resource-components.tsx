@@ -414,7 +414,7 @@ export function ModLootTableView({ data }: { data: Record<string, unknown> }) {
       <h3 className="text-sm font-black">{t("mods.exportImport.entry.loot.references")}</h3>
       <div className="mt-3 flex flex-wrap gap-2">{referencedLootTables.map((referenceID) => {
         const source = record(sources[referenceID]);
-        const href = stringValue(source.detailUrl);
+        const href = safeResourceHref(source.detailUrl);
         return href
           ? <Link className="rounded bg-[var(--accent-soft)] px-2.5 py-1.5 font-mono text-xs font-bold text-[var(--accent)] hover:underline" href={href} key={referenceID} rel="noopener noreferrer" target="_blank">{referenceID}</Link>
           : <code className="rounded bg-[var(--panel-subtle)] px-2.5 py-1.5 text-xs" key={referenceID}>{referenceID}</code>;
@@ -470,7 +470,7 @@ function LootEntryCard({
   const source = record(sources[sourceID]);
   const href = tagID
     ? `/mods-tag?registry=minecraft:item&tagId=${encodeURIComponent(tagID)}`
-    : stringValue(source.detailUrl);
+    : safeResourceHref(source.detailUrl);
   const title = localizedRecordValue(source.names, minecraftLocale(locale))
     || (tagID ? `#${tagID}` : sourceID || rawName || type || kind || "?");
   const iconPath = stringValue(source.iconPath);
@@ -510,7 +510,7 @@ function LootResourceChip({
   const iconPath = stringValue(source.iconPath);
   const revisionID = stringValue(source.sourceRevisionId);
   const iconURL = iconPath && revisionID ? modExportAssetURL(revisionID, iconPath) : "";
-  const href = stringValue(source.detailUrl);
+  const href = safeResourceHref(source.detailUrl);
   const content = <><span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-[var(--panel-subtle)]">{iconURL ? <Image unoptimized alt="" className="h-9 w-9 object-contain [image-rendering:pixelated]" height={36} src={iconURL} width={36} /> : <span className="text-xs font-black text-[var(--muted)]">?</span>}</span><span className="min-w-0"><strong className="block truncate text-sm">{name}</strong><code className="block truncate text-[10px] text-[var(--muted)]">{id}</code></span></>;
   return href
     ? <Link className="focus-ring flex min-w-0 items-center gap-2 rounded-lg border border-[var(--line)] p-2 hover:border-[var(--accent)]" href={href} rel="noopener noreferrer" target="_blank">{content}</Link>
@@ -644,7 +644,7 @@ function ModRecipeCandidateChanceLabel({
     numberValue(source.chance ?? source.probability, Number.NaN) * 100,
   );
   const badgeText = Number.isFinite(percent)
-    ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%`
+    ? `${percent.toLocaleString(locale, { maximumFractionDigits: 3 })}%`
     : text;
   return <span className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-[#242424] px-1 py-0.5 text-[9px] font-black leading-none text-white shadow" title={text}>{badgeText}</span>;
 }
@@ -656,7 +656,7 @@ function localizedRecipeChance(slot: Record<string, unknown>, locale: string) {
   if (typeof slot.chance_text === "string" && slot.chance_text) return slot.chance_text;
   const percent = numberValue(slot.chance_percent, numberValue(slot.chance, Number.NaN) * 100);
   return Number.isFinite(percent)
-    ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%`
+    ? `${percent.toLocaleString(locale, { maximumFractionDigits: 3 })}%`
     : "";
 }
 
@@ -709,7 +709,7 @@ function ModRecipeSlot({
     >{content}</Link>;
   }
   if (itemId) {
-    const href = stringValue(item.detailUrl)
+    const href = safeResourceHref(item.detailUrl)
       || canonicalImportedResourceHref(
         sourceSiteId,
         stringValue(item.sourceVersionPublicId),
@@ -731,7 +731,7 @@ function modRecipeMaterialHref(slot: Record<string, unknown>, item: Record<strin
   const itemId = stringValue(item.item) || stringValue(item.resource_location);
   const sourceSiteId = stringValue(item.sourceModSiteId);
   if (!itemId) return undefined;
-  return stringValue(item.detailUrl)
+  return safeResourceHref(item.detailUrl)
     || canonicalImportedResourceHref(
       sourceSiteId,
       stringValue(item.sourceVersionPublicId),
@@ -749,8 +749,18 @@ function canonicalImportedResourceHref(
   return `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourcePublicId)}?version=${encodeURIComponent(versionPublicId)}`;
 }
 
+function safeResourceHref(value: unknown) {
+  if (typeof value !== "string") return "";
+  const candidate = value.trim();
+  if (candidate.startsWith("/") && !candidate.startsWith("//") && !candidate.includes("\\")) return candidate;
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : "";
+  } catch { return ""; }
+}
+
 function resourceSourceHref(source: Record<string, unknown>) {
-  return stringValue(source.detailUrl)
+  return safeResourceHref(source.detailUrl)
     || canonicalImportedResourceHref(
       stringValue(source.sourceModSiteId),
       stringValue(source.sourceVersionPublicId),

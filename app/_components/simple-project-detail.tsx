@@ -27,22 +27,26 @@ import { ProjectEditorApplicationButton } from "./project-editor-application";
 type ProjectTab = "introduction" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
 
 export function SimpleProjectDetailLoader({ projectType, siteId }: { projectType: SimpleProjectType; siteId: string }) {
-  const { ready, token } = useAuthSnapshot();
+  const { ready, token, user } = useAuthSnapshot();
   const { t } = useI18n();
-  const [record, setRecord] = useState<SimpleProjectRecord>();
-  const [notFound, setNotFound] = useState(false);
+  const [result, setResult] = useState<{ scope: string; value?: SimpleProjectRecord; error?: string; notFound?: boolean }>();
+  const [reload, setReload] = useState(0);
+  const scope = JSON.stringify([projectType, siteId, token, user?.id, reload]);
   useEffect(() => {
     if (!ready) return;
+    let cancelled = false;
     const controller = new AbortController();
-    apiRequest<SimpleProjectRecord>(`/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}`, { signal: controller.signal }, token)
-      .then(setRecord)
-      .catch((error) => { if (error instanceof ApiError && error.status === 404) setNotFound(true); });
-    return () => controller.abort();
-  }, [projectType, ready, siteId, token]);
-  if (!record) return <main className="grid min-h-[60vh] place-items-center px-4 text-center"><h1 className="text-2xl font-black">{notFound ? t("largeProjects.detail.notFound") : t("common.loading")}</h1></main>;
-  return <SimpleProjectDetail record={record} />;
+    apiRequest<SimpleProjectRecord>(`/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}`, { signal: controller.signal }, token).then((value) => {
+      if (!cancelled) setResult({ scope, value });
+    }).catch((error) => {
+      if (!cancelled) setResult({ scope, notFound: error instanceof ApiError && error.status === 404, error: error instanceof Error ? error.message : t("common.error") });
+    });
+    return () => { cancelled = true; controller.abort(); };
+  }, [projectType, ready, scope, siteId, t, token]);
+  if (!ready || result?.scope !== scope) return <main className="grid min-h-[60vh] place-items-center px-4 text-center"><h1 className="text-2xl font-black">{t("common.loading")}</h1></main>;
+  if (!result.value) return <main className="grid min-h-[60vh] place-items-center px-4 text-center"><div role="alert"><h1 className="text-2xl font-black">{result.notFound ? t("largeProjects.detail.notFound") : result.error}</h1>{!result.notFound ? <button className="button-secondary focus-ring mt-4" type="button" onClick={() => setReload((value) => value + 1)}>{t("common.retry")}</button> : null}</div></main>;
+  return <SimpleProjectDetail key={scope} record={result.value} />;
 }
-
 function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();

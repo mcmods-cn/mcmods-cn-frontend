@@ -36,8 +36,8 @@ export function ProjectAutoUpdateSettings({ projectType, projectId, token }: { p
   }, [base, token]);
   useEffect(() => { queueMicrotask(() => void load()); }, [load]);
   async function bind(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
-    try { await apiRequest(`${base}/sources`, { method: "POST", body: JSON.stringify({ sourceType: form.get("sourceType"), url: form.get("url") }) }, token); event.currentTarget.reset(); await load(); }
+    event.preventDefault(); const element = event.currentTarget; const form = new FormData(element);
+    try { await apiRequest(`${base}/sources`, { method: "POST", body: JSON.stringify({ sourceType: form.get("sourceType"), url: form.get("url") }) }, token); element.reset(); await load(); }
     catch (error) { setMessage(errorMessage(error)); }
   }
   async function save() {

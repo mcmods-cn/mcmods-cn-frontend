@@ -18,6 +18,7 @@ export function IconfontLoader({ symbolUrl }: { symbolUrl?: string }) {
     return () => {
       script.removeEventListener("load", notifyIconfontChange);
       script.removeEventListener("error", notifyIconfontChange);
+      script.remove();
     };
   }, [symbolUrl]);
   return null;
@@ -48,7 +49,7 @@ function normalizeIconfontURL(value?: string) {
   const candidate = value.startsWith("//") ? `https:${value}` : value;
   try {
     const url = new URL(candidate);
-    if (url.protocol !== "https:" || !url.hostname.endsWith("alicdn.com")) return "";
+    if (url.protocol !== "https:" || !(url.hostname === "alicdn.com" || url.hostname.endsWith(".alicdn.com"))) return "";
     return url.toString();
   } catch {
     return "";

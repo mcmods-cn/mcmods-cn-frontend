@@ -1,0 +1,2970 @@
+[
+  {
+    "path": "app/_components/admin-community-panels.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "48a46aa3447735c3474f8aa67af17cf4132490813336456d9345b23ee6eb9dc6",
+    "sha256": "45bb03e2e9d1901c42f1599b586ab256a38e22884e9ca397abfab54abfe949a8",
+    "lines": 1735,
+    "read_ranges": [
+      [
+        1,
+        1735
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "后台活动、货币/经济/商店/等级/任务配置",
+    "call_chain": [
+      "react",
+      "../_lib/api",
+      "../_lib/community-api",
+      "../_lib/i18n-provider",
+      "../_lib/oss-upload",
+      "./catalog-resource-icon"
+    ],
+    "issues": [
+      "FE-UIB-D001",
+      "FE-UIB-D002",
+      "FE-UIB-D003"
+    ],
+    "validation": [
+      "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+      "ui-b-delegated-community: 缺阈值角色可配置、经济/等级失败重试、活动查询乱序"
+    ],
+    "final_review": "委派代理全文语义审查与最终修改段复查；UI-B已核验台账/工作区指纹，未冒充独立读取原五文件",
+    "reviewer": "frontend_ui_a",
+    "review_evidence": "docs/audit/review-frontend-ui-b-delegated.json",
+    "final_review_sha256": "45bb03e2e9d1901c42f1599b586ab256a38e22884e9ca397abfab54abfe949a8",
+    "final_review_note": "原全文已实际审查（admin-community按UIA独立委派全文台账）；UI-B追加完整读取最终git diff，包括root新增认领分页/AbortController和creator证明非空/maxlength/标签。原未改行与先前指纹版本确认，不继承未读新块。新增root功能的行为证据由root负责，不用旧32项测试冒充。"
+  },
+  {
+    "path": "app/_components/mod-content-resource-editor.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "617e88a84f159e97cc66a12ba3c10cdbc83aa1164c46c09ce849288044d9e372",
+    "sha256": "500eca05b298734ea7135a3f4066c8c1b2e9fa9341c83ac0d4abc09fa63588bd",
+    "lines": 1388,
+    "read_ranges": [
+      [
+        1,
+        1388
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "物品/资源定义、多语言、范围字段、图标与审核修订",
+    "call_chain": [
+      "next/image",
+      "next/navigation",
+      "react",
+      "../_lib/auth",
+      "../_lib/content-language",
+      "../_lib/catalog-resource-identifiers",
+      "../_lib/editor-types",
+      "../_lib/mod-content-api",
+      "../_lib/mod-export-api",
+      "../_lib/oss-upload",
+      "../_lib/use-auto-draft",
+      "../_lib/i18n-provider",
+      "./editor/content-language-switcher",
+      "./editor/editor-shell",
+      "./editor/resource-picker-dialog",
+      "./editor/loot-table-visual-editor",
+      "./tools-playground",
+      "../_lib/resource-picker-loaders",
+      "./square-image-crop-dialog",
+      "./page-feedback",
+      "./draft-autosave-status"
+    ],
+    "issues": [
+      "FE-UIB-D006"
+    ],
+    "validation": [
+      "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+      "行为尚未单独动态验证；整体回归由根代理记录。"
+    ],
+    "final_review": "委派代理全文语义审查与最终修改段复查；UI-B已核验台账/工作区指纹，未冒充独立读取原五文件",
+    "reviewer": "frontend_ui_a",
+    "review_evidence": "docs/audit/review-frontend-ui-b-delegated.json"
+  },
+  {
+    "path": "app/_components/mod-content-layout-editor.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "592ceef0c0d5d87ad4eadc98e308a2b1afc27390ddb1f9bc983debcc32946ee1",
+    "sha256": "76c2f2d52edc7222c70d1cea723822b4c4fcd90b9f378ef56345a1154e839017",
+    "lines": 1331,
+    "read_ranges": [
+      [
+        1,
+        1331
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "栏目层级、资源顺序、进度图和布局修订",
+    "call_chain": [
+      "next/image",
+      "react",
+      "../_lib/advancement-graph",
+      "../_lib/auth",
+      "../_lib/content-language",
+      "../_lib/mod-content-api",
+      "../_lib/mod-export-api",
+      "../_lib/i18n-provider",
+      "../_lib/similar-resource-groups",
+      "./page-feedback"
+    ],
+    "issues": [
+      "FE-UIB-D004",
+      "FE-UIB-D006"
+    ],
+    "validation": [
+      "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+      "ui-b-delegated-community: 改名保留描述、cookie账号切换不保留旧布局、失败拒写重试"
+    ],
+    "final_review": "委派代理全文语义审查与最终修改段复查；UI-B已核验台账/工作区指纹，未冒充独立读取原五文件",
+    "reviewer": "frontend_ui_a",
+    "review_evidence": "docs/audit/review-frontend-ui-b-delegated.json"
+  },
+  {
+    "path": "app/_components/markdown-renderer.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "a48af33a03651feaad9d87b06a68370cab4ca23f2df561a058a8ea0c8e74edf8",
+    "sha256": "39f4b60e8565e125356b16f4c2fd0cab011387f2e2d90f00f43de139fa3cea79",
+    "lines": 1250,
+    "read_ranges": [
+      [
+        1,
+        1250
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "Markdown语法插件、自定义图标/嵌入/引用、代码高亮、外链协议过滤与时间显示",
+    "call_chain": [
+      "github-slugger",
+      "next/link",
+      "plantuml-encoder",
+      "react",
+      "react-dom",
+      "react-markdown",
+      "rehype-highlight",
+      "rehype-katex",
+      "remark-directive",
+      "remark-emoji",
+      "remark-gfm",
+      "remark-math",
+      "unist-util-visit",
+      "unified",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/blueprint-api",
+      "../_lib/drawio",
+      "../_lib/editor-api",
+      "../_lib/global-catalog-api",
+      "../_lib/i18n-provider",
+      "../_lib/markdown-config",
+      "../_lib/mod-export-api",
+      "../_lib/recipe-editor-api",
+      "../_lib/sticker-api",
+      "./blueprint-viewer",
+      "./canonical-recipe-card",
+      "./global-recipe-card",
+      "./iconfont"
+    ],
+    "issues": [
+      "FE-UIB-004"
+    ],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "Vitest/jsdom真实React组件回归；API/OSS供应商边界mock，非集成证明"
+    ],
+    "final_review": {
+      "sha256": "39f4b60e8565e125356b16f4c2fd0cab011387f2e2d90f00f43de139fa3cea79",
+      "method": "完整基线/当前内容读取，修改文件最终差异逐行复查；markdown/comment额外完整最终分段复读"
+    }
+  },
+  {
+    "path": "app/_components/tools-playground.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "681004d8025471b47fefd9382ce17efa7dd492c2456b4b5f637ffe306ab38593",
+    "sha256": "36f09b274ecef146c235ba623b0df4e19473d0158294b45f31f33c777d3a8b5a",
+    "lines": 1025,
+    "read_ranges": [
+      [
+        1,
+        1025
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "Markdown受控编辑器、草稿持久化、附件和drawio编辑",
+    "call_chain": [
+      "react",
+      "next/image",
+      "react-dom",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/drawio",
+      "../_lib/i18n-provider",
+      "../_lib/markdown-config",
+      "../_lib/oss-upload",
+      "./markdown-renderer",
+      "./sticker-picker"
+    ],
+    "issues": [
+      "FE-UIB-D005"
+    ],
+    "validation": [
+      "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+      "ui-b-delegated-tools: 外部恢复不回写旧内容、初始读失败不自动覆盖、写失败停止自动重试并允许手动"
+    ],
+    "final_review": "委派代理全文语义审查与最终修改段复查；UI-B已核验台账/工作区指纹，未冒充独立读取原五文件",
+    "reviewer": "frontend_ui_a",
+    "review_evidence": "docs/audit/review-frontend-ui-b-delegated.json"
+  },
+  {
+    "path": "app/_components/mod-resource-components.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "c2773a3f36d361d8edb409497312a2108cb6b98ecd9a8fd23e787be90afc6d0d",
+    "sha256": "ff9f16bff2fb1d3bc29544712157be999c1086251332b7972435ac39d3430af8",
+    "lines": 839,
+    "read_ranges": [
+      [
+        1,
+        839
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "导入资源来源、配方、战利品、交易/实体等内容展示",
+    "call_chain": [
+      "next/image",
+      "next/link",
+      "../_lib/auth",
+      "../_lib/content-language",
+      "../_lib/loot-table-model",
+      "../_lib/mod-export-api",
+      "../_lib/i18n-provider",
+      "../_lib/mod-content-api",
+      "./recipe-resource-slot",
+      "./unified-recipe-card",
+      "./recipe-edit-link",
+      "./rotating-resource"
+    ],
+    "issues": [
+      "FE-UIB-D007"
+    ],
+    "validation": [
+      "完整静态语义审查；只核对实际调用和公开参数，未据此宣称后端鉴权/持久化通过。",
+      "ui-b-delegated-resource-links: 拒绝3类危险URL、保留相对和HTTPS链接"
+    ],
+    "final_review": "委派代理全文语义审查与最终修改段复查；UI-B已核验台账/工作区指纹，未冒充独立读取原五文件",
+    "reviewer": "frontend_ui_a",
+    "review_evidence": "docs/audit/review-frontend-ui-b-delegated.json"
+  },
+  {
+    "path": "app/_components/mod-content-workspace.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "956017304d6aefaf085dcd9f11aea9de0a2bee63e0059a9bcd07027ae54aa8a6",
+    "sha256": "956017304d6aefaf085dcd9f11aea9de0a2bee63e0059a9bcd07027ae54aa8a6",
+    "lines": 683,
+    "read_ranges": [
+      [
+        1,
+        683
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "内容版本/模板/栏目创建及编辑、导出包与图标导入任务",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/content-language",
+      "../_lib/i18n-provider",
+      "../_lib/mod-api",
+      "../_lib/minecraft-version-api",
+      "./minecraft-version-picker",
+      "../_lib/mod-content-api",
+      "../_lib/oss-upload",
+      "./mod-catalog-data",
+      "../_lib/mod-export-api",
+      "./modid-confirmation-card",
+      "./custom-content-template-settings",
+      "./file-drop-zone"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "956017304d6aefaf085dcd9f11aea9de0a2bee63e0059a9bcd07027ae54aa8a6",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/comment-section.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "e166351b34f8b6d0dce81c4f90410f0a6ba88ee840fb19dcfba3c6dea2f76e3f",
+    "sha256": "4d8b8298f4fff675b4599b9e5a2f8c7f708267767e5f2ce4e7e1ca12963c7014",
+    "lines": 672,
+    "read_ranges": [
+      [
+        1,
+        672
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "评论创建/反滥用挑战、树形回复、排序、楼层定位、反应/关注/编辑/删除",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/auth",
+      "../_lib/api",
+      "../_lib/anti-abuse-api",
+      "../_lib/comment-api",
+      "../_lib/i18n-provider",
+      "../_lib/markdown-config",
+      "../_lib/oss-upload",
+      "./markdown-renderer",
+      "./user-avatar",
+      "./anti-abuse-challenge",
+      "./unified-report-dialog",
+      "./comment-markdown-editor"
+    ],
+    "issues": [
+      "FE-UIB-007",
+      "FE-UIB-012",
+      "FE-CONTRACT-003"
+    ],
+    "validation": [
+      "完整最终内容实际读取，跨语言/调用链语义复核",
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项（API/外部服务mock，真实I18nProvider）",
+      "npx eslint修改组件/2词条/7测试: PASS",
+      "npx tsc --noEmit: PASS",
+      "最终347–363实际复读，DELETE union依字段窄化，两个caller/Go watch PUT和DELETE对照；相关3文件12组件回归及整仓tsc PASS"
+    ],
+    "final_review": {
+      "version": "最终工作区sha256",
+      "method": "实际完整逐行重读最终组件；修改行为的红绿回归/英语回退/最终差异复核"
+    }
+  },
+  {
+    "path": "app/_components/site-shell.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "e34d9c025f5389ea951126a27f29710022ae69f471e45074282d83cb6ebb1003",
+    "sha256": "d0460ec3f04464314adbf0478abbd92f4bf2ed8f3d9de865b8d92af8c2cbe78c",
+    "lines": 616,
+    "read_ranges": [
+      [
+        1,
+        616
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "站点导航、SSE重连、在线状态、全局提示及会话入口",
+    "call_chain": [
+      "next/link",
+      "next/navigation",
+      "react",
+      "react-dom",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/backend-status",
+      "../_lib/i18n-provider",
+      "./theme-provider",
+      "./site-brand-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "e34d9c025f5389ea951126a27f29710022ae69f471e45074282d83cb6ebb1003",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/editor/loot-table-visual-editor.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "d9c7f02f1a06927a289107a02fa602f100be9b0c2afd2ba0c73eaa89e59b57d1",
+    "sha256": "d9c7f02f1a06927a289107a02fa602f100be9b0c2afd2ba0c73eaa89e59b57d1",
+    "lines": 564,
+    "read_ranges": [
+      [
+        1,
+        564
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "战利品池/条目/数量提供器及高级JSON编辑/合法性",
+    "call_chain": [
+      "react",
+      "../../_lib/catalog-resource-identifiers",
+      "../../_lib/editor-types",
+      "../../_lib/loot-table-model",
+      "../../_lib/mod-content-api",
+      "../../_lib/mod-export-api",
+      "../../_lib/resource-picker-loaders",
+      "../../_lib/i18n-provider",
+      "./resource-picker-dialog",
+      "./selected-resource-list"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "d9c7f02f1a06927a289107a02fa602f100be9b0c2afd2ba0c73eaa89e59b57d1",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/editor/recipe-template-editor.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "9abc0efe542c4cb930191b2774a7839188821d9132881bbe6ff04f7c78e695b6",
+    "sha256": "9abc0efe542c4cb930191b2774a7839188821d9132881bbe6ff04f7c78e695b6",
+    "lines": 543,
+    "read_ranges": [
+      [
+        1,
+        543
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "合成GUI多语言编辑、画布槽位、OSS背景与审核提交",
+    "call_chain": [
+      "react",
+      "../../_lib/api",
+      "../../_lib/oss-upload",
+      "../../_lib/recipe-editor-api",
+      "../../_lib/recipe-editor-types",
+      "../../_lib/editor-types",
+      "../../_lib/i18n-provider",
+      "./content-language-switcher"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "9abc0efe542c4cb930191b2774a7839188821d9132881bbe6ff04f7c78e695b6",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/messages-center.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "8916f2db44ca81acfc43fcfb8071f4e787256c801594b0076040c80f5742086f",
+    "sha256": "4c479c74b7a00be6febb8a6eecaab22d1f6c8b449abe6ae9e8c45b5db372f14c",
+    "lines": 516,
+    "read_ranges": [
+      [
+        1,
+        516
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "通知已读/翻译、余额、私信会话、轮询/SSE响应、发送与草稿",
+    "call_chain": [
+      "next/link",
+      "react",
+      "next/navigation",
+      "../_lib/api",
+      "../_lib/user-api",
+      "../_lib/auth",
+      "../_lib/i18n-provider",
+      "./page-feedback",
+      "../_lib/navigation",
+      "./user-avatar"
+    ],
+    "issues": [
+      "FE-UIB-008",
+      "FE-UIB-011"
+    ],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "Vitest/jsdom真实React组件回归；API/OSS供应商边界mock，非集成证明"
+    ],
+    "final_review": {
+      "sha256": "4c479c74b7a00be6febb8a6eecaab22d1f6c8b449abe6ae9e8c45b5db372f14c",
+      "method": "完整基线/当前内容读取，修改文件最终差异逐行复查；markdown/comment额外完整最终分段复读"
+    }
+  },
+  {
+    "path": "app/_components/simple-project-catalog.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "95509a8d167831d3e3e7979b42a8ab682366495d5420eef56cd89c468eceff08",
+    "sha256": "71ec730219878daa9d1225204ea2cf346afcedb9d8ca090b1c5908adfe7247ef",
+    "lines": 491,
+    "read_ranges": [
+      [
+        1,
+        491
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "插件/地图/资源包等项目组合筛选、分页、共享、提交入口",
+    "call_chain": [
+      "next/image",
+      "next/navigation",
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/catalog-sort",
+      "../_lib/catalog-state",
+      "../_lib/i18n-provider",
+      "../_lib/mod-catalog-data",
+      "../_lib/simple-project-api",
+      "./catalog-list-ui",
+      "./catalog-minecraft-version-filter",
+      "./project-submission-modal"
+    ],
+    "issues": [
+      "FE-UIB-010"
+    ],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "Vitest/jsdom真实React组件回归；API/OSS供应商边界mock，非集成证明"
+    ],
+    "final_review": {
+      "sha256": "71ec730219878daa9d1225204ea2cf346afcedb9d8ca090b1c5908adfe7247ef",
+      "method": "完整基线/当前内容读取，修改文件最终差异逐行复查；markdown/comment额外完整最终分段复读"
+    }
+  },
+  {
+    "path": "app/_components/admin-content-attribute-panel.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "e961aa3eeae754393dcfad1ee8c747836d211017f9f1341180c0879268a1b50e",
+    "sha256": "e961aa3eeae754393dcfad1ee8c747836d211017f9f1341180c0879268a1b50e",
+    "lines": 463,
+    "read_ranges": [
+      [
+        1,
+        463
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "全局内容属性类型/字段/导入路径及多语言文案管理",
+    "call_chain": [
+      "react",
+      "../_lib/admin-content-attribute-api",
+      "../_lib/i18n-provider",
+      "../_lib/mod-content-api"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "e961aa3eeae754393dcfad1ee8c747836d211017f9f1341180c0879268a1b50e",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/admin-dashboard-panel.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "a6c759f7cd3406042be19a15e063b7d2fe0d1ac035573497595f64286384d649",
+    "sha256": "a6c759f7cd3406042be19a15e063b7d2fe0d1ac035573497595f64286384d649",
+    "lines": 424,
+    "read_ranges": [
+      [
+        1,
+        424
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "站点/项目统计、指标趋势、键盘与指针图表交互",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider",
+      "../_lib/oss-upload"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "a6c759f7cd3406042be19a15e063b7d2fe0d1ac035573497595f64286384d649",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/server-catalog.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "303bc0e4d1eb1dc9b94fdc53f32b0fe6775407e2d4df45a71b1ffe515c2d6d90",
+    "sha256": "303bc0e4d1eb1dc9b94fdc53f32b0fe6775407e2d4df45a71b1ffe515c2d6d90",
+    "lines": 386,
+    "read_ranges": [
+      [
+        1,
+        386
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "服务器搜索、状态/语言/版本/模组筛选、分页及展示",
+    "call_chain": [
+      "next/link",
+      "react",
+      "next/navigation",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/catalog-sort",
+      "../_lib/i18n-provider",
+      "../_lib/minecraft-languages",
+      "../_lib/server-api",
+      "./catalog-list-ui",
+      "./catalog-minecraft-version-filter",
+      "./catalog-contained-mod-filter",
+      "./minecraft-language-picker"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "303bc0e4d1eb1dc9b94fdc53f32b0fe6775407e2d4df45a71b1ffe515c2d6d90",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/editor/resource-picker-dialog.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "166ab09dbb4b2b8c8f20dc7c29d7a16470c9db2de9ff0743efc8208e42910887",
+    "sha256": "b026272c6bd062a3e97a62ac95d9eb193b772f9f6643457845e9682d38073b21",
+    "lines": 366,
+    "read_ranges": [
+      [
+        1,
+        366
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "资源检索分页、选中项水合、未解析标识及手动输入",
+    "call_chain": [
+      "react",
+      "react-dom",
+      "../../_lib/content-language",
+      "../../_lib/editor-api",
+      "../../_lib/editor-types",
+      "../../_lib/i18n-provider",
+      "../../_lib/catalog-resource-identifiers",
+      "./selected-resource-list"
+    ],
+    "issues": [
+      "FE-UIB-009",
+      "FE-UIB-012"
+    ],
+    "validation": [
+      "完整最终内容实际读取，跨语言/调用链语义复核",
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项（API/外部服务mock，真实I18nProvider）",
+      "npx eslint修改组件/2词条/7测试: PASS",
+      "npx tsc --noEmit: PASS"
+    ],
+    "final_review": {
+      "version": "最终工作区sha256",
+      "method": "实际完整逐行重读最终组件；修改行为的红绿回归/英语回退/最终差异复核"
+    }
+  },
+  {
+    "path": "app/_components/project-downloads.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "0f8d2249882a1ad30356b8d16d4a0953edf1bc4d7c8d656d28c0eacf66254a96",
+    "sha256": "0f8d2249882a1ad30356b8d16d4a0953edf1bc4d7c8d656d28c0eacf66254a96",
+    "lines": 346,
+    "read_ranges": [
+      [
+        1,
+        346
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "project-downloads显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider",
+      "../_lib/oss-upload",
+      "../_lib/project-download-api"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "0f8d2249882a1ad30356b8d16d4a0953edf1bc4d7c8d656d28c0eacf66254a96",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/catalog-list-ui.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "5c45b6943cba2f99c79dd1bab5c46311e7a92792a1541692b4d544b00750fb42",
+    "sha256": "5c45b6943cba2f99c79dd1bab5c46311e7a92792a1541692b4d544b00750fb42",
+    "lines": 332,
+    "read_ranges": [
+      [
+        1,
+        332
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "目录筛选面板/移动抽屉/选项/排序与分页公共UI",
+    "call_chain": [
+      "react",
+      "../_lib/catalog-sort",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "5c45b6943cba2f99c79dd1bab5c46311e7a92792a1541692b4d544b00750fb42",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/minecraft-version-picker.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "62318179c6ca7a12a78829daf7140e5943ff9b6b75607f7d34e301df3d95f0c3",
+    "sha256": "fe416333106a577ddec47a969680536cdc349ecea39c4e56352d518a2be2c352",
+    "lines": 290,
+    "read_ranges": [
+      [
+        1,
+        290
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "minecraft-version-picker显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "react-dom",
+      "../_lib/mod-api",
+      "../_lib/minecraft-version-api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [
+      "FE-UIB-012"
+    ],
+    "validation": [
+      "完整最终内容实际读取，跨语言/调用链语义复核",
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项（API/外部服务mock，真实I18nProvider）",
+      "npx eslint修改组件/2词条/7测试: PASS",
+      "npx tsc --noEmit: PASS"
+    ],
+    "final_review": {
+      "version": "最终工作区sha256",
+      "method": "实际完整逐行重读最终组件；修改行为的红绿回归/英语回退/最终差异复核"
+    }
+  },
+  {
+    "path": "app/_components/community-post-catalog.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "f0d17cd60d8c0222671a3173594c1b88c82c69cb95f106763ebe8105f0c8384a",
+    "sha256": "f0d17cd60d8c0222671a3173594c1b88c82c69cb95f106763ebe8105f0c8384a",
+    "lines": 282,
+    "read_ranges": [
+      [
+        1,
+        282
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "教程/问题/新闻/讨论检索、资源关联及创建权限入口",
+    "call_chain": [
+      "next/image",
+      "next/link",
+      "react",
+      "../_lib/auth",
+      "../_lib/community-post-api",
+      "../_lib/catalog-state",
+      "../_lib/catalog-sort",
+      "../_lib/editor-api",
+      "../_lib/editor-types",
+      "../_lib/i18n-provider",
+      "../_lib/mod-export-api",
+      "./catalog-list-ui",
+      "./catalog-minecraft-version-filter",
+      "./editor/mod-resource-picker"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "f0d17cd60d8c0222671a3173594c1b88c82c69cb95f106763ebe8105f0c8384a",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/mod-content-section-page.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "ffad0dded006358e0ecaaaedbfa23747ca63a52d008732b7151fc409ef77b34a",
+    "sha256": "ffad0dded006358e0ecaaaedbfa23747ca63a52d008732b7151fc409ef77b34a",
+    "lines": 262,
+    "read_ranges": [
+      [
+        1,
+        262
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "内容栏目资源全量加载、层级分类、索引及编辑权限",
+    "call_chain": [
+      "next/image",
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/content-language",
+      "../_lib/mod-content-api",
+      "../_lib/mod-export-api",
+      "../_lib/similar-resource-groups",
+      "../_lib/i18n-provider",
+      "./mod-content-section-actions",
+      "./mod-resource-indexes",
+      "./rotating-resource",
+      "./custom-content-template-settings"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "ffad0dded006358e0ecaaaedbfa23747ca63a52d008732b7151fc409ef77b34a",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/mod-content-resource-detail.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "63a16c3dd8051a98681f274bcb969c54d3be8ebf93571b8b21dcf1d3fbbebe80",
+    "sha256": "63a16c3dd8051a98681f274bcb969c54d3be8ebf93571b8b21dcf1d3fbbebe80",
+    "lines": 256,
+    "read_ranges": [
+      [
+        1,
+        256
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "mod-content-resource-detail显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/image",
+      "next/link",
+      "next/dynamic",
+      "react",
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/content-language",
+      "../_lib/catalog-resource-identifiers",
+      "../_lib/editor-types",
+      "../_lib/mod-content-api",
+      "../_lib/mod-export-api",
+      "../_lib/i18n-provider",
+      "../_lib/markdown-config",
+      "@/lib/mcmods-exporter/renderer",
+      "./markdown-renderer",
+      "./comment-section",
+      "./mod-resource-components",
+      "./content-metrics-panel"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "63a16c3dd8051a98681f274bcb969c54d3be8ebf93571b8b21dcf1d3fbbebe80",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/creator-picker.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "32b46dd79cc95913578808b42f5643cdb1c6147fff1ab47217f8c8dfcb8337f4",
+    "sha256": "32b46dd79cc95913578808b42f5643cdb1c6147fff1ab47217f8c8dfcb8337f4",
+    "lines": 252,
+    "read_ranges": [
+      [
+        1,
+        252
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "creator-picker显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/community-api",
+      "../_lib/i18n-provider",
+      "../_lib/mod-api",
+      "./creator-identity"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "32b46dd79cc95913578808b42f5643cdb1c6147fff1ab47217f8c8dfcb8337f4",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/catalog-resource-catalog.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "4e966dca347c760e78859e35951a1bd92105cd890846588c6937cf0b20e6bbc6",
+    "sha256": "4e966dca347c760e78859e35951a1bd92105cd890846588c6937cf0b20e6bbc6",
+    "lines": 244,
+    "read_ranges": [
+      [
+        1,
+        244
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "catalog-resource-catalog显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/image",
+      "next/link",
+      "next/navigation",
+      "react",
+      "../_lib/auth",
+      "../_lib/content-language",
+      "../_lib/catalog-resource-api",
+      "../_lib/editor-api",
+      "../_lib/editor-types",
+      "../_lib/i18n-provider",
+      "../_lib/markdown-config",
+      "./editor/content-translation-control",
+      "./editor/localization-status-badge",
+      "./markdown-renderer"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "4e966dca347c760e78859e35951a1bd92105cd890846588c6937cf0b20e6bbc6",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/skin-detail.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "4fc3bfd0d48f344910844b2edb01e7e1c92ada8220b86b6cf86cd6485af50577",
+    "sha256": "4fc3bfd0d48f344910844b2edb01e7e1c92ada8220b86b6cf86cd6485af50577",
+    "lines": 235,
+    "read_ranges": [
+      [
+        1,
+        235
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "skin-detail显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/dynamic",
+      "next/link",
+      "next/navigation",
+      "react",
+      "../_lib/auth",
+      "../_lib/i18n-provider",
+      "../_lib/editor-api",
+      "../_lib/skin-api",
+      "../_lib/site-notice",
+      "./skin-preview",
+      "./comment-section",
+      "./unified-report-dialog",
+      "./project-follow-button",
+      "./project-editor-application"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "4fc3bfd0d48f344910844b2edb01e7e1c92ada8220b86b6cf86cd6485af50577",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/comment-markdown-editor.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "0a82954ec38e4e9c8f5d4ecf510200ffe4ec0e6d495f0ea2618ce67c2b6194aa",
+    "sha256": "f6708f7b8201f4f3e49d71305727a92bc5a5a2e131148262449edeff32e9e6f6",
+    "lines": 240,
+    "read_ranges": [
+      [
+        1,
+        240
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "评论Markdown工具栏、附件上传/删除、预览与失败状态",
+    "call_chain": [
+      "react",
+      "../_lib/i18n-provider",
+      "../_lib/oss-upload",
+      "../_lib/markdown-config",
+      "./markdown-renderer",
+      "./sticker-picker"
+    ],
+    "issues": [
+      "FE-UIB-005"
+    ],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "Vitest/jsdom真实React组件回归；API/OSS供应商边界mock，非集成证明"
+    ],
+    "final_review": {
+      "sha256": "f6708f7b8201f4f3e49d71305727a92bc5a5a2e131148262449edeff32e9e6f6",
+      "method": "完整基线/当前内容读取，修改文件最终差异逐行复查；markdown/comment额外完整最终分段复读"
+    }
+  },
+  {
+    "path": "app/_components/user-avatar.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "3ebfe32e260bc48dffaac9c6e49e2135a3f4590535e9b26a174de8fb9d21d451",
+    "sha256": "3ebfe32e260bc48dffaac9c6e49e2135a3f4590535e9b26a174de8fb9d21d451",
+    "lines": 223,
+    "read_ranges": [
+      [
+        1,
+        223
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "user-avatar显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/auth",
+      "../_lib/i18n-provider",
+      "../_lib/user-api"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "3ebfe32e260bc48dffaac9c6e49e2135a3f4590535e9b26a174de8fb9d21d451",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/admin-server-panels.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "c0006a58293e2e1a6c3ef137c58fe394b45ef39eb076f395c1898242425125dd",
+    "sha256": "c0006a58293e2e1a6c3ef137c58fe394b45ef39eb076f395c1898242425125dd",
+    "lines": 195,
+    "read_ranges": [
+      [
+        1,
+        195
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "admin-server-panels显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider",
+      "../_lib/minecraft-languages",
+      "../_lib/oss-upload",
+      "../_lib/server-api"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "c0006a58293e2e1a6c3ef137c58fe394b45ef39eb076f395c1898242425125dd",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/creator-detail.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "df58e7eb5cb260d2f0ec633825918472c8d33ac18d7df4365c2c04460687db53",
+    "sha256": "35813c182f4e9d9dc0ef29c27742c290f9a3ccb1899395578d332bd579aa8538",
+    "lines": 195,
+    "read_ranges": [
+      [
+        1,
+        195
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "creator-detail显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/community-api",
+      "../_lib/i18n-provider",
+      "../_lib/oss-upload",
+      "../_lib/site-notice",
+      "./comment-section",
+      "./markdown-renderer",
+      "./review-edit-lock"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "df58e7eb5cb260d2f0ec633825918472c8d33ac18d7df4365c2c04460687db53",
+      "method": "完整当前内容逐行语义审查"
+    },
+    "final_review_sha256": "35813c182f4e9d9dc0ef29c27742c290f9a3ccb1899395578d332bd579aa8538",
+    "final_review_note": "原全文已实际审查（admin-community按UIA独立委派全文台账）；UI-B追加完整读取最终git diff，包括root新增认领分页/AbortController和creator证明非空/maxlength/标签。原未改行与先前指纹版本确认，不继承未读新块。新增root功能的行为证据由root负责，不用旧32项测试冒充。"
+  },
+  {
+    "path": "app/_components/unified-report-dialog.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "aa919ba60a4c26c3ff7a172728b62d1b141fa539a499d59d3c7e7facd3bf4084",
+    "sha256": "aa919ba60a4c26c3ff7a172728b62d1b141fa539a499d59d3c7e7facd3bf4084",
+    "lines": 185,
+    "read_ranges": [
+      [
+        1,
+        185
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "unified-report-dialog显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/i18n-provider",
+      "../_lib/oss-upload"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "aa919ba60a4c26c3ff7a172728b62d1b141fa539a499d59d3c7e7facd3bf4084",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/user-profile.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "87684d2ef40d832017fe30be051bb31e490d07e181f440e8d8b5c089e4d61750",
+    "sha256": "a6410d4cecfed03e3891218a8054b0ddfe0ee6bff3e19264d304918442be5e01",
+    "lines": 199,
+    "read_ranges": [
+      [
+        1,
+        199
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "user-profile显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "next/navigation",
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/i18n-provider",
+      "../_lib/skin-api",
+      "../_lib/user-api",
+      "./user-home",
+      "./skin-preview",
+      "./user-profile-overview",
+      "./user-avatar",
+      "./unified-report-dialog"
+    ],
+    "issues": [
+      "FE-UIA-020"
+    ],
+    "validation": [
+      "UIA独立4竞态回归通过，见ui-a-validation.json"
+    ],
+    "final_review": "UIA修复完成后UI-B独立完整重读最终199行；会话key隔离，读取取消标志，follow/block mounted保护和互斥"
+  },
+  {
+    "path": "app/_components/admin-activity-retention-panel.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "a0d27ed8bfaf757a1b0a33f36bd9d3285c193c066ffeb0b5ccd2bbf8bb9aafcf",
+    "sha256": "a0d27ed8bfaf757a1b0a33f36bd9d3285c193c066ffeb0b5ccd2bbf8bb9aafcf",
+    "lines": 177,
+    "read_ranges": [
+      [
+        1,
+        177
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "admin-activity-retention-panel显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "a0d27ed8bfaf757a1b0a33f36bd9d3285c193c066ffeb0b5ccd2bbf8bb9aafcf",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/blueprint-viewer.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "eaf65c304590b1a35a71da20e309eceae2975dc5c0bce396efef71c3269905d4",
+    "sha256": "eaf65c304590b1a35a71da20e309eceae2975dc5c0bce396efef71c3269905d4",
+    "lines": 166,
+    "read_ranges": [
+      [
+        1,
+        166
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "blueprint-viewer显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/dynamic",
+      "next/image",
+      "next/link",
+      "react",
+      "@/lib/mcmods-exporter/renderer",
+      "@/lib/mcmods-exporter/renderer",
+      "../_lib/api",
+      "../_lib/blueprint-api",
+      "../_lib/i18n-provider",
+      "../_lib/mod-export-api"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "eaf65c304590b1a35a71da20e309eceae2975dc5c0bce396efef71c3269905d4",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/site-affairs-pages.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "c64a5d9fd12acb44281091e08ef1a242acf49091add3e7f6f7920fb3df68e5ca",
+    "sha256": "c64a5d9fd12acb44281091e08ef1a242acf49091add3e7f6f7920fb3df68e5ca",
+    "lines": 164,
+    "read_ranges": [
+      [
+        1,
+        164
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "site-affairs-pages显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/i18n-provider",
+      "../_lib/site-affairs-api",
+      "./comment-section",
+      "./markdown-renderer"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "c64a5d9fd12acb44281091e08ef1a242acf49091add3e7f6f7920fb3df68e5ca",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/project-submission-modal.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "bac55992a3d64affa3d65540353ac02cbb5c5538f96810a2f8430032a5b36fdd",
+    "sha256": "bac55992a3d64affa3d65540353ac02cbb5c5538f96810a2f8430032a5b36fdd",
+    "lines": 157,
+    "read_ranges": [
+      [
+        1,
+        157
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "project-submission-modal显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/navigation",
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider",
+      "../_lib/simple-project-api"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "bac55992a3d64affa3d65540353ac02cbb5c5538f96810a2f8430032a5b36fdd",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/catalog-resource-icon.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "ae0347f2fb2f18a9b5c0471bb26c35f81fdd5bf0e43548f4e964a4450528fb6c",
+    "sha256": "ae0347f2fb2f18a9b5c0471bb26c35f81fdd5bf0e43548f4e964a4450528fb6c",
+    "lines": 155,
+    "read_ranges": [
+      [
+        1,
+        155
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "catalog-resource-icon显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "../_lib/editor-api",
+      "../_lib/editor-types",
+      "../_lib/i18n-provider",
+      "./editor/resource-picker-dialog",
+      "./editor/selected-resource-list"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "ae0347f2fb2f18a9b5c0471bb26c35f81fdd5bf0e43548f4e964a4450528fb6c",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/admin-anti-abuse-panel.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "3e638480ed77d4e26ffa328d6f5b25123b85443f5b9f3d979e5c6167e829b524",
+    "sha256": "338e2b6157aa4f2e1e0911309ec31eacd1cceef3f1d8df82701bc016c9454954",
+    "lines": 182,
+    "read_ranges": [
+      [
+        1,
+        182
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "管理员反滥用规则、风险事件处置、限制、只读机器人和可信度",
+    "call_chain": [
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [
+      "FE-UIB-002",
+      "FE-UIB-012",
+      "FE-UIB-013"
+    ],
+    "validation": [
+      "完整最终内容实际读取，跨语言/调用链语义复核",
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项（API/外部服务mock，真实I18nProvider）",
+      "npx eslint修改组件/2词条/7测试: PASS",
+      "npx tsc --noEmit: PASS"
+    ],
+    "final_review": {
+      "version": "最终工作区sha256",
+      "method": "实际完整逐行重读最终组件；修改行为的红绿回归/英语回退/最终差异复核"
+    }
+  },
+  {
+    "path": "app/_components/user-statistics-panel.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "75585b9abd506a05464c575b55e8d918a152cfd47e128ae6bb3eff74d6dc0ee4",
+    "sha256": "75585b9abd506a05464c575b55e8d918a152cfd47e128ae6bb3eff74d6dc0ee4",
+    "lines": 145,
+    "read_ranges": [
+      [
+        1,
+        145
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "user-statistics-panel显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider",
+      "../_lib/user-api"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "75585b9abd506a05464c575b55e8d918a152cfd47e128ae6bb3eff74d6dc0ee4",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/admin-yggdrasil-panel.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "2f408488f21a3adbaba3854dd6d386269ed8e3a53bf35df9e051fe9e7bbab153",
+    "sha256": "55c0a7fc2dc26ccb015b1430b20904fd371644c06bdefc074a213018faabb456",
+    "lines": 150,
+    "read_ranges": [
+      [
+        1,
+        150
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "admin-yggdrasil-panel显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [
+      "FE-CONTRACT-001"
+    ],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录",
+      "实际完整最终1–150复读，GET只读字段不入PUT，11字段whitelist；旧组件1FAIL/1PASS，修后2PASS；真实Go strict decoder 1top+4subsPASS，详见module-contract-validation.json"
+    ],
+    "final_review": {
+      "sha256": "2f408488f21a3adbaba3854dd6d386269ed8e3a53bf35df9e051fe9e7bbab153",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/user-drafts-panel.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "1e0b28337fce77cc396845d6e7e75ba8b27d344a5610fd8ef80c3e433e4b4d6e",
+    "sha256": "1e0b28337fce77cc396845d6e7e75ba8b27d344a5610fd8ef80c3e433e4b4d6e",
+    "lines": 139,
+    "read_ranges": [
+      [
+        1,
+        139
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "user-drafts-panel显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/draft-api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "1e0b28337fce77cc396845d6e7e75ba8b27d344a5610fd8ef80c3e433e4b4d6e",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/tools-plantuml.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "cf45dfd8b31c42f28ab1d6790da5cea86ad11ad53a9a8ab9d479909b8aac15f3",
+    "sha256": "cf45dfd8b31c42f28ab1d6790da5cea86ad11ad53a9a8ab9d479909b8aac15f3",
+    "lines": 132,
+    "read_ranges": [
+      [
+        1,
+        132
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "tools-plantuml显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "plantuml-encoder",
+      "next/link",
+      "react",
+      "../_lib/i18n-provider",
+      "./theme-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "cf45dfd8b31c42f28ab1d6790da5cea86ad11ad53a9a8ab9d479909b8aac15f3",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/timezone-picker.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "1b25f67265569a9f73aafa7e3c8eb7ed8f66e4de8b92f15cf6e89ce1a7834071",
+    "sha256": "1b25f67265569a9f73aafa7e3c8eb7ed8f66e4de8b92f15cf6e89ce1a7834071",
+    "lines": 129,
+    "read_ranges": [
+      [
+        1,
+        129
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "timezone-picker显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "react-dom",
+      "../_lib/timezones",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "1b25f67265569a9f73aafa7e3c8eb7ed8f66e4de8b92f15cf6e89ce1a7834071",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/skin-preview.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "2ec010c52243e5b5e012535a705fb0e2131f41901b113bceabcd61caec139579",
+    "sha256": "2ec010c52243e5b5e012535a705fb0e2131f41901b113bceabcd61caec139579",
+    "lines": 127,
+    "read_ranges": [
+      [
+        1,
+        127
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "skin-preview显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "../_lib/skin-api"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "2ec010c52243e5b5e012535a705fb0e2131f41901b113bceabcd61caec139579",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/mod-resource-indexes.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "2760f10c95a797bf1f9ce87ae889a9ef7757b095de3bbbda9905f813bce02c3a",
+    "sha256": "2760f10c95a797bf1f9ce87ae889a9ef7757b095de3bbbda9905f813bce02c3a",
+    "lines": 124,
+    "read_ranges": [
+      [
+        1,
+        124
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "mod-resource-indexes显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/image",
+      "next/link",
+      "react",
+      "../_lib/advancement-graph",
+      "../_lib/similar-resource-groups",
+      "./rotating-resource"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "2760f10c95a797bf1f9ce87ae889a9ef7757b095de3bbbda9905f813bce02c3a",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/global-recipe-card.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "035b3ac6d7d97a1c465133b5e709dc0e9e01a06de7796e9e78c7f99eecc2c51a",
+    "sha256": "035b3ac6d7d97a1c465133b5e709dc0e9e01a06de7796e9e78c7f99eecc2c51a",
+    "lines": 120,
+    "read_ranges": [
+      [
+        1,
+        120
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "global-recipe-card显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/image",
+      "next/link",
+      "../_lib/auth",
+      "../_lib/global-catalog-api",
+      "../_lib/i18n-provider",
+      "./recipe-edit-link",
+      "./recipe-resource-slot",
+      "./rotating-resource",
+      "./unified-recipe-card"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "035b3ac6d7d97a1c465133b5e709dc0e9e01a06de7796e9e78c7f99eecc2c51a",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/creator-catalog.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "eacc7f6b8d65e613d8f933f0d88ac3209c5e8ea1be30f3622cbdf58968893249",
+    "sha256": "eacc7f6b8d65e613d8f933f0d88ac3209c5e8ea1be30f3622cbdf58968893249",
+    "lines": 116,
+    "read_ranges": [
+      [
+        1,
+        116
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "creator-catalog显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/catalog-sort",
+      "../_lib/community-api",
+      "../_lib/i18n-provider",
+      "./catalog-list-ui"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "eacc7f6b8d65e613d8f933f0d88ac3209c5e8ea1be30f3622cbdf58968893249",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/content-language-preferences.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "011ee3ce18ce5962f06121da29c65c65c77c4e19a7c0edf93aaf03a14cbdf993",
+    "sha256": "011ee3ce18ce5962f06121da29c65c65c77c4e19a7c0edf93aaf03a14cbdf993",
+    "lines": 110,
+    "read_ranges": [
+      [
+        1,
+        110
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "content-language-preferences显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "../_lib/content-language-api",
+      "../_lib/i18n-provider",
+      "./minecraft-language-picker"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "011ee3ce18ce5962f06121da29c65c65c77c4e19a7c0edf93aaf03a14cbdf993",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/admin-governance-automation-panels.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "e155d09abd2b911b8a0f11f5e5ff539df9232f8041be41d941eb7105893d55e2",
+    "sha256": "d3db6f1670edef0a132b853e3398bd3601395a343351c5078726f5b531b5ef39",
+    "lines": 109,
+    "read_ranges": [
+      [
+        1,
+        109
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "管理员封禁、协作邀请、自动更新及治理设置",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider",
+      "./markdown-renderer"
+    ],
+    "issues": [
+      "FE-UIB-002",
+      "FE-UIB-006"
+    ],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "Vitest/jsdom真实React组件回归；API/OSS供应商边界mock，非集成证明"
+    ],
+    "final_review": {
+      "sha256": "d3db6f1670edef0a132b853e3398bd3601395a343351c5078726f5b531b5ef39",
+      "method": "完整基线/当前内容读取，修改文件最终差异逐行复查；markdown/comment额外完整最终分段复读"
+    }
+  },
+  {
+    "path": "app/_components/community-post-detail.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "ea7cfdf3cf330183cc0ed990bc9d452849fd334ab41a76766bbc8429e1499baa",
+    "sha256": "ea7cfdf3cf330183cc0ed990bc9d452849fd334ab41a76766bbc8429e1499baa",
+    "lines": 108,
+    "read_ranges": [
+      [
+        1,
+        108
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "community-post-detail显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/image",
+      "next/link",
+      "react",
+      "../_lib/auth",
+      "../_lib/community-post-api",
+      "../_lib/content-language-api",
+      "../_lib/markdown-config",
+      "../_lib/simple-project-api",
+      "../_lib/i18n-provider",
+      "./comment-section",
+      "./markdown-renderer",
+      "./community-post-catalog",
+      "./review-edit-lock",
+      "./unified-report-dialog",
+      "./project-follow-button",
+      "./project-editor-application"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "ea7cfdf3cf330183cc0ed990bc9d452849fd334ab41a76766bbc8429e1499baa",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/content-metrics-panel.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "9f3673139aaa7b6aec0c84d9eca9cdcd61fc693d077c0df1eed4e6cea1c1861b",
+    "sha256": "9f3673139aaa7b6aec0c84d9eca9cdcd61fc693d077c0df1eed4e6cea1c1861b",
+    "lines": 98,
+    "read_ranges": [
+      [
+        1,
+        98
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "content-metrics-panel显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/image",
+      "next/link",
+      "react",
+      "../_lib/auth",
+      "../_lib/content-metrics-api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "9f3673139aaa7b6aec0c84d9eca9cdcd61fc693d077c0df1eed4e6cea1c1861b",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/player-profile-detail.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "871bdb4307fc6300ceb67c0c67f093adbeb9d152beea20108dc96c8ac9936178",
+    "sha256": "871bdb4307fc6300ceb67c0c67f093adbeb9d152beea20108dc96c8ac9936178",
+    "lines": 91,
+    "read_ranges": [
+      [
+        1,
+        91
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "player-profile-detail显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/dynamic",
+      "next/link",
+      "react",
+      "../_lib/auth",
+      "../_lib/i18n-provider",
+      "../_lib/skin-api",
+      "./skin-preview",
+      "./comment-section"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "871bdb4307fc6300ceb67c0c67f093adbeb9d152beea20108dc96c8ac9936178",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/project-changelog.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "61fe6e22f61d6267b21d1b09870e026f987f13a7a8ef09a06553c7f5e64387dc",
+    "sha256": "61fe6e22f61d6267b21d1b09870e026f987f13a7a8ef09a06553c7f5e64387dc",
+    "lines": 89,
+    "read_ranges": [
+      [
+        1,
+        89
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "project-changelog显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/auth",
+      "../_lib/i18n-provider",
+      "../_lib/markdown-config",
+      "../_lib/project-changelog-api",
+      "./markdown-renderer",
+      "./page-feedback"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "61fe6e22f61d6267b21d1b09870e026f987f13a7a8ef09a06553c7f5e64387dc",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/anti-abuse-challenge.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "a08b83c7b2a8f466d2269acc7c36c28438baa19f33433a80ff14a5434c9b63bd",
+    "sha256": "a08b83c7b2a8f466d2269acc7c36c28438baa19f33433a80ff14a5434c9b63bd",
+    "lines": 85,
+    "read_ranges": [
+      [
+        1,
+        85
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "anti-abuse-challenge显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react",
+      "../_lib/anti-abuse-api"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "a08b83c7b2a8f466d2269acc7c36c28438baa19f33433a80ff14a5434c9b63bd",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/admin-project-authorship-panel.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "d5b006fc6db75b8d6246ca9f8fa435daf419002104bb8a8439c424491214da37",
+    "sha256": "d5b006fc6db75b8d6246ca9f8fa435daf419002104bb8a8439c424491214da37",
+    "lines": 84,
+    "read_ranges": [
+      [
+        1,
+        84
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "admin-project-authorship-panel显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "d5b006fc6db75b8d6246ca9f8fa435daf419002104bb8a8439c424491214da37",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/editor/localization-status-badge.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "d5a858653f9cc3336b5948438022914b86801b2b8258dd47d580d3d806a39ade",
+    "sha256": "d5a858653f9cc3336b5948438022914b86801b2b8258dd47d580d3d806a39ade",
+    "lines": 75,
+    "read_ranges": [
+      [
+        1,
+        75
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "editor/localization-status-badge显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "../../_lib/i18n-provider",
+      "../../_lib/editor-types"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "d5a858653f9cc3336b5948438022914b86801b2b8258dd47d580d3d806a39ade",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/editor/selected-resource-list.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "da309015169d405a945f0b7863380d4c750aea5b9384ca5a430bcf3393cd0e88",
+    "sha256": "da309015169d405a945f0b7863380d4c750aea5b9384ca5a430bcf3393cd0e88",
+    "lines": 70,
+    "read_ranges": [
+      [
+        1,
+        70
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "editor/selected-resource-list显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "../../_lib/editor-api",
+      "../../_lib/content-language",
+      "../../_lib/editor-types",
+      "../../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "da309015169d405a945f0b7863380d4c750aea5b9384ca5a430bcf3393cd0e88",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/project-auto-update-settings.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "3cea42e3217f2c767dcbca5e25a07559fbf8a673df00df5ebf0f304facf6e0f3",
+    "sha256": "6e8f19f84ba18b644d3384da2900865b40a5f7fdb8c3a762e3efffa98181697c",
+    "lines": 67,
+    "read_ranges": [
+      [
+        1,
+        67
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "项目自动更新配置、来源绑定、手动同步与任务状态",
+    "call_chain": [
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [
+      "FE-UIB-002"
+    ],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "Vitest/jsdom真实React组件回归；API/OSS供应商边界mock，非集成证明"
+    ],
+    "final_review": {
+      "sha256": "6e8f19f84ba18b644d3384da2900865b40a5f7fdb8c3a762e3efffa98181697c",
+      "method": "完整基线/当前内容读取，修改文件最终差异逐行复查；markdown/comment额外完整最终分段复读"
+    }
+  },
+  {
+    "path": "app/_components/tools-index.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "6f70b309f0eaa3876aafab0f5e6d8ae129fbdc61ae32a0941b9c1f3cb7bc6579",
+    "sha256": "6f70b309f0eaa3876aafab0f5e6d8ae129fbdc61ae32a0941b9c1f3cb7bc6579",
+    "lines": 61,
+    "read_ranges": [
+      [
+        1,
+        61
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "tools-index显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "../_lib/i18n-provider",
+      "./iconfont"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "6f70b309f0eaa3876aafab0f5e6d8ae129fbdc61ae32a0941b9c1f3cb7bc6579",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/modid-confirmation-card.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "cbd2cd94ee39948601be1fec88d7f8a089313f5fd9a2f6e3acc28c539c4b522c",
+    "sha256": "cbd2cd94ee39948601be1fec88d7f8a089313f5fd9a2f6e3acc28c539c4b522c",
+    "lines": 60,
+    "read_ranges": [
+      [
+        1,
+        60
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "modid-confirmation-card显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "../_lib/mod-export-api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "cbd2cd94ee39948601be1fec88d7f8a089313f5fd9a2f6e3acc28c539c4b522c",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/mod-history.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "967d388597252a406cc00772f9d25bed9b25cd7b81412becfeef07d2ea933abb",
+    "sha256": "967d388597252a406cc00772f9d25bed9b25cd7b81412becfeef07d2ea933abb",
+    "lines": 59,
+    "read_ranges": [
+      [
+        1,
+        59
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "mod-history显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/mod-api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "967d388597252a406cc00772f9d25bed9b25cd7b81412becfeef07d2ea933abb",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/iconfont.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "c6652e834f90157d00ab3b2ee9346ba1892eba8a58170154f07828db1b4cab0d",
+    "sha256": "8e02d31182413d96f83d68483ee17eaa91fcd6def41e569a75c89be7fa2afcbc",
+    "lines": 57,
+    "read_ranges": [
+      [
+        1,
+        57
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "可信CDN图标脚本加载/卸载、symbol可用性订阅与fallback",
+    "call_chain": [
+      "react"
+    ],
+    "issues": [
+      "FE-UIB-003"
+    ],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "Vitest/jsdom真实React组件回归；API/OSS供应商边界mock，非集成证明"
+    ],
+    "final_review": {
+      "sha256": "8e02d31182413d96f83d68483ee17eaa91fcd6def41e569a75c89be7fa2afcbc",
+      "method": "完整基线/当前内容读取，修改文件最终差异逐行复查；markdown/comment额外完整最终分段复读"
+    }
+  },
+  {
+    "path": "app/_components/mod-detail-loader.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "2264f78e4933d9361f45a607fbcde0bd06210e4f8e30e3c6325b076598b5de7e",
+    "sha256": "375ebaec85b41722271bad80badccbad6322850e4c9692ceacd37ba7b029fa5c",
+    "lines": 65,
+    "read_ranges": [
+      [
+        1,
+        65
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "模组详情API加载、多语言内容回退、404/错误/重试与身份匹配",
+    "call_chain": [
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/mod-api",
+      "../_lib/mod-catalog-data",
+      "../_lib/i18n-provider",
+      "../_lib/editor-api",
+      "./mod-detail"
+    ],
+    "issues": [
+      "FE-UIB-001"
+    ],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "Vitest/jsdom真实React组件回归；API/OSS供应商边界mock，非集成证明"
+    ],
+    "final_review": {
+      "sha256": "375ebaec85b41722271bad80badccbad6322850e4c9692ceacd37ba7b029fa5c",
+      "method": "完整基线/当前内容读取，修改文件最终差异逐行复查；markdown/comment额外完整最终分段复读"
+    }
+  },
+  {
+    "path": "app/_components/project-follow-button.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "383fb6a4ea3696fa9dba53936cf02fecdc52efccc958ea0fbf79f387315efeb2",
+    "sha256": "383fb6a4ea3696fa9dba53936cf02fecdc52efccc958ea0fbf79f387315efeb2",
+    "lines": 49,
+    "read_ranges": [
+      [
+        1,
+        49
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "project-follow-button显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/project-follow-api",
+      "../_lib/i18n-provider",
+      "../_lib/auth"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "383fb6a4ea3696fa9dba53936cf02fecdc52efccc958ea0fbf79f387315efeb2",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/mod-content-manager.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "6e4bad58de5cc909d1a05beb0639eff65bb5857bc00fc5aca936b1d0cfd86edc",
+    "sha256": "6e4bad58de5cc909d1a05beb0639eff65bb5857bc00fc5aca936b1d0cfd86edc",
+    "lines": 41,
+    "read_ranges": [
+      [
+        1,
+        41
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "mod-content-manager显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/api",
+      "../_lib/auth",
+      "../_lib/mod-api",
+      "../_lib/i18n-provider",
+      "./mod-content-workspace",
+      "./page-feedback"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "6e4bad58de5cc909d1a05beb0639eff65bb5857bc00fc5aca936b1d0cfd86edc",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/content-history.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "93aa83ee5e6d1856668147d9653581f3c5b2f5c2e0ef62a9ae5ff94519bfed01",
+    "sha256": "93aa83ee5e6d1856668147d9653581f3c5b2f5c2e0ef62a9ae5ff94519bfed01",
+    "lines": 40,
+    "read_ranges": [
+      [
+        1,
+        40
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "content-history显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "react",
+      "../_lib/auth",
+      "../_lib/content-history-api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "93aa83ee5e6d1856668147d9653581f3c5b2f5c2e0ef62a9ae5ff94519bfed01",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/server-submission-page.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "9ed52a474e4a39083c98ab6c6c544a05524e35b7d8b5c501bc220e9e49d2dd30",
+    "sha256": "9ed52a474e4a39083c98ab6c6c544a05524e35b7d8b5c501bc220e9e49d2dd30",
+    "lines": 40,
+    "read_ranges": [
+      [
+        1,
+        40
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "server-submission-page显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "next/navigation",
+      "../_lib/auth",
+      "../_lib/i18n-provider",
+      "./server-submission-wizard",
+      "./page-feedback"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "9ed52a474e4a39083c98ab6c6c544a05524e35b7d8b5c501bc220e9e49d2dd30",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/creator-identity.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "29bf29320cd8eb2965c4f0b413e3d571e9082845f93b9371ac0f701fd9ea2c73",
+    "sha256": "29bf29320cd8eb2965c4f0b413e3d571e9082845f93b9371ac0f701fd9ea2c73",
+    "lines": 35,
+    "read_ranges": [
+      [
+        1,
+        35
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "creator-identity显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "next/link",
+      "../_lib/mod-api",
+      "../_lib/i18n-provider"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "29bf29320cd8eb2965c4f0b413e3d571e9082845f93b9371ac0f701fd9ea2c73",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/project-editor-fields.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "28305ba42d94529cfb68040b47b8865ecf678799e1089fb983fe5b28dcee6c44",
+    "sha256": "28305ba42d94529cfb68040b47b8865ecf678799e1089fb983fe5b28dcee6c44",
+    "lines": 29,
+    "read_ranges": [
+      [
+        1,
+        29
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "project-editor-fields显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "react"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "28305ba42d94529cfb68040b47b8865ecf678799e1089fb983fe5b28dcee6c44",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "app/_components/square-image-crop-dialog.tsx",
+    "category": "人工维护客户端组件",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": "dd7b0fbb647502c80eff279b0f234bccaa093df00da57d5f868725764e569984",
+    "sha256": "dd7b0fbb647502c80eff279b0f234bccaa093df00da57d5f868725764e569984",
+    "lines": 24,
+    "read_ranges": [
+      [
+        1,
+        24
+      ]
+    ],
+    "status": "已完整审查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "square-image-crop-dialog显示、输入/操作、加载/错误恢复与领域子组件组合",
+    "call_chain": [
+      "./aspect-image-crop-dialog"
+    ],
+    "issues": [],
+    "validation": [
+      "静态：完整分段读取并审查事件/状态/权限与错误路径；截断补读",
+      "未执行本文件专用交互测试；整体构建/类型/浏览器由根任务记录"
+    ],
+    "final_review": {
+      "sha256": "dd7b0fbb647502c80eff279b0f234bccaa093df00da57d5f868725764e569984",
+      "method": "完整当前内容逐行语义审查"
+    }
+  },
+  {
+    "path": "tests/frontend-ui-b-catalog.test.tsx",
+    "category": "人工维护回归测试",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "441d206732d13a3a9ceb7b543e27330c57e62e11934cd477e94930c3efd085d6",
+    "lines": 25,
+    "read_ranges": [
+      [
+        1,
+        25
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "组件真实React渲染及确定性异步失败/竞争回归",
+    "call_chain": [
+      "@testing-library/react",
+      "vitest",
+      "受测组件"
+    ],
+    "issues": [],
+    "validation": [
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项；API/外部服务mock，真实React/Markdown及新增i18n真实Provider"
+    ],
+    "final_review": {
+      "sha256": "441d206732d13a3a9ceb7b543e27330c57e62e11934cd477e94930c3efd085d6",
+      "method": "测试编写与最终断言/fixtures逐行复查"
+    }
+  },
+  {
+    "path": "tests/frontend-ui-b-comments.test.tsx",
+    "category": "人工维护回归测试",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "1066ff5cffbdf974be077163b24b71503d4648ef51804291d28ab4d689bb38a6",
+    "lines": 65,
+    "read_ranges": [
+      [
+        1,
+        65
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "组件真实React渲染及确定性异步失败/竞争回归",
+    "call_chain": [
+      "@testing-library/react",
+      "vitest",
+      "受测组件"
+    ],
+    "issues": [],
+    "validation": [
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项；API/外部服务mock，真实React/Markdown及新增i18n真实Provider"
+    ],
+    "final_review": {
+      "sha256": "1066ff5cffbdf974be077163b24b71503d4648ef51804291d28ab4d689bb38a6",
+      "method": "测试编写与最终断言/fixtures逐行复查"
+    }
+  },
+  {
+    "path": "tests/frontend-ui-b-messages.test.tsx",
+    "category": "人工维护回归测试",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "8744680b1dd4f721be59c82b74c7c106eec09ec886338b7a9f0c440aae2dea63",
+    "lines": 81,
+    "read_ranges": [
+      [
+        1,
+        81
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "组件真实React渲染及确定性异步失败/竞争回归",
+    "call_chain": [
+      "@testing-library/react",
+      "vitest",
+      "受测组件"
+    ],
+    "issues": [],
+    "validation": [
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项；API/外部服务mock，真实React/Markdown及新增i18n真实Provider"
+    ],
+    "final_review": {
+      "sha256": "8744680b1dd4f721be59c82b74c7c106eec09ec886338b7a9f0c440aae2dea63",
+      "method": "测试编写与最终断言/fixtures逐行复查"
+    }
+  },
+  {
+    "path": "tests/frontend-ui-b-resource-picker.test.tsx",
+    "category": "人工维护回归测试",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "c8d6410d254b3f7d9f9593f4c57b2680700123eaba3f443502a2710bbfdff827",
+    "lines": 18,
+    "read_ranges": [
+      [
+        1,
+        18
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "组件真实React渲染及确定性异步失败/竞争回归",
+    "call_chain": [
+      "@testing-library/react",
+      "vitest",
+      "受测组件"
+    ],
+    "issues": [],
+    "validation": [
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项；API/外部服务mock，真实React/Markdown及新增i18n真实Provider"
+    ],
+    "final_review": {
+      "sha256": "c8d6410d254b3f7d9f9593f4c57b2680700123eaba3f443502a2710bbfdff827",
+      "method": "测试编写与最终断言/fixtures逐行复查"
+    }
+  },
+  {
+    "path": "tests/frontend-ui-b-uploads.test.tsx",
+    "category": "人工维护回归测试",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "722881f95b3250402a09f1f2ccc03fd2e1d1c86675672531ddb9765597cbc4e4",
+    "lines": 43,
+    "read_ranges": [
+      [
+        1,
+        43
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "组件真实React渲染及确定性异步失败/竞争回归",
+    "call_chain": [
+      "@testing-library/react",
+      "vitest",
+      "受测组件"
+    ],
+    "issues": [],
+    "validation": [
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项；API/外部服务mock，真实React/Markdown及新增i18n真实Provider"
+    ],
+    "final_review": {
+      "sha256": "722881f95b3250402a09f1f2ccc03fd2e1d1c86675672531ddb9765597cbc4e4",
+      "method": "测试编写与最终断言/fixtures逐行复查"
+    }
+  },
+  {
+    "path": "tests/frontend-ui-b.test.tsx",
+    "category": "人工维护回归测试",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "a3497e3b6b08b7572a71f8fe2cf3da49b35b30c09004f2ed95957288dc2e95c7",
+    "lines": 182,
+    "read_ranges": [
+      [
+        1,
+        182
+      ]
+    ],
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "组件真实React渲染及确定性异步失败/竞争回归",
+    "call_chain": [
+      "@testing-library/react",
+      "vitest",
+      "受测组件"
+    ],
+    "issues": [],
+    "validation": [
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项；API/外部服务mock，真实React/Markdown及新增i18n真实Provider"
+    ],
+    "final_review": {
+      "sha256": "a3497e3b6b08b7572a71f8fe2cf3da49b35b30c09004f2ed95957288dc2e95c7",
+      "method": "测试编写与最终断言/fixtures逐行复查"
+    }
+  },
+  {
+    "path": "tests/frontend-ui-b-i18n.test.tsx",
+    "category": "人工维护确定性组件回归测试",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "使用真实I18nProvider验证中英文、英语回退、版本组、资源选择与楼层文案及风险计数",
+    "call_chain": [
+      "app/_lib/i18n-provider.tsx",
+      "app/_locales/en-US.ts",
+      "app/_locales/zh-CN.ts",
+      "app/_components/admin-anti-abuse-panel.tsx",
+      "app/_components/minecraft-version-picker.tsx",
+      "app/_components/editor/resource-picker-dialog.tsx",
+      "app/_components/comment-section.tsx"
+    ],
+    "issues": [
+      "FE-UIB-012",
+      "FE-UIB-013"
+    ],
+    "validation": [
+      "npx vitest run tests/frontend-ui-b*.test.tsx: PASS 7文件32项；API/外部服务mock，真实React/Markdown及新增i18n真实Provider"
+    ],
+    "final_review": {
+      "version": "最终工作区sha256",
+      "method": "最终文件全部实际读取，测试真实执行"
+    },
+    "sha256": "c97fb9f709638340098ef93e795796464e263036f01a35e1105121b5fba93695",
+    "lines": 68,
+    "read_ranges": [
+      [
+        1,
+        68
+      ]
+    ]
+  },
+  {
+    "path": "docs/frontend-interaction-reliability.md",
+    "category": "人工维护正式行为说明",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "实际变更/部署兼容性/验证范围/剩余范围说明",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "全文实际重读，与组件、真实执行结果及mock边界核对；报告本身不构成行为测试"
+    ],
+    "final_review": {
+      "version": "最终工作区sha256",
+      "method": "完整最终文件实际读取复查"
+    },
+    "sha256": "c1d7d5db28a4f5ccfae4f294fb633fb67c17b5efdd1708248ab7f864530f318a",
+    "lines": 17,
+    "read_ranges": [
+      [
+        1,
+        17
+      ]
+    ]
+  },
+  {
+    "path": "docs/audit/frontend-ui-b.md",
+    "category": "人工维护审查报告",
+    "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "status": "已复查",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "实际变更/部署兼容性/验证范围/剩余范围说明",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "全文实际重读，与组件、真实执行结果及mock边界核对；报告本身不构成行为测试"
+    ],
+    "final_review": null,
+    "sha256": "27d94c96590cda71740e1f7787ab1e34b2f3d36a602d562a09ca8ad3a79cf356",
+    "lines": 62,
+    "read_ranges": [
+      [
+        1,
+        62
+      ]
+    ]
+  }
+]

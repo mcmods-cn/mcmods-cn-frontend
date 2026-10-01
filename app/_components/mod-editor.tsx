@@ -88,12 +88,20 @@ const emptyDraft = (): ModDraft => ({
   galleryImages: [],
 });
 
-export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: { siteId?: string; importMethod?: string; importURL?: string }) {
+export function ModEditor(props: Parameters<typeof ModEditorWorkspace>[0]) {
+  const { user } = useAuthSnapshot();
+  return <ModEditorWorkspace key={JSON.stringify([props.siteId, user?.id])} {...props} />;
+}
+
+function ModEditorWorkspace({ siteId, importMethod = "manual", importURL = "" }: { siteId?: string; importMethod?: string; importURL?: string }) {
   const router = useRouter();
   const { t, locale } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [draft, setDraft] = useState<ModDraft>(emptyDraft);
   const [loading, setLoading] = useState(Boolean(siteId));
+  const [loaded, setLoaded] = useState(!siteId);
+  const contentLoadedRef = useRef(!siteId);
+  const [reload, setReload] = useState(0);
   const [uniqueId, setUniqueId] = useState("");
   const [baseRevisionId, setBaseRevisionId] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
@@ -120,7 +128,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     draftKey: `mod:${siteId || "new"}`,
     projectKey: `mod:${siteId || "new"}`,
     editUrl: siteId ? `/mods/${encodeURIComponent(siteId)}/edit` : "/mods/new",
-    enabled: ready && Boolean(token) && !loading,
+    enabled: ready && Boolean(token) && loaded && !loading,
     kind: "mod",
     title: draft.primaryName.trim() || t(siteId ? "mods.submission.editTitle" : "mods.submission.manualTitle"),
     token,
@@ -141,7 +149,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   }, []);
 
   useEffect(() => {
-    if (!ready || !siteId) return;
+    if (!ready || !token || !siteId || contentLoadedRef.current) return;
     let cancelled = false;
     apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}/editor`, {}, token)
       .then((record) => {
@@ -152,6 +160,8 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           setSelectedLocale((importedDraft.defaultLocale || locale) as Locale);
           setUniqueId(record.uniqueId);
           setBaseRevisionId(record.publishedRevisionId);
+          contentLoadedRef.current = true;
+          setLoaded(true);
         }
       })
       .catch((error) => {
@@ -161,7 +171,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [locale, ready, siteId, t, token]);
+  }, [locale, ready, reload, siteId, t, token]);
 
   useEffect(() => {
     const provider = importMethod === "modrinth" || importMethod === "curseforge" || importMethod === "github" ? importMethod : "";
@@ -212,6 +222,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!loaded || submitting || iconUploading || galleryUploading) return;
     if (!token) {
       setMessage(t("mods.submission.loginRequired"));
       return;
@@ -295,11 +306,13 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     }
   }
 
-  if (!ready || loading) {
+  if (!ready) {
     const importing = loading && importMethod !== "manual";
     return <PageFeedback title={importing ? t("mods.submission.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
   }
   if (!token) return <LoginRequiredState nextPath={siteId ? `/mods/${siteId}/edit` : "/mods/new"} description={t("mods.submission.loginRequired")} />;
+  if (loading) return <PageFeedback title={t("common.loading")} />;
+  if (siteId && !loaded) return <><PageFeedback title={t("common.error")} description={message} tone="danger" /><div className="pb-8 text-center"><button className="button-secondary focus-ring" type="button" onClick={() => { setMessage(""); setLoading(true); setReload((value) => value + 1); }}>{t("common.retry")}</button></div></>;
 
   const editor = (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -311,7 +324,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.submission.reviewNotice")}</p>
             {importMethod !== "manual" ? <p className="mt-2 text-sm font-bold text-[var(--accent)]">{t("mods.submission.importPrepared", { source: importMethod, url: importURL })}</p> : null}
           </div>
-          <div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
+          <div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting || iconUploading || galleryUploading} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
         </header>
 
         <div className="mb-6 grid gap-3 lg:grid-cols-[1fr_260px]">
@@ -441,7 +454,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
 
         {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24 resize-y" maxLength={500} value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
         {message ? <p className="mb-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{message}</p> : null}
-        <div className="flex justify-end"><button className="button-primary focus-ring px-6" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
+        <div className="flex justify-end"><button className="button-primary focus-ring px-6" disabled={submitting || iconUploading || galleryUploading} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
         <SquareImageCropDialog
           file={iconCropFile}
           minimumSize={128}

@@ -34,11 +34,13 @@ export function useAutoDraft<T extends object>({
   const valueRef = useRef(value);
   const restoreRef = useRef(onRestore);
   const metadataRef = useRef({ draftKey, projectKey, editUrl, kind, title });
-  const baselineRef = useRef("");
   const lastSavedRef = useRef("");
   const initializedKeyRef = useRef("");
   const restoringRef = useRef(false);
+  const restoreGenerationRef = useRef(0);
   const savingRef = useRef(false);
+  const inFlightSaveRef = useRef<Promise<unknown> | null>(null);
+  const completingRef = useRef(false);
 
   useEffect(() => { valueRef.current = value; }, [value]);
   useEffect(() => { restoreRef.current = onRestore; }, [onRestore]);
@@ -48,11 +50,13 @@ export function useAutoDraft<T extends object>({
     if (!enabled || !token || initializedKeyRef.current === draftKey) return;
     initializedKeyRef.current = draftKey;
     const initial = serializeDraft(valueRef.current);
-    baselineRef.current = initial;
     lastSavedRef.current = initial;
     const draftID = new URLSearchParams(window.location.search).get("draft");
     if (!draftID) return;
     let cancelled = false;
+    let settled = false;
+    const restoreGeneration = restoreGenerationRef;
+    const generation = ++restoreGeneration.current;
     restoringRef.current = true;
     Promise.resolve()
       .then(() => {
@@ -64,7 +68,6 @@ export function useAutoDraft<T extends object>({
         if (!draft || cancelled) return;
         if (draft.draftKey !== draftKey) throw new Error("draft editor does not match");
         const restored = serializeDraft(draft.payload);
-        baselineRef.current = restored;
         lastSavedRef.current = restored;
         restoreRef.current(draft.payload);
         setSavedAt(draft.updatedAt);
@@ -75,19 +78,30 @@ export function useAutoDraft<T extends object>({
         setError(cause instanceof Error ? cause.message : String(cause));
         setStatus("error");
       })
-      .finally(() => { restoringRef.current = false; });
-    return () => { cancelled = true; };
+      .finally(() => {
+        settled = true;
+        if (restoreGeneration.current === generation) restoringRef.current = false;
+      });
+    return () => {
+      cancelled = true;
+      // A cancelled restoration has not initialized this editor. In particular,
+      // React StrictMode replays effects before the first request microtask.
+      if (!settled && initializedKeyRef.current === draftKey) initializedKeyRef.current = "";
+      if (restoreGeneration.current === generation) restoringRef.current = false;
+    };
   }, [draftKey, enabled, token]);
 
   const saveLatest = useCallback(async (keepalive = false) => {
-    if (!enabled || !token || restoringRef.current || savingRef.current) return;
+    if (!enabled || !token || restoringRef.current || savingRef.current || completingRef.current) return;
     const serialized = serializeDraft(valueRef.current);
-    if (!serialized || serialized === baselineRef.current || serialized === lastSavedRef.current) return;
+    if (!serialized || serialized === lastSavedRef.current) return;
     savingRef.current = true;
     setStatus("saving");
     try {
       const metadata = metadataRef.current;
-      const result = await saveUserDraft({ ...metadata, payload: valueRef.current }, token, keepalive && serialized.length < 60_000);
+      const request = saveUserDraft({ ...metadata, payload: valueRef.current }, token, keepalive && serialized.length < 60_000);
+      inFlightSaveRef.current = request;
+      const result = await request;
       lastSavedRef.current = serialized;
       setSavedAt(result.updatedAt);
       setError("");
@@ -97,6 +111,7 @@ export function useAutoDraft<T extends object>({
       setStatus("error");
     } finally {
       savingRef.current = false;
+      inFlightSaveRef.current = null;
     }
   }, [enabled, token]);
 
@@ -122,18 +137,24 @@ export function useAutoDraft<T extends object>({
     reviewTargetType?: "server";
     reviewTargetPublicId?: string;
   }) => {
-    if (!token) return;
-    await completeUserDraft({
-      ...metadataRef.current,
-      ...completion,
-      payload: valueRef.current,
-    }, token);
-    const current = serializeDraft(valueRef.current);
-    baselineRef.current = current;
-    lastSavedRef.current = current;
-    setSavedAt("");
-    setStatus("idle");
-    setError("");
+    if (!token || completingRef.current) return;
+    completingRef.current = true;
+    try {
+      // Preserve the write order: a late autosave must not reopen a completed
+      // draft. The completion request carries the current payload itself.
+      await inFlightSaveRef.current?.catch(() => undefined);
+      await completeUserDraft({
+        ...metadataRef.current,
+        ...completion,
+        payload: valueRef.current,
+      }, token);
+      lastSavedRef.current = serializeDraft(valueRef.current);
+      setSavedAt("");
+      setStatus("idle");
+      setError("");
+    } finally {
+      completingRef.current = false;
+    }
   }, [token]);
 
   return { completeDraft, error, savedAt, status };

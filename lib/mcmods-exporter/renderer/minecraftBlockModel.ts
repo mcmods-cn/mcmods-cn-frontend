@@ -576,10 +576,13 @@ function rewriteMtlTexturePaths(
     const reference = parts.at(-1)
     if (!reference) return line
     const resolvedReference = reference.startsWith('#') ? resolveTexture(reference, textures) : reference
-    if (!resolvedReference) return line
+    if (!resolvedReference) return ''
     const texturePath = resolveTextureAssetPath(resolvedReference, mtlPath, namespace)
     const url = bundle.url(texturePath)
-    if (!url) return line
+    // MTL is imported content. Let only the supplied revision index resolve
+    // texture URLs; keeping an unresolved map would make MTLLoader fetch an
+    // arbitrary external or same-origin address from the original document.
+    if (!url) return ''
     parts[parts.length - 1] = url
     return parts.join(' ')
   }).join('\n')

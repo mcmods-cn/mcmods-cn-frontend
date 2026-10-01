@@ -313,11 +313,20 @@ export function retryCatalogImportJob(siteId: string, jobId: string, token: stri
 
 function abortableDelay(milliseconds: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(resolve, milliseconds);
-    signal?.addEventListener("abort", () => {
-      window.clearTimeout(timer);
+    if (signal?.aborted) {
       reject(new DOMException("Polling aborted", "AbortError"));
-    }, { once: true });
+      return;
+    }
+    const abort = () => {
+      window.clearTimeout(timer);
+      signal?.removeEventListener("abort", abort);
+      reject(new DOMException("Polling aborted", "AbortError"));
+    };
+    const timer = window.setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", abort, { once: true });
   });
 }
 
