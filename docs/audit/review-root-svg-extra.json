@@ -1,0 +1,1139 @@
+{
+  "repository": "mcmods-cn-frontend",
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "scope": "sorted(Path('public/mc-icons').glob('*.svg'))[12:40]",
+  "reviewer": "frontend_ui_b",
+  "counts": {
+    "included": 28,
+    "complete": 28,
+    "partial": 0,
+    "unreviewed": 0,
+    "excluded": 0,
+    "lines": 84,
+    "bytes": 217354
+  },
+  "method": "人工完整阅读全部28文件长行；下列校验不替代全文语义审查。Root独立负责前12及全部40XML/引用复核。",
+  "validation_command": "Python xml.etree.ElementTree + finite SVG path token/command arity/arc flags validation; rg -n mc-icons app",
+  "files": [
+    {
+      "path": "public/mc-icons/icon-food-half-hunger-level.svg",
+      "sha256": "e9cd63dfa2f1ea9e8bb5cd5a650f989ee9b6879bb379b0ceca4578b7a5e9caf6",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 19,
+        "command_segments": 266,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "e9cd63dfa2f1ea9e8bb5cd5a650f989ee9b6879bb379b0ceca4578b7a5e9caf6"
+    },
+    {
+      "path": "public/mc-icons/icon-health-empty.svg",
+      "sha256": "0eecace0d45fc2456d6cc7ddc9e3a806067000907a9d1fafad64da5a624e3c05",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 8,
+        "command_segments": 183,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "0eecace0d45fc2456d6cc7ddc9e3a806067000907a9d1fafad64da5a624e3c05"
+    },
+    {
+      "path": "public/mc-icons/icon-health-full-buff-poison-ex.svg",
+      "sha256": "5044ceea6ee05477d4333d2fe28850243044c12a1c51469a560cf440e0db5e80",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 25,
+        "command_segments": 334,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "5044ceea6ee05477d4333d2fe28850243044c12a1c51469a560cf440e0db5e80"
+    },
+    {
+      "path": "public/mc-icons/icon-health-full-buff-poison.svg",
+      "sha256": "1c4525bfa7b85236aeb144fe6bbbaf1520c9185b9cd66a67eabb036e1eff36f7",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 21,
+        "command_segments": 314,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "1c4525bfa7b85236aeb144fe6bbbaf1520c9185b9cd66a67eabb036e1eff36f7"
+    },
+    {
+      "path": "public/mc-icons/icon-health-full-buff-regeneration-ex.svg",
+      "sha256": "d88cb00f1b619d81f5cc8d7e2d103be2dec7c03e2ecbd6b63cd9c1fc9655fdb3",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 23,
+        "command_segments": 269,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "d88cb00f1b619d81f5cc8d7e2d103be2dec7c03e2ecbd6b63cd9c1fc9655fdb3"
+    },
+    {
+      "path": "public/mc-icons/icon-health-full-buff-regeneration.svg",
+      "sha256": "96af7316dd8878b277af29f8f613ac5b0464f47937a89404fb0df505a2ba9ca2",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 14,
+        "command_segments": 232,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "96af7316dd8878b277af29f8f613ac5b0464f47937a89404fb0df505a2ba9ca2"
+    },
+    {
+      "path": "public/mc-icons/icon-health-full-buff-wither-ex.svg",
+      "sha256": "9c254df872997c880c980344f42643be1ee28ce737fa5b6a82b490e719f9e0db",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 26,
+        "command_segments": 393,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "9c254df872997c880c980344f42643be1ee28ce737fa5b6a82b490e719f9e0db"
+    },
+    {
+      "path": "public/mc-icons/icon-health-full-buff-wither.svg",
+      "sha256": "def357435b492b64a3c86bfc784b85ebea712b302bf3cdc704afc79d6144ba67",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 26,
+        "command_segments": 335,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "def357435b492b64a3c86bfc784b85ebea712b302bf3cdc704afc79d6144ba67"
+    },
+    {
+      "path": "public/mc-icons/icon-health-full-ex.svg",
+      "sha256": "bcea1ea726941a727f72f2e8feb803e78b72ad7840cd059730444bd5abe7aeba",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 20,
+        "command_segments": 289,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "bcea1ea726941a727f72f2e8feb803e78b72ad7840cd059730444bd5abe7aeba"
+    },
+    {
+      "path": "public/mc-icons/icon-health-full-jockey.svg",
+      "sha256": "0fe800a45e136edcbb666c031a370faa2262807315ec21362c62b04b27f7d930",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 23,
+        "command_segments": 328,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "0fe800a45e136edcbb666c031a370faa2262807315ec21362c62b04b27f7d930"
+    },
+    {
+      "path": "public/mc-icons/icon-health-full.svg",
+      "sha256": "29894172bd5b9ddbcb292c34386f9cedd041d75085db39012f392ffd92795057",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 12,
+        "command_segments": 217,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "29894172bd5b9ddbcb292c34386f9cedd041d75085db39012f392ffd92795057"
+    },
+    {
+      "path": "public/mc-icons/icon-health-half-buff-poison-ex.svg",
+      "sha256": "719f1a411d53dac6f5f32db2b9da8d96e2a0aa5cbda09a9d9a115c7ae9806cd9",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 17,
+        "command_segments": 252,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "719f1a411d53dac6f5f32db2b9da8d96e2a0aa5cbda09a9d9a115c7ae9806cd9"
+    },
+    {
+      "path": "public/mc-icons/icon-health-half-buff-poison.svg",
+      "sha256": "c55d0ee547d1ef17426faf9519a1b6c0e63104ca9d3a45ef3b3bbacb526a7d24",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 15,
+        "command_segments": 260,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "c55d0ee547d1ef17426faf9519a1b6c0e63104ca9d3a45ef3b3bbacb526a7d24"
+    },
+    {
+      "path": "public/mc-icons/icon-health-half-buff-regeneration-ex.svg",
+      "sha256": "242a6db9faef6448f2edc915ebd4e1562282bc477d180175ed608e7ce0d01bb8",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 19,
+        "command_segments": 257,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "242a6db9faef6448f2edc915ebd4e1562282bc477d180175ed608e7ce0d01bb8"
+    },
+    {
+      "path": "public/mc-icons/icon-health-half-buff-regeneration.svg",
+      "sha256": "af481fa42cb453c3ccefa03718346837d6550cbdcf91386a1ab3fd47f64f5e9e",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 13,
+        "command_segments": 213,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "af481fa42cb453c3ccefa03718346837d6550cbdcf91386a1ab3fd47f64f5e9e"
+    },
+    {
+      "path": "public/mc-icons/icon-health-half-buff-wither-ex.svg",
+      "sha256": "5813f9d249cf3c8d7f5044d7a8fb3a8630a12e340f7df7814f5b149f650a1b63",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 22,
+        "command_segments": 317,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "5813f9d249cf3c8d7f5044d7a8fb3a8630a12e340f7df7814f5b149f650a1b63"
+    },
+    {
+      "path": "public/mc-icons/icon-health-half-buff-wither.svg",
+      "sha256": "4e2120465b0ffc3cb54d203730b643a13187f140a3a4e99fe25b6097091d4b42",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 24,
+        "command_segments": 283,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "4e2120465b0ffc3cb54d203730b643a13187f140a3a4e99fe25b6097091d4b42"
+    },
+    {
+      "path": "public/mc-icons/icon-health-half-ex.svg",
+      "sha256": "f0e64ae2b9e36c5a9f7db4856102c7707d475dbeeae2ebfbc3f1cce7f21d9cb4",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 15,
+        "command_segments": 234,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "f0e64ae2b9e36c5a9f7db4856102c7707d475dbeeae2ebfbc3f1cce7f21d9cb4"
+    },
+    {
+      "path": "public/mc-icons/icon-health-half-jockey.svg",
+      "sha256": "b2f0ca389c6562cb2ec66fe0914910afd6f4bc6eaef23409ccd92e96c1627d4e",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 19,
+        "command_segments": 250,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "b2f0ca389c6562cb2ec66fe0914910afd6f4bc6eaef23409ccd92e96c1627d4e"
+    },
+    {
+      "path": "public/mc-icons/icon-health-half.svg",
+      "sha256": "07c18a693265cc75d598013a3e5488a15a6ab3d5df330e4cf1ee810261c927aa",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 13,
+        "command_segments": 202,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "07c18a693265cc75d598013a3e5488a15a6ab3d5df330e4cf1ee810261c927aa"
+    },
+    {
+      "path": "public/mc-icons/icon-oxygen-empty.svg",
+      "sha256": "ba45c3dffe3e667260cbd7b5a50d8ace462942143e2c0027a55245bdc8b50f37",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 11,
+        "command_segments": 173,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "ba45c3dffe3e667260cbd7b5a50d8ace462942143e2c0027a55245bdc8b50f37"
+    },
+    {
+      "path": "public/mc-icons/icon-oxygen-full.svg",
+      "sha256": "a65390d0cb104139fbd9ddaa9411e4bc84cfe8fc3ee790721276e7631940b52c",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 7,
+        "command_segments": 216,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "a65390d0cb104139fbd9ddaa9411e4bc84cfe8fc3ee790721276e7631940b52c"
+    },
+    {
+      "path": "public/mc-icons/icon-toughness-diamond-empty.svg",
+      "sha256": "fb079d465b6888f23800f9a7540e66f5c3ae12a2d05575ffe706b3e4f711f76d",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 6,
+        "command_segments": 119,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "fb079d465b6888f23800f9a7540e66f5c3ae12a2d05575ffe706b3e4f711f76d"
+    },
+    {
+      "path": "public/mc-icons/icon-toughness-diamond-full.svg",
+      "sha256": "6048cdb0a253b4330604ed17048019dac84f6967f0a3f7e2e4a36eedf6c22555",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 14,
+        "command_segments": 234,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "6048cdb0a253b4330604ed17048019dac84f6967f0a3f7e2e4a36eedf6c22555"
+    },
+    {
+      "path": "public/mc-icons/icon-toughness-diamond-half.svg",
+      "sha256": "11e773335ece7bc4aa0eee87225a65bba705dd501fca9b2549105254c19df4b8",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 16,
+        "command_segments": 199,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "11e773335ece7bc4aa0eee87225a65bba705dd501fca9b2549105254c19df4b8"
+    },
+    {
+      "path": "public/mc-icons/icon-toughness-empty.svg",
+      "sha256": "45e358f0ad8afec1ab7a646bcef07b3cee2ea42a824b882ae119f4e3e1287792",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 6,
+        "command_segments": 114,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "45e358f0ad8afec1ab7a646bcef07b3cee2ea42a824b882ae119f4e3e1287792"
+    },
+    {
+      "path": "public/mc-icons/icon-toughness-full.svg",
+      "sha256": "1489c60026dff6e6bfd803801c6f524870bbeebab4206e441dace15a4e88dc46",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 9,
+        "command_segments": 187,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "1489c60026dff6e6bfd803801c6f524870bbeebab4206e441dace15a4e88dc46"
+    },
+    {
+      "path": "public/mc-icons/icon-toughness-half.svg",
+      "sha256": "70b08b39f54c7c3c82a444c967189eb83987cccf03f29d571c2d3215aa87aba0",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "reviewer": "frontend_ui_b",
+      "review_method": "逐个完整输出原始SVG，批次≤35KB；所有长path属性全文已读，无截断。静态XML/属性/path语法校验独立执行。",
+      "responsibility": "Minecraft工具/Markdown/资源数值的本地状态图标；文件名对应饥饿、生命、氧气或韧性及半格/空格/状态变体。",
+      "call_chain": [
+        "app/_components/tools-playground.tsx",
+        "app/_components/markdown-renderer.tsx",
+        "app/_components/mod-content-resource-editor.tsx",
+        "app/_components/mod-resource-components.tsx"
+      ],
+      "issues": [],
+      "validation": {
+        "status": "PASS",
+        "type": "static XML/path syntax and security boundary",
+        "path_count": 9,
+        "command_segments": 179,
+        "checks": [
+          "SVG namespace/root/viewBox1024",
+          "path-only children and d/fill-only attributes",
+          "no DOCTYPE/entity/script/event/external link/foreignObject",
+          "finite path operands, command arity, first moveto and legal arc flags",
+          "real references found via rg"
+        ],
+        "limitations": "未进行28图标逐个浏览器视觉质量或生产展示验收；XML与path校验是静态证据。"
+      },
+      "final_review_sha256": "70b08b39f54c7c3c82a444c967189eb83987cccf03f29d571c2d3215aa87aba0"
+    }
+  ]
+}

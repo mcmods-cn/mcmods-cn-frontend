@@ -1,0 +1,73 @@
+{
+  "reviewer": "frontend_ui_b",
+  "files": [
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "app/_components/__tests__/admin-config-load-contract.test.tsx",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "4dd47128b405a0ebf65820f90f0509b8aec125e1085c3c49942f60b77e997006",
+      "lines": 164,
+      "read_ranges": [
+        [
+          1,
+          164
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": true,
+      "responsibility": "真实AdminConsole四配置入口读失败/恢复门禁，最新完整AI快照与通知其他语言/元信息保留断言",
+      "call_chain": [
+        "app/_components/admin-console.tsx: AdminConsole→useAIConfigDraft/AIConfigLoadState/AI三panel/saveAIConfig",
+        "app/_components/admin-console.tsx: NotificationTemplatePanel→save",
+        "../mcmods-cn-backend/internal/httpapi/ai_handlers.go: aiConfigPayload/getAIConfig/updateAIConfig",
+        "../mcmods-cn-backend/internal/httpapi/notification_template_handlers.go: notificationTemplateConfig/getNotificationTemplates/updateNotificationTemplates"
+      ],
+      "issues": [
+        "FE-UIA-006",
+        "FE-UIA-007"
+      ],
+      "validation": [
+        "4组件场景首次当前修复版PASS，API合成mock非backend/E2E；实际GET错误/重试deferred/编辑→PUT完整payload与反馈",
+        "独立ESLint、整仓tsc、diffcheck PASS，详见admin-config-load-validation.json",
+        "正向fixture改为真实支持site/default day/hour两quota，保留完整字段断言；已对照后端validateAIQuotaConfiguration/normalizeAIProtocol/requestAICompletion；最终4测试PASS5.75秒，selected lint/整仓tsc/diffcheck PASS"
+      ]
+    },
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": "docs/audit/admin-config-load-contract.md",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "f6abf2bc5b5363e8ad2a23b37205519336ded696bc2ae9cc0622d26591046776",
+      "lines": 13,
+      "read_ranges": [
+        [
+          1,
+          13
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "补测结果与边界、实际支持fixture、更正并引用BE-DB-028真实PG修复证据",
+      "call_chain": [
+        "app/_components/admin-console.tsx: AdminConsole→useAIConfigDraft/AIConfigLoadState/AI三panel/saveAIConfig",
+        "app/_components/admin-console.tsx: NotificationTemplatePanel→save",
+        "../mcmods-cn-backend/internal/httpapi/ai_handlers.go: aiConfigPayload/getAIConfig/updateAIConfig",
+        "../mcmods-cn-backend/internal/httpapi/notification_template_handlers.go: notificationTemplateConfig/getNotificationTemplates/updateNotificationTemplates"
+      ],
+      "issues": [
+        "FE-UIA-006",
+        "FE-UIA-007",
+        "BE-DB-028"
+      ],
+      "validation": [
+        "4组件场景首次当前修复版PASS，API合成mock非backend/E2E；实际GET错误/重试deferred/编辑→PUT完整payload与反馈",
+        "独立ESLint、整仓tsc、diffcheck PASS，详见admin-config-load-validation.json",
+        "正向fixture改为真实支持site/default day/hour两quota，保留完整字段断言；已对照后端validateAIQuotaConfiguration/normalizeAIProtocol/requestAICompletion；最终4测试PASS5.75秒，selected lint/整仓tsc/diffcheck PASS"
+      ]
+    }
+  ],
+  "dependency_scope": "仅实际读取上述配置组件/DTO范围；不借此宣称整个admin-console或后端handler全文审查，原全文记录由其owner维护"
+}

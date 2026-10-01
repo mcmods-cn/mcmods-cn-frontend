@@ -1,0 +1,266 @@
+{
+  "repository": "mcmods-cn-frontend",
+  "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "at_utc": "2026-10-01T18:09:54.554810+00:00",
+  "records": [
+    {
+      "command": [
+        "npm",
+        "run",
+        "test",
+        "--",
+        "tests/api_core.test.ts",
+        "tests/auth_core.test.tsx",
+        "tests/catalog-storage_core.test.tsx",
+        "tests/draft_core.test.tsx",
+        "tests/i18n-resources_core.test.ts",
+        "tests/i18n_core.test.tsx",
+        "tests/logo_core.test.ts",
+        "tests/model-assets_core.test.ts",
+        "tests/renderer-failure_core.test.tsx",
+        "tests/shortlink_core.test.tsx",
+        "tests/skin-texture-lifecycle_core.test.tsx",
+        "tests/transports_core.test.ts",
+        "tests/upload-store_core.test.ts"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-core-verified-0.log",
+      "result": "anned to become the default in a future major version of Vite:\n  - ESM syntax in a file loaded as CommonJS (vitest.config.ts:1:1). Use a `.mjs` extension or set `\"type\": \"module\"` in the closest package.json\nSet `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.\n\n RUN  v4.1.11 /workspace/mcmods-cn-frontend\n\n\n Test Files  13 passed (13)\n      Tests  31 passed (31)\n   Start at  13:37:47\n   Duration  10.86s (transform 2.43s, setup 0ms, import 5.65s, tests 1.86s, environment 9.73s)\n\n"
+    },
+    {
+      "command": [
+        "npx",
+        "eslint",
+        "app/_locales/en-US.ts",
+        "app/_locales/zh-CN.ts",
+        "lib/mcmods-exporter/renderer/minecraftBlockModel.ts",
+        "app/_lib/oss-upload.ts",
+        "app/_lib/mod-export-api.ts",
+        "components/minecraft-skin/SkinViewerCanvas.tsx",
+        "app/_lib/auth.ts",
+        "app/_lib/catalog-state.ts",
+        "app/_lib/favorite-api.ts",
+        "app/_lib/i18n-provider.tsx",
+        "components/mcmods-exporter/StructureCanvas.tsx",
+        "app/_lib/use-auto-draft.ts",
+        "app/_lib/api.ts",
+        "app/_lib/mod-export-upload-store.ts",
+        "components/mcmods-exporter/BlockModelCanvas.tsx",
+        "app/api/site-logo/route.ts",
+        "app/_locales/zh-TW.ts",
+        "app/_locales/de.ts",
+        "app/_locales/es.ts",
+        "app/_locales/fr.ts",
+        "app/_locales/ja.ts",
+        "app/_locales/ru.ts",
+        "app/layout.tsx",
+        "app/[publicId]/page.tsx",
+        "tests/api_core.test.ts",
+        "tests/auth_core.test.tsx",
+        "tests/catalog-storage_core.test.tsx",
+        "tests/draft_core.test.tsx",
+        "tests/i18n-resources_core.test.ts",
+        "tests/i18n_core.test.tsx",
+        "tests/logo_core.test.ts",
+        "tests/model-assets_core.test.ts",
+        "tests/renderer-failure_core.test.tsx",
+        "tests/shortlink_core.test.tsx",
+        "tests/skin-texture-lifecycle_core.test.tsx",
+        "tests/transports_core.test.ts",
+        "tests/upload-store_core.test.ts",
+        "e2e/import-store-core.spec.ts"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-core-verified-1.log",
+      "result": ""
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-core-verified-2.log",
+      "result": "\n> mcmods-cn-frontend@0.1.0 typecheck\n> tsc --noEmit\n\n"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-core-verified-3.log",
+      "result": ""
+    },
+    {
+      "command": [
+        "npx",
+        "playwright",
+        "test",
+        "e2e/import-store-core.spec.ts"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-idb-green.log",
+      "assertions": [
+        "real Chromium IndexedDB file/parts roundtrip",
+        "account B cannot read account A task",
+        "delete committed",
+        "schema upgrade unblocked after close"
+      ],
+      "boundary": "Controlled loopback HTML; actual storage module/engine; no app API/OSS/AI. Not full backend E2E."
+    },
+    {
+      "command": [
+        "npm",
+        "run",
+        "test",
+        "--",
+        "tests/log-cleanup_core.test.tsx",
+        "tests/application-pagination_core.test.tsx",
+        "tests/i18n-resources_core.test.ts"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 3,
+      "tests": 9,
+      "log": "/tmp/frontend-applications-cleanup-core-final.log",
+      "boundary": "Actual React components, API mocked; actual PG separately documented"
+    },
+    {
+      "command": [
+        "npx",
+        "eslint",
+        "six supplemental modified source/test files"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-core-supplement-lint.log"
+    },
+    {
+      "command": [
+        "npx",
+        "tsc",
+        "--noEmit"
+      ],
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-core-supplement-type.log"
+    },
+    {
+      "command": "npm run test -- tests/log-cleanup-i18n_core.test.tsx tests/log-cleanup_core.test.tsx tests/application-pagination_core.test.tsx tests/i18n-resources_core.test.ts",
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 4,
+      "tests": 17,
+      "log": "/tmp/frontend-cleanup-locales-core-final.log"
+    },
+    {
+      "command": "npm run test -- tests/*_core.test.ts tests/*_core.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 16,
+      "tests": 46,
+      "duration_seconds": 35.85,
+      "log": "/tmp/frontend-core-final-all.log"
+    },
+    {
+      "command": "npx eslint app/_locales/en-US.ts app/_locales/zh-CN.ts tests/log-cleanup-i18n_core.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-core-final-locales-lint.log"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-core-final-type.log"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run test:e2e (root实际执行；仅引用CSP相关断言)",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/mcmods-e2e-first.log",
+      "result": "5 tests PASS 6.7s; e2e/live-backend.spec.ts:14 的 strict-dynamic/header/lang/真实401/输入保留/零CSPconsole错误已验证",
+      "boundary": "parent所执行真实production frontend与owned loopback backend；本代理实际复核用例源码及结果。不是全部业务/语言/GPU验收。"
+    },
+    {
+      "command": "npm run test -- tests/auth-cas_core.test.tsx (初始4场景、修复前)",
+      "status": "FAIL",
+      "exit_code": 1,
+      "files": 1,
+      "tests": 4,
+      "failed": 3,
+      "passed": 1,
+      "log": "/tmp/frontend-auth-cas-core-red.log",
+      "boundary": "旧代码允许跨身份迟到写回/登出复活；修复后同场景通过，未使用生产身份。"
+    },
+    {
+      "command": "npm run test -- tests/auth-cas_core.test.tsx (第6场景加入、profile whitelist修复前)",
+      "status": "FAIL",
+      "exit_code": 1,
+      "files": 1,
+      "tests": 6,
+      "failed": 1,
+      "passed": 5,
+      "log": "/tmp/frontend-auth-profile-authorization-core-red.log",
+      "boundary": "同ID真实/me权限已刷新后，迟到captured profile覆盖新授权投影；未称后端越权。"
+    },
+    {
+      "command": "npm run test -- tests/auth-cas_core.test.tsx (第7场景加入、pending refresh修复前)",
+      "status": "FAIL",
+      "exit_code": 1,
+      "files": 1,
+      "tests": 7,
+      "failed": 1,
+      "passed": 6,
+      "log": "/tmp/frontend-auth-profile-pending-permissions-core-red.log",
+      "boundary": "条件profile更新取消同身份pending权限刷新，导致旧投影保留。"
+    },
+    {
+      "command": "npm run test -- tests/auth-cas_core.test.tsx tests/auth_core.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 2,
+      "tests": 9,
+      "duration_seconds": 1.32,
+      "log": "/tmp/frontend-auth-cas-complete-core-final.log",
+      "source_sha256": "0d254f20da89c94e94c7fa7ebe93e6f61ac888192e220492bc49499102cc2868",
+      "boundary": "真实auth模块、React hook/global state；backendFetch为受控响应mock；账号A/B、登出、响应身份不符、React提交前窗口、同ID授权及pending refresh。"
+    },
+    {
+      "command": "npm run test -- tests/*_core.test.ts tests/*_core.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 17,
+      "tests": 53,
+      "duration_seconds": 23.21,
+      "log": "/tmp/frontend-core-auth-fencing-final-all.log",
+      "source_sha256": "0d254f20da89c94e94c7fa7ebe93e6f61ac888192e220492bc49499102cc2868",
+      "boundary": "核心所列单元/hook/component/Three实例回归，外部API/供应商替代边界见各测试，不是全业务E2E。"
+    },
+    {
+      "command": "npx eslint app/_lib/auth.ts tests/auth-cas_core.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-auth-cas-final-lint.log"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "status": "PASS",
+      "exit_code": 0,
+      "log": "/tmp/frontend-auth-cas-final-type.log"
+    }
+  ]
+}

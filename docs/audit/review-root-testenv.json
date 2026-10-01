@@ -1,0 +1,39 @@
+{
+  "reviewer": "frontend_ui_a",
+  "recorded_at": "2026-10-01T16:51:32.957028+00:00",
+  "files": [
+    {
+      "repository": "mcmods-cn-frontend",
+      "path": ".github/workflows/checks.yml",
+      "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+      "sha256": "49c9ba87798998b221d4bc295454289ed5f2794d03a862304e274ca847fad386",
+      "lines": 24,
+      "read_ranges": [
+        [
+          1,
+          24
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantics_reviewed": true,
+      "behavior_verified": false,
+      "responsibility": "PR/default branch CI只读权限，固定Node/npm锁安装，审计工具黑盒/静态/词条/组件/build/依赖检查",
+      "call_chain": [
+        "contents:read",
+        "Node24.19.0/npm ci",
+        "python actual Git ledger checker",
+        "npm check/test/build/audit"
+      ],
+      "issues": [],
+      "validation": [
+        "全文静态权限/来源/脚本审查；对应本地检查归root实测记录，GitHub CI尚未据此声明通过。"
+      ],
+      "read_basis": "最终24行实际全文读取；独立指纹，与后端同名workflow分开记录。"
+    }
+  ],
+  "boundaries": [
+    "本记录为生成review库存，明确登记后才能排除自身；不是人工业务JSON按名称排除规则。",
+    "未运行远端CI，未操作GitHub secrets/部署。"
+  ]
+}

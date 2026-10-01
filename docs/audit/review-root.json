@@ -1,0 +1,743 @@
+{
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "scope": "root_frontend",
+  "files": [
+    {
+      "path": "proxy.ts",
+      "sha256": "0d250f56278666645caa3228e100463223b9058b49b50db52132004c6d0ce6f9",
+      "lines": 68,
+      "read_ranges": [
+        [
+          1,
+          68
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "运行配置/服务边界/生命周期/队列与测试契约审查",
+      "call_chain": [],
+      "issues": [],
+      "validation": []
+    },
+    {
+      "path": "package.json",
+      "sha256": "678ba7de421848cdfe71c775c92dac18bb1e1a1603e15c2fb4825115843ca928",
+      "lines": 62,
+      "read_ranges": [
+        [
+          1,
+          62
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "最终浏览器隔离/共享限流窗口编排及真实业务验收证据；全体内容与补丁实际读取",
+      "call_chain": [
+        "npm test:e2e",
+        "Playwright actual backend",
+        "shared crawler read window"
+      ],
+      "issues": [
+        "AUDIT-TOOL-003"
+      ],
+      "validation": [
+        "真实npm run test:e2e退出0，互补5+1全部测试执行；不宣称全文件全部行为覆盖"
+      ]
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "339ef96867b363be6cf24d764824d371e65674ff72f4463419cc206e22f7796d",
+      "lines": 45,
+      "read_ranges": [
+        [
+          1,
+          45
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "排除环境密钥、依赖、构建与浏览器认证产物",
+      "call_chain": [
+        "npm scripts",
+        "actual configuration/component consumers"
+      ],
+      "issues": [],
+      "validation": [
+        "实际全文读取和语义复核；行为只限所列验证断言",
+        "/tmp/mcmods-frontend-final-check.log",
+        "/tmp/mcmods-frontend-final-tests.log",
+        "/tmp/mcmods-frontend-final-build.log"
+      ],
+      "final_review": "root实读当前完整内容；README依本文真实环境/启动结果；E2E最新全套仍待执行，不继承全部通过"
+    },
+    {
+      "path": "README.md",
+      "sha256": "23dd80b21f3e49c1a49ef50e43960602dc433d85ea7bf6cd0aa7613d1d3d5503",
+      "lines": 61,
+      "read_ranges": [
+        [
+          1,
+          61
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "主执行者实际全文阅读/撰写与最终复核；交付结论依据命令和专题证据，静态审查不混行为覆盖",
+      "call_chain": [
+        "npm test:e2e",
+        "Playwright actual backend",
+        "shared crawler read window"
+      ],
+      "issues": [
+        "AUDIT-TOOL-003"
+      ],
+      "validation": [
+        "本轮实际全文及最终逐行差异复读；生成器9黑盒各PASS，paced browser6PASS+两个reports同时保留；仅列明断言，不推断完整行为或生产健康。"
+      ],
+      "final_review": "root实读当前完整内容；README依本文真实环境/启动结果；E2E最新全套仍待执行，不继承全部通过"
+    },
+    {
+      "path": "next.config.ts",
+      "sha256": "148119916c69a9e07ccb3790e40587322ba4d0c02ce4a3bfb04a6a00dc15cf93",
+      "lines": 41,
+      "read_ranges": [
+        [
+          1,
+          41
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "运行配置/服务边界/生命周期/队列与测试契约审查",
+      "call_chain": [],
+      "issues": [],
+      "validation": []
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "11202a9617d340bfb4ec86b96575249a44fd8891db07935ce7f2774ebfba91d6",
+      "lines": 34,
+      "read_ranges": [
+        [
+          1,
+          34
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "运行配置/服务边界/生命周期/队列与测试契约审查",
+      "call_chain": [],
+      "issues": [],
+      "validation": []
+    },
+    {
+      "path": "eslint.config.mjs",
+      "sha256": "870f1adccecf3051cbcd9fd307cef51d7633cf510979c181a81f4b1797273493",
+      "lines": 18,
+      "read_ranges": [
+        [
+          1,
+          18
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "运行配置/服务边界/生命周期/队列与测试契约审查",
+      "call_chain": [],
+      "issues": [],
+      "validation": []
+    },
+    {
+      "path": "postcss.config.mjs",
+      "sha256": "dfac7ac2d86d326a0e5adb024e7943c181393ed17a5fcb8f0315b24c7da6ddde",
+      "lines": 7,
+      "read_ranges": [
+        [
+          1,
+          7
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "运行配置/服务边界/生命周期/队列与测试契约审查",
+      "call_chain": [],
+      "issues": [],
+      "validation": []
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "e3447d84251880fb34cfae09131cb4c57471529bbfe60976a3245793cf621627",
+      "lines": 5,
+      "read_ranges": [
+        [
+          1,
+          5
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "工程设计/历史报告与实际基线交叉核对",
+      "call_chain": [],
+      "issues": [],
+      "validation": []
+    },
+    {
+      "path": "CLAUDE.md",
+      "sha256": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "lines": 1,
+      "read_ranges": [
+        [
+          1,
+          1
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "工程设计/历史报告与实际基线交叉核对",
+      "call_chain": [],
+      "issues": [],
+      "validation": []
+    },
+    {
+      "path": "public/mc-icons/icon-armor-empty.svg",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "sha256": "5378e368d35e310496dad1309e0a2d9476b226cee7bca09fb2af9b2f4e295355",
+      "final_sha256": "5378e368d35e310496dad1309e0a2d9476b226cee7bca09fb2af9b2f4e295355",
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "Minecraft静态图标，完整读取svg/viewBox/id/path/fill及几何数据；仅本地路径，不含脚本/事件/链接/外部资源",
+      "call_chain": [
+        "public/mc-icons静态URL→角色/统计UI图标展示"
+      ],
+      "issues": [],
+      "validation": [
+        "全40 SVG XML结构辅助检查：仅svg/path安全属性；不等同视觉或浏览器验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-armor-full.svg",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "sha256": "87822bb647214523a03aa52eb00931eca7b478f74185e06ef69b56bc5eed5590",
+      "final_sha256": "87822bb647214523a03aa52eb00931eca7b478f74185e06ef69b56bc5eed5590",
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "Minecraft静态图标，完整读取svg/viewBox/id/path/fill及几何数据；仅本地路径，不含脚本/事件/链接/外部资源",
+      "call_chain": [
+        "public/mc-icons静态URL→角色/统计UI图标展示"
+      ],
+      "issues": [],
+      "validation": [
+        "全40 SVG XML结构辅助检查：仅svg/path安全属性；不等同视觉或浏览器验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-armor-half.svg",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "sha256": "199cc29d9ae191e4502bdccb8396fdb438bdc4812fc92f82c6be700dd06be5f4",
+      "final_sha256": "199cc29d9ae191e4502bdccb8396fdb438bdc4812fc92f82c6be700dd06be5f4",
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "Minecraft静态图标，完整读取svg/viewBox/id/path/fill及几何数据；仅本地路径，不含脚本/事件/链接/外部资源",
+      "call_chain": [
+        "public/mc-icons静态URL→角色/统计UI图标展示"
+      ],
+      "issues": [],
+      "validation": [
+        "全40 SVG XML结构辅助检查：仅svg/path安全属性；不等同视觉或浏览器验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-exp.svg",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "sha256": "7d1cc79219f6c075d75220e6c4f75fa8d7b83ab8ab3f1f37b81907966ba2b10c",
+      "final_sha256": "7d1cc79219f6c075d75220e6c4f75fa8d7b83ab8ab3f1f37b81907966ba2b10c",
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "Minecraft静态图标，完整读取svg/viewBox/id/path/fill及几何数据；仅本地路径，不含脚本/事件/链接/外部资源",
+      "call_chain": [
+        "public/mc-icons静态URL→角色/统计UI图标展示"
+      ],
+      "issues": [],
+      "validation": [
+        "全40 SVG XML结构辅助检查：仅svg/path安全属性；不等同视觉或浏览器验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-food-buff-hunger.svg",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "sha256": "2d54be965b8931b4b761b9a9925a2e6b6510a4eef5db98bea635e70959adf5d0",
+      "final_sha256": "2d54be965b8931b4b761b9a9925a2e6b6510a4eef5db98bea635e70959adf5d0",
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "Minecraft静态图标，完整读取svg/viewBox/id/path/fill及几何数据；仅本地路径，不含脚本/事件/链接/外部资源",
+      "call_chain": [
+        "public/mc-icons静态URL→角色/统计UI图标展示"
+      ],
+      "issues": [],
+      "validation": [
+        "全40 SVG XML结构辅助检查：仅svg/path安全属性；不等同视觉或浏览器验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-food-buff-saturation.svg",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "sha256": "3f8c96d4bd8ea91192e582649660fc3c31efbce68f9f9bb3dbbe32160d72b92a",
+      "final_sha256": "3f8c96d4bd8ea91192e582649660fc3c31efbce68f9f9bb3dbbe32160d72b92a",
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "Minecraft静态图标，完整读取svg/viewBox/id/path/fill及几何数据；仅本地路径，不含脚本/事件/链接/外部资源",
+      "call_chain": [
+        "public/mc-icons静态URL→角色/统计UI图标展示"
+      ],
+      "issues": [],
+      "validation": [
+        "全40 SVG XML结构辅助检查：仅svg/path安全属性；不等同视觉或浏览器验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-food-empty-hunger-level.svg",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "sha256": "b41ecbef9797c87bd4efa3cf629380e49641fb3763e658e672703bceb2f6a603",
+      "final_sha256": "b41ecbef9797c87bd4efa3cf629380e49641fb3763e658e672703bceb2f6a603",
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "Minecraft静态图标，完整读取svg/viewBox/id/path/fill及几何数据；仅本地路径，不含脚本/事件/链接/外部资源",
+      "call_chain": [
+        "public/mc-icons静态URL→角色/统计UI图标展示"
+      ],
+      "issues": [],
+      "validation": [
+        "全40 SVG XML结构辅助检查：仅svg/path安全属性；不等同视觉或浏览器验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-food-empty-saturation-level-100.svg",
+      "sha256": "ff6ced1fa0b559cdd175a2879079373f32d947e1f70183c1b84f7da1c5797ba5",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "静态Minecraft指标图标安全几何资源，根SVG与纯path；无脚本/事件/外联/HTML",
+      "call_chain": [
+        "public/mc-icons -> Minecraft状态指标组件"
+      ],
+      "issues": [],
+      "validation": [
+        "全部40 SVG XML结构解析；浏览器未逐个视觉验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-food-empty-saturation-level-25.svg",
+      "sha256": "0a76ccf70fbd476c28bdfdfe485335cf8d0cf6d1f9760384dcc189f7e33d1377",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "静态Minecraft指标图标安全几何资源，根SVG与纯path；无脚本/事件/外联/HTML",
+      "call_chain": [
+        "public/mc-icons -> Minecraft状态指标组件"
+      ],
+      "issues": [],
+      "validation": [
+        "全部40 SVG XML结构解析；浏览器未逐个视觉验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-food-empty-saturation-level-50.svg",
+      "sha256": "ebe96fa453ab824725eedcaebc70cb3b9303687c718945c10d7b393855fe7a26",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "静态Minecraft指标图标安全几何资源，根SVG与纯path；无脚本/事件/外联/HTML",
+      "call_chain": [
+        "public/mc-icons -> Minecraft状态指标组件"
+      ],
+      "issues": [],
+      "validation": [
+        "全部40 SVG XML结构解析；浏览器未逐个视觉验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-food-empty-saturation-level-75.svg",
+      "sha256": "2f4ac309f5a2ebaac11a45d8d99c7e8b9898a6b3ca9f08480a781d104a8a5002",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "静态Minecraft指标图标安全几何资源，根SVG与纯path；无脚本/事件/外联/HTML",
+      "call_chain": [
+        "public/mc-icons -> Minecraft状态指标组件"
+      ],
+      "issues": [],
+      "validation": [
+        "全部40 SVG XML结构解析；浏览器未逐个视觉验收"
+      ]
+    },
+    {
+      "path": "public/mc-icons/icon-food-full-hunger-level.svg",
+      "sha256": "d2dc3f7dec435f6364349f3a65cec9a5925493153bf02748bd4d0dfbe5e11d56",
+      "lines": 3,
+      "read_ranges": [
+        [
+          1,
+          3
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "静态Minecraft指标图标安全几何资源，根SVG与纯path；无脚本/事件/外联/HTML",
+      "call_chain": [
+        "public/mc-icons -> Minecraft状态指标组件"
+      ],
+      "issues": [],
+      "validation": [
+        "全部40 SVG XML结构解析；浏览器未逐个视觉验收"
+      ]
+    },
+    {
+      "path": ".github/workflows/checks.yml",
+      "sha256": "49c9ba87798998b221d4bc295454289ed5f2794d03a862304e274ca847fad386",
+      "lines": 24,
+      "read_ranges": [
+        [
+          1,
+          24
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "只读CI、显式人工台账机制与真实模块/角色契约证据复核",
+      "call_chain": [
+        "真实组件/API注册/DTO",
+        "独立9项台账黑盒"
+      ],
+      "issues": [],
+      "validation": [
+        "/tmp/mcmods-ledger-root-final.log",
+        "CI实际结果待PR后检查"
+      ],
+      "final_review": "root全文实读当前24/92/143行，独立语义复核；生成inventory不代替业务验证"
+    },
+    {
+      "path": "playwright.config.ts",
+      "sha256": "b58539f681af8fe8b940f563c983037fafa87d02a46849b5745c31037d1de6e8",
+      "lines": 23,
+      "read_ranges": [
+        [
+          1,
+          23
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "最终浏览器隔离/共享限流窗口编排及真实业务验收证据；全体内容与补丁实际读取",
+      "call_chain": [
+        "npm test:e2e",
+        "Playwright actual backend",
+        "shared crawler read window"
+      ],
+      "issues": [
+        "AUDIT-TOOL-003"
+      ],
+      "validation": [
+        "真实npm run test:e2e退出0，互补5+1全部测试执行；不宣称全文件全部行为覆盖"
+      ],
+      "final_review": "root实读当前完整内容；README依本文真实环境/启动结果；E2E最新全套仍待执行，不继承全部通过"
+    },
+    {
+      "path": "e2e/live-backend.spec.ts",
+      "sha256": "b41d3ef068203fbbc46eafbf50ec49376e6cc39a1b565b0e2d443c92e4cac458",
+      "lines": 136,
+      "read_ranges": [
+        [
+          1,
+          136
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": true,
+      "responsibility": "真实API的CSP/会话/移动locale/权限/普通资料收藏旅程；环境setup与错误诊断",
+      "call_chain": [
+        "npm scripts",
+        "real owned backend/test services"
+      ],
+      "issues": [],
+      "validation": [
+        "实际全文读取和语义复核；行为只限所列验证断言",
+        "/tmp/mcmods-frontend-final-check.log",
+        "/tmp/mcmods-frontend-final-tests.log",
+        "/tmp/mcmods-frontend-final-build.log"
+      ],
+      "final_review": "root实读当前完整内容；README依本文真实环境/启动结果；E2E最新全套仍待执行，不继承全部通过"
+    },
+    {
+      "path": "tests/theme_root.test.tsx",
+      "sha256": "a646150d6fbc68abf03e3862c5b7d81da1e81cba5344b1bef7740834383e49cd",
+      "lines": 24,
+      "read_ranges": [
+        [
+          1,
+          24
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": true,
+      "responsibility": "storage拒绝时真实React渲染和主题切换回归",
+      "call_chain": [
+        "npm scripts",
+        "actual configuration/component consumers"
+      ],
+      "issues": [],
+      "validation": [
+        "实际全文读取和语义复核；行为只限所列验证断言",
+        "/tmp/mcmods-frontend-final-check.log",
+        "/tmp/mcmods-frontend-final-tests.log",
+        "/tmp/mcmods-frontend-final-build.log"
+      ],
+      "final_review": "root实读当前完整内容；README依本文真实环境/启动结果；E2E最新全套仍待执行，不继承全部通过"
+    },
+    {
+      "path": "vitest.config.mts",
+      "sha256": "94ac9e36a384e99d51c460471feadaf843c66c2ba8f9d1ad627b5a0e9711bd8b",
+      "lines": 12,
+      "read_ranges": [
+        [
+          1,
+          12
+        ]
+      ],
+      "status": "已完整审查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": true,
+      "responsibility": "锁定实际test匹配、jsdom/TS路径和有界workers",
+      "call_chain": [
+        "npm scripts",
+        "actual configuration/component consumers"
+      ],
+      "issues": [],
+      "validation": [
+        "实际全文读取和语义复核；行为只限所列验证断言",
+        "/tmp/mcmods-frontend-final-check.log",
+        "/tmp/mcmods-frontend-final-tests.log",
+        "/tmp/mcmods-frontend-final-build.log"
+      ],
+      "final_review": "root实读当前完整内容；README依本文真实环境/启动结果；E2E最新全套仍待执行，不继承全部通过"
+    },
+    {
+      "path": "docs/audit/module-contracts.md",
+      "behavior_verified": false,
+      "issues": [
+        "AUDIT-TOOL-003"
+      ],
+      "sha256": "70fc866029dcebb7212ea4bf459772ff9c92f73765be88c18ebcd5b1fa3424fc",
+      "lines": 92,
+      "read_ranges": [
+        [
+          1,
+          92
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "responsibility": "最终浏览器隔离/共享限流窗口编排及真实业务验收证据；全体内容与补丁实际读取",
+      "call_chain": [
+        "npm test:e2e",
+        "Playwright actual backend",
+        "shared crawler read window"
+      ],
+      "validation": [
+        "真实npm run test:e2e退出0，互补5+1全部测试执行；不宣称全文件全部行为覆盖"
+      ],
+      "final_review": "root全文实读当前24/92/143行，独立语义复核；生成inventory不代替业务验证"
+    },
+    {
+      "path": "scripts/audit-ledger.py",
+      "behavior_verified": true,
+      "issues": [],
+      "sha256": "04383801362f30a71c1f6dd6d73c0e66f2276ccf0453fd0cb8e8f5aa363f8ebb",
+      "lines": 151,
+      "read_ranges": [
+        [
+          1,
+          151
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "responsibility": "主执行者实际全文阅读/撰写与最终复核；交付结论依据命令和专题证据，静态审查不混行为覆盖",
+      "call_chain": [
+        "真实组件/API注册/DTO",
+        "独立9项台账黑盒"
+      ],
+      "validation": [
+        "本轮实际全文及最终逐行差异复读；生成器9黑盒各PASS，paced browser6PASS+两个reports同时保留；仅列明断言，不推断完整行为或生产健康。"
+      ],
+      "final_review": "root全文实读当前24/92/143行，独立语义复核；生成inventory不代替业务验证"
+    },
+    {
+      "path": "scripts/run-e2e.mjs",
+      "sha256": "cfc338ddf59c7501a6cb9591b182d77f01d34253a056ba1c316894bd72afe34e",
+      "lines": 29,
+      "read_ranges": [
+        [
+          1,
+          29
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": true,
+      "responsibility": "最终浏览器隔离/共享限流窗口编排及真实业务验收证据；全体内容与补丁实际读取",
+      "issues": [
+        "AUDIT-TOOL-003"
+      ],
+      "call_chain": [
+        "npm test:e2e",
+        "Playwright actual backend",
+        "shared crawler read window"
+      ],
+      "validation": [
+        "本轮实际全文及最终逐行差异复读；生成器9黑盒各PASS，paced browser6PASS+两个reports同时保留；仅列明断言，不推断完整行为或生产健康。"
+      ]
+    },
+    {
+      "path": "docs/audit/delivery.md",
+      "sha256": "cac7cfbfb3f3c63a9d1bd54e9984d0dafc228540a122fc1bd731f776a04eb9c6",
+      "lines": 21,
+      "read_ranges": [
+        [
+          1,
+          21
+        ]
+      ],
+      "status": "已复查",
+      "content_read": true,
+      "semantic_review": true,
+      "behavior_verified": false,
+      "responsibility": "主执行者实际全文阅读/撰写与最终复核；交付结论依据命令和专题证据，静态审查不混行为覆盖",
+      "call_chain": [],
+      "issues": [],
+      "validation": [],
+      "final_review": "root完整读取最终A–I/前端交付正文，复核源提交、实际计数、测试与未验证边界；远端PR/CI创建后单独复核补记。"
+    }
+  ]
+}

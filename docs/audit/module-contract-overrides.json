@@ -1,0 +1,161 @@
+{
+  "reviewer": "frontend_ui_b",
+  "scope": "参数化URL/部分动态分支的静态调用链补核；不是整个DTO/权限/运行验收",
+  "records": [
+    {
+      "file": "app/_lib/content-history-api.ts",
+      "argument_expression": "endpoint",
+      "resolved_route_patterns": [
+        "GET /api/v1/content-projects/{projectType}/{siteId}/history",
+        "GET /api/v1/modpacks/{siteId}/history",
+        "GET /api/v1/mods/{siteId}/content-resources/{resourceId}/history",
+        "GET /api/v1/community/posts/{id}/history"
+      ],
+      "call_chain": [
+        "app/_components/content-history.tsx",
+        "app/{plugins,maps,resource-packs,shaders,datapacks,addons,modpacks,tutorials,issues,news,discussions}/[id]/history/page.tsx",
+        "app/mods/[siteId]/resources/[resourceId]/history/page.tsx"
+      ],
+      "path_method_verified": "STATIC",
+      "semantic_contract_verified": false,
+      "behavior_verified": false,
+      "notes": "实际页面prop→ContentHistory→loadContentHistory，URL/GET模式注册一致；history特定数据可见性与全部角色运行未逐条执行。"
+    },
+    {
+      "file": "app/_lib/editor-api.ts",
+      "argument_expression": "path",
+      "resolved_route_patterns": [
+        "POST /api/v1/content/{publicId}/translations"
+      ],
+      "call_chain": [
+        "app/_components/editor/content-translation-control.tsx",
+        "app/_lib/editor-api.ts",
+        "internal/httpapi/content_localization_handlers.go"
+      ],
+      "path_method_verified": "STATIC",
+      "semantic_contract_verified": false,
+      "behavior_verified": false,
+      "notes": "实际唯一requestContentTranslation调用用资源公开ID路径；body只sourceLocale/targetLocale，领域身份由path承担，与strict DTO一致；真实供应商未调用。"
+    },
+    {
+      "file": "app/_lib/oss-upload.ts",
+      "argument_expression": "endpoint",
+      "resolved_route_patterns": [
+        "POST /api/v1/users/me/oss/uploads/complete",
+        "POST /api/v1/admin/oss/uploads/complete",
+        "POST /api/v1/reports/evidence/uploads/complete",
+        "POST /api/v1/projects/{projectType}/{projectId}/files/uploads/complete",
+        "POST /api/v1/mods/{siteId}/export-imports/uploads/complete",
+        "POST /api/v1/mods/{siteId}/catalog-imports/uploads/complete"
+      ],
+      "call_chain": [
+        "app/_lib/oss-upload.ts",
+        "app/_lib/project-download-api.ts",
+        "app/_lib/mod-export-api.ts",
+        "app/_components/unified-report-dialog.tsx",
+        "app/_components/admin-sticker-panel.tsx",
+        "app/_components/admin-console.tsx"
+      ],
+      "path_method_verified": "STATIC",
+      "semantic_contract_verified": false,
+      "behavior_verified": false,
+      "notes": "complete/abort两个调用共用completion payload；所有真实caller的POST终点有对应注册。abort仅multipart ticket使用，失败仍依赖既有OSS lifecycle，不声称真实OSS验证。"
+    },
+    {
+      "file": "app/_components/admin-console.tsx",
+      "argument_expression": "endpoint",
+      "resolved_route_patterns": [
+        "GET /api/v1/admin/oss/uploads",
+        "GET /api/v1/admin/oss/scans",
+        "GET /api/v1/admin/oss/downloads"
+      ],
+      "call_chain": [
+        "app/_components/admin-console.tsx: OSSRowsPanel的三个真实挂载prop",
+        "internal/httpapi/oss_handlers.go"
+      ],
+      "path_method_verified": "STATIC",
+      "semantic_contract_verified": false,
+      "behavior_verified": false,
+      "notes": "endpoint来自三个固定挂载；GET/method/返回行列表成立。仍in-flight主文件不修改。"
+    },
+    {
+      "file": "app/_components/blueprint-library.tsx",
+      "argument_expression": "`${API_BASE_URL}${path}`",
+      "resolved_route_patterns": [
+        "GET /api/v1/blueprints/{publicId}/cover"
+      ],
+      "call_chain": [
+        "app/_components/blueprint-library.tsx: item.coverUrl→BlueprintCover",
+        "internal/httpapi/blueprint_handlers.go: coverUrl builder"
+      ],
+      "path_method_verified": "STATIC",
+      "semantic_contract_verified": false,
+      "behavior_verified": false,
+      "notes": "后端coverUrl两个真实builder发本站/api/v1/blueprints公开ID/cover?v=时间，媒体GET走backendFetch(blob)，不套JSON包络。URL权限和二进制对象验证由蓝图主链测试另证。"
+    },
+    {
+      "file": "app/_components/mod-content-resource-detail.tsx",
+      "argument_expression": "input",
+      "resolved_route_patterns": [
+        "GET /api/v1/export-revisions/{revisionId}/assets/content"
+      ],
+      "call_chain": [
+        "app/_components/mod-content-resource-detail.tsx: IndexedHttpAssetSource callback",
+        "app/_lib/mod-export-api.ts: modExportAssetURL",
+        "app/_lib/model-assets.ts"
+      ],
+      "path_method_verified": "STATIC",
+      "semantic_contract_verified": false,
+      "behavior_verified": false,
+      "notes": "真实renderer source通过modExportAssetURL构造path/proxy=renderer，callback保留RequestInit和cookie/bearer；实际资源读为GET。外部模型载入及安全校验由core source专项证据，不把类型允许任意init说成外网已验收。"
+    },
+    {
+      "file": "app/_components/project-downloads.tsx",
+      "argument_expression": "file.downloadPath",
+      "resolved_route_patterns": [
+        "POST /api/v1/projects/{projectType}/{projectId}/files/{source}/{fileId}/download"
+      ],
+      "call_chain": [
+        "app/_components/project-downloads.tsx",
+        "internal/httpapi/project_file_handlers.go: internalProjectFiles/providerFileItem→projectFileDownloadPath→downloadProjectFile"
+      ],
+      "path_method_verified": "STATIC",
+      "semantic_contract_verified": false,
+      "behavior_verified": false,
+      "notes": "downloadPath由真实后端builder生成并编码type/project/source/file；POST返回url/filename ticket。URL在后台过滤与签名，真实供应商/下载费用未验证。"
+    },
+    {
+      "file": "app/_components/project-downloads.tsx",
+      "argument_expression": "basePath",
+      "resolved_route_patterns": [
+        "POST /api/v1/projects/{projectType}/{projectId}/files"
+      ],
+      "call_chain": [
+        "app/_components/project-downloads.tsx: ProjectDownloads→ProjectFileUpload basePath prop",
+        "app/_lib/project-download-api.ts: projectFilesPath",
+        "internal/httpapi/project_file_handlers.go: projectFiles→createProjectFile"
+      ],
+      "path_method_verified": "STATIC",
+      "semantic_contract_verified": false,
+      "behavior_verified": false,
+      "notes": "上传子组件prop来自同模块projectFilesPath；POST body ossFileId/displayName/versionName/releaseChannel/gameVersions/loaders对照实际file入口，canUpload为UI提示，服务端权限仍必查。"
+    },
+    {
+      "file": "app/_components/admin-mod-panels.tsx",
+      "argument_expression": "url",
+      "resolved_route_patterns": [
+        "PATCH /api/v1/mods/{siteId}/revisions/{revisionId}",
+        "PATCH /api/v1/admin/export-revisions/{revisionId}/activate",
+        "PATCH /api/v1/content-revisions/{revisionId}"
+      ],
+      "call_chain": [
+        "app/_components/admin-mod-panels.tsx: item.reviewUrl分支",
+        "internal/httpapi/mod_review_queue_handlers.go: contentReviewURL"
+      ],
+      "path_method_verified": "STATIC",
+      "semantic_contract_verified": false,
+      "behavior_verified": false,
+      "notes": "部分动态分支来自review queue三类明确builder；PATCH方法分别注册，skin revisionId公开字符串已在BE-UIB007真实PG修复验证。编辑申请另固定PATCH路径也匹配。"
+    }
+  ]
+}

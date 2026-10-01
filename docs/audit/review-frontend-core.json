@@ -1,0 +1,6788 @@
+[
+  {
+    "path": "app/_locales/en-US.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "f91707233e62248d57612cdf4043ddba00a72a396e5819259ee05497ed0682fe",
+    "lines": 4369,
+    "read_ranges": [
+      [
+        1,
+        4235
+      ],
+      [
+        4236,
+        4367
+      ],
+      [
+        1973,
+        2004
+      ],
+      [
+        3885,
+        3925
+      ],
+      [
+        4260,
+        4369
+      ],
+      [
+        3703,
+        3714
+      ],
+      [
+        3900,
+        3933
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "人工维护的界面资源、模块提示与plain变量；按继承fallback区分已翻译字面量与源语保底",
+    "call_chain": [
+      "app/_lib/i18n-provider.tsx",
+      "实际对应UI调用方"
+    ],
+    "issues": [
+      "FE-CORE-012"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/i18n-resources_core.test.ts"
+    ],
+    "baseline_sha256": "2d1e2eb5c5a57e431b2241bc9d0f7a98cbea32a138c3cba62683ff1b483418ff",
+    "baseline_lines": 4235,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "原 1–4235 全文逐段审查；最终修改块和 4236–4367 新词条实际补读，UI-B antiAbuse/resourcePicker 新增块 4267–4367 全读；认领证明/日志失败词条或正式运行说明最终改变块完整补读；保存时清理3个真实文案修改块及八语言继承调用实际复核",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_locales/zh-CN.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b0aa2cb71e1dce052ab560330a33a148009be7bdf3a42813da81d000723862b5",
+    "lines": 4368,
+    "read_ranges": [
+      [
+        1,
+        4368
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "人工维护的界面资源、模块提示与plain变量；按继承fallback区分已翻译字面量与源语保底",
+    "call_chain": [
+      "app/_lib/i18n-provider.tsx",
+      "实际对应UI调用方"
+    ],
+    "issues": [
+      "FE-CORE-012"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/i18n-resources_core.test.ts"
+    ],
+    "baseline_sha256": "44661390a4ce4fdc5896f742ff868f71d1ff7951e712407d1fc88f3048c04af7",
+    "baseline_lines": 4234,
+    "reviewer": "frontend-ui-b (full read), frontend-core (changed blocks/contracts)",
+    "external_review_evidence": "docs/audit/review-frontend-locales-zh.json",
+    "content_read": true,
+    "semantic_review": true,
+    "final_review": "独立 UI-B 全文读取/最终 diff 完整补读记录，最终 SHA256 已实际比对合并；核心复查英文新增命名空间和语言结构契约；保存时清理3个真实文案修改块及八语言继承调用实际复核；UI-B原全文基线证据加核心最终三个改变块审查；UI-B最后日志三词条diff复核记录已再次指纹匹配",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程",
+    "external_review_sha256": "b0aa2cb71e1dce052ab560330a33a148009be7bdf3a42813da81d000723862b5",
+    "observed_read_ranges": [
+      [
+        1,
+        570
+      ],
+      [
+        571,
+        1140
+      ],
+      [
+        1141,
+        1710
+      ],
+      [
+        1430,
+        1488
+      ],
+      [
+        1711,
+        2130
+      ],
+      [
+        2131,
+        2540
+      ],
+      [
+        2541,
+        2950
+      ],
+      [
+        2951,
+        3360
+      ],
+      [
+        3361,
+        3770
+      ],
+      [
+        3771,
+        4266
+      ],
+      [
+        1,
+        82
+      ],
+      [
+        880,
+        905
+      ],
+      [
+        1475,
+        1504
+      ],
+      [
+        2518,
+        2527
+      ],
+      [
+        2622,
+        2627
+      ],
+      [
+        3744,
+        3755
+      ],
+      [
+        3877,
+        3884
+      ],
+      [
+        4046,
+        4053
+      ],
+      [
+        4260,
+        4366
+      ],
+      [
+        1972,
+        1993
+      ],
+      [
+        3898,
+        3918
+      ],
+      [
+        3706,
+        3713
+      ],
+      [
+        3900,
+        3931
+      ],
+      [
+        4355,
+        4368
+      ]
+    ],
+    "read_ranges_basis": "UI-B独立全文/最终全部变更审查证据，核心实际核对外部完整记录及current SHA一致；observed_read_ranges保留各次读取实际行段，核心补读最终末14行。"
+  },
+  {
+    "path": "lib/mcmods-exporter/renderer/minecraftBlockModel.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "ce31ba8c4c2d3c2669db2feac6f0a622e023c2d3eb5bf3c880b4d6a55aca293e",
+    "lines": 835,
+    "read_ranges": [
+      [
+        1,
+        835
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "three",
+      "three/examples/jsm/loaders/MTLLoader.js",
+      "three/examples/jsm/loaders/OBJLoader.js",
+      "./types"
+    ],
+    "issues": [
+      "FE-CORE-011"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/model-assets_core.test.ts"
+    ],
+    "baseline_sha256": "dd5b3d28e80c34c3d96a1a4120dbff23473b8bf380a339d38f096053719579ee",
+    "baseline_lines": 832,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "lib/mcmods-exporter/renderer/StructureRenderer.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "776f52663d57d5e263660e856dc30be368e8ef912393dc9f40d62561982fc9d1",
+    "lines": 451,
+    "read_ranges": [
+      [
+        1,
+        451
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "three",
+      "three/examples/jsm/controls/OrbitControls.js",
+      "three/examples/jsm/controls/PointerLockControls.js",
+      "./blueprint",
+      "./structureScene",
+      "./types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "776f52663d57d5e263660e856dc30be368e8ef912393dc9f40d62561982fc9d1",
+    "baseline_lines": 451,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/globals.css",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "04afc237d5d5f9377ab4c423821a6b4327c8c5d75f828c248a65e4aab6424d0b",
+    "lines": 446,
+    "read_ranges": [
+      [
+        1,
+        446
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "全局样式/文档/元数据类型",
+    "call_chain": [
+      "tailwindcss",
+      "katex/dist/katex.min.css",
+      "highlight.js/styles/github-dark.css"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "04afc237d5d5f9377ab4c423821a6b4327c8c5d75f828c248a65e4aab6424d0b",
+    "baseline_lines": 446,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/oss-upload.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b1d78c6547d078953947971dd3b326ad86aad2cd8268618459c8d6610706c041",
+    "lines": 431,
+    "read_ranges": [
+      [
+        1,
+        431
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "Presigned upload, retry, cancellation and completion",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [
+      "FE-CORE-014"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/transports_core.test.ts"
+    ],
+    "baseline_sha256": "a2567c32f1007eb801cfea361cf261b3f06225416062b5f9c1c91fa4a3599bb1",
+    "baseline_lines": 430,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "lib/mcmods-exporter/renderer/blueprint.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "7a00947eb11c12c32a6e0678e7a2a9451476c82717d9deb0d3f65ab0dcbf2554",
+    "lines": 378,
+    "read_ranges": [
+      [
+        1,
+        378
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "buffer",
+      "fflate",
+      "nbt-ts"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "7a00947eb11c12c32a6e0678e7a2a9451476c82717d9deb0d3f65ab0dcbf2554",
+    "baseline_lines": 378,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/mod-export-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "58b2cab89b6e6068b21d3e4e0646ef4598cdac42719ea01554f951cd5895c63c",
+    "lines": 358,
+    "read_ranges": [
+      [
+        1,
+        358
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./oss-upload",
+      "./editor-types"
+    ],
+    "issues": [
+      "FE-CORE-014"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/transports_core.test.ts"
+    ],
+    "baseline_sha256": "b4c3e05cf13c4d79aaa4d421562d81bbc6e01b67bc9b370a2b0e257750a49302",
+    "baseline_lines": 349,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/recipe-editor-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "ffc371d7c87b01688bd8a752831e0b7887d2aa8df109b4e13e9e5363ef04bd4a",
+    "lines": 345,
+    "read_ranges": [
+      [
+        1,
+        345
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./editor-types",
+      "./recipe-editor-types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "ffc371d7c87b01688bd8a752831e0b7887d2aa8df109b4e13e9e5363ef04bd4a",
+    "baseline_lines": 345,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "components/minecraft-skin/SkinViewerCanvas.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "214fdff52394452cd82f4f227e565cd456da92b519ea910342192bf32752910a",
+    "lines": 318,
+    "read_ranges": [
+      [
+        1,
+        318
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "react",
+      "three",
+      "three/examples/jsm/controls/OrbitControls.js",
+      "@/app/_lib/i18n-provider",
+      "@/app/_lib/skin-api"
+    ],
+    "issues": [
+      "FE-CORE-015"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/renderer-failure_core.test.tsx",
+      "tests/skin-texture-lifecycle_core.test.tsx"
+    ],
+    "baseline_sha256": "16806f9626173c0281bced05a76095100eef4ca57f45d9882b129292f9149a98",
+    "baseline_lines": 290,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/community-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "2fde80c845762c943cb859ad6eb3877017c54b2e7efbff7ee251a0e2d4095932",
+    "lines": 263,
+    "read_ranges": [
+      [
+        1,
+        263
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "2fde80c845762c943cb859ad6eb3877017c54b2e7efbff7ee251a0e2d4095932",
+    "baseline_lines": 263,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "lib/mcmods-exporter/renderer/structureScene.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "75affb0d116186e60cf294d1c36f40ef32bcb3de95134baa97981fb152d55e29",
+    "lines": 256,
+    "read_ranges": [
+      [
+        1,
+        256
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "three",
+      "./minecraftBlockModel",
+      "./blueprint",
+      "./types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "75affb0d116186e60cf294d1c36f40ef32bcb3de95134baa97981fb152d55e29",
+    "baseline_lines": 256,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/skin-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "87cf8db84a92141daad19c66bda498ea1c2fb1aee5b5ef03625b7fd4a53ab32c",
+    "lines": 249,
+    "read_ranges": [
+      [
+        1,
+        249
+      ],
+      [
+        133,
+        141
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./catalog-sort"
+    ],
+    "issues": [
+      "FE-CONTRACT-002"
+    ],
+    "validation": [
+      "STATIC backend DTO/caller type contract review",
+      "最终整体 TypeScript 检查由 root/UI-B 记录"
+    ],
+    "baseline_sha256": "42c2d9f92922fbcf9f7b7f6166ec75ac1bb652800a1cdf24dedc95b38b773e87",
+    "baseline_lines": 249,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "基线完整逐段语义审查；最终单行类型 diff 已实际读取，复核 localized-asset-editor / comment-section 及 user-comment-watches 调用方。更新类型契约，不虚称新增运行功能或运行Bug。",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/auth.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "0d254f20da89c94e94c7fa7ebe93e6f61ac888192e220492bc49499102cc2868",
+    "lines": 272,
+    "read_ranges": [
+      [
+        1,
+        272
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "Cookie session bootstrap, permissions and cross-tab auth",
+    "call_chain": [
+      "useAuthSnapshot / bootstrapAuth → backendFetch / rememberAuthorizationVersion",
+      "user-home.updateProfile/uploadAvatar → isCurrentAuthUser + saveAuth(expectedUserID)",
+      "tests/auth-cas_core.test.tsx + tests/auth_core.test.tsx"
+    ],
+    "issues": [
+      "FE-CORE-001",
+      "FE-CORE-007",
+      "FE-UIA-011"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/api_core.test.ts",
+      "tests/auth_core.test.tsx",
+      "tests/catalog-storage_core.test.tsx",
+      "tests/i18n_core.test.tsx",
+      "PASS auth实际全局状态/hook：7新边界+2原bootstrap=9，1.32s",
+      "PASS 最终核心17文件53测试，23.21s；定向ESLint及全量tsc"
+    ],
+    "baseline_sha256": "d74d13b5d1f94d93892b7b9ae12d115b8f7ebef4a61eeca2e67a4f3a931c4ce7",
+    "baseline_lines": 229,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终272行全文实际重新读取；实际user-home123–142/236–263调用链复核。身份ID双匹配且只合并三个profile字段，最新权限/会话保留，pending权限刷新与资料更新互不覆盖。",
+    "behavior_verified": true,
+    "verification_scope": "真实auth模块/React hook全局状态和取消/权限投影断言；API受控mock，不替代真实cookie后台授权或所有资料旅程。"
+  },
+  {
+    "path": "app/_lib/catalog-editor-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "228a0821963f0f44a1d4127b9c60aaff290066833cdf940530135a62feb09784",
+    "lines": 225,
+    "read_ranges": [
+      [
+        1,
+        225
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./api-normalizers",
+      "./editor-types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "228a0821963f0f44a1d4127b9c60aaff290066833cdf940530135a62feb09784",
+    "baseline_lines": 225,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/comment-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d1fca7fefdfc1fe5da6bfa425243eb54dc7671c38c0294d8ed74eea9a3945477",
+    "lines": 219,
+    "read_ranges": [
+      [
+        1,
+        219
+      ],
+      [
+        161,
+        169
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./user-api"
+    ],
+    "issues": [
+      "FE-CONTRACT-003"
+    ],
+    "validation": [
+      "STATIC backend DTO/caller type contract review",
+      "最终整体 TypeScript 检查由 root/UI-B 记录"
+    ],
+    "baseline_sha256": "6b6e72c16a674899f7ccd293f0b557e5ed77bbec4cf7c318f1caecaf3a0b4cc7",
+    "baseline_lines": 219,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "基线完整逐段语义审查；最终单行类型 diff 已实际读取，复核 localized-asset-editor / comment-section 及 user-comment-watches 调用方。更新类型契约，不虚称新增运行功能或运行Bug。",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/editor-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "ca29f68d30fc604e2637e031bbb7a9e34f1d240699450e7d5e705369191597ec",
+    "lines": 219,
+    "read_ranges": [
+      [
+        1,
+        219
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./api-normalizers",
+      "./editor-types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "ca29f68d30fc604e2637e031bbb7a9e34f1d240699450e7d5e705369191597ec",
+    "baseline_lines": 219,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/minecraft-languages.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "194e8d32b9413a679d0ef0b1ecae6113d665fabf01cd09d423a93a3aa92ea427",
+    "lines": 205,
+    "read_ranges": [
+      [
+        1,
+        205
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Minecraft metadata, aliases and language labels",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "194e8d32b9413a679d0ef0b1ecae6113d665fabf01cd09d423a93a3aa92ea427",
+    "baseline_lines": 205,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/catalog-state.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "e734848e90e1cddcc281369cbb6921588b0bdbd863af6047e5b566da4ac95ed6",
+    "lines": 211,
+    "read_ranges": [
+      [
+        1,
+        211
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "next/navigation",
+      "react",
+      "./catalog-sort"
+    ],
+    "issues": [
+      "FE-CORE-007"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/api_core.test.ts",
+      "tests/catalog-storage_core.test.tsx",
+      "tests/i18n_core.test.tsx"
+    ],
+    "baseline_sha256": "84261d5b36c10a95523be962e9aa24389d3e030534620576fcb89c09e9c48472",
+    "baseline_lines": 203,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/mod-content-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "1af4b4959d5843a134c2448572b32763f921ae7d8ec102b12be4b57d7c7c30e7",
+    "lines": 201,
+    "read_ranges": [
+      [
+        1,
+        201
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./editor-types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "1af4b4959d5843a134c2448572b32763f921ae7d8ec102b12be4b57d7c7c30e7",
+    "baseline_lines": 201,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/favorite-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "385840d533e1a2fe70781a0970b5c1173cbfb83ece89c7a17a67946ed48f9849",
+    "lines": 199,
+    "read_ranges": [
+      [
+        1,
+        199
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [
+      "FE-CORE-008"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/transports_core.test.ts"
+    ],
+    "baseline_sha256": "698d37a8154ccaa2de606af7e488b591efdbcef6a2d356c902e57067ee329684",
+    "baseline_lines": 199,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/server-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "a4554c96870054e757bd1179bbb6da9e7e249c5fc9644e4bb8a7ede09e98d285",
+    "lines": 194,
+    "read_ranges": [
+      [
+        1,
+        194
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "a4554c96870054e757bd1179bbb6da9e7e249c5fc9644e4bb8a7ede09e98d285",
+    "baseline_lines": 194,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/i18n-provider.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "fbc531fd4141cfc6a3865c6ad583b2997f12b60cad6140e19c50f4e6a7031107",
+    "lines": 234,
+    "read_ranges": [
+      [
+        1,
+        234
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "Static dictionaries, local overrides and interpolation",
+    "call_chain": [
+      "react",
+      "../_locales/en-US",
+      "../_locales/zh-CN",
+      "../_locales/zh-TW",
+      "../_locales/ja",
+      "../_locales/fr",
+      "../_locales/de",
+      "../_locales/es",
+      "../_locales/ru"
+    ],
+    "issues": [
+      "FE-CORE-005",
+      "FE-CORE-006",
+      "FE-CORE-007"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/api_core.test.ts",
+      "tests/catalog-storage_core.test.tsx",
+      "tests/i18n-resources_core.test.ts",
+      "tests/i18n_core.test.tsx"
+    ],
+    "baseline_sha256": "d4967c1b970b3e485e7c601c531cf5b21d5772dfed79a91f2e8574666054a05f",
+    "baseline_lines": 192,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/editor-types.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "70f923aa89c569b74ff9800c002e5b6c6c8f66cde1fd64f6f5df63aea76aa80e",
+    "lines": 184,
+    "read_ranges": [
+      [
+        1,
+        184
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "70f923aa89c569b74ff9800c002e5b6c6c8f66cde1fd64f6f5df63aea76aa80e",
+    "baseline_lines": 184,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/mod-catalog-data.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "0647330cf2bf4fbed282ade7e29feab4c524ce4f971563570ad86c100a69a434",
+    "lines": 179,
+    "read_ranges": [
+      [
+        1,
+        179
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "0647330cf2bf4fbed282ade7e29feab4c524ce4f971563570ad86c100a69a434",
+    "baseline_lines": 179,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/simple-project-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "ec21db6d8e69975f418645114add00264e3b3cd03dd2592ea57704da44192dc8",
+    "lines": 178,
+    "read_ranges": [
+      [
+        1,
+        178
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./mod-api",
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "ec21db6d8e69975f418645114add00264e3b3cd03dd2592ea57704da44192dc8",
+    "baseline_lines": 178,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/content-language.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "a3f7afc0b9c6e036070ac1fab55dc71533bbfe4a2ef7fc00eb9669d5facdc79d",
+    "lines": 170,
+    "read_ranges": [
+      [
+        1,
+        170
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Content BCP47 normalization and ordered fallback",
+    "call_chain": [
+      "./i18n-provider",
+      "./editor-types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "a3f7afc0b9c6e036070ac1fab55dc71533bbfe4a2ef7fc00eb9669d5facdc79d",
+    "baseline_lines": 170,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "components/mcmods-exporter/StructureCanvas.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "15b73d708a3e47f7d993cc82c0d18ad6b3f6b1b4537481599d41adb28dd72c8a",
+    "lines": 184,
+    "read_ranges": [
+      [
+        1,
+        184
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "react",
+      "@/lib/mcmods-exporter/renderer",
+      "@/app/_lib/i18n-provider"
+    ],
+    "issues": [
+      "FE-CORE-015"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/renderer-failure_core.test.tsx",
+      "tests/skin-texture-lifecycle_core.test.tsx"
+    ],
+    "baseline_sha256": "9b9c9010fff607d60329a31ada75c3072d12d89e90704ec57251978839299bca",
+    "baseline_lines": 161,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/mod-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "9d94c13c998481adcefb882e26546983f41a750cbe40f2ed43de729bb8ac9431",
+    "lines": 158,
+    "read_ranges": [
+      [
+        1,
+        158
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./mod-catalog-data",
+      "./community-api",
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "9d94c13c998481adcefb882e26546983f41a750cbe40f2ed43de729bb8ac9431",
+    "baseline_lines": 158,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/community-post-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "cd72026bb6d1063583924390753fb9cc4b0e7d0cafa75905187ce34ce72c0340",
+    "lines": 156,
+    "read_ranges": [
+      [
+        1,
+        156
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./catalog-sort"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "cd72026bb6d1063583924390753fb9cc4b0e7d0cafa75905187ce34ce72c0340",
+    "baseline_lines": 156,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/global-catalog-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "4a4c9367f35929e17e9e50716d11984020eedae417a14a9423ba850614906e4c",
+    "lines": 151,
+    "read_ranges": [
+      [
+        1,
+        151
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./api-normalizers",
+      "./content-language",
+      "./editor-types",
+      "./mod-export-api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "4a4c9367f35929e17e9e50716d11984020eedae417a14a9423ba850614906e4c",
+    "baseline_lines": 151,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/use-auto-draft.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "c74fbf84d8c94c37ad5d3f2861c4118662d5dc535d269a74f06158444f233c6e",
+    "lines": 169,
+    "read_ranges": [
+      [
+        1,
+        169
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "Draft autosave and resume lifecycle",
+    "call_chain": [
+      "react",
+      "./draft-api"
+    ],
+    "issues": [
+      "FE-CORE-010"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/draft_core.test.tsx"
+    ],
+    "baseline_sha256": "39815517f4188116ebf226289698273bca7d77baf393ace32d1263fd64affb93",
+    "baseline_lines": 148,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "0d01bc400c267194d72baa2b858f1b52002ff29bd142e10eb51fd8582aadee3f",
+    "lines": 159,
+    "read_ranges": [
+      [
+        1,
+        159
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "HTTP envelope, outage detection and authentication headers",
+    "call_chain": [
+      "./backend-status"
+    ],
+    "issues": [
+      "FE-CORE-004",
+      "FE-CORE-007"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/api_core.test.ts",
+      "tests/catalog-storage_core.test.tsx",
+      "tests/i18n_core.test.tsx"
+    ],
+    "baseline_sha256": "abc9afc3fcc1ddfc03b5021c653ba3b58ea4796625e118b161829b8c0b11b675",
+    "baseline_lines": 146,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/recipe-editor-types.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d51e5712faf2975b06b907933370aca3a6f2afd8c0d0853e2db702e386c59b64",
+    "lines": 137,
+    "read_ranges": [
+      [
+        1,
+        137
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./editor-types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d51e5712faf2975b06b907933370aca3a6f2afd8c0d0853e2db702e386c59b64",
+    "baseline_lines": 137,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/mod-export-upload-store.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "702c15a6e200b5a2fa5dc5fa9d1b9e2b8814396d5b46d79fee5e07940c507507",
+    "lines": 166,
+    "read_ranges": [
+      [
+        1,
+        166
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "IndexedDB multipart import resumption",
+    "call_chain": [
+      "./oss-upload"
+    ],
+    "issues": [
+      "FE-CORE-003"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "e2e/import-store-core.spec.ts",
+      "tests/upload-store_core.test.ts"
+    ],
+    "baseline_sha256": "a96cd88aef9d54a841968865b897c5d9d557b0357eab19227d88ab702cd4f4eb",
+    "baseline_lines": 136,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/loot-table-model.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b03192aa7a1ef9fda150f7e3a85d529ecd8efcbfdb611ca2dfdef790072a26f7",
+    "lines": 133,
+    "read_ranges": [
+      [
+        1,
+        133
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "b03192aa7a1ef9fda150f7e3a85d529ecd8efcbfdb611ca2dfdef790072a26f7",
+    "baseline_lines": 133,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/catalog-resource-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d46d3f43fdef6c57aec15af4ea8f6041a3a5cb5a5f9b0dbcfba29d5a58ce541e",
+    "lines": 122,
+    "read_ranges": [
+      [
+        1,
+        122
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./api-normalizers",
+      "./catalog-editor-api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d46d3f43fdef6c57aec15af4ea8f6041a3a5cb5a5f9b0dbcfba29d5a58ce541e",
+    "baseline_lines": 122,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "components/mcmods-exporter/BlockModelCanvas.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "6c6393f6adf9c73610aa61747823196b666b89d1800cc430686e87586985b1e2",
+    "lines": 135,
+    "read_ranges": [
+      [
+        1,
+        135
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "react",
+      "three",
+      "three/examples/jsm/controls/OrbitControls.js",
+      "@/lib/mcmods-exporter/renderer",
+      "@/app/_lib/i18n-provider"
+    ],
+    "issues": [
+      "FE-CORE-015"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/renderer-failure_core.test.tsx",
+      "tests/skin-texture-lifecycle_core.test.tsx"
+    ],
+    "baseline_sha256": "a07b7458f84592579ba5f512488f36c58d68b5a52dd1420613b6309da91badcc",
+    "baseline_lines": 118,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/project-download-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d51ae86b460df7237bee9d6a8fce87f76fb4b9832d0d3fab951346a693e40da7",
+    "lines": 102,
+    "read_ranges": [
+      [
+        1,
+        102
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./oss-upload"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d51ae86b460df7237bee9d6a8fce87f76fb4b9832d0d3fab951346a693e40da7",
+    "baseline_lines": 102,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/log-share-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "bdd44f46c64c055a44b00df52844c40752523507878f7775427eaa6029cdeb6e",
+    "lines": 99,
+    "read_ranges": [
+      [
+        1,
+        99
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "bdd44f46c64c055a44b00df52844c40752523507878f7775427eaa6029cdeb6e",
+    "baseline_lines": 99,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/rating-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "a9d385de53b55032b38ab6b1493d27f1c294366142f1a204cd44cf96e40b9e72",
+    "lines": 99,
+    "read_ranges": [
+      [
+        1,
+        99
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "a9d385de53b55032b38ab6b1493d27f1c294366142f1a204cd44cf96e40b9e72",
+    "baseline_lines": 99,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/modpack-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "9c0777b79c6ef716863c20d5bc84daead6cf22b905b71efd72c6c3224b971167",
+    "lines": 97,
+    "read_ranges": [
+      [
+        1,
+        97
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./mod-catalog-data",
+      "./mod-api",
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "9c0777b79c6ef716863c20d5bc84daead6cf22b905b71efd72c6c3224b971167",
+    "baseline_lines": 97,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/timezones.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "6f36efa116941bddde391bf1fbf5828c76445798e1a8bad64832059425f3db5d",
+    "lines": 87,
+    "read_ranges": [
+      [
+        1,
+        87
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Intl timezone discovery and display",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "6f36efa116941bddde391bf1fbf5828c76445798e1a8bad64832059425f3db5d",
+    "baseline_lines": 87,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "lib/mcmods-exporter/renderer/httpAssetSource.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "966c7f5819f4e48f8968d86732825b7b1b84603f21d5b535e7dbad7e5a67e569",
+    "lines": 87,
+    "read_ranges": [
+      [
+        1,
+        87
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "./types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "966c7f5819f4e48f8968d86732825b7b1b84603f21d5b535e7dbad7e5a67e569",
+    "baseline_lines": 87,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/blueprint-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "37ecb1da40d080f1050a7bc8e04e43d381adf6bcfbfa78b6fde5a7ff1d5af23a",
+    "lines": 80,
+    "read_ranges": [
+      [
+        1,
+        80
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "37ecb1da40d080f1050a7bc8e04e43d381adf6bcfbfa78b6fde5a7ff1d5af23a",
+    "baseline_lines": 80,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/draft-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "e50c382b0a1125a57db23a479212f159b20dca6293df9272916e62e56442a440",
+    "lines": 79,
+    "read_ranges": [
+      [
+        1,
+        79
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Draft API and resume links",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "e50c382b0a1125a57db23a479212f159b20dca6293df9272916e62e56442a440",
+    "baseline_lines": 79,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/user-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "be38151108574211a963b99ad7d81201625784af40fc676cba62410da825d380",
+    "lines": 74,
+    "read_ranges": [
+      [
+        1,
+        74
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "be38151108574211a963b99ad7d81201625784af40fc676cba62410da825d380",
+    "baseline_lines": 74,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/content-metrics-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "e4656e7b396cea9860540bc322d529bb9e2cb744921dd39a04ce7f23c2fe8b14",
+    "lines": 72,
+    "read_ranges": [
+      [
+        1,
+        72
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "e4656e7b396cea9860540bc322d529bb9e2cb744921dd39a04ce7f23c2fe8b14",
+    "baseline_lines": 72,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/markdown-config.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "dc47a74c818c6618e504779ae9f69ecd1d20b6a0c7499839353f794de5fb9a4f",
+    "lines": 62,
+    "read_ranges": [
+      [
+        1,
+        62
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "dc47a74c818c6618e504779ae9f69ecd1d20b6a0c7499839353f794de5fb9a4f",
+    "baseline_lines": 62,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/site-affairs-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "33a53d7d2a479c88a68212b5e53aec0baefabe67e7f287a4971bd66f9c66dfb1",
+    "lines": 56,
+    "read_ranges": [
+      [
+        1,
+        56
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "33a53d7d2a479c88a68212b5e53aec0baefabe67e7f287a4971bd66f9c66dfb1",
+    "baseline_lines": 56,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/project-changelog-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "fbb3f735f71e4d73cf65265e7e92f87e1ec4cbf43e30849e88d0cc0d16f4a4df",
+    "lines": 55,
+    "read_ranges": [
+      [
+        1,
+        55
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "fbb3f735f71e4d73cf65265e7e92f87e1ec4cbf43e30849e88d0cc0d16f4a4df",
+    "baseline_lines": 55,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/api/site-logo/route.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "48c257cb79b75982c32b0ab0fd8d98046577a6f5c8c85bb82c0aea90cc5bb996",
+    "lines": 65,
+    "read_ranges": [
+      [
+        1,
+        65
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "Authorized local raster logo storage",
+    "call_chain": [
+      "node:crypto",
+      "node:fs/promises",
+      "node:path",
+      "next/server"
+    ],
+    "issues": [
+      "FE-CORE-002"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/logo_core.test.ts"
+    ],
+    "baseline_sha256": "307edc7488c9b12f45d5a5a6bdfc4066c8964bb9e25e440710209cf452c2aeab",
+    "baseline_lines": 55,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_locales/zh-TW.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b07e0ee1b16aadf97220335c9b849f7e15432e635f5c9dad5732f68ea6f7c5e1",
+    "lines": 53,
+    "read_ranges": [
+      [
+        1,
+        53
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "人工维护的界面资源、模块提示与plain变量；按继承fallback区分已翻译字面量与源语保底",
+    "call_chain": [
+      "app/_lib/i18n-provider.tsx",
+      "实际对应UI调用方"
+    ],
+    "issues": [
+      "FE-CORE-012"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/i18n-resources_core.test.ts"
+    ],
+    "baseline_sha256": "705b474c8ebf308ee6ef3b146d98fb82aa236cfb4056d6caba4095c6f8e04b4d",
+    "baseline_lines": 53,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/catalog-sort.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "aac8c737892e9c6c60f701a9fdf476d83256a75dfc1ba075f64eba269427bd42",
+    "lines": 51,
+    "read_ranges": [
+      [
+        1,
+        51
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "aac8c737892e9c6c60f701a9fdf476d83256a75dfc1ba075f64eba269427bd42",
+    "baseline_lines": 51,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_locales/de.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "8ec4b021f8ef2a8538622c96d89e6e5bc59502dcf40ab23885a639eef59ea616",
+    "lines": 47,
+    "read_ranges": [
+      [
+        1,
+        47
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "人工维护的界面资源、模块提示与plain变量；按继承fallback区分已翻译字面量与源语保底",
+    "call_chain": [
+      "app/_lib/i18n-provider.tsx",
+      "实际对应UI调用方"
+    ],
+    "issues": [
+      "FE-CORE-012"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/i18n-resources_core.test.ts"
+    ],
+    "baseline_sha256": "d46be31599ee963a5e8cbfd12f472b8a470aacca91bab3e1135240897481e4bb",
+    "baseline_lines": 47,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_locales/es.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "67732821cc6bf8625047b38ac259b52c83033bc9fe1b3c6a1ab831ce6bd902ca",
+    "lines": 47,
+    "read_ranges": [
+      [
+        1,
+        47
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "人工维护的界面资源、模块提示与plain变量；按继承fallback区分已翻译字面量与源语保底",
+    "call_chain": [
+      "app/_lib/i18n-provider.tsx",
+      "实际对应UI调用方"
+    ],
+    "issues": [
+      "FE-CORE-012"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/i18n-resources_core.test.ts"
+    ],
+    "baseline_sha256": "c377e504038fd9653a684f364ec0a8922e02c790a2a66016e418e84a915ef4b7",
+    "baseline_lines": 47,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_locales/fr.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "32495da47d9fea258ed7df21a39b0ca41c068b84ee2683d0dc37dd0b63f7fc41",
+    "lines": 47,
+    "read_ranges": [
+      [
+        1,
+        47
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "人工维护的界面资源、模块提示与plain变量；按继承fallback区分已翻译字面量与源语保底",
+    "call_chain": [
+      "app/_lib/i18n-provider.tsx",
+      "实际对应UI调用方"
+    ],
+    "issues": [
+      "FE-CORE-012"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/i18n-resources_core.test.ts"
+    ],
+    "baseline_sha256": "060a367e87c80a79f78720abec8db63a45b73762e71526623d970ceaa1cf83ba",
+    "baseline_lines": 47,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_locales/ja.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "080df0f0f0f11ee41daf5bfb8234d7b54f38f3533a24adb9307194e778d829dc",
+    "lines": 47,
+    "read_ranges": [
+      [
+        1,
+        47
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "人工维护的界面资源、模块提示与plain变量；按继承fallback区分已翻译字面量与源语保底",
+    "call_chain": [
+      "app/_lib/i18n-provider.tsx",
+      "实际对应UI调用方"
+    ],
+    "issues": [
+      "FE-CORE-012"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/i18n-resources_core.test.ts"
+    ],
+    "baseline_sha256": "643a7f07c6e445bca91b2d32e27266fd1932aa3c8766728f381df36b3c5d3bc6",
+    "baseline_lines": 47,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_locales/ru.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "e3da8b4b00b5fdbac6e5591fc65e9992c2dcfbc45e155db5c0db0a5f0468e960",
+    "lines": 47,
+    "read_ranges": [
+      [
+        1,
+        47
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "人工维护的界面资源、模块提示与plain变量；按继承fallback区分已翻译字面量与源语保底",
+    "call_chain": [
+      "app/_lib/i18n-provider.tsx",
+      "实际对应UI调用方"
+    ],
+    "issues": [
+      "FE-CORE-012"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/i18n-resources_core.test.ts"
+    ],
+    "baseline_sha256": "24c6c293023603b730101aa090fffcc0b68d4850024d2a0ed684be0ac6209a7b",
+    "baseline_lines": 47,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/api-normalizers.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "a29b8f39a55ac2aee87d50bf3863b4b07aa3f548a8d219b035beb8a4231cf498",
+    "lines": 46,
+    "read_ranges": [
+      [
+        1,
+        46
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Untrusted catalog response normalization",
+    "call_chain": [
+      "./editor-types"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "a29b8f39a55ac2aee87d50bf3863b4b07aa3f548a8d219b035beb8a4231cf498",
+    "baseline_lines": 46,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/sticker-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "bcefbe8cd4cee2731eac9352a2f6219c502a9b106150107c6c705e9061378986",
+    "lines": 44,
+    "read_ranges": [
+      [
+        1,
+        44
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "bcefbe8cd4cee2731eac9352a2f6219c502a9b106150107c6c705e9061378986",
+    "baseline_lines": 44,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/advancement-graph.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "1fdb77d26d2bfb757de33135b7afe9ca3e7d1e37a5c33d463243170956929c36",
+    "lines": 38,
+    "read_ranges": [
+      [
+        1,
+        38
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "1fdb77d26d2bfb757de33135b7afe9ca3e7d1e37a5c33d463243170956929c36",
+    "baseline_lines": 38,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/project-follow-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b9834bc4b1d390df1b7dd70af637b23d3c623b8cd80745ca7fae6c39a5ec6657",
+    "lines": 36,
+    "read_ranges": [
+      [
+        1,
+        36
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Project follow and unfollow API",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "b9834bc4b1d390df1b7dd70af637b23d3c623b8cd80745ca7fae6c39a5ec6657",
+    "baseline_lines": 36,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/admin-content-attribute-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "a594f6527c079e6b73da2857d7f48944f611b2d5975d259d79be95393d4f3a6d",
+    "lines": 34,
+    "read_ranges": [
+      [
+        1,
+        34
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./mod-content-api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "a594f6527c079e6b73da2857d7f48944f611b2d5975d259d79be95393d4f3a6d",
+    "baseline_lines": 34,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/catalog-resource-identifiers.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "2f7467b75dccb93e49980145b1c9b71408273e7875fbf98ed1a599327a348ab1",
+    "lines": 34,
+    "read_ranges": [
+      [
+        1,
+        34
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "2f7467b75dccb93e49980145b1c9b71408273e7875fbf98ed1a599327a348ab1",
+    "baseline_lines": 34,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/site-assets/[fileName]/route.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "bf27c068046d196b093d4ced8b96cb45d64e63698370c9a1f58966f4c71306a3",
+    "lines": 32,
+    "read_ranges": [
+      [
+        1,
+        32
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Immutable safe filename logo delivery",
+    "call_chain": [
+      "node:fs/promises",
+      "node:path",
+      "next/server"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "bf27c068046d196b093d4ced8b96cb45d64e63698370c9a1f58966f4c71306a3",
+    "baseline_lines": 32,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "lib/mcmods-exporter/renderer/README.md",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "74187a4883323d60a9460540ec0f48c703fd5dbf1ea4b7c1af6b8a4fa517d67c",
+    "lines": 32,
+    "read_ranges": [
+      [
+        1,
+        32
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "@/lib/mcmods-exporter/renderer"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "079344ba8722b6e412a3fe27edc0aeebe437b5289d2b3ccf789dd534004e39e1",
+    "baseline_lines": 32,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/minecraft-version-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "87e850e0b40243688777c355e4d91ffae228641c4c0e0974598de27e8b065c53",
+    "lines": 28,
+    "read_ranges": [
+      [
+        1,
+        28
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api",
+      "./mod-api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "87e850e0b40243688777c355e4d91ffae228641c4c0e0974598de27e8b065c53",
+    "baseline_lines": 28,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/layout.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "cb148c49cf1999ad918577860b76ddd7d9e1f13dd533ce4b7f3f24198cbdae1c",
+    "lines": 33,
+    "read_ranges": [
+      [
+        1,
+        33
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "Root document and provider composition",
+    "call_chain": [
+      "next",
+      "next/server",
+      "./globals.css",
+      "./_components/theme-provider",
+      "./_components/site-shell",
+      "./_lib/i18n-provider",
+      "./_components/iconfont",
+      "./_components/site-brand-provider"
+    ],
+    "issues": [
+      "FE-CORE-013"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "root production CSP browser evidence",
+      "root: e2e/live-backend.spec.ts:14 实际production CSP+hydration/401/input preservation PASS，/tmp/mcmods-e2e-first.log"
+    ],
+    "baseline_sha256": "56e7bd564ed2f4718165363f2c0f51042f66cf2d09c1fc1f7115e5475c7b0885",
+    "baseline_lines": 28,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "root首次实际production browser断言：strict-dynamic/真实hydrated表单401/保留输入/无CSP错误；最新全版本root另记录。"
+  },
+  {
+    "path": "app/_lib/anti-abuse-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b950c9ffccc5ea7bc0ff6e78ef97686f93ce090fb655e52a4cb483d29e4ad993",
+    "lines": 27,
+    "read_ranges": [
+      [
+        1,
+        27
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "b950c9ffccc5ea7bc0ff6e78ef97686f93ce090fb655e52a4cb483d29e4ad993",
+    "baseline_lines": 27,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/resource-picker-loaders.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "20a46613c82f3491bfa0ccb267b27b8c6320cbea950515797ce2631c54ab0542",
+    "lines": 26,
+    "read_ranges": [
+      [
+        1,
+        26
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./editor-types",
+      "./global-catalog-api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "20a46613c82f3491bfa0ccb267b27b8c6320cbea950515797ce2631c54ab0542",
+    "baseline_lines": 26,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/robots.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "88fc57c029589682c133b87a4bc361880441368fd771df3067028b61b62c7b80",
+    "lines": 26,
+    "read_ranges": [
+      [
+        1,
+        26
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "全局样式/文档/元数据类型",
+    "call_chain": [
+      "next"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "88fc57c029589682c133b87a4bc361880441368fd771df3067028b61b62c7b80",
+    "baseline_lines": 26,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/[publicId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "8130ffdd5eebbae837b84e84d3bb9a1e0a94c783f65cbb64429856b45d2aa763",
+    "lines": 33,
+    "read_ranges": [
+      [
+        1,
+        33
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "next/link",
+      "next/navigation",
+      "react",
+      "../_lib/api",
+      "../_lib/i18n-provider",
+      "../_lib/navigation"
+    ],
+    "issues": [
+      "FE-CORE-009"
+    ],
+    "validation": [
+      "STATIC semantic review",
+      "tests/shortlink_core.test.tsx"
+    ],
+    "baseline_sha256": "3b01b5a5bc758beef2c2ff84486faa38bef200c04bc40eb3a0dd4cffe87f9b98",
+    "baseline_lines": 25,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": true,
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "app/_lib/drawio.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d79641b99914e163a7437f0c6c9f17d504de8e2baa4eddf9a236389a471a12d9",
+    "lines": 25,
+    "read_ranges": [
+      [
+        1,
+        25
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d79641b99914e163a7437f0c6c9f17d504de8e2baa4eddf9a236389a471a12d9",
+    "baseline_lines": 25,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/content-language-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "39952e70504a3f0df0a92202a53d74959dc0766ec31f36cde412e1ccb270c981",
+    "lines": 22,
+    "read_ranges": [
+      [
+        1,
+        22
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Content preference API",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "39952e70504a3f0df0a92202a53d74959dc0766ec31f36cde412e1ccb270c981",
+    "baseline_lines": 22,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/similar-resource-groups.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "5c7f1ed010beb28838a098a9aff4d0f909839c181c2b317244ab747eb2e1ca82",
+    "lines": 20,
+    "read_ranges": [
+      [
+        1,
+        20
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "5c7f1ed010beb28838a098a9aff4d0f909839c181c2b317244ab747eb2e1ca82",
+    "baseline_lines": 20,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "lib/mcmods-exporter/renderer/types.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "06ad759032d11794b2351bd60c97514e3f6d94929707d0445355a2cd3bcc59c6",
+    "lines": 20,
+    "read_ranges": [
+      [
+        1,
+        20
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "06ad759032d11794b2351bd60c97514e3f6d94929707d0445355a2cd3bcc59c6",
+    "baseline_lines": 20,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/content-history-api.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "75660905932238168294ff0602d448455344b26a346008901e70eb4754052c2f",
+    "lines": 19,
+    "read_ranges": [
+      [
+        1,
+        19
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [
+      "./api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "75660905932238168294ff0602d448455344b26a346008901e70eb4754052c2f",
+    "baseline_lines": 19,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/resources/[resourceId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "45d76832675e7625b817fe002be71784d5bc4062af3ec32740f18f7ad00f372a",
+    "lines": 18,
+    "read_ranges": [
+      [
+        1,
+        18
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../../../_components/mod-content-resource-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "45d76832675e7625b817fe002be71784d5bc4062af3ec32740f18f7ad00f372a",
+    "baseline_lines": 18,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/resources/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "1bf215612c4f56b4c6b68e1577c2cbcf5f1edf139c74716a90bcb6fed7839461",
+    "lines": 17,
+    "read_ranges": [
+      [
+        1,
+        17
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../../_components/mod-content-resource-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "1bf215612c4f56b4c6b68e1577c2cbcf5f1edf139c74716a90bcb6fed7839461",
+    "baseline_lines": 17,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/sitemap.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "83e1b07ba312d07a69ace22086b91b3a48439dea20f1370b95456b881d1c71a1",
+    "lines": 17,
+    "read_ranges": [
+      [
+        1,
+        17
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "全局样式/文档/元数据类型",
+    "call_chain": [
+      "next"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "83e1b07ba312d07a69ace22086b91b3a48439dea20f1370b95456b881d1c71a1",
+    "baseline_lines": 17,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/navigation.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b728fde11578b6e862f0c84a6860a3acb4fc2a28a3a1d57a5cb9e869614fdb13",
+    "lines": 15,
+    "read_ranges": [
+      [
+        1,
+        15
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Internal redirect normalization",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "b728fde11578b6e862f0c84a6860a3acb4fc2a28a3a1d57a5cb9e869614fdb13",
+    "baseline_lines": 15,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/resources/[resourceId]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "2f3134af40a24f8dfce8b0c61a0c4bc93a75fed3f61af8d2d921a623208769d2",
+    "lines": 15,
+    "read_ranges": [
+      [
+        1,
+        15
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "2f3134af40a24f8dfce8b0c61a0c4bc93a75fed3f61af8d2d921a623208769d2",
+    "baseline_lines": 15,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/backend-status.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "23f7d6cdc23383fbf6df244a3570ab99ff31da2f2eb9b37fa9c57e45d240f5bb",
+    "lines": 13,
+    "read_ranges": [
+      [
+        1,
+        13
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Browser backend health notifications",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "23f7d6cdc23383fbf6df244a3570ab99ff31da2f2eb9b37fa9c57e45d240f5bb",
+    "baseline_lines": 13,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/catalog/resources/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "56baed4366f30faa6463f81c6fb17e90547bb1dbe2d7daef6d9fdee067432fd6",
+    "lines": 13,
+    "read_ranges": [
+      [
+        1,
+        13
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "next/navigation"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "56baed4366f30faa6463f81c6fb17e90547bb1dbe2d7daef6d9fdee067432fd6",
+    "baseline_lines": 13,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "2b26f1f351f93bb738cbdd95e30fa61f240cdc744e6a629ae577f33b949a78f2",
+    "lines": 11,
+    "read_ranges": [
+      [
+        1,
+        11
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/catalog-list-ui",
+      "../_components/mod-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "2b26f1f351f93bb738cbdd95e30fa61f240cdc744e6a629ae577f33b949a78f2",
+    "baseline_lines": 11,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/servers/[serverId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "c19c1f370345c94fa6bac3853eeb2cec6bd269aa5d95eb897a1268a6d5631924",
+    "lines": 11,
+    "read_ranges": [
+      [
+        1,
+        11
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../../_components/server-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "c19c1f370345c94fa6bac3853eeb2cec6bd269aa5d95eb897a1268a6d5631924",
+    "baseline_lines": 11,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/authors/[publicId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "772c4efc5428e254c69e289d36a721e795775a93d051ea6c0251c9bbef92e207",
+    "lines": 10,
+    "read_ranges": [
+      [
+        1,
+        10
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/creator-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "772c4efc5428e254c69e289d36a721e795775a93d051ea6c0251c9bbef92e207",
+    "baseline_lines": 10,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/login/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "f9753c2539659c90c460128d101087025051b54810de3cdaf33a31d6ab050f31",
+    "lines": 10,
+    "read_ranges": [
+      [
+        1,
+        10
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/site-login-panel"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "f9753c2539659c90c460128d101087025051b54810de3cdaf33a31d6ab050f31",
+    "baseline_lines": 10,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/servers/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "6eb955656a700ad23ee35c95d320ba44bd75cf8a4b7e62af6c1389ee8d868e25",
+    "lines": 10,
+    "read_ranges": [
+      [
+        1,
+        10
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/server-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "6eb955656a700ad23ee35c95d320ba44bd75cf8a4b7e62af6c1389ee8d868e25",
+    "baseline_lines": 10,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/teams/[publicId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "c6eb4e041a7f70ee57d4c3ed098fcad3e0c45e2f97395c5419571249d3cb4c91",
+    "lines": 10,
+    "read_ranges": [
+      [
+        1,
+        10
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/creator-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "c6eb4e041a7f70ee57d4c3ed098fcad3e0c45e2f97395c5419571249d3cb4c91",
+    "baseline_lines": 10,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/log/s/[code]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "3e08559826ece76a0459b78cf6d0818951bfa716440824994257a876dd966807",
+    "lines": 9,
+    "read_ranges": [
+      [
+        1,
+        9
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "next",
+      "../../../_components/log-share-viewer"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "3e08559826ece76a0459b78cf6d0818951bfa716440824994257a876dd966807",
+    "baseline_lines": 9,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/project-identifiers.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "4d37ba9a0b97249389374fa6f3af993476d40d4e98cc966405481def7ef64120",
+    "lines": 8,
+    "read_ranges": [
+      [
+        1,
+        8
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "领域API契约/规范化工具",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "4d37ba9a0b97249389374fa6f3af993476d40d4e98cc966405481def7ef64120",
+    "baseline_lines": 8,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/_lib/site-notice.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "5e293b2091a73317e854e97887a798403d9b8fbc3d4016a7eb55b7810be1f9a8",
+    "lines": 8,
+    "read_ranges": [
+      [
+        1,
+        8
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Site notice event dispatch",
+    "call_chain": [
+      "./backend-status"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "5e293b2091a73317e854e97887a798403d9b8fbc3d4016a7eb55b7810be1f9a8",
+    "baseline_lines": 8,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/admin/global-resources/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d27e0f3e3e6ce7d1632988797a2002414046226e025f344cfde0008841eab4b4",
+    "lines": 8,
+    "read_ranges": [
+      [
+        1,
+        8
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../../_components/catalog-resource-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d27e0f3e3e6ce7d1632988797a2002414046226e025f344cfde0008841eab4b4",
+    "baseline_lines": 8,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/data/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "eb30768260df8336d2c47fcbdaff5dc3d4661f9755d5b00f621bf8451261f9f9",
+    "lines": 8,
+    "read_ranges": [
+      [
+        1,
+        8
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../../_components/mod-content-manager"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "eb30768260df8336d2c47fcbdaff5dc3d4661f9755d5b00f621bf8451261f9f9",
+    "baseline_lines": 8,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/changelogs/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "86a785664b3d161b07e071cf95321cc9de934e2d67c6c19ac9d2413452c767ac",
+    "lines": 7,
+    "read_ranges": [
+      [
+        1,
+        7
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/project-changelog-editor",
+      "../../_lib/project-changelog-api"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "86a785664b3d161b07e071cf95321cc9de934e2d67c6c19ac9d2413452c767ac",
+    "baseline_lines": 7,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/modpacks/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "17fbb89b30709b25bfe02f91567ad35863d531fbc3cf000c90e58561dd69d1a1",
+    "lines": 7,
+    "read_ranges": [
+      [
+        1,
+        7
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/catalog-list-ui",
+      "../_components/mod-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "17fbb89b30709b25bfe02f91567ad35863d531fbc3cf000c90e58561dd69d1a1",
+    "baseline_lines": 7,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/compare/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "fba227541fa9dd488ffe456c1fc607485bf351c7ec0d1f7f1fecf8764804fa05",
+    "lines": 7,
+    "read_ranges": [
+      [
+        1,
+        7
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/mod-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "fba227541fa9dd488ffe456c1fc607485bf351c7ec0d1f7f1fecf8764804fa05",
+    "baseline_lines": 7,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/user/[publicId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "28fe7516867c40c722e2bc92c50965841ccb234413edc65d9e52f2dc75d914dd",
+    "lines": 7,
+    "read_ranges": [
+      [
+        1,
+        7
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/user-profile",
+      "react"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "28fe7516867c40c722e2bc92c50965841ccb234413edc65d9e52f2dc75d914dd",
+    "baseline_lines": 7,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "types/plantuml-encoder.d.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "0d85e5e6f6676f020530460c844e236ffde1247a17f160090882a22fc5963abc",
+    "lines": 7,
+    "read_ranges": [
+      [
+        1,
+        7
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "全局样式/文档/元数据类型",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "0d85e5e6f6676f020530460c844e236ffde1247a17f160090882a22fc5963abc",
+    "baseline_lines": 7,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/addons/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "86085ba245599718d802c2c2f5ddae2731632b758fb3a74b32b7220584318845",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "86085ba245599718d802c2c2f5ddae2731632b758fb3a74b32b7220584318845",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/authors/[publicId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d1e456a3ef9f53aaa912210d8edaad34848c8c1fd9c1ee73cb2785e311c57544",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/creator-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d1e456a3ef9f53aaa912210d8edaad34848c8c1fd9c1ee73cb2785e311c57544",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/blueprints/[publicId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "4eed69bb3d224c06dba29265451de7f3914dd8c603891c0ea4c55935cb2b65b7",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/localized-asset-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "4eed69bb3d224c06dba29265451de7f3914dd8c603891c0ea4c55935cb2b65b7",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/blueprints/[publicId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "7c6b34e5c0d5e127b879f23fc7d7a6a7f5f098c7fd24912c0841a8eed58c7ea6",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/blueprint-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "7c6b34e5c0d5e127b879f23fc7d7a6a7f5f098c7fd24912c0841a8eed58c7ea6",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/changelogs/[id]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "803873a3237318e26f4cb920ecd4de27a2ae41f5858db61fda2babeb65d8420a",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/project-changelog-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "803873a3237318e26f4cb920ecd4de27a2ae41f5858db61fda2babeb65d8420a",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/changelogs/[id]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "3eb25e0c14f7bea9811ed999d43d8e1f4b4fbcd1b5566599a83625909ad6a1e2",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/project-changelog-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "3eb25e0c14f7bea9811ed999d43d8e1f4b4fbcd1b5566599a83625909ad6a1e2",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/changelogs/[id]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "56faa88d6c9936257240435dd2f01c829e06bb2aaab359730021089195f5d5a8",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/project-changelog-entry"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "56faa88d6c9936257240435dd2f01c829e06bb2aaab359730021089195f5d5a8",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/comments/[commentId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "aca034aabff6f582184aeec9b82311fac6e95165cce1e1e19a0b2f6f953dba24",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/comment-section"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "aca034aabff6f582184aeec9b82311fac6e95165cce1e1e19a0b2f6f953dba24",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/datapacks/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "c84d917a32414ed4db95b7ff78d070861b41de5a0c02cb1a3746a5764c40c1b9",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "c84d917a32414ed4db95b7ff78d070861b41de5a0c02cb1a3746a5764c40c1b9",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/issues/[id]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d1ba75a1871dd5c4cf6c566ae5608939798367a9e33b17ed11fe7720af0d3c3b",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d1ba75a1871dd5c4cf6c566ae5608939798367a9e33b17ed11fe7720af0d3c3b",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/maps/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "eff567d9dcab9a19b5473a13ef0b266e57163a394994ddec5d0d3483f4d05454",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "eff567d9dcab9a19b5473a13ef0b266e57163a394994ddec5d0d3483f4d05454",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/messages/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "4984cd126249531a5e14040a79dc4d8cc591e77cbee33b2c49d2fea5b9ca0ffd",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/messages-center",
+      "react"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "4984cd126249531a5e14040a79dc4d8cc591e77cbee33b2c49d2fea5b9ca0ffd",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/modpacks/[siteId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "ad164fc0de8ae6f45af6aeaefc23a3ffda7495dbb74f5d44947988f0405d81e6",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/modpack-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "ad164fc0de8ae6f45af6aeaefc23a3ffda7495dbb74f5d44947988f0405d81e6",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/modpacks/[siteId]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "429ca983dded3501921ede892c35548e3109f5949f9cf96729e005510020e31c",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "429ca983dded3501921ede892c35548e3109f5949f9cf96729e005510020e31c",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/modpacks/[siteId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b02e15a4d0af5ad7c5eed67b8a6aec5e540cb3a14bb52129ce73a6a9f4469510",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/modpack-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "b02e15a4d0af5ad7c5eed67b8a6aec5e540cb3a14bb52129ce73a6a9f4469510",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/modpacks/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "4ffaa76bc55340cc4d80badcbb432481b55eab3290cc6501e68f3b9bfed58fcf",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/modpack-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "4ffaa76bc55340cc4d80badcbb432481b55eab3290cc6501e68f3b9bfed58fcf",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods-tag/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "949fbc9418b48218a632781af0112ace9a5a829fdd54451358fefb2371455231",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/global-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "949fbc9418b48218a632781af0112ace9a5a829fdd54451358fefb2371455231",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/data/sections/[sectionId]/arrange/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d5c1d7205cef79295a3f099ce35e8c32628aeea0b5ab104a47809f5fb786cad3",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../../../../_components/mod-content-layout-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d5c1d7205cef79295a3f099ce35e8c32628aeea0b5ab104a47809f5fb786cad3",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/data/sections/[sectionId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "09bd3af1dac0a0dba878915550e0531d8026571ebec23f409d3b1cea42c415df",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../../../_components/mod-content-section-page"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "09bd3af1dac0a0dba878915550e0531d8026571ebec23f409d3b1cea42c415df",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "f0965108c40bd19621c495c1564f2a8bba968b750059b48291dbe2458134d9c6",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/mod-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "f0965108c40bd19621c495c1564f2a8bba968b750059b48291dbe2458134d9c6",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "adc86d45be0c8ce20c390dd9704509241f96abfed044961d72ec5d4469e44a3f",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/mod-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "adc86d45be0c8ce20c390dd9704509241f96abfed044961d72ec5d4469e44a3f",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "47786aa7721b54869260c93399e75650b3002cebb4ff4d8b8ee4b980fa282bf7",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/mod-detail-loader"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "47786aa7721b54869260c93399e75650b3002cebb4ff4d8b8ee4b980fa282bf7",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/[siteId]/resources/[resourceId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "06cde0755d3b0d488b58b6312fa13ae8c78a7da3e7aa256b38bd29ae8d291905",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../../_components/mod-content-resource-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "06cde0755d3b0d488b58b6312fa13ae8c78a7da3e7aa256b38bd29ae8d291905",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/mods/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "0b8dd6a3acb10d3c93cfde8588c0bd78fede6dc345dade6806e5596b92b3f672",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/mod-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "0b8dd6a3acb10d3c93cfde8588c0bd78fede6dc345dade6806e5596b92b3f672",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/players/[publicId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "30d7573957c095249d6bda96591befff1ef7b80b481888da8fd96d7740ea2be7",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/player-profile-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "30d7573957c095249d6bda96591befff1ef7b80b481888da8fd96d7740ea2be7",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/plugins/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "0db9273d98717fb3cb5b6454b737902be245306f746356dbcd5f4190cbaee5ec",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "0db9273d98717fb3cb5b6454b737902be245306f746356dbcd5f4190cbaee5ec",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/recipe-types/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "698f35b7b5eb3100c6d4c5dafa308003ecfd93c3e8c99ecf69ccc3a2fffbaf02",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/global-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "698f35b7b5eb3100c6d4c5dafa308003ecfd93c3e8c99ecf69ccc3a2fffbaf02",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/resource-packs/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b4f6cb6bb9ddec4ccb58bf6d3eb61a31f736a5a9e932387b2dcf1d21be92b97b",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "b4f6cb6bb9ddec4ccb58bf6d3eb61a31f736a5a9e932387b2dcf1d21be92b97b",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/shaders/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d3b052d85f850bac2422d2bd64346f2b616e50743d0f4eb350b2e091dee19988",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d3b052d85f850bac2422d2bd64346f2b616e50743d0f4eb350b2e091dee19988",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/skins/[publicId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "33d8f7aabb221da0472853833ce91117c47d10e8857fe4c609d5e4192ed5d963",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/localized-asset-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "33d8f7aabb221da0472853833ce91117c47d10e8857fe4c609d5e4192ed5d963",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/skins/[publicId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "115ebdc66bc513914be8f158a9c14e6bf8d566498780e05c0719809ed1a2da3f",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/skin-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "115ebdc66bc513914be8f158a9c14e6bf8d566498780e05c0719809ed1a2da3f",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/teams/[publicId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "52515b2015fd2d6971a6996edbc33f5714141be46291e5298909980de38c1bab",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/creator-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "52515b2015fd2d6971a6996edbc33f5714141be46291e5298909980de38c1bab",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/tools/logs/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "fa934319deeec4d5d5b3b7df186a65d9fb33ed49f3c8677e6fdfd6faccddd79f",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "next",
+      "../../_components/log-share-tool"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "fa934319deeec4d5d5b3b7df186a65d9fb33ed49f3c8677e6fdfd6faccddd79f",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/tutorials/[id]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d2b4c718e1c7af2a807ec5480d61995aea6b3dabfeadbb20723ed33610ce19aa",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d2b4c718e1c7af2a807ec5480d61995aea6b3dabfeadbb20723ed33610ce19aa",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/user/[publicId]/blocked/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "6d1d1a90a49165fa8c2e443df37f765aad34d4cb36571b223df82880404c2b3b",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/user-network-list"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "6d1d1a90a49165fa8c2e443df37f765aad34d4cb36571b223df82880404c2b3b",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/user/[publicId]/followers/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "81be2a53e56fb21b825937c0a5cd577839510ebd38a71b27772b86e79744f9e8",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/user-network-list"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "81be2a53e56fb21b825937c0a5cd577839510ebd38a71b27772b86e79744f9e8",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/user/[publicId]/following/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d671a34ebf4a140eaa44d7b4c7cb38b0dbaf1ba77fe27eece3e8a6aec8b022b9",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/user-network-list"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d671a34ebf4a140eaa44d7b4c7cb38b0dbaf1ba77fe27eece3e8a6aec8b022b9",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/user/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "ff5829a53ab32abb66470da2cc57a9d6deb904dd212a84240b96bb8d883ae77a",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/user-home",
+      "react"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "ff5829a53ab32abb66470da2cc57a9d6deb904dd212a84240b96bb8d883ae77a",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "lib/mcmods-exporter/renderer/index.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "0893ef57a99d6877f6fd0565a09a62d4c689a01095cd50949da7234e914fc170",
+    "lines": 6,
+    "read_ranges": [
+      [
+        1,
+        6
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "浏览器结构/模型渲染与生命周期",
+    "call_chain": [
+      "./types",
+      "./httpAssetSource",
+      "./blueprint",
+      "./minecraftBlockModel",
+      "./structureScene",
+      "./StructureRenderer"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "0893ef57a99d6877f6fd0565a09a62d4c689a01095cd50949da7234e914fc170",
+    "baseline_lines": 6,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/addons/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "f8bdc6463a8af04b2a150f9da52857051ccea19a75c03af0603fd0a6022cdaa5",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/catalog-list-ui",
+      "../_components/simple-project-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "f8bdc6463a8af04b2a150f9da52857051ccea19a75c03af0603fd0a6022cdaa5",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/admin/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "71f3662d8032fea717d0e8019ab4377104ef413ee43e6591a7197e871dfa75d8",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/admin-console"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "71f3662d8032fea717d0e8019ab4377104ef413ee43e6591a7197e871dfa75d8",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/authors/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "6951872a94f81ab6d79633c686f747265b9e0b294813a0d60be1a5a39ec4496b",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/creator-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "6951872a94f81ab6d79633c686f747265b9e0b294813a0d60be1a5a39ec4496b",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/authors/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "8c042b5eaae798debf99e8ba4c5185f6de815bc0473cd8aede81a19602d7e08c",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/creator-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "8c042b5eaae798debf99e8ba4c5185f6de815bc0473cd8aede81a19602d7e08c",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/blueprints/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "0261b69f01612ad9026dc9c083c11ed7d70b5e0b8132ea7449842f94e77f8207",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/blueprint-library"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "0261b69f01612ad9026dc9c083c11ed7d70b5e0b8132ea7449842f94e77f8207",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/blueprints/upload/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "7f54f494e49c9024152d3d57832bb76707578c936e12af2da275f01ce3e89c6c",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/blueprint-upload"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "7f54f494e49c9024152d3d57832bb76707578c936e12af2da275f01ce3e89c6c",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/datapacks/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "5838fe61770a098c92a6be602ed2e373346f474fc6e017374ecdd7ac9574a586",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/catalog-list-ui",
+      "../_components/simple-project-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "5838fe61770a098c92a6be602ed2e373346f474fc6e017374ecdd7ac9574a586",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/discussions/[id]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "c225558f86f5a974a31b2a529fc2912f099409d5f1513d9bc2a56f50566ebfe9",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "c225558f86f5a974a31b2a529fc2912f099409d5f1513d9bc2a56f50566ebfe9",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/issues/[id]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "1ec945131a296957a5951b74ff324e8a7b3c93fe85eef32ed810a2177b573643",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/community-post-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "1ec945131a296957a5951b74ff324e8a7b3c93fe85eef32ed810a2177b573643",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/maps/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "5ef4423c4ed89adc6ea99e9cd3ff4ab39fd606cf655172a4f400afb7a4852bf7",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/catalog-list-ui",
+      "../_components/simple-project-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "5ef4423c4ed89adc6ea99e9cd3ff4ab39fd606cf655172a4f400afb7a4852bf7",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/news/[id]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "c88867c1443188bfc91343aa9cc523e17f173920ce35677c0b5d12840a0134fc",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "c88867c1443188bfc91343aa9cc523e17f173920ce35677c0b5d12840a0134fc",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "e0060326bb8fac1f514bb3e8a10d4d58c336285b827cadb481c4d671798cb354",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "./_components/home-page"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "e0060326bb8fac1f514bb3e8a10d4d58c336285b827cadb481c4d671798cb354",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/permissions/compare/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "f563a5df9dfd886ad29e2188ae8ec6d67f30e455a724f119c749af4854d22457",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/permission-comparison"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "f563a5df9dfd886ad29e2188ae8ec6d67f30e455a724f119c749af4854d22457",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/plugins/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b027a95d44b0776383471b17bd59d35002b7df8537d536b1efc77d1d03e92f56",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/catalog-list-ui",
+      "../_components/simple-project-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "b027a95d44b0776383471b17bd59d35002b7df8537d536b1efc77d1d03e92f56",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/resource-packs/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "36ee7db044b62f02c46f778811bcb4e1df4669a820e2c9889f922c94846c0230",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/catalog-list-ui",
+      "../_components/simple-project-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "36ee7db044b62f02c46f778811bcb4e1df4669a820e2c9889f922c94846c0230",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/reviews/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "ee8d8873a4b05b968db71ecd2e77bb98bb508634b086326ac3b1d37e1e91b67a",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/admin-mod-panels"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "ee8d8873a4b05b968db71ecd2e77bb98bb508634b086326ac3b1d37e1e91b67a",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/servers/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "23c8122fd7d4cc13977ce64552d46f9466264ac08dd746f779131bc6bcd063b1",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/server-submission-page"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "23c8122fd7d4cc13977ce64552d46f9466264ac08dd746f779131bc6bcd063b1",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/shaders/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "ef1140b483be01d936a39bfc108927eacad10f16e7a7bfe834d68b06c0ac3818",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "react",
+      "../_components/catalog-list-ui",
+      "../_components/simple-project-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "ef1140b483be01d936a39bfc108927eacad10f16e7a7bfe834d68b06c0ac3818",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/skins/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "3bf1e1d60726e0ea671ef861cc4a136a14789d70d74a6175ec6806251e702fb7",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/skin-library"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "3bf1e1d60726e0ea671ef861cc4a136a14789d70d74a6175ec6806251e702fb7",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/skins/upload/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "ab743924c773e590839935e03dad56703411698352bd72f757a20b9412a412c8",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/skin-upload"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "ab743924c773e590839935e03dad56703411698352bd72f757a20b9412a412c8",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/teams/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "9a97d915a0b8d4311fd602484cbbad031f19ba1d702c9e179793b2496e27a7d9",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/creator-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "9a97d915a0b8d4311fd602484cbbad031f19ba1d702c9e179793b2496e27a7d9",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/tools/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "075f5fd9e7eb181e84f971bc23c9ab61a6b40c21adbe925a2facd9d14c3081e2",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/tools-index"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "075f5fd9e7eb181e84f971bc23c9ab61a6b40c21adbe925a2facd9d14c3081e2",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/tools/plantuml/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "a4cebc54b3ba985bec08e93c6b90d40d94e431663ddb12f2df22d9494bded755",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/tools-plantuml"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "a4cebc54b3ba985bec08e93c6b90d40d94e431663ddb12f2df22d9494bded755",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/tools/playground/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "8205162307a9db42c685c591a65d3b0f753f182bf0ac5057dd30755098d36508",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/tools-playground"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "8205162307a9db42c685c591a65d3b0f753f182bf0ac5057dd30755098d36508",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/tutorials/[id]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "113c9caea9e9c1f3c3d2193cc1812b46a3798970a3fcd29d9ac7be4b9984a45e",
+    "lines": 5,
+    "read_ranges": [
+      [
+        1,
+        5
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/community-post-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "113c9caea9e9c1f3c3d2193cc1812b46a3798970a3fcd29d9ac7be4b9984a45e",
+    "baseline_lines": 5,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/addons/[siteId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "30f859d687630f1d6c8a0cfa4a9787de8ffbd61354484ccb0f42e28513dd9826",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "30f859d687630f1d6c8a0cfa4a9787de8ffbd61354484ccb0f42e28513dd9826",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/addons/[siteId]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "6f5fc1623cd72e97c12fb081963fee52aff87ca89b28c768e04cfd232c91b80c",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "6f5fc1623cd72e97c12fb081963fee52aff87ca89b28c768e04cfd232c91b80c",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/addons/[siteId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "9e0e2228c994c656f554cdcdec113c8800539f8107ae32dd8ffce92ef73c0c78",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "9e0e2228c994c656f554cdcdec113c8800539f8107ae32dd8ffce92ef73c0c78",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/datapacks/[siteId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "a75580266d604b6ffb5fa7039f262f2d4a3217d2d6ea00f042ac069d599cfdcf",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "a75580266d604b6ffb5fa7039f262f2d4a3217d2d6ea00f042ac069d599cfdcf",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/datapacks/[siteId]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "382f2f722a04a4d2091482660f8c8f891e6ca0d99bd0db43a5dc1cc5aa9e622a",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "382f2f722a04a4d2091482660f8c8f891e6ca0d99bd0db43a5dc1cc5aa9e622a",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/datapacks/[siteId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "b1691cd305ead36c7e7b251b5bc3849f415890c4316a43c339cc050f7218fa22",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "b1691cd305ead36c7e7b251b5bc3849f415890c4316a43c339cc050f7218fa22",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/maps/[siteId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "a9ee790b7cfecb839b1a1b43a70924b0bdf9ac63983bbeca5d645ec20a322321",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "a9ee790b7cfecb839b1a1b43a70924b0bdf9ac63983bbeca5d645ec20a322321",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/maps/[siteId]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d0d7d5628638827ba2b4e6590f9a8d6e85780040d64a9aa2d55db8fb3c1c04d1",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d0d7d5628638827ba2b4e6590f9a8d6e85780040d64a9aa2d55db8fb3c1c04d1",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/maps/[siteId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "cf4940af82ab7f6db6b87057e96140bc0c3ed14489a3c62fe404b15a586f5ba0",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "cf4940af82ab7f6db6b87057e96140bc0c3ed14489a3c62fe404b15a586f5ba0",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/plugins/[siteId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "9c4867b6964f5bb645c438857a7f223d30e57f9d44af3286d61fb738405c4e94",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "9c4867b6964f5bb645c438857a7f223d30e57f9d44af3286d61fb738405c4e94",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/plugins/[siteId]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "883d87b59e88035d1faa0e0c7154c26ed2454cb54b64cc28e66d9ceea3647e04",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "883d87b59e88035d1faa0e0c7154c26ed2454cb54b64cc28e66d9ceea3647e04",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/plugins/[siteId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "4d1237ad7f6c8bcfa58788b5cddfc2fd204ede87be6535ef1667e267c1e4dfba",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "4d1237ad7f6c8bcfa58788b5cddfc2fd204ede87be6535ef1667e267c1e4dfba",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/resource-packs/[siteId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "64681140ff8cadf01fcd36d096eaf3bed2dbc6725b26704f919f511f00d0205f",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "64681140ff8cadf01fcd36d096eaf3bed2dbc6725b26704f919f511f00d0205f",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/resource-packs/[siteId]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "d4a4f71de4b8fa7315ca352f2d8a82af829cae01a2c01734cc1e5e95574d9728",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "d4a4f71de4b8fa7315ca352f2d8a82af829cae01a2c01734cc1e5e95574d9728",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/resource-packs/[siteId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "c77b47556d5320c2c1f4d3f4a6172753e3cdc3ce5dc57a7a776aa1419696de7d",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "c77b47556d5320c2c1f4d3f4a6172753e3cdc3ce5dc57a7a776aa1419696de7d",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/shaders/[siteId]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "be86d78451c0147990bff0d2daf6ee8e47cb767562a4bb2c108f385108ef4cc3",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/simple-project-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "be86d78451c0147990bff0d2daf6ee8e47cb767562a4bb2c108f385108ef4cc3",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/shaders/[siteId]/history/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "4f7fcec1452df4826e44ce04cea234fb05fd0f092ece79c0f374f30334ea3773",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/content-history"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "4f7fcec1452df4826e44ce04cea234fb05fd0f092ece79c0f374f30334ea3773",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/shaders/[siteId]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "4bb775902937330d6fc420745dfc2dbb728e91ffcc8f4bfab0a03f4925b7b837",
+    "lines": 3,
+    "read_ranges": [
+      [
+        1,
+        3
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/simple-project-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "4bb775902937330d6fc420745dfc2dbb728e91ffcc8f4bfab0a03f4925b7b837",
+    "baseline_lines": 3,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/discussions/[id]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "2e036334a8a14a9f22fc02a27aede3ffb509dfbe7b4b308d116e0610ad6d73d0",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/community-post-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "2e036334a8a14a9f22fc02a27aede3ffb509dfbe7b4b308d116e0610ad6d73d0",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/discussions/[id]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "1d008a49807e381154c6c897ee1b10489a1090fa1210d9a1a7ddb5c6469f5036",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/community-post-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "1d008a49807e381154c6c897ee1b10489a1090fa1210d9a1a7ddb5c6469f5036",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/discussions/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "23b99dd2719496846ac7b0a175f3fcb5c514cee61ee343301d5150b7d4ac0fcf",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/community-post-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "23b99dd2719496846ac7b0a175f3fcb5c514cee61ee343301d5150b7d4ac0fcf",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/discussions/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "739430c0d0a11b06becf39d4f2be5f05fe1ab25d14e4f4edf7c7833dc9613322",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/community-post-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "739430c0d0a11b06becf39d4f2be5f05fe1ab25d14e4f4edf7c7833dc9613322",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/issues/[id]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "1d008a49807e381154c6c897ee1b10489a1090fa1210d9a1a7ddb5c6469f5036",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/community-post-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "1d008a49807e381154c6c897ee1b10489a1090fa1210d9a1a7ddb5c6469f5036",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/issues/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "78696a64a8bbf81dcd6b18ddb0760a76d1b2d1a037afe94088352eeeb4036f3d",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/community-post-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "78696a64a8bbf81dcd6b18ddb0760a76d1b2d1a037afe94088352eeeb4036f3d",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/issues/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "a4c7f8a8bbadf27f206a9e12f52eb4e6d1871cab9b9b36b6026b709def972038",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/community-post-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "a4c7f8a8bbadf27f206a9e12f52eb4e6d1871cab9b9b36b6026b709def972038",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/news/[id]/edit/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "2625d969de2145c801ea40b73d11c8154f798c8679968600fae1ceb83c4e4d86",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/community-post-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "2625d969de2145c801ea40b73d11c8154f798c8679968600fae1ceb83c4e4d86",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/news/[id]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "1d008a49807e381154c6c897ee1b10489a1090fa1210d9a1a7ddb5c6469f5036",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/community-post-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "1d008a49807e381154c6c897ee1b10489a1090fa1210d9a1a7ddb5c6469f5036",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/news/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "113b591c3a38be2f3be9fb427812f1927697e18f8268dc03b9b9da00042feb5d",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/community-post-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "113b591c3a38be2f3be9fb427812f1927697e18f8268dc03b9b9da00042feb5d",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/news/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "35858fc2d041a74394de20ba3af256fdc7650ab2385148f424d61ec96be7dbdc",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/community-post-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "35858fc2d041a74394de20ba3af256fdc7650ab2385148f424d61ec96be7dbdc",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/site-affairs/about/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "dc71e4bcb65dd710aa348542a4e3e144a7691f8a011510fb73d296bad9bfaeac",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/site-affairs-pages"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "dc71e4bcb65dd710aa348542a4e3e144a7691f8a011510fb73d296bad9bfaeac",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/site-affairs/blackroom/[id]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "df17b4ee68ab0a3c7b703401be77810d53afb00eb95e6a75f5a120f6ec80b431",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/site-affairs-pages"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "df17b4ee68ab0a3c7b703401be77810d53afb00eb95e6a75f5a120f6ec80b431",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/site-affairs/blackroom/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "3feabcd930c3b38c0e047de336c5ffed03fb272f4c64d3efad42807655049309",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/site-affairs-pages"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "3feabcd930c3b38c0e047de336c5ffed03fb272f4c64d3efad42807655049309",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/site-affairs/changelogs/[id]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "96ee128fdc30bd022e3233040ee56af8f9146b7a77188b24b5bef24ade582eff",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../../_components/site-affairs-pages"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "96ee128fdc30bd022e3233040ee56af8f9146b7a77188b24b5bef24ade582eff",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/site-affairs/changelogs/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "7d0b48452c7a5b14554236f47c389c5e7303c0196058e5e5f668ceab56d2327d",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/site-affairs-pages"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "7d0b48452c7a5b14554236f47c389c5e7303c0196058e5e5f668ceab56d2327d",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/site-affairs/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "60ac1d001afc1c95166aded7855f340b12fa4370007214971ef53556ae377176",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "next/navigation"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "60ac1d001afc1c95166aded7855f340b12fa4370007214971ef53556ae377176",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/tutorials/[id]/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "1d008a49807e381154c6c897ee1b10489a1090fa1210d9a1a7ddb5c6469f5036",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/community-post-detail"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "1d008a49807e381154c6c897ee1b10489a1090fa1210d9a1a7ddb5c6469f5036",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/tutorials/new/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "88ed2e056566566115bb8ae6bbd045bde00dc8c15c0f99411ccc05131fd722db",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../../_components/community-post-editor"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "88ed2e056566566115bb8ae6bbd045bde00dc8c15c0f99411ccc05131fd722db",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "app/tutorials/page.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "sha256": "6ec91fc2b89ca72a63b2499144867d1f94ddeb0a35cce2eec0b92cf8d5e775bd",
+    "lines": 2,
+    "read_ranges": [
+      [
+        1,
+        2
+      ]
+    ],
+    "status": "已完整审查",
+    "responsibility": "Next路由入口与参数到业务组件的桥接",
+    "call_chain": [
+      "../_components/community-post-catalog"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC semantic review"
+    ],
+    "baseline_sha256": "6ec91fc2b89ca72a63b2499144867d1f94ddeb0a35cce2eec0b92cf8d5e775bd",
+    "baseline_lines": 2,
+    "content_read": true,
+    "semantic_review": true,
+    "reviewer": "frontend-core",
+    "final_review": "最终变更块实际补读 + 未变更行与已全文读取基线内容比对；核心修改模块最终重新读取",
+    "behavior_verified": false
+  },
+  {
+    "path": "docs/audit/frontend-core.md",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "60940377d1212ccc83568399321f8abd78e806a2cc86750a9bf667988f4cfaa3",
+    "lines": 94,
+    "read_ranges": [
+      [
+        1,
+        94
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "正式契约/审计范围与证据说明",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC final prose review"
+    ],
+    "final_review": "最终全文实际重读；前端核心229条225完整/4组件区域部分、17主ID状态/归并和53项最终证据逐项核对。"
+  },
+  {
+    "path": "docs/frontend-runtime-contracts.md",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "ad9663bf9fea3abd7dccdca93c454f10cc10bab355dc83bc4ef57b5f7ba30099",
+    "lines": 41,
+    "read_ranges": [
+      [
+        1,
+        41
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "正式契约/审计范围与证据说明",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC final prose review"
+    ],
+    "final_review": "最终全文实际重读；前端核心229条225完整/4组件区域部分、17主ID状态/归并和53项最终证据逐项核对。"
+  },
+  {
+    "path": "docs/renderer-client-contracts.md",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "166badb90cdb2e2695a008f28212d09ebdc8d0765ce40bc3f825b1de3245a265",
+    "lines": 11,
+    "read_ranges": [
+      [
+        1,
+        11
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "responsibility": "正式契约/审计范围与证据说明",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "STATIC final prose review"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容"
+  },
+  {
+    "path": "e2e/import-store-core.spec.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "2750636affa1c297a453987cef68ce2d2dd3a5f3bc07cf94dc1137d009cad869",
+    "lines": 35,
+    "read_ranges": [
+      [
+        1,
+        35
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/api_core.test.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "126a50d5964fa5241b0cf8207f75bc242bb31dabb03c1bc45d9cfb866546996d",
+    "lines": 28,
+    "read_ranges": [
+      [
+        1,
+        28
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/auth_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "43014a050e7b5dac393d34767533d0078dea81f42fac9ba81870b97e39e11d31",
+    "lines": 42,
+    "read_ranges": [
+      [
+        1,
+        42
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/catalog-storage_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "cd5f216716cc46cbaf90de3b2872f57f0e319ed62ac200dec20e11ae1b471a82",
+    "lines": 17,
+    "read_ranges": [
+      [
+        1,
+        17
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/draft_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "980b9034c5e494b5fe0ca5cf3c525917edbc8c27623d941672eec1d6d0eb410c",
+    "lines": 51,
+    "read_ranges": [
+      [
+        1,
+        51
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/i18n-resources_core.test.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "af92f1d69fb10e90ce2f6a6476080c9de8fbca23163e4a128a8259b341dc01a8",
+    "lines": 64,
+    "read_ranges": [
+      [
+        1,
+        64
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/i18n_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "edfabe3ad3457e362aa8c058474e5eb0bed3922da5a9f5a36b0cab55f7a1b266",
+    "lines": 47,
+    "read_ranges": [
+      [
+        1,
+        47
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/logo_core.test.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "d497bd456de765093a21583c038a8d6d5dbfea96bc56d7c6b114636d6ead039f",
+    "lines": 40,
+    "read_ranges": [
+      [
+        1,
+        40
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/model-assets_core.test.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "5e093918eecb00484afb9cdf5801809f6c49eb519ef2b91b17a0d6b13507ab0f",
+    "lines": 25,
+    "read_ranges": [
+      [
+        1,
+        25
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/renderer-failure_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "a4717f85c6f561478798de926ebd6ad4f5c7985d0c470849e5b805b3432970a0",
+    "lines": 25,
+    "read_ranges": [
+      [
+        1,
+        25
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/shortlink_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "2032bdf015a8687fd30f05e0d730bad80922dba72d705fb8530859e320ae3628",
+    "lines": 25,
+    "read_ranges": [
+      [
+        1,
+        25
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/skin-texture-lifecycle_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "7b0d24cc2b965cf06d18548ed07a8953346c2e5e65a9c9f1085debf23040a78c",
+    "lines": 43,
+    "read_ranges": [
+      [
+        1,
+        43
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/transports_core.test.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "f8c466d7b5f3f40074decf6f020d358f7d4829accd0b76a325e0041f7902660b",
+    "lines": 43,
+    "read_ranges": [
+      [
+        1,
+        43
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/upload-store_core.test.ts",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "2fcfbe302c2f5e392ac97f0b36b7288bde65914bdb833d3f8b65cd23422a3c8e",
+    "lines": 12,
+    "read_ranges": [
+      [
+        1,
+        12
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "必要回归验证",
+    "call_chain": [
+      "对应测试真实模块与声明mock边界"
+    ],
+    "issues": [],
+    "validation": [
+      "PASS actual test run"
+    ],
+    "final_review": "创建后实际全文读取与再次核对内容",
+    "verification_scope": "仅所列回归的关键断言；不代表文件全部业务行为或全用户旅程"
+  },
+  {
+    "path": "tests/application-pagination_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "89d26f9bc2e4d0da9ec94ac9a06f6c3f3f724ad8584437688dd9833587040bfa",
+    "lines": 72,
+    "read_ranges": [
+      [
+        1,
+        72
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "responsibility": "实际审核分页/迟到响应/旧后端兼容的组件回归",
+    "call_chain": [
+      "对应组件 -> apiRequest -> 后端实际授权/查询/事务"
+    ],
+    "issues": [
+      "FE-CORE-016"
+    ],
+    "validation": [
+      "PASS tests/application-pagination_core.test.tsx / tests/log-cleanup_core.test.tsx; targeted lint; full tsc"
+    ],
+    "behavior_verified": true,
+    "verification_scope": "仅明确回归场景，API 为组件mock；真实PG另列",
+    "final_review": "实际全文读取"
+  },
+  {
+    "path": "tests/log-cleanup_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "e4ae2fed3bfaa82a9e70761e6f8f7f8c92b07df46ea7c47749233abc4a309b13",
+    "lines": 35,
+    "read_ranges": [
+      [
+        1,
+        35
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "responsibility": "已保存策略与部分清理失败/错误详情类型边界回归",
+    "call_chain": [
+      "对应组件 -> apiRequest -> 后端实际授权/查询/事务"
+    ],
+    "issues": [
+      "FE-CORE-017"
+    ],
+    "validation": [
+      "PASS tests/application-pagination_core.test.tsx / tests/log-cleanup_core.test.tsx; targeted lint; full tsc"
+    ],
+    "behavior_verified": true,
+    "verification_scope": "仅明确回归场景，API 为组件mock；真实PG另列",
+    "final_review": "实际全文读取"
+  },
+  {
+    "path": "app/_components/admin-community-panels.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "45bb03e2e9d1901c42f1599b586ab256a38e22884e9ca397abfab54abfe949a8",
+    "lines": 1735,
+    "read_ranges": [
+      [
+        76,
+        233
+      ]
+    ],
+    "status": "部分审查",
+    "reviewer": "frontend-core",
+    "content_read": false,
+    "semantic_review": false,
+    "responsibility": "审核队列有界分页和结果竞争",
+    "call_chain": [
+      "对应组件 -> apiRequest -> 后端实际授权/查询/事务"
+    ],
+    "issues": [
+      "FE-CORE-016"
+    ],
+    "validation": [
+      "PASS tests/application-pagination_core.test.tsx / tests/log-cleanup_core.test.tsx; targeted lint; full tsc"
+    ],
+    "behavior_verified": true,
+    "verification_scope": "仅明确回归场景，API 为组件mock；真实PG另列",
+    "final_review": "仅独占组件区域完整读取/复查；全文证据见UI-A原基线+最终diff台账",
+    "external_review_evidence": [
+      "docs/audit/review-frontend-ui-a.json",
+      "docs/audit/review-frontend-ui-b-delegated.json"
+    ],
+    "content_read_ranges_complete": false
+  },
+  {
+    "path": "app/_components/admin-mod-panels.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "d72d014c07afbb8e25098224e9ce6851deb67e09104a5e486e9145342c2124a5",
+    "lines": 305,
+    "read_ranges": [
+      [
+        173,
+        278
+      ]
+    ],
+    "status": "部分审查",
+    "reviewer": "frontend-core",
+    "content_read": false,
+    "semantic_review": false,
+    "responsibility": "编辑员审核队列有界分页和结果竞争",
+    "call_chain": [
+      "对应组件 -> apiRequest -> 后端实际授权/查询/事务"
+    ],
+    "issues": [
+      "FE-CORE-016"
+    ],
+    "validation": [
+      "PASS tests/application-pagination_core.test.tsx / tests/log-cleanup_core.test.tsx; targeted lint; full tsc"
+    ],
+    "behavior_verified": true,
+    "verification_scope": "仅明确回归场景，API 为组件mock；真实PG另列",
+    "final_review": "仅独占组件区域完整读取/复查；全文证据见UI-A原基线+最终diff台账",
+    "external_review_evidence": [
+      "docs/audit/review-frontend-ui-a.json",
+      "docs/audit/review-frontend-ui-b-delegated.json"
+    ],
+    "content_read_ranges_complete": false
+  },
+  {
+    "path": "app/_components/creator-detail.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "35813c182f4e9d9dc0ef29c27742c290f9a3ccb1899395578d332bd579aa8538",
+    "lines": 195,
+    "read_ranges": [
+      [
+        113,
+        169
+      ]
+    ],
+    "status": "部分审查",
+    "reviewer": "frontend-core",
+    "content_read": false,
+    "semantic_review": false,
+    "responsibility": "认领证明最小完整校验与失败输入保留",
+    "call_chain": [
+      "对应组件 -> apiRequest -> 后端实际授权/查询/事务"
+    ],
+    "issues": [
+      "FE-CORE-016"
+    ],
+    "validation": [
+      "PASS tests/application-pagination_core.test.tsx / tests/log-cleanup_core.test.tsx; targeted lint; full tsc"
+    ],
+    "behavior_verified": true,
+    "verification_scope": "仅明确回归场景，API 为组件mock；真实PG另列",
+    "final_review": "仅独占组件区域完整读取/复查；全文证据见UI-A原基线+最终diff台账",
+    "external_review_evidence": [
+      "docs/audit/review-frontend-ui-a.json",
+      "docs/audit/review-frontend-ui-b-delegated.json"
+    ],
+    "content_read_ranges_complete": false
+  },
+  {
+    "path": "app/_components/admin-console.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "c73e1e3ebe33867d684fa26391484b2eeed3a9f2344a607081b1965085cde7d9",
+    "lines": 6169,
+    "read_ranges": [
+      [
+        5310,
+        5400
+      ]
+    ],
+    "status": "部分审查",
+    "reviewer": "frontend-core",
+    "content_read": false,
+    "semantic_review": false,
+    "responsibility": "日志保留配置已保存/清理部分失败反馈",
+    "call_chain": [
+      "对应组件 -> apiRequest -> 后端实际授权/查询/事务"
+    ],
+    "issues": [
+      "FE-CORE-017"
+    ],
+    "validation": [
+      "PASS tests/application-pagination_core.test.tsx / tests/log-cleanup_core.test.tsx; targeted lint; full tsc"
+    ],
+    "behavior_verified": true,
+    "verification_scope": "仅明确回归场景，API 为组件mock；真实PG另列",
+    "final_review": "仅独占组件区域完整读取/复查；全文证据见UI-A原基线+最终diff台账",
+    "external_review_evidence": [
+      "docs/audit/review-frontend-ui-a.json",
+      "docs/audit/review-frontend-ui-b-delegated.json"
+    ],
+    "content_read_ranges_complete": false
+  },
+  {
+    "path": "tests/log-cleanup-i18n_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "996e517664f9edbcd820ff06571578b9f715ad6226b0a6f955efb96830bfa721",
+    "lines": 19,
+    "read_ranges": [
+      [
+        1,
+        19
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "真实provider八语言日志清理说明/语义回退及lang回归",
+    "call_chain": [
+      "I18nProvider -> static effective dictionaries -> actual LogCleanupPanel"
+    ],
+    "issues": [
+      "FE-CORE-017"
+    ],
+    "validation": [
+      "PASS8 language component cases;16file46 core regression; targeted eslint/full tsc"
+    ],
+    "final_review": "新增后实际全文读+回归",
+    "verification_scope": "API is mock; provider and eight actual dictionary fallbacks are real; not all language semantic quality"
+  },
+  {
+    "path": "docs/audit/issues-frontend-core.json",
+    "baseline": null,
+    "sha256": "a0710e10e2c8f7e6085dab75f6092a1c38d82e6648902cdb1d21b0a5a7086d66",
+    "lines": 19,
+    "read_ranges": [
+      [
+        1,
+        19
+      ]
+    ],
+    "status": "已复查",
+    "responsibility": "人工核对17个确认问题的稳定ID、根因、严重度、证据/范围与归并；非自动工具PASS标签",
+    "call_chain": [
+      "docs/audit/frontend-core.md",
+      "validation-frontend-core.json",
+      "实际对应源码/测试"
+    ],
+    "issues": [],
+    "validation": [
+      "STATIC final manual status/evidence review"
+    ],
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": false,
+    "verification_scope": "问题状态本身是证据元数据；不引入新的运行逻辑",
+    "reviewer": "frontend-core",
+    "final_review": "全文逐项人工读19行，区分15项范围内验证与2项部分验证；交叉ID不计作新的核心问题。"
+  },
+  {
+    "path": "tests/auth-cas_core.test.tsx",
+    "baseline": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+    "baseline_sha256": null,
+    "sha256": "c51d250a334c6912f73e5e799dad7fb0d3efa78cde03ba17fa3dc7876b9f51d2",
+    "lines": 118,
+    "read_ranges": [
+      [
+        1,
+        118
+      ]
+    ],
+    "status": "已复查",
+    "reviewer": "frontend-core",
+    "content_read": true,
+    "semantic_review": true,
+    "behavior_verified": true,
+    "responsibility": "真实认证全局状态迟到资料写回CAS及最新授权投影保护回归",
+    "call_chain": [
+      "auth.saveAuth/isCurrentAuthUser/useAuthSnapshot/bootstrapAuth",
+      "controlled backendFetch → /auth/me permission refresh",
+      "user-home caller independently reviewed in UI-A ledger"
+    ],
+    "issues": [
+      "FE-UIA-011"
+    ],
+    "validation": [
+      "PASS 7 tests; with bootstrap 2 files/9 tests PASS1.32s; final core17files53PASS23.21s",
+      "FAIL before CAS3/4; old same-ID authorization1/6; conditional canceled pending refresh1/7"
+    ],
+    "final_review": "创建及每次修改后逐段阅读，最终118行全文实际重读；模拟API只控制响应，认证模块/Hook与全局状态使用真实实现。",
+    "verification_scope": "仅全局账号/同ID权限投影/资料与pending权限刷新场景；不宣称后端权限可绕过或全部资料业务端到端通过。"
+  }
+]

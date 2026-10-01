@@ -1,0 +1,134 @@
+{
+  "repository": "mcmods-cn-frontend",
+  "path": "app/_locales/zh-CN.ts",
+  "category": "人工维护中文界面词条",
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "baseline_sha256": "44661390a4ce4fdc5896f742ff868f71d1ff7951e712407d1fc88f3048c04af7",
+  "sha256": "b0aa2cb71e1dce052ab560330a33a148009be7bdf3a42813da81d000723862b5",
+  "lines": 4368,
+  "read_ranges": [
+    [
+      1,
+      4368
+    ]
+  ],
+  "reading_note": "第一轮1–4266完整逐段阅读；长行截断1430–1488已补读。并行改动最终全部git diff实际读完，新增词条4260至末尾全文实际复读，未改内容与上一轮核对。read_ranges含读时行号；最终sha标识复查内容。",
+  "status": "已复查",
+  "content_read": true,
+  "semantic_review": true,
+  "behavior_verified": false,
+  "responsibility": "中文界面静态文案、变量占位符、管理与内容编辑说明、Markdown/PlantUML示例；与业务内容译文及AI结果分离",
+  "call_chain": [
+    "app/_lib/i18n-provider.tsx",
+    "app/_components/comment-section.tsx",
+    "app/_components/editor/recipe-template-editor.tsx",
+    "app/_components/tools-playground.tsx",
+    "app/_components/admin-community-panels.tsx",
+    "app/_components/admin-anti-abuse-panel.tsx",
+    "app/_components/editor/resource-picker-dialog.tsx"
+  ],
+  "issues": [
+    "FE-UIB-012",
+    "FE-CORE-012"
+  ],
+  "validation": [
+    "完整静态词条语义/格式/参数/动态key与调用链检查；不是八语言语义质量验收",
+    "7文件32组件回归PASS（真实provider验证英文/中文/德文缺译文fallback）；整仓tsc及语言资源lint PASS",
+    "AST键/参数校验和其他语言资源的独立证据由core提供"
+  ],
+  "final_review": "已真实完整逐段读原1–4266，截断补读；最终全部git diff实际补读，最新admin.logs.policySavedCleanupFailed/creator.claimProofRequired及新增结尾词条全文读完。非仅diff宣称原全文。 最后补读3702–3720、3898–3940和4360至末尾；纠正保存时日志清理文案，明确无后台scheduler及permission audit不可删；按最终文件实际splitlines指纹更新。",
+  "first_pass_read_ranges": [
+    [
+      1,
+      570
+    ],
+    [
+      571,
+      1140
+    ],
+    [
+      1141,
+      1710
+    ],
+    [
+      1430,
+      1488
+    ],
+    [
+      1711,
+      2130
+    ],
+    [
+      2131,
+      2540
+    ],
+    [
+      2541,
+      2950
+    ],
+    [
+      2951,
+      3360
+    ],
+    [
+      3361,
+      3770
+    ],
+    [
+      3771,
+      4266
+    ],
+    [
+      1,
+      82
+    ],
+    [
+      880,
+      905
+    ],
+    [
+      1475,
+      1504
+    ],
+    [
+      2518,
+      2527
+    ],
+    [
+      2622,
+      2627
+    ],
+    [
+      3744,
+      3755
+    ],
+    [
+      3877,
+      3884
+    ],
+    [
+      4046,
+      4053
+    ],
+    [
+      4260,
+      4366
+    ],
+    [
+      3903,
+      3910
+    ],
+    [
+      3702,
+      3720
+    ],
+    [
+      3898,
+      3940
+    ],
+    [
+      4360,
+      4368
+    ]
+  ]
+}

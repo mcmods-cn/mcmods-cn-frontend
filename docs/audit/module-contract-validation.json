@@ -1,0 +1,108 @@
+{
+  "repositories": {
+    "frontend": "mcmods-cn-frontend",
+    "backend": "mcmods-cn-backend"
+  },
+  "environment": {
+    "node": "v24.19.0",
+    "npm": "11.9.0",
+    "Go": "go1.26.8",
+    "tests": "React/jsdom synthetic API; actual Go decodeJSON/DTO; no real provider/production"
+  },
+  "results": [
+    {
+      "command": "npx vitest run app/_components/__tests__/contract-yggdrasil.test.tsx (old source)",
+      "status": "FAIL",
+      "files": 1,
+      "passed": 1,
+      "failed": 1,
+      "evidence": "/tmp/frontend-contract-ygg-red.log",
+      "note": "修复前真实readonly多字段错误，修后2PASS"
+    },
+    {
+      "command": "npx vitest run tests/frontend-ui-b-comments.test.tsx tests/frontend-ui-b-i18n.test.tsx app/_components/__tests__/contract-yggdrasil.test.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 3,
+      "tests": 12,
+      "evidence": "/tmp/frontend-contract-final-components.log"
+    },
+    {
+      "command": "go test ./internal/httpapi -run ^TestYggdrasilSettingsWriteContractExcludesRuntimeFields$ -count=1 -v",
+      "status": "PASS",
+      "exit_code": 0,
+      "top_level_tests": 1,
+      "subtests": 4,
+      "evidence": "/tmp/backend-contract-ygg-green.log",
+      "note": "第一次受并行mod_export_resume新测试编译失败影响，/tmp/backend-contract-ygg.log已保留；APIB修复后实际通过"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-contract-final-tsc.log"
+    },
+    {
+      "command": "npx eslint scripts/audit-contracts.mjs app/_components/admin-yggdrasil-panel.tsx app/_components/__tests__/contract-yggdrasil.test.tsx app/_lib/skin-api.ts app/_lib/comment-api.ts app/_components/comment-section.tsx",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-contract-final-lint.log"
+    },
+    {
+      "command": "node --check scripts/audit-contracts.mjs",
+      "status": "PASS",
+      "exit_code": 0
+    },
+    {
+      "command": "go vet scripts/audit-go-contracts.go",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-contract-generator-vet.log"
+    },
+    {
+      "command": "GO_AUDIT_BIN=<Go1.26.8> node scripts/audit-contracts.mjs ../mcmods-cn-backend docs/audit/module-contracts.json",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-contract-final-inventory.log",
+      "counts": {
+        "calls": 449,
+        "business_calls": 448,
+        "routes": 505,
+        "unresolved_patterns": 9,
+        "partial_patterns": 1,
+        "manual_records": 9
+      }
+    },
+    {
+      "command": "git diff --check (both repositories)",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": [
+        "/tmp/frontend-contract-final-diffcheck.log",
+        "/tmp/backend-contract-final-diffcheck.log"
+      ]
+    },
+    {
+      "command": "verify generated inventory original-byte SHA against current source snapshot (89 frontend/121 backend files)",
+      "status": "PASS",
+      "exit_code": 0,
+      "frontend_files": 89,
+      "backend_files": 121,
+      "mismatches": 0,
+      "note": "metadata匹配，不标记这些文件已人工语义审查"
+    },
+    {
+      "command": "npx eslint scripts/audit-contracts.mjs (final metadata/BOM fix)",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/frontend-contract-generator-final-lint.log"
+    }
+  ],
+  "not_verified": [
+    "Ygg配置真实持久化/真实客户端",
+    "448个业务调用的全部行为/角色组合",
+    "真实OSS/邮件/付费AI/支付供应商",
+    "线上运行健康",
+    "最终最新生产build全套browser结果由root另汇总"
+  ]
+}

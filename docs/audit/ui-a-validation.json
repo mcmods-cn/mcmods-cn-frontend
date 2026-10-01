@@ -1,0 +1,77 @@
+{
+  "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
+  "recorded_at": "2026-10-01T14:06:01.465462+00:00",
+  "environment": {
+    "runtime": "Node.js v24.19.0 (actual node --version)",
+    "test_framework": "Vitest 4.1.11 / jsdom / testing-library",
+    "HTTP": "deterministic own API mocks; no paid supplier call"
+  },
+  "checks": [
+    {
+      "command": "npx vitest run app/_components/__tests__/ui-a-*.test.* app/_components/__tests__/ui-b-delegated-*.test.* --reporter=dot",
+      "status": "PASS",
+      "exit_code": 0,
+      "files": 8,
+      "tests": 42,
+      "start_utc": "2026-10-01 14:03:40",
+      "duration_seconds": 14.41,
+      "evidence": "/tmp/mcmods-ui-a-final-tests.log"
+    },
+    {
+      "command": "npx eslint (all modified UI-A/5 delegated files, ai-translation-fill and own tests); latest rerun admin-console/tools/layout/user-profile/tests",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/mcmods-ui-a-final-lint.log"
+    },
+    {
+      "command": "npx tsc --noEmit --incremental false",
+      "status": "PASS",
+      "exit_code": 0,
+      "evidence": "/tmp/mcmods-ui-a-typecheck.log"
+    }
+  ],
+  "known_fixture_adjustments": [
+    "Asset localizations fixtures corrected nested fields to actual flat API shape; not a claimed baseline bug red/green.",
+    "Guest fixture public Minecraft config dependency now resolves; login assertions unchanged.",
+    "Autosave timer failure fixture delayed100ms so separate pending/failure React renders occur; true4autoPUT red preserved."
+  ],
+  "red_green": [
+    {
+      "scope": "favorites/follows/rating",
+      "red": "12:50:04 4FAIL",
+      "green": "12:52:13 4PASS"
+    },
+    {
+      "scope": "actual AdminConsole permissions/manual AI input",
+      "red": "13:10:49 2FAIL",
+      "green": "13:11:03 2PASS"
+    },
+    {
+      "scope": "delegated initial seven",
+      "red": "13:26:38 7FAIL",
+      "green": "13:28:41 7PASS"
+    },
+    {
+      "scope": "resource URLs",
+      "red": "13:32:18 3FAIL/2PASS",
+      "green": "final5PASS"
+    },
+    {
+      "scope": "intermediate new autosave retry regression",
+      "red": "13:47:43 1FAIL/2PASS,4automaticPUT",
+      "green": "final3PASS,oneautomatic+onemanual"
+    },
+    {
+      "scope": "user profile load and mutations",
+      "red": "14:01:02 2FAIL/1PASS",
+      "green": "final4PASS"
+    }
+  ],
+  "NOT_RUN": [
+    "Real backend integration and role authorization in these component suites",
+    "Real provider connectivity/semantic quality/production AI charges",
+    "Real upload/export/drag/drawio and full browser journeys (root separately validates)",
+    "Production DB runtime health",
+    "Config concurrent full PUT from two admins"
+  ]
+}
