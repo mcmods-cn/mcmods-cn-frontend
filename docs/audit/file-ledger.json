@@ -12431,8 +12431,8 @@
     "behavior_verified": false,
     "review_evidence": "docs/audit/review-root.json",
     "exclusion": null,
-    "final_sha256": "cac7cfbfb3f3c63a9d1bd54e9984d0dafc228540a122fc1bd731f776a04eb9c6",
-    "final_review_sha256": "cac7cfbfb3f3c63a9d1bd54e9984d0dafc228540a122fc1bd731f776a04eb9c6",
+    "final_sha256": "aaafa53e3255eeb87ebfb04018912ff3062792cbd705a5dfda8601273628d750",
+    "final_review_sha256": "aaafa53e3255eeb87ebfb04018912ff3062792cbd705a5dfda8601273628d750",
     "deleted": false
   },
   {
@@ -13074,7 +13074,7 @@
     "behavior_verified": false,
     "review_evidence": null,
     "exclusion": "明确登记的生成审查清单/执行证据；生成器与人工结论另审，不继承测试结论，自引用清单省略自身指纹",
-    "final_sha256": "25626c13a3782860f32bd9cbf6b52430ceec7d56aac1a650eac09b0c4a6d757c",
+    "final_sha256": "0538fda9d94eaa599ee747e0d9b9d62216611aaf7c1a0a2b1653cd652aa38de1",
     "final_review_sha256": null,
     "deleted": false
   },
@@ -13171,7 +13171,7 @@
     "path": "docs/audit/validation-root.json",
     "baseline_commit": "4f82c9075636cc4f1f6d3eb07de37a3fffd1de58",
     "baseline_sha256": null,
-    "lines": 1217,
+    "lines": 1277,
     "category": ".json",
     "read_ranges": [],
     "responsibility": "",
@@ -13184,7 +13184,7 @@
     "behavior_verified": false,
     "review_evidence": null,
     "exclusion": "明确登记的生成审查清单/执行证据；生成器与人工结论另审，不继承测试结论，自引用清单省略自身指纹",
-    "final_sha256": "b929a842800d3189df8c510c4911ed0fd168ef46db43ddf4c1c90f9e3a676119",
+    "final_sha256": "2b6e9226a351cb8d0abb8d6def966b3701120ebd47d91f705ceddf0f4ae54f3f",
     "final_review_sha256": null,
     "deleted": false
   },

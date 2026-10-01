@@ -721,7 +721,7 @@
     },
     {
       "path": "docs/audit/delivery.md",
-      "sha256": "cac7cfbfb3f3c63a9d1bd54e9984d0dafc228540a122fc1bd731f776a04eb9c6",
+      "sha256": "aaafa53e3255eeb87ebfb04018912ff3062792cbd705a5dfda8601273628d750",
       "lines": 21,
       "read_ranges": [
         [
@@ -737,7 +737,7 @@
       "call_chain": [],
       "issues": [],
       "validation": [],
-      "final_review": "root完整读取最终A–I/前端交付正文，复核源提交、实际计数、测试与未验证边界；远端PR/CI创建后单独复核补记。"
+      "final_review": "root全文读取原交付正文并复核最终全部变更行；核验实际PR链接、完整CI快照提交/job成功与远端所有blob一致，保留后端diff406/分页替代和附件未响应边界，文档后续HEAD由PR checks验证。"
     }
   ]
 }
