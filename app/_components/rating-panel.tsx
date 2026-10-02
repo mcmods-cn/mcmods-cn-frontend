@@ -157,7 +157,8 @@ function RatingReviews({ targetType, targetId, targetName, token, onClose }: { t
   const { locale, t } = useI18n();
   const [result, setResult] = useState<RatingList | null>(null);
   const [error, setError] = useState("");
-  const [offset, setOffset] = useState(0);
+  const [ratingCursorHistory, setRatingCursorHistory] = useState<string[]>([]);
+  const currentCursor = ratingCursorHistory.at(-1) ?? "";
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
@@ -166,17 +167,17 @@ function RatingReviews({ targetType, targetId, targetName, token, onClose }: { t
         setResult(null);
       }
     });
-    getRatingReviews(targetType, targetId, token, offset)
+    getRatingReviews(targetType, targetId, token, currentCursor)
       .then((value) => { if (!cancelled) setResult(value); })
       .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : t("ratings.reviewsLoadFailed")); });
     return () => { cancelled = true; };
-  }, [offset, t, targetId, targetType, token]);
+  }, [currentCursor, t, targetId, targetType, token]);
   return <Modal title={t("ratings.reviewsTitle", { name: targetName })} onClose={onClose} wide>
     {error ? <p className="rounded-md bg-[var(--danger-soft)] p-3 font-bold text-[var(--danger)]">{error}</p> : null}
     {!result && !error ? <div className="h-48 animate-pulse rounded-lg bg-[var(--panel-subtle)]" /> : null}
     <div className="grid gap-4">{result?.items.map((item) => <RatingReviewCard key={item.id} item={item} locale={locale} />)}</div>
     {result && !result.items.length ? <p className="py-12 text-center font-bold text-[var(--muted)]">{t("ratings.empty")}</p> : null}
-    {result && result.total > result.limit ? <div className="mt-5 flex items-center justify-between"><button className="button-secondary focus-ring" disabled={offset === 0} type="button" onClick={() => setOffset(Math.max(0, offset - result.limit))}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{offset + 1}–{Math.min(offset + result.limit, result.total)} / {result.total}</span><button className="button-secondary focus-ring" disabled={offset + result.limit >= result.total} type="button" onClick={() => setOffset(offset + result.limit)}>{t("common.next")}</button></div> : null}
+    {result && (ratingCursorHistory.length > 0 || result.hasMore) ? <div className="mt-5 flex items-center justify-between"><button className="button-secondary focus-ring" disabled={ratingCursorHistory.length === 0} type="button" onClick={() => setRatingCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("ratings.reviewPage", { page: ratingCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={!result.hasMore || !result.nextCursor} type="button" onClick={() => setRatingCursorHistory((history) => [...history, result.nextCursor])}>{t("common.next")}</button></div> : null}
   </Modal>;
 }
 

@@ -31,7 +31,7 @@ import {
   updatedOptions,
 } from "../_lib/mod-catalog-data";
 import { useI18n } from "../_lib/i18n-provider";
-import { loadFavoriteCollections, loadFavoriteItems } from "../_lib/favorite-api";
+import { loadFavoriteMembershipSummary } from "../_lib/favorite-api";
 import { FavoritePickerModal } from "./favorite-picker-modal";
 import { ProjectSubmissionModal } from "./project-submission-modal";
 import {
@@ -107,16 +107,20 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
 
   useEffect(() => {
     if (!token) return;
+    const entityPublicIds = backendMods.map((item) => item.uniqueId);
+    if (!entityPublicIds.length) {
+      queueMicrotask(() => setFavoriteSlugs(new Set()));
+      return;
+    }
     let cancelled = false;
-    loadFavoriteCollections(token)
-      .then(async (collections) => Promise.all(collections.map((collection) => loadFavoriteItems(token, collection.id))))
-      .then((groups) => {
+    loadFavoriteMembershipSummary(token, projectType, entityPublicIds)
+      .then((summary) => {
         if (cancelled) return;
-        setFavoriteSlugs(new Set(groups.flat().filter((item) => item.entityType === projectType).map((item) => item.entityKey)));
+        setFavoriteSlugs(new Set(summary.entityPublicIds));
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
-  }, [projectType, token]);
+  }, [backendMods, projectType, token]);
 
   useEffect(() => {
 	let cancelled = false;
@@ -340,7 +344,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
           onToggleList={toggleListParam}
         />
       </CatalogMobileFilterDrawer>
-      {favoriteTarget && token ? <FavoritePickerModal entityType={projectType} entityKey={favoriteTarget.uniqueId} title={favoriteTarget.name} token={token} onClose={() => setFavoriteTarget(null)} onSaved={(selected) => {
+      {favoriteTarget && token ? <FavoritePickerModal entityType={projectType} entityPublicId={favoriteTarget.uniqueId} title={favoriteTarget.name} token={token} onClose={() => setFavoriteTarget(null)} onSaved={(selected) => {
         setFavoriteSlugs((current) => { const next = new Set(current); if (selected) next.add(favoriteTarget.uniqueId); else next.delete(favoriteTarget.uniqueId); return next; });
         setNotice(t(selected ? "mods.notices.favorited" : "mods.notices.unfavorited"));
         setFavoriteTarget(null);
@@ -567,7 +571,7 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<C
   const rawSort = params.get("sort");
   const normalizedSort = normalizeCatalogSortField(rawSort, preferences.sort);
   const sort = modSortFields.includes(normalizedSort) ? normalizedSort : preferences.sort;
-  const sortDirection = normalizeCatalogSortDirection(params.get("order"), preferences.sortDirection, rawSort);
+  const sortDirection = normalizeCatalogSortDirection(params.get("order"), preferences.sortDirection, sort);
   return {
     query: params.get("q")?.trim() ?? "",
     versions: readList(params, "version"),

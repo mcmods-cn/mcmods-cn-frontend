@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { MinecraftVersionConfig } from "../_lib/mod-api";
 import { cacheMinecraftVersionConfig, loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
+import { minecraftLoaderCodeKey } from "../_lib/minecraft-version-selection.mts";
 import { useI18n } from "../_lib/i18n-provider";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { formatBytes } from "../_lib/oss-upload";
 import { useAuthSnapshot } from "../_lib/auth";
 import { LoginRequiredState } from "./page-feedback";
 import type { ProjectEditorApplication } from "./project-editor-application";
+import { mergeProjectEditorReviewPage, projectEditorReviewPagePath } from "../_lib/project-editor-review-pagination.mts";
 
 type ModContentReviewItem = {
   id: string;
@@ -45,6 +47,12 @@ function versionSourceName(sourceUrl: string) {
   } catch {
     return sourceUrl;
   }
+}
+
+function loaderSyncSourceURLs(status: NonNullable<MinecraftVersionConfig["loaderSyncs"]>[number]) {
+  return [...(status.sourceUrls ?? []), status.sourceUrl]
+    .map((sourceUrl) => sourceUrl.trim())
+    .filter((sourceUrl, index, sourceUrls) => sourceUrl !== "" && sourceUrls.indexOf(sourceUrl) === index);
 }
 
 export function MinecraftVersionConfigPanel({ token }: { token: string }) {
@@ -84,7 +92,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
 
   function addLoader() {
     const code = loaderCode.trim();
-    if (!code || config!.loaders.some((item) => item.code === code)) return;
+    if (!code || config!.loaders.some((item) => minecraftLoaderCodeKey(item.code) === minecraftLoaderCodeKey(code))) return;
     setConfig((current) => current ? { ...current, loaders: [...current.loaders, { code, name: code, versions: [] }] } : current);
     setLoaderCode("");
   }
@@ -146,6 +154,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
       <div className="mt-5 grid gap-4">
         {config.loaders.map((loader) => {
           const syncStatus = config.loaderSyncs?.find((item) => item.code.toLowerCase() === loader.code.toLowerCase());
+          const syncSourceURLs = syncStatus ? loaderSyncSourceURLs(syncStatus) : [];
           return <article key={loader.code} className="rounded-lg border border-[var(--line)] p-4">
             <div className="flex flex-wrap items-center gap-2">
               <input className="field max-w-xs font-bold" value={loader.name} onChange={(event) => updateLoader(loader.code, (item) => ({ ...item, name: event.target.value }))} />
@@ -156,7 +165,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
               <button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => setConfig((current) => current ? { ...current, loaders: current.loaders.filter((item) => item.code !== loader.code) } : current)}>{t("common.delete")}</button>
             </div>
             {syncStatus ? <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-[var(--panel-subtle)] px-3 py-2 text-xs text-[var(--muted)]">
-              <a className="text-[var(--accent)] hover:underline" href={syncStatus.sourceUrl} rel="noopener noreferrer" target="_blank">{t("admin.minecraftVersions.loaderSource")}: {versionSourceName(syncStatus.sourceUrl)}</a>
+              {syncSourceURLs.map((sourceUrl, sourceIndex) => <a key={sourceUrl} className="text-[var(--accent)] hover:underline" href={sourceUrl} rel="noopener noreferrer" target="_blank">{t("admin.minecraftVersions.loaderSource")}{syncSourceURLs.length > 1 ? ` ${sourceIndex + 1}` : ""}: {versionSourceName(sourceUrl)}</a>)}
               <span>{t("admin.minecraftVersions.supportedCount", { count: syncStatus.versionCount })}</span>
               {syncStatus.usedFallback ? <span>{t("admin.minecraftVersions.fallbackUsed")}</span> : null}
               <span>{syncStatus.lastSyncedAt ? t("admin.minecraftVersions.lastSynced", { time: syncStatus.lastSyncedAt.replace("T", " ").replace("Z", " UTC") }) : t("admin.minecraftVersions.neverSynced")}</span>
@@ -183,6 +192,10 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "editor
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [facets, setFacets] = useState<ReviewQueueResponse["facets"]>({ categories: [], operations: [], projectTypes: [] });
+  const [editorNextCursor, setEditorNextCursor] = useState("");
+  const [editorLoadingMore, setEditorLoadingMore] = useState(false);
+  const requestGeneration = useRef(0);
+  const requestController = useRef<AbortController | null>(null);
   const pageSize = 50;
   const contentSearch = new URLSearchParams();
   if (category) contentSearch.set("category", category);
@@ -191,21 +204,49 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "editor
   if (search) contentSearch.set("q", search);
   contentSearch.set("limit", String(pageSize));
   contentSearch.set("offset", String(page * pageSize));
-  const endpoint = kind === "content" ? `/api/v1/reviews/content?${contentSearch}` : "/api/v1/admin/project-editor-applications";
-  const load = useCallback(async () => {
+  const contentEndpoint = `/api/v1/reviews/content?${contentSearch}`;
+  const load = useCallback(async (editorCursor = "") => {
+    const appendEditorPage = kind === "editor" && Boolean(editorCursor);
+    const generation = ++requestGeneration.current;
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
+    if (appendEditorPage) setEditorLoadingMore(true);
+    else if (kind === "editor") setEditorNextCursor("");
     try {
-      const result = await apiRequest<{ items: Array<ModContentReviewItem | ProjectEditorApplication>; total?: number; facets?: ReviewQueueResponse["facets"] }>(endpoint, {}, token);
-      setItems(result.items);
+      const endpoint = kind === "content"
+        ? contentEndpoint
+        : projectEditorReviewPagePath("pending", pageSize, editorCursor);
+      const result = await apiRequest<{
+        items: Array<ModContentReviewItem | ProjectEditorApplication>;
+        total?: number;
+        facets?: ReviewQueueResponse["facets"];
+        hasMore?: boolean;
+        nextCursor?: string;
+      }>(endpoint, { signal: controller.signal }, token);
+      if (generation !== requestGeneration.current) return;
+      setItems((current) => appendEditorPage ? mergeProjectEditorReviewPage(current, result.items) : result.items);
       if (kind === "content") {
         if (result.facets) setFacets(result.facets);
         setTotal(result.total ?? result.items.length);
+      } else {
+        setEditorNextCursor(result.hasMore ? result.nextCursor ?? "" : "");
       }
       setMessage("");
     } catch (error) {
+      if (generation !== requestGeneration.current || (error as { name?: string }).name === "AbortError") return;
       setMessage(error instanceof Error ? error.message : t("admin.reviews.loadFailed"));
+    } finally {
+      if (generation === requestGeneration.current) setEditorLoadingMore(false);
     }
-  }, [endpoint, kind, t, token]);
-  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+  }, [contentEndpoint, kind, t, token]);
+  useEffect(() => {
+    queueMicrotask(() => void load());
+    return () => {
+      requestGeneration.current += 1;
+      requestController.current?.abort();
+    };
+  }, [load]);
 
   async function review(item: ModContentReviewItem | ProjectEditorApplication, status: "approved" | "rejected") {
     const url = "reviewUrl" in item ? item.reviewUrl : `/api/v1/admin/project-editor-applications/${item.id}`;
@@ -247,6 +288,7 @@ return <section>
   {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
   <div className="mt-5 grid gap-4">{items.map((item) => { const content = "reviewUrl" in item; const title = content ? item.title : t("admin.reviews.applicationKinds.editor"); const summary = content ? item.summary : item.proofMarkdown; const name = item.username; const projectName = content ? item.modName : item.targetName; const historyHref = content ? contentReviewHistoryHref(item) : item.targetUrl; return <article key={`${content ? item.source : "editor"}-${item.id}`} className="surface p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="mb-2 flex flex-wrap gap-2">{content ? <><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{reviewFacetLabel(t, "categories", item.category)}</span><span className="rounded-full bg-[var(--panel-subtle)] px-2.5 py-1 text-xs font-bold">{reviewFacetLabel(t, "operations", item.operation)}</span>{item.reviewerScope === "project" ? <span className="rounded-full border border-[var(--accent)] px-2.5 py-1 text-xs font-bold text-[var(--accent)]">{t("admin.reviews.projectScoped")}</span> : null}</> : null}</div><h3 className="break-words text-lg font-black">{projectName} · {title}</h3><p className="mt-1 text-sm text-[var(--muted)]">{name} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</p>{content && item.projectId ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.projectType}: {item.projectId}</p> : !content ? <p className="mt-1 font-mono text-xs text-[var(--muted)]">{item.targetType}: {item.targetId}</p> : null}</div>{historyHref ? <Link className="button-secondary focus-ring" href={historyHref} target={content && (item.source === "blueprint" || item.source === "skin") ? "_blank" : undefined}>{t("admin.reviews.viewDetails")}</Link> : null}</div><p className="mt-4 whitespace-pre-wrap text-sm leading-7">{summary || t("admin.reviews.noDescription")}</p>{!content && item.attachments.length ? <div className="mt-3 flex flex-wrap gap-2">{item.attachments.map((attachment) => <button key={attachment.id} className="button-secondary focus-ring" type="button" onClick={() => void openAttachment(item.id, attachment.id)}>{attachment.originalName} · {formatBytes(attachment.sizeBytes)}</button>)}</div> : null}<textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.reviews.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} /><div className="mt-3 flex justify-end gap-2"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></div></article>; })}{items.length === 0 ? <div className="surface grid min-h-52 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.reviews.empty")}</div> : null}</div>
   {kind === "content" && total > pageSize ? <nav className="mt-5 flex items-center justify-between gap-3" aria-label={t("admin.reviews.paginationLabel")}><button className="button-secondary focus-ring" disabled={page === 0} type="button" onClick={() => setPage((current) => Math.max(0, current - 1))}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("admin.reviews.pageSummary", { page: page + 1, pages: Math.max(1, Math.ceil(total / pageSize)), total })}</span><button className="button-secondary focus-ring" disabled={(page + 1) * pageSize >= total} type="button" onClick={() => setPage((current) => current + 1)}>{t("common.next")}</button></nav> : null}
+  {kind === "editor" && editorNextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={editorLoadingMore} type="button" onClick={() => void load(editorNextCursor)}>{editorLoadingMore ? t("common.loading") : t("admin.reviews.loadMore")}</button> : null}
 </section>;
 }
 export function ProjectReviewQueuePage() {

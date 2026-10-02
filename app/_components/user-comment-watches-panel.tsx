@@ -10,6 +10,7 @@ import {
   updateCommentWatchMute,
 } from "../_lib/comment-api";
 import { useI18n } from "../_lib/i18n-provider";
+import { resolveCommentWatchMute } from "../_lib/comment-watch-mute.mts";
 
 export function UserCommentWatchesPanel({ token }: { token: string }) {
   const { locale, t } = useI18n();
@@ -87,7 +88,8 @@ export function UserCommentWatchesPanel({ token }: { token: string }) {
       {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
       <div className="mt-5 grid gap-3">
         {items.map((item) => {
-    const authorName = item.comment.author.username;
+          const authorName = item.comment.author.username;
+          const muteState = resolveCommentWatchMute(item.mutedForever, item.mutedUntil);
           return <article className={`rounded-lg border bg-[var(--panel)] p-4 ${item.unreadCount ? "border-[var(--accent)]" : "border-[var(--line)]"}`} key={item.id}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -106,8 +108,14 @@ export function UserCommentWatchesPanel({ token }: { token: string }) {
               <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={!item.unreadCount} type="button" onClick={() => void markRead(item)}>{t("commentWatches.markRead")}</button>
               <label className="flex items-center gap-2 text-xs font-bold text-[var(--muted)]">
                 {t("commentWatches.mute")}
-                <select className="field py-2" value={item.mutedForever ? "forever" : item.mutedUntil ? "24h" : "none"} onChange={(event) => void mute(item, event.target.value as "none" | "1h" | "24h" | "7d" | "forever")}>
+                <select className="field py-2" value={muteState.selection} onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === "until" || value === "invalid") return;
+                  void mute(item, value as "none" | "1h" | "24h" | "7d" | "forever");
+                }}>
                   <option value="none">{t("commentWatches.muteNone")}</option>
+                  {muteState.selection === "until" ? <option disabled value="until">{t("commentWatches.mutedUntil", { date: new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(muteState.expiresAt)) })}</option> : null}
+                  {muteState.selection === "invalid" ? <option disabled value="invalid">{t("commentWatches.muteInvalid")}</option> : null}
                   <option value="1h">{t("commentWatches.mute1h")}</option>
                   <option value="24h">{t("commentWatches.mute24h")}</option>
                   <option value="7d">{t("commentWatches.mute7d")}</option>

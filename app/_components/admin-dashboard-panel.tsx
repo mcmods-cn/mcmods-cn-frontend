@@ -2,6 +2,14 @@
 
 import Link from "next/link";
 import { type KeyboardEvent, type PointerEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  adminProjectDetailStateMatches,
+  beginAdminProjectDetailLoad,
+  completeAdminProjectDetailLoad,
+  failAdminProjectDetailLoad,
+  type AdminProjectDetailState,
+  visibleAdminProjectDetail,
+} from "../_lib/admin-project-detail-state.mts";
 import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes } from "../_lib/oss-upload";
@@ -67,7 +75,7 @@ type ProjectMetricPoint = {
   downloads: number;
 };
 
-type ProjectList = { items: ProjectSummary[]; total: number; limit: number; offset: number };
+type ProjectList = { items: ProjectSummary[]; limit: number; hasMore: boolean; nextCursor?: string };
 type ProjectDetail = { project: ProjectSummary; trend: ProjectMetricPoint[]; days: number };
 type SiteMetric = "activeUsers" | "views" | "actions" | "newUsers";
 type ProjectMetric = "heat" | "views" | "favorites" | "comments" | "ratings" | "downloads";
@@ -187,16 +195,18 @@ export function AdminDashboardPanel({ initialData, token, features }: {
 
 export function AdminProjectWorkbenchPanel({ token }: { token: string }) {
   const { locale, t } = useI18n();
-  const [projects, setProjects] = useState<ProjectList>({ items: [], total: 0, limit: 30, offset: 0 });
+  const [projects, setProjects] = useState<ProjectList>({ items: [], limit: 30, hasMore: false });
   const [query, setQuery] = useState("");
   const [projectType, setProjectType] = useState("");
-  const [projectOffset, setProjectOffset] = useState(0);
+  const [projectCursor, setProjectCursor] = useState("");
+  const [projectCursorHistory, setProjectCursorHistory] = useState<string[]>([]);
   const [selectedID, setSelectedID] = useState("");
-  const [projectDetail, setProjectDetail] = useState<ProjectDetail | null>(null);
+  const [projectDetailState, setProjectDetailState] = useState<AdminProjectDetailState<ProjectDetail>>({ status: "idle" });
+  const [projectDetailAttempt, setProjectDetailAttempt] = useState(0);
   const [projectMetric, setProjectMetric] = useState<ProjectMetric>("heat");
   const [days, setDays] = useState(30);
   const [loadingProjects, setLoadingProjects] = useState(true);
-  const [error, setError] = useState("");
+  const [projectsError, setProjectsError] = useState("");
   const projectMetrics: Array<{ key: ProjectMetric; label: string }> = [
     { key: "heat", label: t("admin.dashboard.heat") },
     { key: "views", label: t("admin.dashboard.dailyViews") },
@@ -210,65 +220,95 @@ export function AdminProjectWorkbenchPanel({ token }: { token: string }) {
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setLoadingProjects(true);
-      const parameters = new URLSearchParams({ limit: "40", offset: String(projectOffset) });
+      const parameters = new URLSearchParams({ limit: "40" });
       if (query.trim()) parameters.set("q", query.trim());
       if (projectType) parameters.set("type", projectType);
+      if (projectCursor) parameters.set("cursor", projectCursor);
       void apiRequest<ProjectList>(`/api/v1/admin/dashboard/projects?${parameters}`, {}, token)
         .then((result) => {
           if (cancelled) return;
           setProjects(result);
-          setError("");
+          setProjectsError("");
           setSelectedID((current) => current || result.items[0]?.id || "");
         })
-        .catch(() => { if (!cancelled) setError(t("admin.dashboard.projectsLoadFailed")); })
+        .catch(() => { if (!cancelled) setProjectsError(t("admin.dashboard.projectsLoadFailed")); })
         .finally(() => { if (!cancelled) setLoadingProjects(false); });
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [projectOffset, projectType, query, t, token]);
+  }, [projectCursor, projectType, query, t, token]);
 
   useEffect(() => {
     if (!selectedID) return;
-    let cancelled = false;
-    void apiRequest<ProjectDetail>(`/api/v1/admin/dashboard/projects/${encodeURIComponent(selectedID)}?days=${days}`, {}, token)
-      .then((result) => { if (!cancelled) { setProjectDetail(result); setError(""); } })
-      .catch(() => { if (!cancelled) setError(t("admin.dashboard.projectLoadFailed")); });
+    const controller = new AbortController();
+    const request = beginAdminProjectDetailLoad(selectedID, days);
+    void apiRequest<ProjectDetail>(
+      `/api/v1/admin/dashboard/projects/${encodeURIComponent(selectedID)}?days=${days}`,
+      { signal: controller.signal },
+      token,
+    )
+      .then((result) => {
+        if (controller.signal.aborted) return;
+        setProjectDetailState(completeAdminProjectDetailLoad(request, result.project.id, result.days, result));
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setProjectDetailState(failAdminProjectDetailLoad(request));
+      });
     const currentURL = new URL(window.location.href);
     currentURL.searchParams.set("project", selectedID);
     window.history.replaceState(null, "", currentURL);
-    return () => { cancelled = true; };
-  }, [days, selectedID, t, token]);
+    return () => controller.abort();
+  }, [days, projectDetailAttempt, selectedID, token]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const projectFromURL = new URL(window.location.href).searchParams.get("project") ?? "";
-      if (projectFromURL) setSelectedID(projectFromURL);
+      if (projectFromURL) {
+        setProjectDetailState(beginAdminProjectDetailLoad(projectFromURL, 30));
+        setSelectedID(projectFromURL);
+      }
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
 
+  const projectDetail = visibleAdminProjectDetail(projectDetailState, selectedID, days);
+  const detailStateMatchesSelection = adminProjectDetailStateMatches(projectDetailState, selectedID, days);
+
   return (
       <section className="grid min-h-[560px] gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
         <div className="surface min-w-0 rounded-xl p-4">
-          <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("admin.dashboard.projects")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.dashboard.projectCount", { count: projects.total })}</p></div></div>
+          <div className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("admin.dashboard.projects")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.dashboard.projectPage", { count: projectCursorHistory.length + 1 })}</p></div></div>
+          {projectsError ? <p className="mt-3 rounded-lg bg-red-100 px-3 py-2 text-sm font-bold text-red-800">{projectsError}</p> : null}
           <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_180px] xl:grid-cols-1 2xl:grid-cols-[1fr_180px]">
-            <input className="field" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setProjectOffset(0); setSelectedID(""); }} placeholder={t("admin.dashboard.searchProjects")} />
-            <select className="field" value={projectType} onChange={(event) => { setProjectType(event.target.value); setProjectOffset(0); setSelectedID(""); }}>{projectTypes.map((type) => <option value={type} key={type || "all"}>{type ? t(`admin.dashboard.projectTypes.${type}`) : t("admin.dashboard.allTypes")}</option>)}</select>
+            <input className="field" type="search" value={query} onChange={(event) => { setQuery(event.target.value); setProjectCursor(""); setProjectCursorHistory([]); setLoadingProjects(true); setProjectDetailState({ status: "idle" }); setSelectedID(""); }} placeholder={t("admin.dashboard.searchProjects")} />
+            <select className="field" value={projectType} onChange={(event) => { setProjectType(event.target.value); setProjectCursor(""); setProjectCursorHistory([]); setLoadingProjects(true); setProjectDetailState({ status: "idle" }); setSelectedID(""); }}>{projectTypes.map((type) => <option value={type} key={type || "all"}>{type ? t(`admin.dashboard.projectTypes.${type}`) : t("admin.dashboard.allTypes")}</option>)}</select>
           </div>
           <div className="mt-3 max-h-[470px] space-y-2 overflow-y-auto pr-1">
             {loadingProjects ? <p className="py-12 text-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
             {!loadingProjects && projects.items.length === 0 ? <p className="py-12 text-center text-sm font-bold text-[var(--muted)]">{t("admin.dashboard.noProjects")}</p> : null}
-            {projects.items.map((project) => <button className={`focus-ring w-full rounded-lg border p-3 text-left transition ${selectedID === project.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] hover:bg-[var(--panel-subtle)]"}`} key={project.id} type="button" onClick={() => setSelectedID(project.id)}><div className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate">{project.name}</strong><span className="mt-1 block truncate font-mono text-xs text-[var(--muted)]">{t(`admin.dashboard.projectTypes.${project.type}`)} · {project.id}</span></span><span className="shrink-0 text-right"><strong className="block text-[var(--accent)]">{formatNumber(project.heat, locale)}</strong><span className="text-[10px] text-[var(--muted)]">{t("admin.dashboard.heat")}</span></span></div></button>)}
+            {projects.items.map((project) => <button className={`focus-ring w-full rounded-lg border p-3 text-left transition ${selectedID === project.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] hover:bg-[var(--panel-subtle)]"}`} key={project.id} type="button" onClick={() => { setProjectDetailState(beginAdminProjectDetailLoad(project.id, days)); setSelectedID(project.id); }}><div className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate">{project.name}</strong><span className="mt-1 block truncate font-mono text-xs text-[var(--muted)]">{t(`admin.dashboard.projectTypes.${project.type}`)} · {project.id}</span></span><span className="shrink-0 text-right"><strong className="block text-[var(--accent)]">{formatNumber(project.heat, locale)}</strong><span className="text-[10px] text-[var(--muted)]">{t("admin.dashboard.heat")}</span></span></div></button>)}
           </div>
           <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--line)] pt-3">
-            <button className="button-secondary focus-ring" disabled={projectOffset === 0 || loadingProjects} type="button" onClick={() => { setSelectedID(""); setProjectOffset((current) => Math.max(0, current - projects.limit)); }}>{t("common.previous")}</button>
-            <span className="text-xs font-bold text-[var(--muted)]">{projects.total === 0 ? "0" : `${projects.offset + 1}–${Math.min(projects.offset + projects.items.length, projects.total)} / ${projects.total}`}</span>
-            <button className="button-secondary focus-ring" disabled={projectOffset + projects.limit >= projects.total || loadingProjects} type="button" onClick={() => { setSelectedID(""); setProjectOffset((current) => current + projects.limit); }}>{t("common.next")}</button>
+            <button className="button-secondary focus-ring" disabled={projectCursorHistory.length === 0 || loadingProjects} type="button" onClick={() => { const previousCursor = projectCursorHistory.at(-1) ?? ""; setProjectDetailState({ status: "idle" }); setSelectedID(""); setProjectCursorHistory((current) => current.slice(0, -1)); setProjectCursor(previousCursor); }}>{t("common.previous")}</button>
+            <span className="text-xs font-bold text-[var(--muted)]">{t("admin.dashboard.projectPage", { count: projectCursorHistory.length + 1 })}</span>
+            <button className="button-secondary focus-ring" disabled={!projects.hasMore || !projects.nextCursor || loadingProjects} type="button" onClick={() => { if (!projects.nextCursor) return; setProjectDetailState({ status: "idle" }); setSelectedID(""); setProjectCursorHistory((current) => [...current, projectCursor]); setProjectCursor(projects.nextCursor ?? ""); }}>{t("common.next")}</button>
           </div>
         </div>
 
         <div className="surface min-w-0 rounded-xl p-4 sm:p-5">
-          {error ? <p className="mb-4 rounded-lg bg-red-100 px-4 py-3 text-sm font-bold text-red-800">{error}</p> : null}
-          {!selectedID || !projectDetail ? <div className="grid min-h-80 place-items-center text-center text-sm font-bold text-[var(--muted)]">{t("admin.dashboard.selectProject")}</div> : <ProjectAnalytics detail={projectDetail} days={days} metric={projectMetric} metrics={projectMetrics} locale={locale} onDaysChange={setDays} onMetricChange={(value) => setProjectMetric(value as ProjectMetric)} t={t} />}
+          {!selectedID ? (
+            <div className="grid min-h-80 place-items-center text-center text-sm font-bold text-[var(--muted)]">{t("admin.dashboard.selectProject")}</div>
+          ) : projectDetail ? (
+            <ProjectAnalytics detail={projectDetail} days={days} metric={projectMetric} metrics={projectMetrics} locale={locale} onDaysChange={(value) => { setProjectDetailState(beginAdminProjectDetailLoad(selectedID, value)); setDays(value); }} onMetricChange={(value) => setProjectMetric(value as ProjectMetric)} t={t} />
+          ) : detailStateMatchesSelection && projectDetailState.status === "error" ? (
+            <div className="grid min-h-80 place-items-center text-center">
+              <div>
+                <p className="text-sm font-bold text-red-700">{t("admin.dashboard.projectLoadFailed")}</p>
+                <button className="button-secondary focus-ring mt-3" type="button" onClick={() => { setProjectDetailState(beginAdminProjectDetailLoad(selectedID, days)); setProjectDetailAttempt((current) => current + 1); }}>{t("common.retry")}</button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid min-h-80 place-items-center text-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</div>
+          )}
         </div>
       </section>
   );

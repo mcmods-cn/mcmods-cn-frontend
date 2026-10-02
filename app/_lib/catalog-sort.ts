@@ -16,13 +16,6 @@ export const coreCatalogSortFields = ["published", "updated", "heat", "views"] a
 
 export function normalizeCatalogSortField(value: string | null | undefined, fallback: CatalogSortField): CatalogSortField {
   switch (value?.trim()) {
-    case "latest":
-    case "oldest":
-    case "created":
-      return "published";
-    case "nameAsc":
-    case "nameDesc":
-      return "name";
     case "published":
     case "updated":
     case "heat":
@@ -42,10 +35,9 @@ export function normalizeCatalogSortField(value: string | null | undefined, fall
 export function normalizeCatalogSortDirection(
   value: string | null | undefined,
   fallback: CatalogSortDirection = "desc",
-  legacySort?: string | null,
+  sort?: string | null,
 ): CatalogSortDirection {
   if (value === "asc" || value === "desc") return value;
-  if (legacySort === "oldest" || legacySort === "name" || legacySort === "nameAsc") return "asc";
-  if (legacySort === "latest" || legacySort === "nameDesc") return "desc";
+  if (sort === "name") return "asc";
   return fallback;
 }

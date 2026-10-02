@@ -15,7 +15,7 @@ export interface StructureCanvasSource {
   /** Must change whenever name or bytes change. */
   key: string
   name: string
-  load: () => Promise<Uint8Array>
+  load: (signal?: AbortSignal) => Promise<Uint8Array>
 }
 
 export interface StructureCanvasProps {
@@ -77,6 +77,7 @@ export function StructureCanvas({
     const host = hostRef.current
     if (!host) return
     let cancelled = false
+    const controller = new AbortController()
     setError('')
     setProgress({ finishedStates: 0, totalStates: 0, currentState: t('mods.exportImport.renderer.reading') })
     const renderer = new StructureRenderer(host, assetSource, {
@@ -99,8 +100,8 @@ export function StructureCanvas({
       onError: (reason) => { if (!cancelled) setError(reason.message) },
     })
     rendererRef.current = renderer
-    source.load()
-      .then((bytes) => renderer.load(bytes, source.name))
+    source.load(controller.signal)
+      .then((bytes) => renderer.load(bytes, source.name, controller.signal))
       .then(() => {
         const layer = layerViewRef.current
         renderer.setLayerView(layer.min, layer.max, layer.mode, layer.showContextBelow, layer.showContextAbove)
@@ -112,6 +113,7 @@ export function StructureCanvas({
       })
     return () => {
       cancelled = true
+      controller.abort()
       rendererRef.current = null
       renderer.dispose()
     }

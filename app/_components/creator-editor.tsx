@@ -12,16 +12,14 @@ import {
   CreatorKind,
   CreatorLink,
   CreatorLocalization,
-  CreatorRole,
   CreatorSnapshot,
   creatorHref,
 } from "../_lib/community-api";
+import { creatorProfilePayload } from "../_lib/creator-capabilities.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
-import type { BackendModAuthor } from "../_lib/mod-api";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
 import { useAutoDraft } from "../_lib/use-auto-draft";
-import { CreatorPicker } from "./creator-picker";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
 import { ToolsPlayground } from "./tools-playground";
@@ -29,13 +27,10 @@ import { SquareImageCropDialog } from "./square-image-crop-dialog";
 import { ReviewLockGate } from "./review-edit-lock";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
-const authorCreatorKinds: CreatorKind[] = ["author"];
-
 export function CreatorEditorPage({ initialKind, publicId = "" }: { initialKind: CreatorKind; publicId?: string }) {
   const { t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [detail, setDetail] = useState<CreatorDetail | null>(null);
-  const [roles, setRoles] = useState<CreatorRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -44,13 +39,11 @@ export function CreatorEditorPage({ initialKind, publicId = "" }: { initialKind:
     setLoading(true);
     setError("");
     try {
-      const [roleResult, creatorDetail] = await Promise.all([
-        apiRequest<{ items: CreatorRole[] }>("/api/v1/creator-roles", {}, token),
-        publicId ? apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(publicId)}`, {}, token) : Promise.resolve(null),
-      ]);
+      const creatorDetail = publicId
+        ? await apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(publicId)}`, {}, token)
+        : null;
       if (creatorDetail && creatorDetail.creator.kind !== initialKind) throw new Error(t("creators.kindMismatch"));
-      if (creatorDetail && !creatorDetail.canEdit) throw new Error(t("creators.editDenied"));
-      setRoles(roleResult.items);
+      if (creatorDetail && !creatorDetail.canEditProfile) throw new Error(t("creators.editDenied"));
       setDetail(creatorDetail);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : t("creators.loadFailed"));
@@ -69,13 +62,13 @@ export function CreatorEditorPage({ initialKind, publicId = "" }: { initialKind:
   if (!token) return <LoginRequiredState nextPath={publicId ? `${creatorBaseHref(initialKind)}/${publicId}/edit` : initialKind === "team" ? "/teams/new" : "/authors/new"} description={t("creators.editLoginRequired")} />;
   if (error || (publicId && !detail)) return <PageFeedback title={error || t("creators.notFound")} tone="danger" />;
 
-  const editor = <CreatorEditorForm detail={detail} initialKind={initialKind} roles={roles} token={token} />;
+  const editor = <CreatorEditorForm detail={detail} initialKind={initialKind} token={token} />;
   return publicId
     ? <ReviewLockGate entityType="creator" publicId={publicId} returnHref={`${creatorBaseHref(initialKind)}/${publicId}`}>{editor}</ReviewLockGate>
     : editor;
 }
 
-function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: { detail: CreatorDetail | null; initialKind: CreatorKind; roles: CreatorRole[]; token: string }) {
+function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDetail | null; initialKind: CreatorKind; token: string }) {
   const { t } = useI18n();
   const router = useRouter();
   const editing = Boolean(detail);
@@ -88,22 +81,12 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
   const [avatarUrl, setAvatarUrl] = useState(detail?.creator.avatarUrl ?? "");
   const [avatarFileId, setAvatarFileId] = useState<string | undefined>(detail?.avatarFileId);
   const [links, setLinks] = useState<CreatorLink[]>(detail?.links ?? []);
-  const [members, setMembers] = useState<BackendModAuthor[]>(() => detail?.members.map((member) => ({
-    creatorId: member.creatorId,
-    kind: "author",
-    name: member.name,
-    avatarUrl: member.avatarUrl,
-    roleId: member.role.id,
-    role: member.role.name,
-    title: member.title,
-  })) ?? []);
-  const [roles, setRoles] = useState(initialRoles);
-  const [customRole, setCustomRole] = useState("");
-  const [creatingRole, setCreatingRole] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [avatarCropFile, setAvatarCropFile] = useState<File>();
   const [importUrl, setImportUrl] = useState("");
   const [importing, setImporting] = useState(false);
+  const [importedAvatarPreviewUrl, setImportedAvatarPreviewUrl] = useState("");
+  const [importedMemberPreviews, setImportedMemberPreviews] = useState<CreatorImportResult["members"]>([]);
   const [saving, setSaving] = useState(false);
 
   const autoDraft = useAutoDraft({
@@ -125,7 +108,6 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
       avatarUrl,
       avatarFileId,
       links,
-      members,
     },
     onRestore: (restored) => {
       setKind(restored.kind);
@@ -136,7 +118,6 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
       setAvatarUrl(restored.avatarUrl);
       setAvatarFileId(restored.avatarFileId);
       setLinks(restored.links);
-      setMembers(restored.members);
     },
   });
 
@@ -161,10 +142,8 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
     links: links
       .map((link) => ({ type: link.type.trim(), url: link.url.trim(), label: link.label.trim() }))
       .filter((link) => link.type && link.url),
-    members: kind === "team"
-      ? members.flatMap((member) => member.creatorId && member.roleId ? [{ creatorId: member.creatorId, roleId: member.roleId, title: member.title?.trim() ?? "" }] : [])
-      : [],
-  }), [avatarFileId, avatarUrl, defaultLocale, kind, links, localizations, members, name]);
+    members: [],
+  }), [avatarFileId, avatarUrl, defaultLocale, kind, links, localizations, name]);
 
   async function uploadAvatar(file: File) {
     setUploadingAvatar(true);
@@ -172,6 +151,7 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
       const uploaded = await uploadUserFileToOSS(file, token, `creator_avatar:${kind}:${detail?.creator.publicId || "new"}`);
       setAvatarFileId(uploaded.id);
       setAvatarUrl(uploaded.storageUrl || uploaded.accessUrl || uploaded.url || "");
+      setImportedAvatarPreviewUrl("");
     } catch (uploadError) {
       notifySite(uploadError instanceof Error ? uploadError.message : t("creators.avatarUploadFailed"), t("creators.avatar"), "danger");
     } finally {
@@ -188,19 +168,10 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
         body: JSON.stringify({ kind, url: importUrl.trim() }),
       }, token);
       setName(imported.name);
-      if (imported.avatarUrl) {
-        setAvatarUrl(imported.avatarUrl);
-        setAvatarFileId(imported.avatarFileId);
-      }
+      setImportedAvatarPreviewUrl(imported.avatarUrl);
+      setImportedMemberPreviews(imported.members);
       setLinks((current) => mergeImportedCreatorLinks(current, imported.links));
-      if (imported.kind === "team") setMembers((current) => mergeImportedCreatorMembers(current, imported.members));
-      notifySite(
-        imported.createdMembers > 0
-          ? t("creators.importSucceededWithMembers", { count: imported.createdMembers })
-          : t("creators.importSucceeded"),
-        t("creators.importProfile"),
-        "success",
-      );
+      notifySite(t("creators.importSucceeded"), t("creators.importProfile"), "success");
     } catch (importError) {
       notifySite(importError instanceof Error ? importError.message : t("creators.importFailed"), t("creators.importProfile"), "danger");
     } finally {
@@ -210,19 +181,19 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!snapshot.name || (kind === "team" && members.some((member) => !member.creatorId || !member.roleId))) return;
+    if (!snapshot.name) return;
     setSaving(true);
     try {
+      const profilePayload = creatorProfilePayload(snapshot);
       const result = editing
-        ? await apiRequest<{ reviewStatus: "pending" | "approved"; changeRequestId: string }>(`/api/v1/creators/${encodeURIComponent(detail!.creator.publicId)}`, { method: "PUT", body: JSON.stringify(snapshot) }, token)
-        : await apiRequest<{ publicId: string; reviewStatus: "pending" | "approved"; changeRequestId: string }>("/api/v1/creators", { method: "POST", body: JSON.stringify(snapshot) }, token);
+        ? await apiRequest<{ reviewStatus: "pending" | "approved"; changeRequestId: string }>(`/api/v1/creators/${encodeURIComponent(detail!.creator.publicId)}`, { method: "PUT", body: JSON.stringify(profilePayload) }, token)
+        : await apiRequest<{ publicId: string; reviewStatus: "pending" | "approved"; changeRequestId: string }>("/api/v1/creators", { method: "POST", body: JSON.stringify(profilePayload) }, token);
       const publicId = editing ? detail!.creator.publicId : "publicId" in result ? result.publicId : "";
       const targetUrl = `${creatorBaseHref(kind)}/${publicId}`;
       await autoDraft.completeDraft({
         projectKey: `creator:${publicId}`,
         projectTitle: snapshot.name,
         targetUrl,
-        reviewStatus: result.reviewStatus,
         changeRequestId: result.changeRequestId,
       });
       notifySite(result.reviewStatus === "pending" ? t(editing ? "creators.editSubmitted" : "creators.createSubmitted") : t(editing ? "creators.editSaved" : "creators.createSaved"), t("creators.title"), "success");
@@ -231,30 +202,6 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
       notifySite(saveError instanceof Error ? saveError.message : t(editing ? "creators.editFailed" : "creators.createFailed"), t("creators.title"), "danger");
     } finally {
       setSaving(false);
-    }
-  }
-
-  function updateMembers(next: BackendModAuthor[]) {
-    const defaultRole = roles[0];
-    const previous = new Map(members.map((member) => [member.creatorId, member]));
-    setMembers(next.map((member) => {
-      const existing = previous.get(member.creatorId);
-      if (member.roleId || !defaultRole) return { ...member, title: member.title ?? existing?.title ?? "" };
-      return { ...member, roleId: defaultRole.id, role: defaultRole.name, title: member.title ?? existing?.title ?? "" };
-    }));
-  }
-
-  async function createRole() {
-    if (!customRole.trim()) return;
-    setCreatingRole(true);
-    try {
-      const result = await apiRequest<{ id: string; code: string; name: string }>("/api/v1/creator-roles", { method: "POST", body: JSON.stringify({ name: customRole.trim(), description: "", translations: {} }) }, token);
-      setRoles((current) => [...current, { ...result, description: "", translations: {}, custom: true }]);
-      setCustomRole("");
-    } catch (roleError) {
-      notifySite(roleError instanceof Error ? roleError.message : t("creators.roleCreateFailed"), t("creators.members"), "danger");
-    } finally {
-      setCreatingRole(false);
     }
   }
 
@@ -294,10 +241,11 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
               {importing ? t("common.loading") : t("creators.importAction")}
             </button>
           </div>
+          {importedMemberPreviews.length ? <div className="mt-4 rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] p-3"><p className="text-sm font-bold">{t("creators.importMemberPreview", { count: importedMemberPreviews.length })}</p><p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("creators.importMemberPreviewHint")}</p><div className="mt-3 grid gap-2 sm:grid-cols-2">{importedMemberPreviews.map((member, index) => <article className="flex min-w-0 items-center gap-3 rounded-md border border-[var(--line)] bg-[var(--panel)] p-3" key={`${member.profileUrl || member.name}:${index}`}><CreatorAvatar avatarUrl={member.avatarUrl} name={member.name} /><span className="min-w-0 flex-1"><span className="block truncate font-black">{member.name}</span><span className="block truncate text-xs text-[var(--muted)]">{member.externalRole || t("creators.importRoleUnknown")} → {member.suggestedRole}</span><span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-xs font-bold ${member.permissionGranting ? "bg-[var(--danger-soft)] text-[var(--danger)]" : "bg-[var(--accent-soft)] text-[var(--accent)]"}`}>{t(member.permissionGranting ? "creators.importRoleGrantsAccess" : "creators.importRoleDisplayOnly")}</span></span></article>)}</div></div> : null}
         </section>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          {!editing ? <label className="block"><span className="mb-1 block text-sm font-black">{t("creators.kind")}</span><select className="field" value={kind} onChange={(event) => setKind(event.target.value as CreatorKind)}><option value="author">{t("creators.kinds.author")}</option><option value="team">{t("creators.kinds.team")}</option></select></label> : null}
+          {!editing ? <label className="block"><span className="mb-1 block text-sm font-black">{t("creators.kind")}</span><select className="field" value={kind} onChange={(event) => { setKind(event.target.value as CreatorKind); setImportedAvatarPreviewUrl(""); setImportedMemberPreviews([]); }}><option value="author">{t("creators.kinds.author")}</option><option value="team">{t("creators.kinds.team")}</option></select></label> : null}
           <label className={`block ${editing ? "lg:col-span-2" : ""}`}><span className="mb-1 block text-sm font-black">{t("creators.name")}</span><input className="field" autoFocus={!editing} maxLength={160} required value={name} onChange={(event) => setName(event.target.value)} /></label>
         </div>
 
@@ -319,12 +267,12 @@ function CreatorEditorForm({ detail, initialKind, roles: initialRoles, token }: 
         <div className="mt-6 grid gap-5 xl:grid-cols-2">
             <section className="rounded-lg border border-[var(--line)] p-4">
               <h2 className="font-black">{t("creators.avatar")}</h2>
-              <div className="mt-3 flex items-center gap-3"><CreatorAvatar avatarUrl={avatarUrl} name={name} /><label className="button-secondary focus-ring cursor-pointer">{uploadingAvatar ? t("common.loading") : t("creators.chooseAvatar")}<input className="sr-only" accept="image/png,image/jpeg,image/webp,image/gif,image/apng,.apng" disabled={uploadingAvatar} type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setAvatarCropFile(file); }} /></label></div>
+              <div className="mt-3 flex items-center gap-3"><CreatorAvatar avatarUrl={importedAvatarPreviewUrl || avatarUrl} name={name} /><label className="button-secondary focus-ring cursor-pointer">{uploadingAvatar ? t("common.loading") : t("creators.chooseAvatar")}<input className="sr-only" accept="image/png,image/jpeg,image/webp,image/gif,image/apng,.apng" disabled={uploadingAvatar} type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setAvatarCropFile(file); }} /></label></div>
+              {importedAvatarPreviewUrl ? <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{t("creators.importAvatarPreviewOnly")}</p> : null}
             </section>
             <LinkEditor links={links} onChange={setLinks} />
-            {kind === "team" ? <section className="rounded-lg border border-[var(--line)] p-4"><h2 className="font-black">{t("creators.members")}</h2><div className="mt-3"><CreatorPicker allowTitle allowedKinds={authorCreatorKinds} initialRoles={roles} value={members} onChange={updateMembers} /></div><div className="mt-4 border-t border-[var(--line)] pt-4"><p className="text-sm font-black">{t("creators.customRole")}</p><div className="mt-2 grid gap-2 sm:grid-cols-[1fr_auto]"><input className="field" value={customRole} onChange={(event) => setCustomRole(event.target.value)} /><button className="button-secondary focus-ring" disabled={creatingRole || !customRole.trim()} type="button" onClick={() => void createRole()}>{creatingRole ? t("common.loading") : t("common.create")}</button></div></div></section> : null}
         </div>
-        <section className="mt-6"><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("creators.introduction")} ({selectedLocale})</h2><span className="text-xs text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded editorTitle={`${t("creators.introduction")} (${selectedLocale})`} value={localized.contentMarkdown} onChange={(contentMarkdown) => setLocalizations((current) => updateCreatorLocalization(current, selectedLocale, { contentMarkdown }))} /></section>
+        <section className="mt-6"><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("creators.introduction")} ({selectedLocale})</h2><span className="text-xs text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded documentId={`creator:${detail?.creator.publicId || `new:${initialKind}`}:${selectedLocale}:content`} editorTitle={`${t("creators.introduction")} (${selectedLocale})`} value={localized.contentMarkdown} onChange={(contentMarkdown) => setLocalizations((current) => updateCreatorLocalization(current, selectedLocale, { contentMarkdown }))} /></section>
       </form>
       <SquareImageCropDialog file={avatarCropFile} minimumSize={1} outputSizes={[256]} onCancel={() => setAvatarCropFile(undefined)} onConfirm={(output) => { const file = output.files.get(256); setAvatarCropFile(undefined); if (file) void uploadAvatar(file); }} />
     </main>
@@ -373,12 +321,4 @@ function updateCreatorLocalization(localizations: CreatorLocalization[], locale:
 function mergeImportedCreatorLinks(current: CreatorLink[], imported: CreatorLink[]) {
   const importedTypes = new Set(imported.map((link) => link.type.toLowerCase()));
   return [...current.filter((link) => !importedTypes.has(link.type.toLowerCase())), ...imported];
-}
-
-function mergeImportedCreatorMembers(current: BackendModAuthor[], imported: BackendModAuthor[]) {
-  const members = new Map(current.flatMap((member) => member.creatorId ? [[member.creatorId, member] as const] : []));
-  for (const member of imported) {
-    if (member.creatorId) members.set(member.creatorId, member);
-  }
-  return [...members.values()];
 }

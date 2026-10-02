@@ -1,6 +1,7 @@
 import { Buffer } from 'buffer'
 import { gunzipSync, unzlibSync } from 'fflate'
 import { decode } from 'nbt-ts'
+import { throwIfAborted } from './structureLoadControl.mts'
 
 type Compound = Record<string, unknown>
 type Vec3 = [number, number, number]
@@ -31,18 +32,22 @@ export interface StructureBlueprint {
 const MAX_VOLUME = 16_000_000
 const MAX_VISIBLE_BLOCKS = 600_000
 
-export function parseBlueprint(input: Uint8Array, name: string): StructureBlueprint {
+export function parseBlueprint(input: Uint8Array, name: string, signal?: AbortSignal): StructureBlueprint {
+  throwIfAborted(signal)
   if (name.toLocaleLowerCase().endsWith('.json')) {
-    return parseNormalizedJson(new TextDecoder().decode(input), name)
+    const text = new TextDecoder().decode(input)
+    throwIfAborted(signal)
+    return parseNormalizedJson(text, name, signal)
   }
-  const root = decodeNbtRoot(input)
-  if (isCompound(root.Regions)) return parseLitematic(root, name)
-  if (isCompound(root.Palette) || isCompound(root.Schematic)) return parseSpongeSchematic(root, name)
-  if (Array.isArray(root.palette) || Array.isArray(root.palettes)) return parseVanillaStructure(root, name)
+  const root = decodeNbtRoot(input, signal)
+  if (isCompound(root.Regions)) return parseLitematic(root, name, signal)
+  if (isCompound(root.Palette) || isCompound(root.Schematic)) return parseSpongeSchematic(root, name, signal)
+  if (Array.isArray(root.palette) || Array.isArray(root.palettes)) return parseVanillaStructure(root, name, signal)
   throw new Error('无法识别蓝图格式：需要原版/Create .nbt、Sponge .schem、Litematica .litematic 或规范化 JSON')
 }
 
-function decodeNbtRoot(input: Uint8Array): Compound {
+function decodeNbtRoot(input: Uint8Array, signal?: AbortSignal): Compound {
+  throwIfAborted(signal)
   let data = input
   if (data[0] === 0x1f && data[1] === 0x8b) {
     data = gunzipSync(data)
@@ -53,9 +58,11 @@ function decodeNbtRoot(input: Uint8Array): Compound {
       // It may be uncompressed NBT whose first two bytes happen to resemble zlib.
     }
   }
+  throwIfAborted(signal)
   const globals = globalThis as typeof globalThis & { Buffer?: typeof Buffer }
   globals.Buffer ??= Buffer
   const decoded = decode(Buffer.from(data))
+  throwIfAborted(signal)
   if (!isCompound(decoded.value)) throw new Error('NBT 根标签不是 Compound')
   return decoded.value
 }
@@ -67,7 +74,7 @@ function looksLikeZlib(data: Uint8Array): boolean {
   return (cmf & 0x0f) === 8 && ((cmf << 8) + flag) % 31 === 0
 }
 
-function parseVanillaStructure(root: Compound, name: string): StructureBlueprint {
+function parseVanillaStructure(root: Compound, name: string, signal?: AbortSignal): StructureBlueprint {
   const size = readListVec3(root.size, 'size')
   assertVolume(size)
   const palettes = tagList(root.palettes)
@@ -81,7 +88,10 @@ function parseVanillaStructure(root: Compound, name: string): StructureBlueprint
 
   const blocks: BlueprintBlock[] = []
   let blockEntityCount = 0
-  for (const raw of tagList(root.blocks)) {
+  const rawBlocks = tagList(root.blocks)
+  for (let index = 0; index < rawBlocks.length; index++) {
+    abortCheckpoint(signal, index)
+    const raw = rawBlocks[index]
     const block = requireCompound(raw, 'blocks[]')
     const position = readListVec3(block.pos, 'blocks[].pos')
     const stateIndex = tagNumber(block.state)
@@ -110,7 +120,7 @@ function parseVanillaStructure(root: Compound, name: string): StructureBlueprint
   }
 }
 
-function parseSpongeSchematic(root: Compound, name: string): StructureBlueprint {
+function parseSpongeSchematic(root: Compound, name: string, signal?: AbortSignal): StructureBlueprint {
   const schematic = isCompound(root.Schematic) ? root.Schematic : root
   const blocksRoot = isCompound(schematic.Blocks) ? schematic.Blocks : schematic
   const size: Vec3 = [
@@ -121,14 +131,17 @@ function parseSpongeSchematic(root: Compound, name: string): StructureBlueprint 
   assertVolume(size)
   const paletteCompound = requireCompound(blocksRoot.Palette, 'Palette')
   const palette: BlueprintState[] = []
+  let palettePosition = 0
   for (const [stateText, rawIndex] of Object.entries(paletteCompound)) {
+    abortCheckpoint(signal, palettePosition++)
     palette[tagNumber(rawIndex)] = parseStateText(stateText)
   }
   const encoded = byteArray(blocksRoot.Data ?? schematic.BlockData)
-  const indices = decodeVarInts(encoded, size[0] * size[1] * size[2])
+  const indices = decodeVarInts(encoded, size[0] * size[1] * size[2], signal)
   const blocks: BlueprintBlock[] = []
   const warnings: string[] = []
   for (let index = 0; index < indices.length; index++) {
+    abortCheckpoint(signal, index)
     const state = palette[indices[index]!]
     if (!state) {
       warnings.push(`跳过无效 palette 索引 ${indices[index]}`)
@@ -154,7 +167,7 @@ function parseSpongeSchematic(root: Compound, name: string): StructureBlueprint 
   }
 }
 
-function parseLitematic(root: Compound, name: string): StructureBlueprint {
+function parseLitematic(root: Compound, name: string, signal?: AbortSignal): StructureBlueprint {
   const regions = requireCompound(root.Regions, 'Regions')
   const warnings: string[] = []
   const rawBlocks: BlueprintBlock[] = []
@@ -165,7 +178,9 @@ function parseLitematic(root: Compound, name: string): StructureBlueprint {
   const min: Vec3 = [Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]
   const max: Vec3 = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY]
 
+  let regionPosition = 0
   for (const [regionName, rawRegion] of Object.entries(regions)) {
+    abortCheckpoint(signal, regionPosition++)
     const region = requireCompound(rawRegion, `Regions.${regionName}`)
     const position = readCompoundVec3(region.Position, `Regions.${regionName}.Position`)
     const signedSize = readCompoundVec3(region.Size, `Regions.${regionName}.Size`)
@@ -183,6 +198,7 @@ function parseLitematic(root: Compound, name: string): StructureBlueprint {
     const bits = Math.max(2, Math.ceil(Math.log2(Math.max(1, palette.length))))
     const volume = size[0] * size[1] * size[2]
     for (let index = 0; index < volume; index++) {
+      abortCheckpoint(signal, index)
       const paletteIndex = readPackedIndex(packed, index, bits)
       const state = palette[paletteIndex]
       if (!state || isAir(state.id)) continue
@@ -205,7 +221,9 @@ function parseLitematic(root: Compound, name: string): StructureBlueprint {
   }
 
   if (!Number.isFinite(min[0])) throw new Error('Litematic 没有可用 Region')
+  let occupiedPosition = 0
   occupied.forEach((block) => {
+    abortCheckpoint(signal, occupiedPosition++)
     rawBlocks.push({
       ...block,
       position: [
@@ -230,19 +248,26 @@ function parseLitematic(root: Compound, name: string): StructureBlueprint {
   }
 }
 
-function parseNormalizedJson(text: string, name: string): StructureBlueprint {
+function parseNormalizedJson(text: string, name: string, signal?: AbortSignal): StructureBlueprint {
   const root = JSON.parse(text) as Compound
+  throwIfAborted(signal)
   const size = readListVec3(root.size, 'size')
   assertVolume(size)
-  const blocks = tagList(root.blocks).map((raw, index) => {
+  const blocks: BlueprintBlock[] = []
+  const rawBlocks = tagList(root.blocks)
+  for (let index = 0; index < rawBlocks.length; index++) {
+    abortCheckpoint(signal, index)
+    const raw = rawBlocks[index]
     const block = requireCompound(raw, `blocks[${index}]`)
     const stateRaw = requireCompound(block.state, `blocks[${index}].state`)
     const id = String(stateRaw.id ?? 'minecraft:air')
     const properties = isCompound(stateRaw.properties)
       ? Object.fromEntries(Object.entries(stateRaw.properties).map(([key, value]) => [key, String(value)]))
       : {}
-    return { position: readListVec3(block.position ?? block.pos, `blocks[${index}].position`), state: { id, properties } }
-  }).filter((block) => !isAir(block.state.id))
+    if (!isAir(id)) {
+      blocks.push({ position: readListVec3(block.position ?? block.pos, `blocks[${index}].position`), state: { id, properties } })
+    }
+  }
   assertBlockCount(blocks.length)
   return {
     name,
@@ -276,11 +301,13 @@ function parseStateText(input: string): BlueprintState {
   return { id, properties }
 }
 
-function decodeVarInts(bytes: Uint8Array, expected: number): number[] {
+function decodeVarInts(bytes: Uint8Array, expected: number, signal?: AbortSignal): number[] {
   const output: number[] = []
   let value = 0
   let shift = 0
+  let position = 0
   for (const signed of bytes) {
+    abortCheckpoint(signal, position++)
     const byte = signed & 0xff
     value |= (byte & 0x7f) << shift
     if ((byte & 0x80) === 0) {
@@ -366,6 +393,10 @@ function assertBlockCount(count: number) {
   if (count > MAX_VISIBLE_BLOCKS) {
     throw new Error(`可见方块数超过前端安全上限 ${MAX_VISIBLE_BLOCKS.toLocaleString()}，请先分割蓝图或使用服务端生成预览`)
   }
+}
+
+function abortCheckpoint(signal: AbortSignal | undefined, position: number) {
+  if ((position & 2047) === 0) throwIfAborted(signal)
 }
 
 function isAir(id: string): boolean {

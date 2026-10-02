@@ -1,0 +1,55 @@
+name: Frontend CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_PUBLIC_API_BASE_URL: https://api.example.test
+  NEXT_PUBLIC_SITE_URL: https://www.example.test
+  NEXT_PUBLIC_YGGDRASIL_API_ROOT: https://api.example.test/api/yggdrasil/
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Node from the lockfile contract
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - name: Install exact dependencies
+        run: npm ci
+      - name: Test, type-check, lint, and build
+        run: |
+          npm test
+          npm run typecheck
+          npm run lint
+          npm run build
+      - name: Install the pinned browser driver runtime
+        run: npx playwright install --with-deps chromium
+      - name: Exercise production React flows in a real browser
+        run: npm run test:browser
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Build the production image
+        run: >-
+          docker build --pull
+          --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL"
+          --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL"
+          --build-arg NEXT_PUBLIC_YGGDRASIL_API_ROOT="$NEXT_PUBLIC_YGGDRASIL_API_ROOT"
+          --tag mcmods-cn-frontend:ci .

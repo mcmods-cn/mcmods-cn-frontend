@@ -8,7 +8,7 @@ import { saveAuth, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { invalidatePublicUserCard, type AITokenBalance, type OnlineStatus } from "../_lib/user-api";
 import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
-import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection, favoriteItemHref, FavoriteCollectionItem, loadFavoriteCollections, loadFavoriteItems, updateFavoriteCollection } from "../_lib/favorite-api";
+import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection, favoriteItemHref, FavoriteCollectionItem, FavoritePage, loadFavoriteCollections, loadFavoriteItems, updateFavoriteCollection } from "../_lib/favorite-api";
 import { UserEconomyPanel } from "./user-economy-panel";
 import { UserPlayerProfilesPanel } from "./user-player-profiles-panel";
 import { ContentLanguagePreferences } from "./content-language-preferences";
@@ -602,33 +602,52 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
   const { t } = useI18n();
   const exportTaskId = useSearchParams().get("exportTask") ?? "";
   const [collections, setCollections] = useState<FavoriteCollection[]>([]);
+  const [collectionPage, setCollectionPage] = useState<FavoritePage<FavoriteCollection> | null>(null);
+  const [favoriteCollectionCursorHistory, setFavoriteCollectionCursorHistory] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [items, setItems] = useState<FavoriteCollectionItem[]>([]);
+  const [itemPage, setItemPage] = useState<FavoritePage<FavoriteCollectionItem> | null>(null);
+  const [favoriteItemCursorHistory, setFavoriteItemCursorHistory] = useState<string[]>([]);
   const [name, setName] = useState("");
   const [newCollectionPublic, setNewCollectionPublic] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const currentCollectionCursor = favoriteCollectionCursorHistory.at(-1) ?? "";
+  const currentItemCursor = favoriteItemCursorHistory.at(-1) ?? "";
 
   const refreshCollections = useCallback(async () => {
     setLoading(true);
+    setItems([]);
+    setItemPage(null);
     try {
-      const next = await loadFavoriteCollections(token);
-      setCollections(next);
-      setSelectedId((current) => current && next.some((item) => item.id === current) ? current : next[0]?.id ?? null);
+      const next = await loadFavoriteCollections(token, currentCollectionCursor);
+      setCollections(next.items);
+      setCollectionPage(next);
+      setSelectedId((current) => current && next.items.some((item) => item.id === current) ? current : next.items[0]?.id ?? null);
+      setFavoriteItemCursorHistory([]);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("favorites.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [t, token]);
+  }, [currentCollectionCursor, t, token]);
 
   useEffect(() => {
     let cancelled = false;
-    loadFavoriteCollections(token)
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setLoading(true);
+        setItems([]);
+        setItemPage(null);
+      }
+    });
+    loadFavoriteCollections(token, currentCollectionCursor)
       .then((next) => {
         if (cancelled) return;
-        setCollections(next);
-        setSelectedId(next[0]?.id ?? null);
+        setCollections(next.items);
+        setCollectionPage(next);
+        setSelectedId(next.items[0]?.id ?? null);
+        setFavoriteItemCursorHistory([]);
       })
       .catch((error) => {
         if (!cancelled) setMessage(error instanceof Error ? error.message : t("favorites.loadFailed"));
@@ -637,23 +656,34 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [t, token]);
+  }, [currentCollectionCursor, t, token]);
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId) {
+      queueMicrotask(() => {
+        setItems([]);
+        setItemPage(null);
+      });
+      return;
+    }
     let cancelled = false;
-    loadFavoriteItems(token, selectedId)
-      .then((result) => { if (!cancelled) setItems(result); })
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setItems([]);
+        setItemPage(null);
+      }
+    });
+    loadFavoriteItems(token, selectedId, currentItemCursor)
+      .then((result) => { if (!cancelled) { setItems(result.items); setItemPage(result); } })
       .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("favorites.loadFailed")); });
     return () => { cancelled = true; };
-  }, [selectedId, t, token]);
+  }, [currentItemCursor, selectedId, t, token]);
 
   async function createCollection() {
     const nextName = name.trim();
     if (!nextName) return;
     try {
-      const created = await createFavoriteCollection(token, nextName, newCollectionPublic);
-      setCollections((current) => [...current, created]);
-      setSelectedId(created.id);
+      await createFavoriteCollection(token, nextName, newCollectionPublic);
+      await refreshCollections();
       setName("");
       setNewCollectionPublic(false);
     } catch (error) {
@@ -715,9 +745,9 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
         <aside className="grid content-start gap-2">
           {loading ? <p className="p-3 font-bold text-[var(--muted)]">{t("common.loading")}</p> : collections.map((collection) => (
             <div className={`flex items-center rounded-lg border ${selectedId === collection.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)]"}`} key={collection.id}>
-              <button className="focus-ring min-w-0 flex-1 px-3 py-3 text-left" type="button" onClick={() => setSelectedId(collection.id)}>
+              <button className="focus-ring min-w-0 flex-1 px-3 py-3 text-left" type="button" onClick={() => { setSelectedId(collection.id); setFavoriteItemCursorHistory([]); }}>
                 <span className="block truncate font-bold">{collection.isDefault ? t("favorites.defaultFolder") : collection.name}</span>
-                <span className="text-xs text-[var(--muted)]">{t("favorites.itemCount", { count: collection.itemCount })} · {collection.isPublic ? t("favorites.public") : t("favorites.private")}</span>
+                <span className="text-xs text-[var(--muted)]">{collection.isPublic ? t("favorites.public") : t("favorites.private")}</span>
               </button>
               <button className="focus-ring rounded p-2 text-xs font-bold text-[var(--accent)]" title={t("favorites.changeVisibility")} type="button" onClick={() => void toggleCollectionVisibility(collection)}>
                 {collection.isPublic ? t("favorites.makePrivate") : t("favorites.makePublic")}
@@ -725,13 +755,15 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
               {!collection.isDefault ? <button className="focus-ring mr-2 rounded p-2 text-sm text-red-600" title={t("common.delete")} type="button" onClick={() => void removeCollection(collection)}>×</button> : null}
             </div>
           ))}
+          {collectionPage && (favoriteCollectionCursorHistory.length > 0 || collectionPage.hasMore) ? <div className="mt-2 flex items-center justify-between gap-2"><button className="button-secondary focus-ring" disabled={loading || favoriteCollectionCursorHistory.length === 0} type="button" onClick={() => setFavoriteCollectionCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-xs font-bold text-[var(--muted)]">{t("favorites.page", { page: favoriteCollectionCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={loading || !collectionPage.hasMore || !collectionPage.nextCursor} type="button" onClick={() => setFavoriteCollectionCursorHistory((history) => [...history, collectionPage.nextCursor])}>{t("common.next")}</button></div> : null}
         </aside>
         <section className="min-w-0 rounded-lg border border-[var(--line)] p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-black">{selected?.isDefault ? t("favorites.defaultFolder") : selected?.name ?? t("favorites.title")}</h3>
             {selected ? <div className="flex flex-wrap items-center gap-2"><span className="rounded-full border border-[var(--line)] px-2 py-1 text-xs font-bold">{selected.isPublic ? t("favorites.public") : t("favorites.private")}</span><FavoriteModpackExport collectionId={selected.id} collectionName={selected.isDefault ? t("favorites.defaultFolder") : selected.name} initialTaskId={exportTaskId} token={token} /></div> : null}
           </div>
-          {items.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item) => <Link className="focus-ring rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)} key={`${item.entityType}:${item.entityKey}`}><span className="block truncate font-bold">{item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityKey}</span><span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.entityType} · {item.entityKey}</span></Link>)}</div> : <p className="py-12 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
+          {items.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{items.map((item) => <Link className="focus-ring rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)} key={`${item.entityType}:${item.entityPublicId}`}><span className="block truncate font-bold">{item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityPublicId}</span><span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.entityType} · {item.entityPublicId}</span></Link>)}</div> : <p className="py-12 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
+          {itemPage && (favoriteItemCursorHistory.length > 0 || itemPage.hasMore) ? <div className="mt-4 flex items-center justify-between gap-2"><button className="button-secondary focus-ring" disabled={favoriteItemCursorHistory.length === 0} type="button" onClick={() => setFavoriteItemCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-xs font-bold text-[var(--muted)]">{t("favorites.page", { page: favoriteItemCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={!itemPage.hasMore || !itemPage.nextCursor} type="button" onClick={() => setFavoriteItemCursorHistory((history) => [...history, itemPage.nextCursor])}>{t("common.next")}</button></div> : null}
         </section>
       </div>
     </section>

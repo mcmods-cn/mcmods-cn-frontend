@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import type { AssetSource } from './types'
+import { abortReason, isAbortError, throwIfAborted } from './structureLoadControl.mts'
 
 type Vec3 = [number, number, number]
 type Vec4 = [number, number, number, number]
@@ -143,36 +144,48 @@ export async function buildMinecraftBlockModel(
   blockId: string,
   defaultState: Record<string, string> = {},
   blockEntityModel?: ExportedBlockEntityModel,
+  signal?: AbortSignal,
 ): Promise<THREE.Group> {
+  throwIfAborted(signal)
   const { namespace, path } = splitId(blockId)
   if (blockEntityModel?.modelAvailable && blockEntityModel.variants.length) {
     try {
-      return await createExportedBlockEntityGroup(bundle, blockId, defaultState, blockEntityModel)
+      return await createExportedBlockEntityGroup(bundle, blockId, defaultState, blockEntityModel, signal)
     } catch (error) {
+      if (isAbortError(error)) throw error
       if (blockEntityModel.modelSource === 'minecraft_chest_layer') throw error
       // Some runtime renderers export atlas-space UVs that cannot be used
       // without the original atlas transform. Fall back to the block model.
     }
   }
   if (namespace === 'minecraft' && isVanillaChest(path)) {
-    return createVanillaChestGroup(bundle, path, defaultState)
+    return createVanillaChestGroup(bundle, path, defaultState, signal)
   }
   const blockStatePath = `assets/${namespace}/blockstates/${path}.json`
-  const blockState = await bundle.json<BlockStateJson>(blockStatePath)
+  const blockState = await bundle.json<BlockStateJson>(blockStatePath, signal)
+  throwIfAborted(signal)
   const applies = selectApplies(blockState, defaultState)
   if (!applies.length) throw new Error(`blockstate 没有可渲染 model：${blockStatePath}`)
 
   const result = new THREE.Group()
-  for (const apply of applies) {
-    if (!apply.model) continue
-    const model = await resolveModel(bundle, apply.model, new Set())
-    const modelGroup = await createModelGroup(bundle, model, blockId, defaultState)
-    modelGroup.rotation.order = 'YXZ'
-    modelGroup.rotation.x = THREE.MathUtils.degToRad(-(apply.x ?? 0))
-    modelGroup.rotation.y = THREE.MathUtils.degToRad(-(apply.y ?? 0))
-    result.add(modelGroup)
+  try {
+    for (let index = 0; index < applies.length; index++) {
+      throwIfAborted(signal)
+      const apply = applies[index]!
+      if (!apply.model) continue
+      const model = await resolveModel(bundle, apply.model, new Set(), signal)
+      const modelGroup = await createModelGroup(bundle, model, blockId, defaultState, signal)
+      throwIfAborted(signal)
+      modelGroup.rotation.order = 'YXZ'
+      modelGroup.rotation.x = THREE.MathUtils.degToRad(-(apply.x ?? 0))
+      modelGroup.rotation.y = THREE.MathUtils.degToRad(-(apply.y ?? 0))
+      result.add(modelGroup)
+    }
+    return result
+  } catch (error) {
+    disposeModelObject(result)
+    throw error
   }
-  return result
 }
 
 async function createExportedBlockEntityGroup(
@@ -180,7 +193,9 @@ async function createExportedBlockEntityGroup(
   blockId: string,
   defaultState: Record<string, string>,
   model: ExportedBlockEntityModel,
+  signal?: AbortSignal,
 ): Promise<THREE.Group> {
+  throwIfAborted(signal)
   const requestedVariant = defaultState.type ?? defaultState.chest_type
   const variant = model.variants.find((entry) => entry.variantId === requestedVariant && entry.uvComplete)
     ?? model.variants.find((entry) => entry.variantId === 'single' && entry.uvComplete)
@@ -206,7 +221,9 @@ async function createExportedBlockEntityGroup(
   const uvs: number[] = []
   const normals: number[] = []
   const indices: number[] = []
-  for (const face of faces) {
+  for (let faceIndex = 0; faceIndex < faces.length; faceIndex++) {
+    abortCheckpoint(signal, faceIndex)
+    const face = faces[faceIndex]!
     if (face.vertices.length !== 4) throw new Error('exported block entity mesh contains a non-quad face')
     const offset = positions.length / 3
     for (const vertex of face.vertices) {
@@ -232,7 +249,14 @@ async function createExportedBlockEntityGroup(
   geometry.computeBoundingBox()
   geometry.computeBoundingSphere()
 
-  const map = await new THREE.TextureLoader().loadAsync(textureURL)
+  let map: THREE.Texture
+  try {
+    map = await loadTexture(textureURL, signal)
+  } catch (error) {
+    geometry.dispose()
+    throw error
+  }
+  throwIfAborted(signal)
   map.colorSpace = THREE.SRGBColorSpace
   map.magFilter = THREE.NearestFilter
   map.minFilter = THREE.NearestMipmapNearestFilter
@@ -308,17 +332,22 @@ async function resolveModel(
   bundle: AssetSource,
   modelId: string,
   visited: Set<string>,
+  signal?: AbortSignal,
 ): Promise<ResolvedModel> {
+  throwIfAborted(signal)
   const location = parseLocation(modelId)
   const canonical = `${location.namespace}:${location.path}`
   if (visited.has(canonical)) throw new Error(`模型 parent 循环引用：${canonical}`)
   visited.add(canonical)
 
-  const builtin = builtinModel(canonical)
-  const current = builtin ?? await bundle.json<ModelJson>(`assets/${location.namespace}/models/${location.path}.json`)
-  const resolved = await resolveModelJson(bundle, current, location.namespace, visited, canonical)
-  visited.delete(canonical)
-  return resolved
+  try {
+    const builtin = builtinModel(canonical)
+    const current = builtin ?? await bundle.json<ModelJson>(`assets/${location.namespace}/models/${location.path}.json`, signal)
+    throwIfAborted(signal)
+    return await resolveModelJson(bundle, current, location.namespace, visited, canonical, signal)
+  } finally {
+    visited.delete(canonical)
+  }
 }
 
 async function resolveModelJson(
@@ -327,20 +356,23 @@ async function resolveModelJson(
   namespace: string,
   visited: Set<string>,
   identity: string,
+  signal?: AbortSignal,
 ): Promise<ResolvedModel> {
+  throwIfAborted(signal)
   let parent: ResolvedModel | undefined
   if (current.parent) {
-    parent = await resolveModel(bundle, current.parent, visited)
+    parent = await resolveModel(bundle, current.parent, visited, signal)
   }
   let children = parent?.children ?? []
   if (current.children) {
     children = []
     for (const [name, child] of Object.entries(current.children)) {
+      throwIfAborted(signal)
       const childIdentity = `${identity}#children/${name}`
       if (visited.has(childIdentity)) throw new Error(`模型 children 循环引用：${childIdentity}`)
       visited.add(childIdentity)
       try {
-        children.push({ name, model: await resolveModelJson(bundle, child, namespace, visited, childIdentity) })
+        children.push({ name, model: await resolveModelJson(bundle, child, namespace, visited, childIdentity, signal) })
       } finally {
         visited.delete(childIdentity)
       }
@@ -352,7 +384,7 @@ async function resolveModelJson(
     if (visited.has(baseIdentity)) throw new Error(`模型 base 循环引用：${baseIdentity}`)
     visited.add(baseIdentity)
     try {
-      baseModel = await resolveModelJson(bundle, current.base, namespace, visited, baseIdentity)
+      baseModel = await resolveModelJson(bundle, current.base, namespace, visited, baseIdentity, signal)
     } finally {
       visited.delete(baseIdentity)
     }
@@ -382,16 +414,18 @@ async function createModelGroup(
   model: ResolvedModel,
   blockId: string,
   blockState: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<THREE.Group> {
+  throwIfAborted(signal)
   if (model.loader === 'forge:obj' || model.loader === 'neoforge:obj' || model.loader === 'porting_lib:obj') {
-    return createForgeObjGroup(bundle, model)
+    return createForgeObjGroup(bundle, model, signal)
   }
   if (model.loader === 'forge:composite' || model.loader === 'neoforge:composite' || model.loader === 'porting_lib:composite') {
-    return createForgeCompositeGroup(bundle, model, blockId, blockState)
+    return createForgeCompositeGroup(bundle, model, blockId, blockState, signal)
   }
   if (model.loader === 'forge:separate_transforms' || model.loader === 'neoforge:separate_transforms') {
     if (!model.baseModel) throw new Error(`${model.loader} 模型缺少 base`)
-    return createModelGroup(bundle, model.baseModel, blockId, blockState)
+    return createModelGroup(bundle, model.baseModel, blockId, blockState, signal)
   }
   if (model.loader === 'forge:empty' || model.loader === 'neoforge:empty' || model.loader === 'porting_lib:empty') {
     return new THREE.Group()
@@ -401,7 +435,9 @@ async function createModelGroup(
     : model.elements
   const group = new THREE.Group()
   const materialCache = new Map<string, THREE.MeshStandardMaterial>()
-  for (const element of elements) {
+  for (let elementIndex = 0; elementIndex < elements.length; elementIndex++) {
+    abortCheckpoint(signal, elementIndex)
+    const element = elements[elementIndex]!
     for (const direction of directions) {
       const face = element.faces[direction]
       if (!face) continue
@@ -437,6 +473,7 @@ async function createModelGroup(
     }
   }
   if (!group.children.length) {
+    disposeModelObject(group)
     if (model.loader) {
       throw new Error(`模型使用自定义 loader：${model.loader}；该 loader 不是标准 Minecraft elements/faces 模型`)
     }
@@ -471,17 +508,24 @@ async function createForgeCompositeGroup(
   model: ResolvedModel,
   blockId: string,
   blockState: Record<string, string>,
+  signal?: AbortSignal,
 ): Promise<THREE.Group> {
+  throwIfAborted(signal)
   if (!model.children.length) throw new Error(`${model.loader} 模型缺少 children 子模型`)
   const group = new THREE.Group()
   const failures: string[] = []
   for (const child of model.children) {
+    throwIfAborted(signal)
     if (model.visibility[child.name] === false) continue
     try {
-      const childGroup = await createModelGroup(bundle, child.model, blockId, blockState)
+      const childGroup = await createModelGroup(bundle, child.model, blockId, blockState, signal)
       childGroup.name = child.name
       group.add(childGroup)
     } catch (error) {
+      if (isAbortError(error)) {
+        disposeModelObject(group)
+        throw error
+      }
       failures.push(`${child.name}: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
@@ -493,18 +537,21 @@ async function createForgeCompositeGroup(
   return group
 }
 
-async function createForgeObjGroup(bundle: AssetSource, model: ResolvedModel): Promise<THREE.Group> {
+async function createForgeObjGroup(bundle: AssetSource, model: ResolvedModel, signal?: AbortSignal): Promise<THREE.Group> {
+  throwIfAborted(signal)
   if (!model.objModel) throw new Error(`${model.loader} 模型 JSON 缺少 model 字段`)
   const objLocation = parseLocation(model.objModel)
   const objPath = modelAssetPath(objLocation.namespace, objLocation.path, '.obj')
   if (!bundle.has(objPath)) throw new Error(`导出包缺少 OBJ：${objPath}`)
-  const objText = await bundle.text(objPath)
+  const objText = await bundle.text(objPath, signal)
+  throwIfAborted(signal)
 
   const manager = new THREE.LoadingManager()
   let materialCreator: ReturnType<MTLLoader['parse']> | undefined
   const mtlPath = findMtlPath(bundle, objText, objPath, objLocation.namespace, model.mtlOverride)
   if (mtlPath) {
-    const mtlText = await bundle.text(mtlPath)
+    const mtlText = await bundle.text(mtlPath, signal)
+    throwIfAborted(signal)
     const rewrittenMtl = rewriteMtlTexturePaths(bundle, mtlText, mtlPath, objLocation.namespace, model.textures)
     materialCreator = new MTLLoader(manager).parse(rewrittenMtl, '')
     materialCreator.preload()
@@ -512,7 +559,12 @@ async function createForgeObjGroup(bundle: AssetSource, model: ResolvedModel): P
 
   const loader = new OBJLoader(manager)
   if (materialCreator) loader.setMaterials(materialCreator)
+  throwIfAborted(signal)
   const object = loader.parse(objText)
+  if (signal?.aborted) {
+    disposeModelObject(object)
+    throw abortReason(signal, 'OBJ model parsing was cancelled')
+  }
   object.traverse((child) => {
     if (child.name && model.visibility[child.name] === false) child.visible = false
   })
@@ -760,12 +812,14 @@ function createVanillaChestGroup(
   bundle: AssetSource,
   path: string,
   state: Record<string, string>,
+  signal?: AbortSignal,
 ): THREE.Group {
+  throwIfAborted(signal)
   // Vanilla chests use a BlockEntityWithoutLevelRenderer and therefore have
   // no elements/faces model. The exported particle texture provides a stable
   // resource-backed approximation when entity textures are unavailable.
   const textureId = path === 'ender_chest' ? 'minecraft:block/obsidian' : 'minecraft:block/oak_planks'
-  const bodyMaterial = blockTextureMaterial(bundle, textureId, path === 'ender_chest' ? 0x241f35 : 0x9a6a3a)
+  const bodyMaterial = blockTextureMaterial(bundle, textureId, path === 'ender_chest' ? 0x241f35 : 0x9a6a3a, signal)
   const latchMaterial = new THREE.MeshStandardMaterial({
     color: path === 'trapped_chest' ? 0xb64b42 : 0xc8b16b,
     roughness: 0.58,
@@ -784,7 +838,8 @@ function createVanillaChestGroup(
   return group
 }
 
-function blockTextureMaterial(bundle: AssetSource, textureId: string, fallbackColor: number): THREE.MeshStandardMaterial {
+function blockTextureMaterial(bundle: AssetSource, textureId: string, fallbackColor: number, signal?: AbortSignal): THREE.MeshStandardMaterial {
+  throwIfAborted(signal)
   const textureLocation = parseLocation(textureId)
   const texturePath = `assets/${textureLocation.namespace}/textures/${textureLocation.path}.png`
   const url = bundle.url(texturePath)
@@ -794,6 +849,61 @@ function blockTextureMaterial(bundle: AssetSource, textureId: string, fallbackCo
   texture.magFilter = THREE.NearestFilter
   texture.minFilter = THREE.NearestMipmapNearestFilter
   return new THREE.MeshStandardMaterial({ map: texture, roughness: 0.86, metalness: 0 })
+}
+
+function loadTexture(url: string, signal?: AbortSignal): Promise<THREE.Texture> {
+  throwIfAborted(signal)
+  const pending = new THREE.TextureLoader().loadAsync(url)
+  if (!signal) return pending
+  return new Promise((resolve, reject) => {
+    let finished = false
+    const onAbort = () => {
+      if (finished) return
+      finished = true
+      reject(abortReason(signal, 'Texture loading was cancelled'))
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+    if (signal.aborted) onAbort()
+    pending.then(
+      (texture) => {
+        if (finished) {
+          texture.dispose()
+          return
+        }
+        finished = true
+        signal.removeEventListener('abort', onAbort)
+        resolve(texture)
+      },
+      (reason) => {
+        if (finished) return
+        finished = true
+        signal.removeEventListener('abort', onAbort)
+        reject(reason)
+      },
+    )
+  })
+}
+
+function disposeModelObject(root: THREE.Object3D) {
+  const geometries = new Set<THREE.BufferGeometry>()
+  const materials = new Set<THREE.Material>()
+  const textures = new Set<THREE.Texture>()
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return
+    geometries.add(object.geometry)
+    const entries = Array.isArray(object.material) ? object.material : [object.material]
+    for (const material of entries) {
+      materials.add(material)
+      for (const value of Object.values(material)) if (value instanceof THREE.Texture) textures.add(value)
+    }
+  })
+  textures.forEach((texture) => texture.dispose())
+  materials.forEach((material) => material.dispose())
+  geometries.forEach((geometry) => geometry.dispose())
+}
+
+function abortCheckpoint(signal: AbortSignal | undefined, position: number) {
+  if ((position & 255) === 0) throwIfAborted(signal)
 }
 
 function chestFacingRotation(facing: string | undefined): number {

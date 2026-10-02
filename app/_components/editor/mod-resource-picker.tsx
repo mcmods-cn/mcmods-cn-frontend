@@ -4,9 +4,10 @@ import { useCallback, useState } from "react";
 import { apiRequest } from "../../_lib/api";
 import type { CatalogResourceRef, ResourcePageLoader } from "../../_lib/editor-types";
 import type { BackendModList, BackendModRecord } from "../../_lib/mod-api";
-import type { BackendModpackList, BackendModpackRecord } from "../../_lib/modpack-api";
+import type { BackendModpackCard, BackendModpackList } from "../../_lib/modpack-api";
 import type { ServerCatalogItem, ServerCatalogResponse } from "../../_lib/server-api";
-import { isSimpleProjectType, localizedSimpleProject, type SimpleProjectList, type SimpleProjectRecord, type SimpleProjectType } from "../../_lib/simple-project-api";
+import { loadCompositeProjectPage, type ProjectResourceSourcePage } from "../../_lib/project-resource-pagination.mts";
+import { isSimpleProjectType, localizedSimpleProject, type SimpleProjectCard, type SimpleProjectList, type SimpleProjectType } from "../../_lib/simple-project-api";
 import { useI18n } from "../../_lib/i18n-provider";
 import {
   ResourcePickerDialog,
@@ -52,63 +53,60 @@ export function ModResourcePickerDialog({
   onClose,
   onConfirm,
 }: ModResourcePickerDialogProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const projectTypeKey = projectTypes.join(",");
   const loadModPage = useCallback<ResourcePageLoader>(async (options, requestToken, signal) => {
     const requestedTypes = projectTypeKey.split(",").filter((value): value is ProjectResourceType => value === "mod" || value === "modpack" || value === "minecraft_server" || isSimpleProjectType(value));
-    const fetchProjectPage = async (projectType: ProjectResourceType, limit: number, offset: number) => {
-      const parameters = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    const fetchProjectPage = async (projectType: ProjectResourceType, limit: number, offset: number, cursor = ""): Promise<ProjectResourceSourcePage<CatalogResourceRef>> => {
+      const parameters = new URLSearchParams({ limit: String(limit) });
       if (options.query) parameters.set("q", options.query);
+      if (excludeSiteId) parameters.set("excludeSiteId", excludeSiteId);
       if (projectType === "modpack") {
+        parameters.set("offset", String(offset));
         const result = await apiRequest<BackendModpackList>(`/api/v1/modpacks?${parameters}`, { signal }, requestToken || undefined);
         return { items: result.items.map(modpackRecordToPickerResource), total: result.total };
       }
       if (projectType === "minecraft_server") {
-        parameters.delete("offset");
-        parameters.set("page", String(Math.floor(offset / limit) + 1));
+        if (cursor) parameters.set("cursor", cursor);
         const result = await apiRequest<ServerCatalogResponse>(`/api/v1/servers?${parameters}`, { signal }, requestToken || undefined);
-        return { items: result.items.map(serverRecordToPickerResource), total: result.total };
+        return {
+          items: result.items.map(serverRecordToPickerResource),
+          hasMore: result.hasMore,
+          nextCursor: result.nextCursor,
+        };
       }
       if (isSimpleProjectType(projectType)) {
+        parameters.set("offset", String(offset));
+        parameters.set("locale", locale);
         const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?${parameters}`, { signal }, requestToken || undefined);
         return { items: result.items.map(simpleProjectRecordToPickerResource), total: result.total };
       }
+      parameters.set("offset", String(offset));
       const result = await apiRequest<BackendModList>(`/api/v1/mods?${parameters}`, { signal }, requestToken || undefined);
       return { items: result.items.map(modRecordToPickerResource), total: result.total };
     };
     if (requestedTypes.length === 1) {
-      const page = await fetchProjectPage(requestedTypes[0], options.limit, options.offset);
-      const containsExcluded = page.items.some((item) => item.source?.siteId === excludeSiteId);
+      const page = await fetchProjectPage(requestedTypes[0], options.limit, options.offset, options.cursor);
       return {
-        items: page.items.filter((item) => item.source?.siteId !== excludeSiteId),
-        total: Math.max(0, page.total - (containsExcluded ? 1 : 0)),
+        items: page.items,
+        total: page.total ?? 0,
         limit: options.limit,
         offset: options.offset,
+        hasMore: page.hasMore,
+        nextCursor: page.nextCursor,
       };
     }
-    const counts = await Promise.all(requestedTypes.map((projectType) => fetchProjectPage(projectType, 1, 0)));
-    let remainingOffset = options.offset;
-    let remainingLimit = options.limit;
-    const items: CatalogResourceRef[] = [];
-    for (let index = 0; index < requestedTypes.length && remainingLimit > 0; index += 1) {
-      const projectTotal = counts[index].total;
-      if (remainingOffset >= projectTotal) {
-        remainingOffset -= projectTotal;
-        continue;
-      }
-      const page = await fetchProjectPage(requestedTypes[index], remainingLimit, remainingOffset);
-      items.push(...page.items);
-      remainingLimit -= page.items.length;
-      remainingOffset = 0;
-    }
-    const containsExcluded = items.some((item) => item.source?.siteId === excludeSiteId);
+    const scope = JSON.stringify([requestedTypes, options.query, excludeSiteId, locale]);
+    const page = await loadCompositeProjectPage(requestedTypes, scope, options.limit, options.cursor ?? "", fetchProjectPage);
     return {
-      items: items.filter((item) => item.source?.siteId !== excludeSiteId),
-      total: Math.max(0, counts.reduce((total, result) => total + result.total, 0) - (containsExcluded ? 1 : 0)),
+      items: page.items,
+      total: 0,
       limit: options.limit,
       offset: options.offset,
+      hasMore: page.hasMore,
+      nextCursor: page.nextCursor,
     };
-  }, [excludeSiteId, projectTypeKey]);
+  }, [excludeSiteId, locale, projectTypeKey]);
   const defaultLabels: ResourcePickerLabels = {
     title: t("mods.submission.relationshipPicker.title"),
     description: t("mods.submission.relationshipPicker.description"),
@@ -181,7 +179,7 @@ export function ModResourceSelectionField({
   );
 }
 
-function simpleProjectRecordToPickerResource(project: SimpleProjectRecord): CatalogResourceRef {
+function simpleProjectRecordToPickerResource(project: SimpleProjectCard): CatalogResourceRef {
   const localization = localizedSimpleProject(project, project.defaultLocale);
   return {
     publicId: project.id,
@@ -195,7 +193,7 @@ function simpleProjectRecordToPickerResource(project: SimpleProjectRecord): Cata
   };
 }
 
-function modpackRecordToPickerResource(modpack: BackendModpackRecord): CatalogResourceRef {
+function modpackRecordToPickerResource(modpack: BackendModpackCard): CatalogResourceRef {
   return {
     publicId: modpack.id,
     id: modpack.siteId,

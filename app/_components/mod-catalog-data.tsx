@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import {
   cancelModExportJob,
@@ -19,6 +19,7 @@ import {
   createPersistedModExportUploadTask,
   deletePersistedModExportUploadTask,
   modExportUploadTaskKey,
+  persistedModExportUploadTaskBelongsToSubject,
   type PersistedModExportUploadTask,
   readPersistedModExportUploadTask,
   updatePersistedModExportUploadTask,
@@ -186,7 +187,7 @@ function UnifiedCategoryCard({ category, onClick }: { category: UnifiedCatalogCa
   return <button className={`${className} hover:-translate-y-0.5 hover:border-[var(--accent)]`} type="button" onClick={onClick}>{content}</button>;
 }
 
-export function ModExportImportModal({ siteId, token, targetVersionId, targetVersionLabel, onClose, onImported, onBusyChange, inline = false, disabled = false }: { siteId: string; token: string; targetVersionId: string; targetVersionLabel: string; onClose?: () => void; onImported: () => Promise<void>; onBusyChange?: (busy: boolean) => void; inline?: boolean; disabled?: boolean }) {
+export function ModExportImportModal({ siteId, subjectId, token, targetVersionId, targetVersionLabel, onClose, onImported, onBusyChange, inline = false, disabled = false }: { siteId: string; subjectId: string; token: string; targetVersionId: string; targetVersionLabel: string; onClose?: () => void; onImported: () => Promise<void>; onBusyChange?: (busy: boolean) => void; inline?: boolean; disabled?: boolean }) {
   const { t } = useI18n();
   const [job, setJob] = useState<ModExportJob | null>(null);
   const [busy, setBusy] = useState(false);
@@ -194,79 +195,30 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
   const [error, setError] = useState("");
   const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
   const [overwrite, setOverwrite] = useState(false);
+  const [hasActiveTask, setHasActiveTask] = useState(false);
   const polling = useRef<AbortController | null>(null);
   const uploading = useRef<AbortController | null>(null);
   const activeTask = useRef<PersistedModExportUploadTask | null>(null);
   const completedParts = useRef(new Set<number>());
   const persistenceQueue = useRef(Promise.resolve());
-  const restoredTaskKey = useRef("");
+  const activeSubject = useRef(subjectId);
   const taskKey = useMemo(
-    () => modExportUploadTaskKey(siteId, targetVersionId, token),
-    [siteId, targetVersionId, token],
+    () => modExportUploadTaskKey(siteId, targetVersionId, subjectId),
+    [siteId, subjectId, targetVersionId],
   );
 
-  useEffect(() => () => polling.current?.abort(), []);
+  useEffect(() => () => {
+    uploading.current?.abort();
+    polling.current?.abort();
+  }, []);
+  useLayoutEffect(() => {
+    activeSubject.current = subjectId;
+    return () => { activeSubject.current = ""; };
+  }, [subjectId]);
   useEffect(() => {
     onBusyChange?.(busy);
     return () => onBusyChange?.(false);
   }, [busy, onBusyChange]);
-  useEffect(() => {
-    if (restoredTaskKey.current === taskKey) return;
-    restoredTaskKey.current = taskKey;
-    activeTask.current = null;
-    completedParts.current.clear();
-    setJob(null);
-    setUpload(null);
-    setError("");
-    let cancelled = false;
-    void Promise.all([
-      readPersistedModExportUploadTask(taskKey),
-      getActiveModExportJob(siteId, targetVersionId, token),
-    ]).then(async ([persisted, activeJob]) => {
-      if (cancelled) return;
-      if (activeJob) {
-        const now = Date.now();
-        activeTask.current = persisted?.task || {
-          key: taskKey,
-          siteId,
-          targetVersionId,
-          overwriteExistingImportData: activeJob.overwriteExistingImportData,
-          phase: "importing",
-          completedPartNumbers: [],
-          jobId: activeJob.id,
-          createdAt: now,
-          updatedAt: now,
-        };
-        setOverwrite(activeJob.overwriteExistingImportData);
-        setBusy(true);
-        setError("");
-        await monitorJob(activeJob);
-        return;
-      }
-      if (!persisted) return;
-      activeTask.current = persisted.task;
-      completedParts.current = new Set(persisted.task.completedPartNumbers);
-      setOverwrite(persisted.task.overwriteExistingImportData);
-      setBusy(true);
-      setError("");
-      if (persisted.task.jobId) {
-        const restoredJob = await getModExportJob(siteId, persisted.task.jobId, token);
-        if (cancelled) return;
-        await monitorJob(restoredJob);
-        return;
-      }
-      await runPersistedUpload(persisted.task, persisted.file);
-    }).catch((reason) => {
-      if (!cancelled) {
-        setBusy(false);
-        setError(errorText(reason, t("mods.exportImport.errors.upload")));
-      }
-    });
-    return () => { cancelled = true; };
-    // The task is restored exactly once for this mounted version workspace.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siteId, targetVersionId, taskKey, token]);
-
   function closeModal() {
     if (busy && !job) return;
     polling.current?.abort();
@@ -274,24 +226,37 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
   }
 
   function persistTaskPatch(
-    patch: Partial<Omit<PersistedModExportUploadTask, "key" | "siteId" | "targetVersionId" | "createdAt">>,
+    patch: Partial<Omit<PersistedModExportUploadTask, "key" | "subjectId" | "siteId" | "targetVersionId" | "createdAt">>,
   ) {
     const current = activeTask.current;
-    if (!current) return persistenceQueue.current;
+    if (!current || activeSubject.current !== subjectId || !persistedModExportUploadTaskBelongsToSubject(current, subjectId)) {
+      return Promise.resolve();
+    }
     activeTask.current = { ...current, ...patch, updatedAt: Date.now() };
     const persistedPatch = { ...patch };
     persistenceQueue.current = persistenceQueue.current
       .catch(() => undefined)
-      .then(() => updatePersistedModExportUploadTask(taskKey, persistedPatch));
+      .then(() => updatePersistedModExportUploadTask(taskKey, subjectId, persistedPatch));
     return persistenceQueue.current;
   }
 
+  function assertCurrentSubject() {
+    if (activeSubject.current !== subjectId) {
+      throw new DOMException("The authenticated account changed during upload recovery.", "AbortError");
+    }
+  }
+
   async function monitorJob(initialJob: ModExportJob) {
+    assertCurrentSubject();
     setJob(initialJob);
     await persistTaskPatch({ phase: "importing", jobId: initialJob.id });
+    assertCurrentSubject();
     polling.current?.abort();
     polling.current = new AbortController();
-    const completed = await waitForModExportJob(siteId, initialJob.id, token, setJob, polling.current.signal);
+    const completed = await waitForModExportJob(siteId, initialJob.id, token, (nextJob) => {
+      if (activeSubject.current === subjectId) setJob(nextJob);
+    }, polling.current.signal);
+    assertCurrentSubject();
     if (completed.status === "confirmation_required") {
       setError("");
       setBusy(false);
@@ -303,17 +268,24 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
       throw new Error(translated === key ? String(completed.errorDetail.message ?? completed.errorCode ?? t("mods.exportImport.errors.upload")) : translated);
     }
     if (completed.status === "cancelled") {
-      await deletePersistedModExportUploadTask(taskKey);
+      await deletePersistedModExportUploadTask(taskKey, subjectId);
       activeTask.current = null;
+      setHasActiveTask(false);
       throw new Error(t("mods.exportImport.stages.cancelled"));
     }
-    await deletePersistedModExportUploadTask(taskKey);
+    await deletePersistedModExportUploadTask(taskKey, subjectId);
     activeTask.current = null;
+    setHasActiveTask(false);
     await onImported();
   }
 
   async function runPersistedUpload(task: PersistedModExportUploadTask, file: File) {
+    assertCurrentSubject();
+    if (!persistedModExportUploadTaskBelongsToSubject(task, subjectId)) {
+      throw new DOMException("The persisted upload belongs to another account.", "AbortError");
+    }
     activeTask.current = task;
+    setHasActiveTask(true);
     completedParts.current = new Set(task.completedPartNumbers);
     uploading.current?.abort();
     uploading.current = new AbortController();
@@ -327,24 +299,101 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
         targetVersionPublicId: targetVersionId,
         overwriteExistingImportData: task.overwriteExistingImportData,
       },
-      setUpload,
+      (progress) => {
+        if (activeSubject.current === subjectId) setUpload(progress);
+      },
       {
         signal: controller.signal,
         resumeTicket: initialTicket,
         completedPartNumbers: completedParts.current,
         onTicket: async (ticket) => {
+          if (activeSubject.current !== subjectId) return;
           await persistTaskPatch({ ticket });
         },
         onPartComplete: (partNumber) => {
+          if (activeSubject.current !== subjectId) return;
           completedParts.current.add(partNumber);
           void persistTaskPatch({ completedPartNumbers: [...completedParts.current].sort((left, right) => left - right) });
         },
       },
     );
+    assertCurrentSubject();
     await persistenceQueue.current;
+    assertCurrentSubject();
     await persistTaskPatch({ phase: "importing", jobId: importedJob.id });
     await monitorJob(importedJob);
   }
+
+  useEffect(() => {
+    let cancelled = false;
+    const recoveryTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      uploading.current?.abort();
+      polling.current?.abort();
+      activeTask.current = null;
+      completedParts.current.clear();
+      persistenceQueue.current = Promise.resolve();
+      setHasActiveTask(false);
+      setBusy(false);
+      setJob(null);
+      setUpload(null);
+      setError("");
+      void Promise.all([
+        readPersistedModExportUploadTask(taskKey, subjectId),
+        getActiveModExportJob(siteId, targetVersionId, token),
+      ]).then(async ([persisted, activeJob]) => {
+        if (cancelled) return;
+        if (activeJob) {
+          const now = Date.now();
+          activeTask.current = persisted?.task || {
+            key: taskKey,
+            subjectId,
+            siteId,
+            targetVersionId,
+            overwriteExistingImportData: activeJob.overwriteExistingImportData,
+            phase: "importing",
+            completedPartNumbers: [],
+            jobId: activeJob.id,
+            createdAt: now,
+            updatedAt: now,
+          };
+          setHasActiveTask(true);
+          setOverwrite(activeJob.overwriteExistingImportData);
+          setBusy(true);
+          setError("");
+          await monitorJob(activeJob);
+          return;
+        }
+        if (!persisted) return;
+        activeTask.current = persisted.task;
+        setHasActiveTask(true);
+        completedParts.current = new Set(persisted.task.completedPartNumbers);
+        setOverwrite(persisted.task.overwriteExistingImportData);
+        setBusy(true);
+        setError("");
+        if (persisted.task.jobId) {
+          const restoredJob = await getModExportJob(siteId, persisted.task.jobId, token);
+          if (cancelled) return;
+          await monitorJob(restoredJob);
+          return;
+        }
+        await runPersistedUpload(persisted.task, persisted.file);
+      }).catch((reason) => {
+        if (!cancelled) {
+          setBusy(false);
+          setError(errorText(reason, t("mods.exportImport.errors.upload")));
+        }
+      });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(recoveryTimer);
+      uploading.current?.abort();
+      polling.current?.abort();
+    };
+    // Recovery restarts whenever the authenticated subject or target changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteId, subjectId, targetVersionId, taskKey, token]);
 
   async function importFile(file?: File) {
     if (!file) return;
@@ -357,6 +406,7 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
       const now = Date.now();
       const task: PersistedModExportUploadTask = {
         key: taskKey,
+        subjectId,
         siteId,
         targetVersionId,
         overwriteExistingImportData: overwrite,
@@ -368,20 +418,22 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
       await createPersistedModExportUploadTask(task, file);
       await runPersistedUpload(task, file);
     } catch (reason) {
-      if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.upload")));
-    } finally { setBusy(false); }
+      if (activeSubject.current === subjectId && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.upload")));
+    } finally {
+      if (activeSubject.current === subjectId) setBusy(false);
+    }
   }
 
   async function resumeUpload() {
     setBusy(true); setError("");
     try {
-      const persisted = await readPersistedModExportUploadTask(taskKey);
+      const persisted = await readPersistedModExportUploadTask(taskKey, subjectId);
       if (!persisted) throw new Error(t("mods.exportImport.errors.upload"));
       await runPersistedUpload(persisted.task, persisted.file);
     } catch (reason) {
-      if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.upload")));
+      if (activeSubject.current === subjectId && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.upload")));
     } finally {
-      setBusy(false);
+      if (activeSubject.current === subjectId) setBusy(false);
     }
   }
 
@@ -391,8 +443,10 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
     try {
       await monitorJob(await retryModExportJob(siteId, job.id, token));
     } catch (reason) {
-      if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.retry")));
-    } finally { setBusy(false); }
+      if (activeSubject.current === subjectId && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.retry")));
+    } finally {
+      if (activeSubject.current === subjectId) setBusy(false);
+    }
   }
 
   async function confirmMODIDMismatch() {
@@ -401,8 +455,10 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
     try {
       await monitorJob(await confirmModExportMODIDMismatch(siteId, job, token));
     } catch (reason) {
-      if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.retry")));
-    } finally { setBusy(false); }
+      if (activeSubject.current === subjectId && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.retry")));
+    } finally {
+      if (activeSubject.current === subjectId) setBusy(false);
+    }
   }
 
   async function cancelImport() {
@@ -419,16 +475,18 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
       } else if (currentTask?.ticket) {
         await cancelModExportUpload(siteId, currentTask.ticket, token);
       }
-      await deletePersistedModExportUploadTask(taskKey);
+      assertCurrentSubject();
+      await deletePersistedModExportUploadTask(taskKey, subjectId);
       activeTask.current = null;
+      setHasActiveTask(false);
       completedParts.current.clear();
       setJob(null);
       setUpload(null);
       setError(t("mods.exportImport.stages.cancelled"));
     } catch (reason) {
-      setError(errorText(reason, t("mods.exportImport.errors.upload")));
+      if (activeSubject.current === subjectId && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.upload")));
     } finally {
-      setBusy(false);
+      if (activeSubject.current === subjectId) setBusy(false);
     }
   }
 
@@ -440,8 +498,8 @@ export function ModExportImportModal({ siteId, token, targetVersionId, targetVer
     <label className={`mt-5 grid min-h-48 place-items-center rounded-lg border border-dashed p-6 text-center ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${dragging ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel-subtle)]"}`} onDragEnter={(event) => { event.preventDefault(); if (!disabled) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { if (disabled) { event.preventDefault(); return; } drop(event); }}><input className="sr-only" type="file" accept=".zip,application/zip" disabled={busy || disabled} onChange={(event: ChangeEvent<HTMLInputElement>) => void importFile(event.target.files?.[0])} /><span><strong className="block text-lg">{upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : t("mods.exportImport.drop")}</strong><small className="mt-2 block text-[var(--muted)]">{t("mods.exportImport.dropHint")}</small></span></label>
     {upload && !job ? <Progress label={t(`mods.exportImport.uploadPhases.${upload.phase}`)} percent={upload.percent} upload={upload} /> : null}
     {job ? <><p className="mt-4 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("mods.exportImport.importInBackground")}</p><Progress label={t(`mods.exportImport.stages.${job.currentStage || job.status}`)} percent={job.progress} />{job.status === "confirmation_required" ? <MODIDConfirmationCard busy={busy} job={job} onCancel={() => void cancelImport()} onConfirm={() => void confirmMODIDMismatch()} /> : null}{job.reviewRequired ? <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p> : null}</> : null}
-    {(busy || activeTask.current) && !["ready", "partial", "failed", "cancelled"].includes(job?.status || "") ? <div className="mt-4 flex justify-end"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void cancelImport()}>{t("common.cancel")}</button></div> : null}
-    {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : !job && activeTask.current ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void resumeUpload()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
+    {(busy || hasActiveTask) && !["ready", "partial", "failed", "cancelled"].includes(job?.status || "") ? <div className="mt-4 flex justify-end"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void cancelImport()}>{t("common.cancel")}</button></div> : null}
+    {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : !job && hasActiveTask ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void resumeUpload()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
   </>;
   if (inline) return <section className="mt-6"><h3 className="text-lg font-black">{t("mods.exportImport.modalTitle")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.exportImport.targetDescription", { version: targetVersionLabel })}</p>{form}</section>;
   return <div className="fixed inset-0 z-[80] grid place-items-center bg-black/55 p-4" role="presentation" onMouseDown={closeModal}><div className="surface max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("mods.exportImport.modalTitle")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("mods.exportImport.modalDescription")}</p></div><button className="button-secondary focus-ring" disabled={busy && !job} type="button" onClick={closeModal}>{t("common.close")}</button></header><p className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm"><strong>{t("mods.exportImport.dataVersion")}：</strong>{targetVersionLabel}</p>{form}</div></div>;

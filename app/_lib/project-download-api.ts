@@ -34,13 +34,16 @@ export type ProjectFile = {
 
 export type ProjectFilesResponse = {
   items: ProjectFile[];
+  source: ProjectFileSource;
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
   versions: string[];
   loaders: string[];
   providers: Record<ProjectFileSource, boolean>;
   warnings: Record<string, string>;
   canUpload: boolean;
   uploadPermission: string;
-  totals: { files: number; internalDownloads: number };
 };
 
 export type CreateProjectFileInput = {
@@ -88,7 +91,6 @@ export async function uploadProjectFileToOSS(
       source: "project_download",
       projectUniqueId: projectId,
       projectType,
-      preferMultipart: true,
     }),
   }, token);
   if (ticket.uploadRequired === false && ticket.file) return ticket.file;

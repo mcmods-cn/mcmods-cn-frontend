@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import { ExpiringPromiseCache } from "./sticker-catalog-cache.mts";
 
 export type StickerCatalogItem = {
   code: string;
@@ -16,23 +17,20 @@ export type StickerCatalogPack = {
 };
 
 export type StickerCatalog = {
-  version: number;
   locale: string;
   packs: StickerCatalogPack[];
 };
 
-let catalogRequest: Promise<StickerCatalog> | null = null;
-let catalogLocale = "";
+export const STICKER_CATALOG_STALE_TIME_MS = 30_000;
+
+const catalogCache = new ExpiringPromiseCache<StickerCatalog>(STICKER_CATALOG_STALE_TIME_MS);
 
 export function loadStickerCatalog(locale: string): Promise<StickerCatalog> {
-  if (!catalogRequest || catalogLocale !== locale) {
-    catalogLocale = locale;
-    catalogRequest = apiRequest<StickerCatalog>(`/api/v1/stickers?locale=${encodeURIComponent(locale)}`).catch((error) => {
-      catalogRequest = null;
-      throw error;
-    });
-  }
-  return catalogRequest;
+  return catalogCache.get(locale, () => apiRequest<StickerCatalog>(`/api/v1/stickers?locale=${encodeURIComponent(locale)}`));
+}
+
+export function invalidateStickerCatalog(locale?: string) {
+  catalogCache.invalidate(locale);
 }
 
 export function stickerToken(packCode: string, stickerCode: string) {

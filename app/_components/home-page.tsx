@@ -5,15 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../_lib/api";
-import { loadCommunityPosts, communityPostCollection, communityPostCoverURL, type CommunityPost } from "../_lib/community-post-api";
+import { loadCommunityPosts, communityPostCollection, communityPostCoverURL, type CommunityPostSummary } from "../_lib/community-post-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { backendModToCatalogEntry, type BackendModList, type BackendModRecord } from "../_lib/mod-api";
-import { backendModpackToCatalogEntry, type BackendModpackList, type BackendModpackRecord } from "../_lib/modpack-api";
-import { localizedSimpleProject, simpleProjectIconURL, type SimpleProjectList, type SimpleProjectRecord } from "../_lib/simple-project-api";
+import { backendModpackToCatalogEntry, type BackendModpackCard, type BackendModpackList } from "../_lib/modpack-api";
+import { localizedSimpleProject, simpleProjectIconURL, type SimpleProjectCard, type SimpleProjectList } from "../_lib/simple-project-api";
 
 type HomeCategory = { titleKey: string; href: string; meta: string };
 type HomeResource = { id: string; name: string; summary: string; href: string; icon: string; typeKey: string; versions: string[]; timestamp: string };
-type HomeFeed = { hot: HomeResource[]; recent: HomeResource[]; tutorials: CommunityPost[]; news: CommunityPost[] };
+type HomeFeed = { hot: HomeResource[]; recent: HomeResource[]; tutorials: CommunityPostSummary[]; news: CommunityPostSummary[] };
 
 const emptyFeed: HomeFeed = { hot: [], recent: [], tutorials: [], news: [] };
 const primaryCategories: HomeCategory[] = [
@@ -50,9 +50,9 @@ export function HomePage() {
     Promise.allSettled([
       apiRequest<BackendModList>("/api/v1/mods?sort=heat&order=desc&limit=8&offset=0", options),
       apiRequest<BackendModpackList>("/api/v1/modpacks?sort=published&order=desc&limit=4&offset=0", options),
-      apiRequest<SimpleProjectList>("/api/v1/content-projects/plugin?sort=published&order=desc&limit=4&offset=0", options),
-      loadCommunityPosts("tutorial", { sort: "heat", order: "desc", limit: 6, offset: 0 }, "", controller.signal),
-      loadCommunityPosts("news", { sort: "published", order: "desc", limit: 6, offset: 0 }, "", controller.signal),
+      apiRequest<SimpleProjectList>(`/api/v1/content-projects/plugin?sort=published&order=desc&limit=4&offset=0&locale=${encodeURIComponent(locale)}`, options),
+      loadCommunityPosts("tutorial", { sort: "heat", order: "desc", limit: 6 }, "", controller.signal),
+      loadCommunityPosts("news", { sort: "published", order: "desc", limit: 6 }, "", controller.signal),
     ]).then(([mods, modpacks, plugins, tutorials, news]) => {
       if (controller.signal.aborted) return;
       const recent = [
@@ -145,12 +145,12 @@ function ResourceVisual({ icon, name, large = false }: { icon: string; name: str
   return <div className={`relative grid h-full place-items-center overflow-hidden rounded-xl bg-[linear-gradient(145deg,var(--accent-soft),var(--panel-subtle))] ${large ? "min-h-40" : ""}`}>{icon ? <Image unoptimized alt="" className="h-full w-full object-contain p-2 [image-rendering:auto]" height={large ? 180 : 120} src={icon} width={large ? 180 : 120} /> : <span aria-hidden="true" className={`${large ? "text-6xl" : "text-4xl"} font-black text-[var(--accent)] opacity-70`}>{resourceInitials(name)}</span>}</div>;
 }
 
-function CommunityCard({ item, featured }: { item: CommunityPost; featured: boolean }) {
+function CommunityCard({ item, featured }: { item: CommunityPostSummary; featured: boolean }) {
   const { locale } = useI18n();
-  return <Link className={`focus-ring group grid overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] transition hover:border-[var(--accent)] ${featured ? "sm:col-span-2 sm:grid-cols-[minmax(180px,.8fr)_1.2fr]" : "grid-cols-[96px_1fr]"}`} href={`/${communityPostCollection(item.kind)}/${item.id}`}><div className={`relative bg-[linear-gradient(145deg,var(--accent-soft),var(--panel-subtle))] ${featured ? "min-h-48" : "min-h-28"}`}>{item.coverUrl ? <Image unoptimized fill alt="" className="object-cover" src={communityPostCoverURL(item.coverUrl)} /> : <span aria-hidden="true" className="grid h-full place-items-center text-3xl font-black text-[var(--accent)] opacity-70">{resourceInitials(item.title)}</span>}</div><div className={featured ? "p-5" : "min-w-0 p-3"}><p className="text-xs font-bold text-[var(--accent)]">{item.category || item.minecraftVersions[0] || "Minecraft"}</p><h3 className={`${featured ? "mt-2 text-xl sm:text-2xl" : "mt-1 text-sm"} line-clamp-2 font-black group-hover:text-[var(--accent)]`}>{item.title}</h3><p className="mt-2 text-xs text-[var(--muted)]">{item.authorName} · {formatDate(item.createdAt, locale)}</p>{featured ? <p className="mt-3 line-clamp-2 text-sm leading-6 text-[var(--muted)]">{plainExcerpt(item.bodyMarkdown)}</p> : null}</div></Link>;
+  return <Link className={`focus-ring group grid overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] transition hover:border-[var(--accent)] ${featured ? "sm:col-span-2 sm:grid-cols-[minmax(180px,.8fr)_1.2fr]" : "grid-cols-[96px_1fr]"}`} href={`/${communityPostCollection(item.kind)}/${item.id}`}><div className={`relative bg-[linear-gradient(145deg,var(--accent-soft),var(--panel-subtle))] ${featured ? "min-h-48" : "min-h-28"}`}>{item.coverUrl ? <Image unoptimized fill alt="" className="object-cover" src={communityPostCoverURL(item.coverUrl)} /> : <span aria-hidden="true" className="grid h-full place-items-center text-3xl font-black text-[var(--accent)] opacity-70">{resourceInitials(item.title)}</span>}</div><div className={featured ? "p-5" : "min-w-0 p-3"}><p className="text-xs font-bold text-[var(--accent)]">{item.category || item.minecraftVersions[0] || "Minecraft"}</p><h3 className={`${featured ? "mt-2 text-xl sm:text-2xl" : "mt-1 text-sm"} line-clamp-2 font-black group-hover:text-[var(--accent)]`}>{item.title}</h3><p className="mt-2 text-xs text-[var(--muted)]">{item.authorName} · {formatDate(item.createdAt, locale)}</p>{featured ? <p className="mt-3 line-clamp-2 text-sm leading-6 text-[var(--muted)]">{plainExcerpt(item.summary)}</p> : null}</div></Link>;
 }
 
-function NewsRow({ item }: { item: CommunityPost }) {
+function NewsRow({ item }: { item: CommunityPostSummary }) {
   const { locale } = useI18n();
   return <Link className="focus-ring group grid grid-cols-[1fr_auto] gap-3 border-b border-[var(--line)] px-4 py-3 last:border-b-0 hover:bg-[var(--panel-subtle)]" href={`/${communityPostCollection(item.kind)}/${item.id}`}><div className="min-w-0"><h3 className="truncate text-sm font-black group-hover:text-[var(--accent)]">{item.title}</h3><p className="mt-1 truncate text-xs text-[var(--muted)]">{item.authorName}</p></div><time className="text-xs font-bold text-[var(--muted)]" dateTime={item.createdAt}>{formatDate(item.createdAt, locale)}</time></Link>;
 }
@@ -177,12 +177,12 @@ function fromMod(record: BackendModRecord): HomeResource {
   return { id: record.siteId, name: record.secondaryName || record.primaryName, summary: record.summary, href: `/mods/${record.siteId}`, icon: item.icon, typeKey: "nav.mods", versions: item.versions, timestamp: record.updatedAt || record.createdAt };
 }
 
-function fromModpack(record: BackendModpackRecord): HomeResource {
+function fromModpack(record: BackendModpackCard): HomeResource {
   const item = backendModpackToCatalogEntry(record);
   return { id: record.siteId, name: record.secondaryName || record.primaryName, summary: record.summary, href: `/modpacks/${record.siteId}`, icon: item.icon, typeKey: "nav.modpacks", versions: item.versions, timestamp: record.publishedAt || record.createdAt };
 }
 
-function fromSimpleProject(record: SimpleProjectRecord, locale: string): HomeResource {
+function fromSimpleProject(record: SimpleProjectCard, locale: string): HomeResource {
   const localization = localizedSimpleProject(record, locale);
   return { id: record.siteId, name: localization.name || record.siteId, summary: localization.summary, href: `/plugins/${record.siteId}`, icon: simpleProjectIconURL(record), typeKey: "nav.plugins", versions: record.minecraftVersions, timestamp: record.publishedAt || record.createdAt };
 }

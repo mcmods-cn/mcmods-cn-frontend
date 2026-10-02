@@ -1,10 +1,13 @@
 "use client";
 
+import { apiErrorMessage } from "../_lib/api-error.mts";
+
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { CreatorDetail, CreatorKind, CreatorRole, CreatorSummary } from "../_lib/community-api";
+import { loadCreatorPage, mergeCreatorPageItems } from "../_lib/creator-pagination.mts";
 import { useI18n } from "../_lib/i18n-provider";
 import type { BackendModAuthor } from "../_lib/mod-api";
 import { CreatorIdentityAvatar, CreatorTeamMemberGroup } from "./creator-identity";
@@ -147,25 +150,37 @@ function CreatorPickerDialog({
   const [kind, setKind] = useState<"" | CreatorKind>(allowedKinds.length === 1 ? allowedKinds[0] : "");
   const [query, setQuery] = useState("");
   const [items, setItems] = useState<CreatorSummary[]>([]);
+  const [nextCursor, setNextCursor] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [message, setMessage] = useState("");
   const [selected, setSelected] = useState<CreatorSummary[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
   const [inserting, setInserting] = useState(false);
+  const requestGeneration = useRef(0);
 
   useEffect(() => {
+    const generation = ++requestGeneration.current;
     let cancelled = false;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setLoading(true);
-      const params = new URLSearchParams({ limit: "60" });
-      if (kind) params.set("kind", kind);
-      if (query.trim()) params.set("query", query.trim());
-      apiRequest<{ items: CreatorSummary[] }>(`/api/v1/creators?${params}`, {}, token || undefined)
+      setLoadingMore(false);
+      loadCreatorPage<CreatorSummary>(
+        (path, signal) => apiRequest(path, { signal }, token || undefined),
+        { limit: 40, kind, query, sort: "name", order: "asc" },
+        "",
+        controller.signal,
+      )
         .then((result) => {
-          if (!cancelled) setItems(result.items.filter((item) => allowedKinds.includes(item.kind)));
+          if (!cancelled && requestGeneration.current === generation) {
+            setItems(result.items.filter((item) => allowedKinds.includes(item.kind)));
+            setNextCursor(result.nextCursor);
+            setMessage("");
+          }
         })
         .catch((error) => {
-          if (!cancelled) setMessage(error instanceof Error ? error.message : t("creators.loadFailed"));
+          if (!cancelled) setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -173,9 +188,37 @@ function CreatorPickerDialog({
     }, 180);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(timer);
     };
   }, [allowedKinds, kind, query, refreshKey, t, token]);
+
+  async function loadMore() {
+    const cursor = nextCursor;
+    if (!cursor || loadingMore) return;
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
+    setMessage("");
+    try {
+      const result = await loadCreatorPage<CreatorSummary>(
+        (path, signal) => apiRequest(path, { signal }, token || undefined),
+        { limit: 40, kind, query, sort: "name", order: "asc" },
+        cursor,
+      );
+      if (requestGeneration.current !== generation) return;
+      setItems((current) => mergeCreatorPageItems(
+        current,
+        result.items.filter((item) => allowedKinds.includes(item.kind)),
+      ));
+      setNextCursor(result.nextCursor);
+    } catch (error) {
+      if (requestGeneration.current === generation) {
+        setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
+      }
+    } finally {
+      if (requestGeneration.current === generation) setLoadingMore(false);
+    }
+  }
 
   const selectedIDs = useMemo(() => new Set(selected.map((item) => item.publicId)), [selected]);
   const available = useMemo(() => items.filter((item) => !existing.has(item.publicId)), [existing, items]);
@@ -209,6 +252,7 @@ function CreatorPickerDialog({
               </button>
             ))}
           </div>
+          {nextCursor ? <button className="button-secondary focus-ring w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("common.loading") : t("creators.loadMore")}</button> : null}
           {!loading && available.length === 0 ? <p className="py-5 text-center text-sm text-[var(--muted)]">{t("creators.noResults")}</p> : null}
           {loading ? <p className="py-5 text-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
           <section className="border-t border-[var(--line)] pt-4">
@@ -243,7 +287,7 @@ function CreatorPickerDialog({
           <button className="button-primary focus-ring" disabled={!selected.length || inserting} type="button" onClick={() => {
             setInserting(true);
             setMessage("");
-            void onInsert(selected).catch((error) => setMessage(error instanceof Error ? error.message : t("creators.loadFailed"))).finally(() => setInserting(false));
+            void onInsert(selected).catch((error) => setMessage(apiErrorMessage(error, t, t("creators.loadFailed")))).finally(() => setInserting(false));
           }}>{inserting ? t("common.loading") : t("creators.insertSelected")}</button>
         </footer>
       </section>

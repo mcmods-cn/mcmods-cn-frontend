@@ -12,9 +12,11 @@ type LayoutSavedMessage = {
   result: ModContentMutationResult;
 };
 
-export function ModContentSectionActions({ siteId, section, onChanged }: {
+export function ModContentSectionActions({ siteId, section, canArrange, canCreateResource, onChanged }: {
   siteId: string;
   section: ModContentSection;
+  canArrange: boolean;
+  canCreateResource: boolean;
   onChanged: () => void;
 }) {
   const { t } = useI18n();
@@ -33,12 +35,12 @@ export function ModContentSectionActions({ siteId, section, onChanged }: {
 
   const arrangeHref = `/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(section.publicId)}/arrange`;
   return <>
-    <Link className="button-secondary focus-ring" href={arrangeHref} target={`mcmods-layout-${section.publicId}`}>
+    {canArrange ? <Link className="button-secondary focus-ring" href={arrangeHref} target={`mcmods-layout-${section.publicId}`}>
       {t("modContent.sectionActions.arrange")}
-    </Link>
-    <Link className="button-primary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/new?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`}>
+    </Link> : null}
+    {canCreateResource ? <Link className="button-primary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/new?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`}>
       {t("modContent.sectionActions.add")}
-    </Link>
+    </Link> : null}
     {result ? <span className="w-full rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] px-3 py-2 text-sm font-bold text-[var(--accent)]" role="status">
       {t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")}
       {result.reviewStatus === "pending" ? <code className="ms-2 text-xs">{result.changeRequestId}</code> : null}

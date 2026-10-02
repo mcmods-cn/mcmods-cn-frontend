@@ -25,7 +25,34 @@ export type ChangelogItem = {
   updatedAt: string;
 };
 
-export type ChangelogCollection = { target: ChangelogTarget; categories: ChangelogCategory[]; items: ChangelogItem[] };
+export type ChangelogSummary = {
+  id: string;
+  eventAt: string;
+  minecraftVersions: string[];
+  projectVersion: string;
+  defaultLocale: string;
+  category?: Pick<ChangelogCategory, "id" | "defaultLocale" | "name">;
+  bodyExcerpt: string;
+  bodyTruncated: boolean;
+  locale: string;
+  availableLocales: string[];
+  reviewStatus: "pending" | "approved" | "rejected";
+  pendingChange: boolean;
+  canEdit: boolean;
+  createdById: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ChangelogCollection = {
+  target: ChangelogTarget;
+  categories: ChangelogCategory[];
+  items: ChangelogSummary[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
 
 export type ChangelogDraft = {
   eventAt: string;
@@ -38,8 +65,9 @@ export type ChangelogDraft = {
   reason?: string;
 };
 
-export function loadProjectChangelogs(targetType: ChangelogTargetType, targetId: string, locale: string, token = "", signal?: AbortSignal) {
-  const query = new URLSearchParams({ targetType, targetId, locale });
+export function loadProjectChangelogs(targetType: ChangelogTargetType, targetId: string, locale: string, token = "", signal?: AbortSignal, cursor = "", limit = 20) {
+  const query = new URLSearchParams({ targetType, targetId, locale, limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
   return apiRequest<ChangelogCollection>(`/api/v1/changelogs?${query}`, { cache: "no-store", signal }, token || undefined);
 }
 

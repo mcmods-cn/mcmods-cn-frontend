@@ -2,6 +2,7 @@
 
 import { useI18n } from "../../_lib/i18n-provider";
 import type { ContentResolution, LocalizationVersion, ReviewStatus } from "../../_lib/editor-types";
+import { resolveReviewStatusPresentation } from "../../_lib/review-status-presentation.mts";
 
 export type LocalizationStatusLabels = Partial<{
   ai: string;
@@ -33,12 +34,11 @@ export function LocalizationStatusBadge({
     return <Badge tone="muted">{labels.missing ?? t("common.create")}</Badge>;
   }
 
-  const reviewText: Record<ReviewStatus, string> = {
-    draft: labels.draft ?? t("common.edit"),
-    pending: labels.pending ?? t("common.loading"),
-    approved: labels.approved ?? t("common.confirm"),
-    rejected: labels.rejected ?? t("common.cancel"),
-  };
+  const review = resolveReviewStatusPresentation(version.reviewStatus);
+  const knownReviewStatus = "status" in review ? review.status : undefined;
+  const reviewText = knownReviewStatus
+    ? labels[knownReviewStatus] ?? t(review.translationKey)
+    : t(review.translationKey);
   const reviewTone: Record<ReviewStatus, BadgeTone> = {
     draft: "muted",
     pending: "warning",
@@ -56,7 +56,7 @@ export function LocalizationStatusBadge({
     {version.provenance === "human_corrected" ? <Badge tone="success">{labels.humanCorrected ?? `${t("common.edit")} ✓`}</Badge> : null}
     {(version.provenance === "original" || version.provenance === "import") && labels.original ? <Badge tone="muted">{labels.original}</Badge> : null}
     {version.provenance === "human" && labels.human ? <Badge tone="muted">{labels.human}</Badge> : null}
-    {version.reviewStatus !== "approved" || showApproved ? <Badge tone={reviewTone[version.reviewStatus]}>{reviewText[version.reviewStatus]}</Badge> : null}
+    {knownReviewStatus !== "approved" || showApproved ? <Badge tone={knownReviewStatus ? reviewTone[knownReviewStatus] : "danger"}>{reviewText}</Badge> : null}
     {costText ? <Badge tone={resolution?.translationCost === "free_system" ? "accent" : "warning"}>{costText}</Badge> : null}
   </span>;
 }

@@ -11,7 +11,7 @@ import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 export function ModContentManager({ siteId, importSource, versionId, createNew }: { siteId: string; importSource: "" | "icon" | "exporter" | "iconrenderer" | "letmeseesee" | "irr"; versionId?: string; createNew?: boolean }) {
   const { t } = useI18n();
-  const { ready, token } = useAuthSnapshot();
+  const { ready, token, user } = useAuthSnapshot();
   const [mod, setMod] = useState<BackendModRecord>();
   const [error, setError] = useState("");
 
@@ -25,7 +25,7 @@ export function ModContentManager({ siteId, importSource, versionId, createNew }
   }, [ready, siteId, token]);
 
   if (!ready) return <PageFeedback title={t("common.loading")} />;
-  if (!token) return <LoginRequiredState nextPath={`/mods/${siteId}/data/edit`} description={t("modContent.managerLoginRequired")} />;
+  if (!token || !user) return <LoginRequiredState nextPath={`/mods/${siteId}/data/edit`} description={t("modContent.managerLoginRequired")} />;
   if (error) return <PageFeedback title={error || t("modContent.managerDenied")} tone="danger" action={<Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}`}>{t("mods.detail.back")}</Link>} />;
   if (!mod) return <PageFeedback title={t("common.loading")} />;
 
@@ -35,7 +35,7 @@ export function ModContentManager({ siteId, importSource, versionId, createNew }
         <div><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("mods.detail.back")}</Link><h1 className="mt-2 text-3xl font-black">{t("modContent.managerTitle")}</h1><p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--muted)]">{t("modContent.managerDescription", { name: mod.primaryName })}</p></div>
         <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/edit`}>{t("mods.detail.edit")}</Link>
       </header>
-      <ModContentWorkspace createNew={createNew} initialImportSource={importSource} initialVersionId={versionId} siteId={siteId} token={token} />
+      <ModContentWorkspace createNew={createNew} initialImportSource={importSource} initialVersionId={versionId} siteId={siteId} subjectId={user.id} token={token} />
     </div>
   </main>;
 }

@@ -17,13 +17,16 @@ import {
 } from "../_lib/catalog-state";
 import { useI18n } from "../_lib/i18n-provider";
 import { licenseOptions } from "../_lib/mod-catalog-data";
+import { mergeSimpleProjectParentFacets } from "../_lib/simple-project-facets.mts";
 import {
+  loadSimpleProjectParentFacetPage,
   localizedSimpleProject,
   simpleProjectConfig,
   simpleProjectIconURL,
   type SimpleProjectConfig,
+  type SimpleProjectCard,
   type SimpleProjectList,
-  type SimpleProjectRecord,
+  type SimpleProjectParentFacet,
   type SimpleProjectType,
 } from "../_lib/simple-project-api";
 import {
@@ -56,11 +59,17 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
   const resultsTopRef = useRef<HTMLElement | null>(null);
   const preferenceStorageKey = `mcmods-${projectType}-catalog-preferences`;
   const expandedStorageKey = `mcmods-${projectType}-filter-groups`;
-  const [items, setItems] = useState<SimpleProjectRecord[]>([]);
+  const [items, setItems] = useState<SimpleProjectCard[]>([]);
   const [backendTotal, setBackendTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [submissionOpen, setSubmissionOpen] = useState(false);
+  const [parentFacetItems, setParentFacetItems] = useState<SimpleProjectParentFacet[]>([]);
+  const [parentFacetsCursor, setParentFacetsCursor] = useState("");
+  const [parentFacetsHasMore, setParentFacetsHasMore] = useState(false);
+  const [parentFacetsLoading, setParentFacetsLoading] = useState(false);
+  const [parentFacetsError, setParentFacetsError] = useState("");
+  const parentFacetGenerationRef = useRef(0);
   const {
     paramsKey, preferences, expandedGroups, mobileFiltersOpen, setMobileFiltersOpen,
     queryDraft, setQueryDraft, notice, setNotice, replaceParams, toggleListParam, clearFilters,
@@ -81,7 +90,39 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
   const pageStart = (currentPage - 1) * filters.pageSize;
   const visibleItems = items;
   const selectedFilterCount = countSelectedFilters(filters);
-  const options = useMemo(() => catalogFilterOptions(items, config), [config, items]);
+
+  const loadParentFacets = useCallback(async (cursor: string, append: boolean, signal?: AbortSignal) => {
+    if (!ready || projectType !== "addon") return;
+    const generation = ++parentFacetGenerationRef.current;
+    setParentFacetsLoading(true);
+    setParentFacetsError("");
+    try {
+      const page = await loadSimpleProjectParentFacetPage(projectType, cursor, filters.parents, token, signal);
+      if (signal?.aborted || generation !== parentFacetGenerationRef.current) return;
+      const incoming = mergeSimpleProjectParentFacets(page.selectedItems, page.items);
+      setParentFacetItems((current) => append ? mergeSimpleProjectParentFacets(current, incoming) : incoming);
+      setParentFacetsCursor(page.nextCursor);
+      setParentFacetsHasMore(page.hasMore);
+    } catch (error) {
+      if (signal?.aborted || generation !== parentFacetGenerationRef.current) return;
+      setParentFacetsError(error instanceof Error ? error.message : t("largeProjects.catalog.parentFacetsFailed"));
+    } finally {
+      if (generation === parentFacetGenerationRef.current) setParentFacetsLoading(false);
+    }
+  }, [filters.parents, projectType, ready, t, token]);
+
+  useEffect(() => {
+    if (!ready || projectType !== "addon") return;
+    const controller = new AbortController();
+    const task = window.setTimeout(() => void loadParentFacets("", false, controller.signal), 0);
+    return () => {
+      window.clearTimeout(task);
+      controller.abort();
+      parentFacetGenerationRef.current += 1;
+    };
+  }, [loadParentFacets, projectType, ready]);
+
+  const options = useMemo(() => catalogFilterOptions(config, parentFacetItems), [config, parentFacetItems]);
 
   const load = useCallback(async () => {
     if (!ready) return;
@@ -95,6 +136,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
       requestParams.set("order", filters.sortDirection);
       requestParams.set("limit", String(filters.pageSize));
       requestParams.set("offset", String((filters.page - 1) * filters.pageSize));
+      requestParams.set("locale", locale);
       const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?${requestParams}`, {}, token);
       setItems(result.items);
       setBackendTotal(result.total);
@@ -106,14 +148,14 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
     } finally {
       setLoading(false);
     }
-  }, [filters.page, filters.pageSize, filters.sort, filters.sortDirection, paramsKey, projectType, ready, t, token]);
+  }, [filters.page, filters.pageSize, filters.sort, filters.sortDirection, locale, paramsKey, projectType, ready, t, token]);
 
   useEffect(() => {
     const task = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(task);
   }, [load]);
 
-  async function shareProject(item: SimpleProjectRecord) {
+  async function shareProject(item: SimpleProjectCard) {
     const localization = localizedSimpleProject(item, locale);
     const url = `${window.location.origin}${config.path}/${item.siteId}`;
     try {
@@ -155,11 +197,15 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
               expandedGroups={expandedGroups}
               filters={filters}
               options={options}
+              parentFacetsError={parentFacetsError}
+              parentFacetsHasMore={parentFacetsHasMore}
+              parentFacetsLoading={parentFacetsLoading}
               resultCount={backendTotal}
               t={t}
               onClear={clearFilters}
               onClose={null}
               onGroupToggle={toggleGroup}
+              onLoadMoreParentFacets={() => void loadParentFacets(parentFacetsCursor, true)}
               onParamChange={replaceParams}
               onToggleList={toggleListParam}
             />
@@ -221,11 +267,15 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
           expandedGroups={expandedGroups}
           filters={filters}
           options={options}
+          parentFacetsError={parentFacetsError}
+          parentFacetsHasMore={parentFacetsHasMore}
+          parentFacetsLoading={parentFacetsLoading}
           resultCount={backendTotal}
           t={t}
           onClear={clearFilters}
           onClose={() => setMobileFiltersOpen(false)}
           onGroupToggle={toggleGroup}
+          onLoadMoreParentFacets={() => void loadParentFacets(parentFacetsCursor, true)}
           onParamChange={replaceParams}
           onToggleList={toggleListParam}
         />
@@ -236,16 +286,20 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
   );
 }
 
-function ProjectFilterPanel({ config, expandedGroups, filters, options, resultCount, t, onClear, onClose, onGroupToggle, onParamChange, onToggleList }: {
+function ProjectFilterPanel({ config, expandedGroups, filters, options, parentFacetsError, parentFacetsHasMore, parentFacetsLoading, resultCount, t, onClear, onClose, onGroupToggle, onLoadMoreParentFacets, onParamChange, onToggleList }: {
   config: SimpleProjectConfig;
   expandedGroups: Set<string>;
   filters: CatalogFilters;
   options: ReturnType<typeof catalogFilterOptions>;
+  parentFacetsError: string;
+  parentFacetsHasMore: boolean;
+  parentFacetsLoading: boolean;
   resultCount: number;
   t: Translation;
   onClear: () => void;
   onClose: (() => void) | null;
   onGroupToggle: (group: string, open: boolean) => void;
+  onLoadMoreParentFacets: () => void;
   onParamChange: (updates: Record<string, ParamValue>) => void;
   onToggleList: (key: string, value: string) => void;
 }) {
@@ -279,8 +333,12 @@ function ProjectFilterPanel({ config, expandedGroups, filters, options, resultCo
     {options.features.length ? <FilterGroup group="features" label={t("largeProjects.fields.features")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
       <CatalogOptionList options={options.features} selected={filters.features} label={(value) => optionLabel(value, t)} onToggle={(value) => onToggleList("feature", value)} />
     </FilterGroup> : null}
-    {config.type === "addon" && options.parentProjects.length ? <FilterGroup group="parentProjects" label={t("largeProjects.fields.parentProjects")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
-      <CatalogOptionList options={options.parentProjects.map((option) => option.key)} selected={filters.parents} label={(value) => options.parentProjects.find((option) => option.key === value)?.label || value} onToggle={(value) => onToggleList("parent", value)} />
+    {config.type === "addon" ? <FilterGroup group="parentProjects" label={t("largeProjects.fields.parentProjects")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
+      {options.parentProjects.length ? <CatalogOptionList options={options.parentProjects.map((option) => option.key)} selected={filters.parents} label={(value) => options.parentProjects.find((option) => option.key === value)?.label || value} onToggle={(value) => onToggleList("parent", value)} /> : null}
+      {!parentFacetsLoading && !parentFacetsError && !options.parentProjects.length ? <p className="text-sm text-[var(--muted)]">{t("largeProjects.catalog.parentFacetsEmpty")}</p> : null}
+      {parentFacetsError ? <p className="mt-2 text-sm font-bold text-[var(--red)]">{parentFacetsError}</p> : null}
+      {parentFacetsHasMore || parentFacetsError ? <button className="button-secondary mt-3 w-full" disabled={parentFacetsLoading} type="button" onClick={onLoadMoreParentFacets}>{parentFacetsLoading ? t("common.loading") : t(parentFacetsError ? "common.retry" : "largeProjects.catalog.loadMoreParents")}</button> : null}
+      {parentFacetsLoading && !parentFacetsHasMore && !parentFacetsError ? <p className="text-sm text-[var(--muted)]">{t("common.loading")}</p> : null}
     </FilterGroup> : null}
     <FilterGroup group="status" label={t("largeProjects.catalog.groups.status")} expandedGroups={expandedGroups} onGroupToggle={onGroupToggle}>
       <CatalogOptionList options={officialStatusOptions} selected={filters.statuses} label={(value) => optionLabel(value, t)} onToggle={(value) => onToggleList("status", value)} />
@@ -299,7 +357,7 @@ function FilterGroup({ group, label, expandedGroups, onGroupToggle, children }: 
   return <CatalogFilterGroup group={group} label={label} expanded={expandedGroups.has(group)} onToggle={onGroupToggle}>{children}</CatalogFilterGroup>;
 }
 
-function ProjectCard({ item, config, locale, t, view, onShare }: { item: SimpleProjectRecord; config: SimpleProjectConfig; locale: string; t: Translation; view: CatalogView; onShare: () => void }) {
+function ProjectCard({ item, config, locale, t, view, onShare }: { item: SimpleProjectCard; config: SimpleProjectConfig; locale: string; t: Translation; view: CatalogView; onShare: () => void }) {
   const router = useRouter();
   const localization = localizedSimpleProject(item, locale);
   const defaultLocalization = localizedSimpleProject(item, item.defaultLocale);
@@ -353,7 +411,7 @@ function ProjectCard({ item, config, locale, t, view, onShare }: { item: SimpleP
   </article>;
 }
 
-function ProjectTitle({ item, displayName, secondaryName, t }: { item: SimpleProjectRecord; displayName: string; secondaryName: string; t: Translation }) {
+function ProjectTitle({ item, displayName, secondaryName, t }: { item: SimpleProjectCard; displayName: string; secondaryName: string; t: Translation }) {
   return <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="min-w-0 text-lg font-black group-hover:text-[var(--accent)]">{item.abbreviation ? `[${item.abbreviation}] ` : ""}{displayName}</h3><Tag>{optionLabel(item.officialStatus, t)}</Tag></div>{secondaryName ? <p className="mt-1 truncate text-sm font-semibold text-[var(--muted)]">{secondaryName}</p> : null}<code className="mt-1 block truncate text-xs text-[var(--muted)]">{item.siteId}</code></div>;
 }
 
@@ -375,7 +433,7 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<C
   const rawSort = params.get("sort");
   const normalizedSort = normalizeCatalogSortField(rawSort, preferences.sort);
   const sort = sortFields.includes(normalizedSort) ? normalizedSort : preferences.sort;
-  const sortDirection = normalizeCatalogSortDirection(params.get("order"), preferences.sortDirection, rawSort);
+  const sortDirection = normalizeCatalogSortDirection(params.get("order"), preferences.sortDirection, sort);
   return {
     query: params.get("q")?.trim() ?? "",
     versions: readList(params, "version"),
@@ -397,15 +455,14 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<C
   };
 }
 
-function catalogFilterOptions(items: SimpleProjectRecord[], config: SimpleProjectConfig) {
+function catalogFilterOptions(config: SimpleProjectConfig, parentProjects: SimpleProjectParentFacet[]) {
   return {
-    versions: uniqueSorted(items.flatMap((item) => item.minecraftVersions), compareMinecraftVersions),
-    loaders: uniqueStable([...config.loaders, ...items.flatMap((item) => item.loaders)]),
-    categories: uniqueStable([...config.categories, ...items.flatMap((item) => item.categories)]),
-    features: uniqueStable([...config.features, ...items.flatMap((item) => item.features)]),
-    selectorValues: uniqueStable([...(config.selectorOptions ?? []), ...items.map((item) => config.selector ? selectorValue(item, config.selector) : "")]),
-    parentProjects: uniqueParentProjects(items),
-    licenses: uniqueStable([...licenseOptions, ...items.map((item) => item.license)]),
+    loaders: [...config.loaders],
+    categories: [...config.categories],
+    features: [...config.features],
+    selectorValues: [...(config.selectorOptions ?? [])],
+    parentProjects,
+    licenses: [...licenseOptions],
   };
 }
 
@@ -430,23 +487,7 @@ function countSelectedFilters(filters: CatalogFilters) {
   return filters.versions.length + filters.loaders.length + filters.categories.length + filters.features.length + filters.selectorValues.length + filters.parents.length + filters.statuses.length + filters.sources.length + filters.licenses.length + (filters.updated ? 1 : 0);
 }
 
-function uniqueParentProjects(items: SimpleProjectRecord[]) {
-  const values = new Map<string, { key: string; label: string }>();
-  for (const parent of items.flatMap((item) => item.parentProjects)) {
-    const key = parentProjectKey(parent);
-    if (!key || values.has(key)) continue;
-    const identity = parent.name || parent.identifier || parent.siteId || parent.publicId || parent.type;
-    values.set(key, { key, label: identity });
-  }
-  return [...values.values()].sort((left, right) => left.label.localeCompare(right.label));
-}
-
-function parentProjectKey(parent: SimpleProjectRecord["parentProjects"][number]) {
-  const identity = parent.siteId || parent.publicId || parent.identifier;
-  return identity ? `${parent.type}:${identity}` : "";
-}
-
-function selectorValue(item: SimpleProjectRecord, selector: NonNullable<SimpleProjectConfig["selector"]>) {
+function selectorValue(item: SimpleProjectCard, selector: NonNullable<SimpleProjectConfig["selector"]>) {
   if (selector === "resolution") return item.resolution;
   if (selector === "performance") return item.performance;
   return item.mapSize;
@@ -454,18 +495,6 @@ function selectorValue(item: SimpleProjectRecord, selector: NonNullable<SimplePr
 
 function optionLabel(value: string, t: Translation) {
   return t(`largeProjects.options.${value}`);
-}
-
-function uniqueStable(values: readonly string[]) {
-  return [...new Set(values.filter(Boolean))];
-}
-
-function uniqueSorted(values: readonly string[], compare?: (left: string, right: string) => number) {
-  return uniqueStable(values).sort(compare);
-}
-
-function compareMinecraftVersions(left: string, right: string) {
-  return right.localeCompare(left, undefined, { numeric: true, sensitivity: "base" });
 }
 
 function formatDate(value: string, locale: string) {

@@ -8,6 +8,7 @@ import {
   putFileToOSS,
 } from "./oss-upload";
 import type { CatalogResourceVersion } from "./editor-types";
+import { waitForPolledJob } from "./job-polling.mts";
 
 export type ModExportJob = {
   id: string;
@@ -32,7 +33,6 @@ export type ModExportJob = {
 };
 
 export type ModExportEntryDetail = {
-  entityId: string;
   publicId: string;
   data: Record<string, unknown>;
   entryTypeCode: string;
@@ -122,7 +122,10 @@ export async function uploadModExportPackage(
   }
   if (!ticket) {
     onProgress?.({ phase: "hashing", percent: 0 });
-    const sha256 = await computeFileSHA256(file);
+    const sha256 = await computeFileSHA256(file, {
+      signal: control.signal,
+      onProgress: (hashed, total) => onProgress?.({ phase: "hashing", percent: total > 0 ? Math.round(hashed / total * 100) : 100 }),
+    });
     if (control.signal?.aborted) throw new DOMException("Upload cancelled", "AbortError");
     onProgress?.({ phase: "preparing", percent: 0 });
     ticket = await apiRequest<OSSDirectUploadTicket>(`${root}/uploads/presign`, {
@@ -134,7 +137,6 @@ export async function uploadModExportPackage(
         sha256,
         category: "import-staging",
         source: "mcmods_exporter",
-        preferMultipart: true,
         expiresMinutes: 60,
       }),
       signal: control.signal,
@@ -242,7 +244,6 @@ export async function uploadEmbeddedIconCatalog(file: File, siteId: string, toke
       sha256,
       category: "catalog-import-staging",
       source,
-      preferMultipart: true,
     }),
   }, token);
   let record = ticket.file;
@@ -272,24 +273,23 @@ export async function uploadEmbeddedIconCatalog(file: File, siteId: string, toke
 
 export async function waitForModExportJob(siteId: string, jobId: string, token: string, onProgress: (job: ModExportJob) => void, signal?: AbortSignal) {
   const path = `/api/v1/mods/${encodeURIComponent(siteId)}/export-imports/${encodeURIComponent(jobId)}`;
-  for (;;) {
-    if (signal?.aborted) throw new DOMException("Polling aborted", "AbortError");
-    const job = await apiRequest<ModExportJob>(path, { signal }, token);
-    onProgress(job);
-    if (["confirmation_required", "ready", "partial", "failed", "cancelled"].includes(job.status)) return job;
-    await abortableDelay(1200, signal);
-  }
+  return waitForImportJob(path, token, onProgress, signal);
 }
 
 export async function waitForCatalogImportJob(siteId: string, jobId: string, token: string, onProgress: (job: ModExportJob) => void, signal?: AbortSignal) {
   const path = `/api/v1/mods/${encodeURIComponent(siteId)}/catalog-imports/${encodeURIComponent(jobId)}`;
-  for (;;) {
-    if (signal?.aborted) throw new DOMException("Polling aborted", "AbortError");
-    const job = await apiRequest<ModExportJob>(path, { signal }, token);
-    onProgress(job);
-    if (["confirmation_required", "ready", "partial", "failed", "cancelled"].includes(job.status)) return job;
-    await abortableDelay(1200, signal);
-  }
+  return waitForImportJob(path, token, onProgress, signal);
+}
+
+const importJobTerminalStatuses = new Set<ModExportJob["status"]>(["confirmation_required", "ready", "partial", "failed", "cancelled"]);
+
+function waitForImportJob(path: string, token: string, onProgress: (job: ModExportJob) => void, signal?: AbortSignal) {
+  return waitForPolledJob(
+    (requestSignal) => apiRequest<ModExportJob>(path, { signal: requestSignal }, token),
+    importJobTerminalStatuses,
+    onProgress,
+    signal,
+  );
 }
 
 export function retryModExportJob(siteId: string, jobId: string, token: string) {
@@ -309,16 +309,6 @@ export function retryCatalogImportJob(siteId: string, jobId: string, token: stri
   return apiRequest<ModExportJob>(`/api/v1/mods/${encodeURIComponent(siteId)}/catalog-imports/${encodeURIComponent(jobId)}/retry`, {
     method: "POST",
   }, token);
-}
-
-function abortableDelay(milliseconds: number, signal?: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(resolve, milliseconds);
-    signal?.addEventListener("abort", () => {
-      window.clearTimeout(timer);
-      reject(new DOMException("Polling aborted", "AbortError"));
-    }, { once: true });
-  });
 }
 
 export function modExportAssetURL(revisionId: string, path: string, rendererProxy = false) {
@@ -342,8 +332,8 @@ export function minecraftLocale(locale: string) {
   return aliases[normalized] ?? normalized;
 }
 
-export function getModExportEntryDetail(revisionId: string, registry: string, entityId: string, objectId: string, locale: string, token: string) {
+export function getModExportEntryDetail(revisionId: string, registry: string, publicId: string, objectId: string, locale: string, token: string) {
   const search = new URLSearchParams({ registry, objectId, locale });
-  if (entityId) search.set("entityId", entityId);
+  if (publicId) search.set("publicId", publicId);
   return apiRequest<ModExportEntryDetail>(`/api/v1/export-revisions/${encodeURIComponent(revisionId)}/entry-detail?${search}`, {}, token);
 }

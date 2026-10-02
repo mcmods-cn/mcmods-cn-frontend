@@ -26,7 +26,8 @@ import {
   updateModContentResource,
 } from "../_lib/mod-content-api";
 import { modExportAssetURL } from "../_lib/mod-export-api";
-import { uploadUserFileToOSS } from "../_lib/oss-upload";
+import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
+import { createOSSUploadBatchTasks, hasUnfinishedOSSUploadTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { useAutoDraft } from "../_lib/use-auto-draft";
 import { supportedLocales, type Locale, useI18n } from "../_lib/i18n-provider";
 import { ContentLanguageSwitcher, contentLanguageTabId } from "./editor/content-language-switcher";
@@ -39,6 +40,7 @@ import { loadTagPickerPage } from "../_lib/resource-picker-loaders";
 import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
+import { OSSUploadBatchStatus } from "./oss-upload-batch-status";
 
 type EditorMode = "create" | "edit";
 type LocalizedFields = { name: string; contentMarkdown: string };
@@ -119,6 +121,7 @@ export function ModContentResourceEditor({
   const [importedIconPreview, setImportedIconPreview] = useState("");
   const [importedRenderPreview, setImportedRenderPreview] = useState("");
   const [uploadingAsset, setUploadingAsset] = useState<"icon" | "render" | "">("");
+  const [iconUploadTasks, setIconUploadTasks] = useState<OSSUploadBatchTask<File, OSSFileRecord>[]>([]);
   const [cropRequest, setCropRequest] = useState<{ file: File }>();
   const [uploadingMarkdownAsset, setUploadingMarkdownAsset] = useState(false);
   const [reason, setReason] = useState("");
@@ -319,6 +322,7 @@ export function ModContentResourceEditor({
     && activeVersionId
     && selectedSectionId
     && !uploadingAsset
+    && !hasUnfinishedOSSUploadTasks(iconUploadTasks)
     && !uploadingMarkdownAsset
     && !busy
     && !deleting
@@ -360,22 +364,42 @@ export function ModContentResourceEditor({
 
   async function uploadCroppedIcon(output: SquareCropOutput) {
     if (!token || uploadingAsset || busy) return;
+    setError("");
+    const icon32 = output.files.get(32);
+    const icon128 = output.files.get(128);
+    if (!icon32 || !icon128) {
+      URL.revokeObjectURL(output.previewUrl);
+      setError(t("resourceEditor.cropFailed"));
+      return;
+    }
+    setIconSmallFilePublicId("");
+    setIconFilePublicId("");
+    setIconPreview(output.previewUrl);
+    const tasks = createOSSUploadBatchTasks<File, OSSFileRecord>([icon32, icon128], {
+      capacity: 2,
+      capacityError: t("resourceEditor.cropFailed"),
+      identity: (_file, index) => index === 0 ? "icon-32" : "icon-128",
+      validate: () => "",
+    });
+    await processIconUploadTasks(tasks);
+  }
+
+  async function processIconUploadTasks(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string) {
+    if (!token || uploadingAsset || busy) return;
     setUploadingAsset("icon");
     setError("");
     try {
-      const icon32 = output.files.get(32);
-      const icon128 = output.files.get(128);
-      if (!icon32 || !icon128) throw new Error(t("resourceEditor.cropFailed"));
-      const [smallUploaded, uploaded] = await Promise.all([
-        uploadUserFileToOSS(icon32, token, `mod_resource:${siteId}:${kindCode.trim() || "resource"}:icon_32`),
-        uploadUserFileToOSS(icon128, token, `mod_resource:${siteId}:${kindCode.trim() || "resource"}:icon_128`),
-      ]);
-      setIconSmallFilePublicId(smallUploaded.id);
-      setIconFilePublicId(uploaded.id);
-      setIconPreview(output.previewUrl);
-    } catch (cause) {
-      URL.revokeObjectURL(output.previewUrl);
-      setError(errorText(cause));
+      const result = await processOSSUploadBatch(tasks, {
+        upload: (file, task) => uploadUserFileToOSS(file, token, `mod_resource:${siteId}:${kindCode.trim() || "resource"}:${task.key.replace("-", "_")}`),
+        shouldProcess: retryKey ? (task) => task.key === retryKey : undefined,
+        onChange: setIconUploadTasks,
+        onUploaded: (task, record) => {
+          if (task.key === "icon-32") setIconSmallFilePublicId(record.id);
+          if (task.key === "icon-128") setIconFilePublicId(record.id);
+        },
+      });
+      const failed = result.find((task) => task.stage === "failed");
+      if (failed) setError(failed.error || t("resourceEditor.uploadFailed"));
     } finally {
       setUploadingAsset("");
     }
@@ -438,7 +462,6 @@ export function ModContentResourceEditor({
         projectKey: `mod:${siteId}`,
         projectTitle: siteId,
         targetUrl,
-        reviewStatus: result.reviewStatus,
         changeRequestId: result.changeRequestId,
       }).catch(() => undefined);
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
@@ -466,7 +489,6 @@ export function ModContentResourceEditor({
         projectKey: `mod:${siteId}`,
         projectTitle: siteId,
         targetUrl: backHref,
-        reviewStatus: result.reviewStatus,
         changeRequestId: result.changeRequestId,
       }).catch(() => undefined);
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
@@ -579,6 +601,7 @@ export function ModContentResourceEditor({
       uploading={uploadingAsset}
       onClear={(assetKind) => {
         if (assetKind === "icon") {
+          setIconUploadTasks([]);
           setIconSmallFilePublicId("");
           setIconFilePublicId("");
           setIconPreview(importedIconPreview);
@@ -589,6 +612,7 @@ export function ModContentResourceEditor({
       }}
       onUpload={requestAssetUpload}
     />
+    <OSSUploadBatchStatus busy={uploadingAsset === "icon"} tasks={iconUploadTasks} onRetry={(key) => void processIconUploadTasks(iconUploadTasks, key)} />
 
     {kindCode === "minecraft.loot_table" ? <LootTableVisualEditor
       definition={effectiveDefinition}
@@ -613,8 +637,8 @@ export function ModContentResourceEditor({
     <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
       <ToolsPlayground
         embedded
+        documentId={`mod-content:${siteId}:${resourceId || "staging"}:${selectedLocale}:content`}
         editorTitle={`${t("modContent.sectionActions.content")} (${selectedLocale})`}
-        key={selectedLocale}
         uploadSource={`mod_text:${siteId}:${resourceId || "staging"}`}
         value={fields.contentMarkdown}
         onBusyChange={setUploadingMarkdownAsset}

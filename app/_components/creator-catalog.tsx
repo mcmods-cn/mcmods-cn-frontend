@@ -1,11 +1,14 @@
 "use client";
 
+import { apiErrorMessage } from "../_lib/api-error.mts";
+
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { type CatalogSortDirection, type CatalogSortField, coreCatalogSortFields } from "../_lib/catalog-sort";
 import { CreatorKind, CreatorSummary, creatorHref } from "../_lib/community-api";
+import { loadCreatorPage, mergeCreatorPageItems } from "../_lib/creator-pagination.mts";
 import { useI18n } from "../_lib/i18n-provider";
 import { CatalogHero, CatalogSortControl } from "./catalog-list-ui";
 
@@ -20,22 +23,29 @@ export function CreatorCatalog() {
   const [sortDirection, setSortDirection] = useState<CatalogSortDirection>("asc");
   const [items, setItems] = useState<CreatorSummary[]>([]);
   const [counts, setCounts] = useState({ author: 0, team: 0 });
+  const [nextCursor, setNextCursor] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [message, setMessage] = useState("");
+  const requestGeneration = useRef(0);
 
   useEffect(() => {
+    const generation = ++requestGeneration.current;
     let cancelled = false;
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setLoading(true);
-      const params = new URLSearchParams({ limit: "100" });
-      if (kind) params.set("kind", kind);
-      if (query.trim()) params.set("query", query.trim());
-      params.set("sort", sort);
-      params.set("order", sortDirection);
-      apiRequest<{ items: CreatorSummary[]; counts?: { author: number; team: number } }>(`/api/v1/creators?${params}`, {}, token || undefined)
+      setLoadingMore(false);
+      loadCreatorPage<CreatorSummary>(
+        (path, signal) => apiRequest(path, { signal }, token || undefined),
+        { limit: 48, kind, query, sort, order: sortDirection },
+        "",
+        controller.signal,
+      )
         .then((result) => {
-          if (!cancelled) {
+          if (!cancelled && requestGeneration.current === generation) {
             setItems(result.items);
+            setNextCursor(result.nextCursor);
             if (result.counts) {
               setCounts(result.counts);
             } else if (!kind) {
@@ -48,7 +58,7 @@ export function CreatorCatalog() {
           }
         })
         .catch((error) => {
-          if (!cancelled) setMessage(error instanceof Error ? error.message : t("creators.loadFailed"));
+          if (!cancelled) setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -56,9 +66,35 @@ export function CreatorCatalog() {
     }, 180);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(timer);
     };
   }, [kind, query, sort, sortDirection, t, token]);
+
+  async function loadMore() {
+    const cursor = nextCursor;
+    if (!cursor || loadingMore) return;
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
+    setMessage("");
+    try {
+      const result = await loadCreatorPage<CreatorSummary>(
+        (path, signal) => apiRequest(path, { signal }, token || undefined),
+        { limit: 48, kind, query, sort, order: sortDirection },
+        cursor,
+      );
+      if (requestGeneration.current !== generation) return;
+      setItems((current) => mergeCreatorPageItems(current, result.items));
+      setNextCursor(result.nextCursor);
+      if (result.counts) setCounts(result.counts);
+    } catch (error) {
+      if (requestGeneration.current === generation) {
+        setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
+      }
+    } finally {
+      if (requestGeneration.current === generation) setLoadingMore(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -106,6 +142,7 @@ export function CreatorCatalog() {
             </Link>
           ))}
         </div>
+        {nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("common.loading") : t("creators.loadMore")}</button> : null}
       </section>
     </main>
   );

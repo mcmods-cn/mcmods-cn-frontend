@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
+import { mergeProjectAuthorshipPage, projectAuthorshipPagePath } from "../_lib/project-authorship-pagination.mts";
 
 type RelationStatus = "pending" | "approved" | "rejected" | "revoked";
 type ProjectAuthorshipRelation = {
@@ -20,6 +21,7 @@ type ProjectAuthorshipRelation = {
 };
 
 const statuses: RelationStatus[] = ["pending", "approved", "rejected", "revoked"];
+const pageSize = 50;
 
 export function AdminProjectAuthorshipPanel({ token }: { token: string }) {
   const { locale, t } = useI18n();
@@ -27,18 +29,53 @@ export function AdminProjectAuthorshipPanel({ token }: { token: string }) {
   const [items, setItems] = useState<ProjectAuthorshipRelation[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
+  const [nextCursor, setNextCursor] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestGeneration = useRef(0);
+  const requestController = useRef<AbortController | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (cursor = "") => {
+    const append = Boolean(cursor);
+    const generation = ++requestGeneration.current;
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
+    if (append) setLoadingMore(true);
+    else {
+      setLoading(true);
+      setItems([]);
+      setNextCursor("");
+    }
     try {
-      const result = await apiRequest<{ items: ProjectAuthorshipRelation[] }>(`/api/v1/admin/project-authorship-relations?status=${status}`, {}, token);
-      setItems(result.items);
+      const result = await apiRequest<{ items: ProjectAuthorshipRelation[]; hasMore: boolean; nextCursor: string }>(
+        projectAuthorshipPagePath(status, pageSize, cursor),
+        { signal: controller.signal },
+        token,
+      );
+      if (generation !== requestGeneration.current) return;
+      setItems((current) => append ? mergeProjectAuthorshipPage(current, result.items) : result.items);
+      setNextCursor(result.hasMore ? result.nextCursor : "");
       setMessage("");
     } catch (error) {
+      if (generation !== requestGeneration.current || (error as { name?: string }).name === "AbortError") return;
       setMessage(error instanceof Error ? error.message : t("admin.projectAuthorship.loadFailed"));
+    } finally {
+      if (generation === requestGeneration.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     }
   }, [status, t, token]);
 
-  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => {
+      window.clearTimeout(timer);
+      requestGeneration.current += 1;
+      requestController.current?.abort();
+    };
+  }, [load]);
 
   async function review(item: ProjectAuthorshipRelation, nextStatus: "approved" | "rejected" | "revoked") {
     try {
@@ -78,7 +115,9 @@ export function AdminProjectAuthorshipPanel({ token }: { token: string }) {
           </div>
         </> : null}
       </article>)}
-      {!items.length ? <div className="surface grid min-h-48 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.projectAuthorship.empty")}</div> : null}
+      {loading ? <div className="surface grid min-h-48 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("common.loading")}</div> : null}
+      {!loading && !items.length ? <div className="surface grid min-h-48 place-items-center p-6 text-center font-bold text-[var(--muted)]">{t("admin.projectAuthorship.empty")}</div> : null}
     </div>
+    {nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadingMore} type="button" onClick={() => void load(nextCursor)}>{loadingMore ? t("common.loading") : t("admin.projectAuthorship.loadMore")}</button> : null}
   </section>;
 }

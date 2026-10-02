@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "../_lib/api";
-import { favoriteItemHref, FavoriteCollection, FavoriteCollectionItem, loadPublicFavoriteCollections, loadPublicFavoriteItems } from "../_lib/favorite-api";
+import { favoriteItemHref, FavoriteCollection, FavoriteCollectionItem, FavoritePage, loadPublicFavoriteCollections, loadPublicFavoriteItems } from "../_lib/favorite-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { CatalogResourceIconValue } from "./catalog-resource-icon";
 
@@ -51,45 +51,79 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
   const { t } = useI18n();
   const [showcase, setShowcase] = useState<ShowcasePayload | null>(null);
   const [collections, setCollections] = useState<FavoriteCollection[]>([]);
+  const [collectionPage, setCollectionPage] = useState<FavoritePage<FavoriteCollection> | null>(null);
+  const [publicFavoriteCollectionCursorHistory, setPublicFavoriteCollectionCursorHistory] = useState<string[]>([]);
   const [selectedCollection, setSelectedCollection] = useState("");
   const [favoriteItems, setFavoriteItems] = useState<FavoriteCollectionItem[]>([]);
+  const [itemPage, setItemPage] = useState<FavoritePage<FavoriteCollectionItem> | null>(null);
+  const [publicFavoriteItemCursorHistory, setPublicFavoriteItemCursorHistory] = useState<string[]>([]);
   const [contribution, setContribution] = useState<ContributionsPayload | null>(null);
   const [contributionLoading, setContributionLoading] = useState(false);
   const [contributionMessage, setContributionMessage] = useState("");
   const [message, setMessage] = useState("");
+  const currentCollectionCursor = publicFavoriteCollectionCursorHistory.at(-1) ?? "";
+  const currentItemCursor = publicFavoriteItemCursorHistory.at(-1) ?? "";
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.allSettled([
-      apiRequest<ShowcasePayload>(`/api/v1/users/${userId}/showcase`, {}, token),
-      loadPublicFavoriteCollections(userId, token),
-    ]).then(([showcaseResult, collectionsResult]) => {
-      if (cancelled) return;
-      if (showcaseResult.status === "fulfilled") {
-        setShowcase(showcaseResult.value);
-        setContribution(showcaseResult.value.contributions);
+    void apiRequest<ShowcasePayload>(`/api/v1/users/${userId}/showcase`, {}, token).then((result) => {
+      if (!cancelled) {
+        setShowcase(result);
+        setContribution(result.contributions);
         setMessage("");
-      } else {
-        setMessage(showcaseResult.reason instanceof Error ? showcaseResult.reason.message : t("user.showcaseLoadFailed"));
       }
-      if (collectionsResult.status === "fulfilled") {
-        setCollections(collectionsResult.value);
-        setSelectedCollection((current) => current || collectionsResult.value[0]?.id || "");
-      }
-    });
+    }).catch((reason) => { if (!cancelled) setMessage(reason instanceof Error ? reason.message : t("user.showcaseLoadFailed")); });
     return () => { cancelled = true; };
   }, [t, token, userId]);
 
   useEffect(() => {
-    if (!selectedCollection) return;
     let cancelled = false;
-    void loadPublicFavoriteItems(userId, selectedCollection, token).then((items) => {
-      if (!cancelled) setFavoriteItems(items);
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setFavoriteItems([]);
+        setItemPage(null);
+      }
+    });
+    void loadPublicFavoriteCollections(userId, token, currentCollectionCursor).then((page) => {
+      if (cancelled) return;
+      setCollections(page.items);
+      setCollectionPage(page);
+      setSelectedCollection(page.items[0]?.id ?? "");
+      setPublicFavoriteItemCursorHistory([]);
     }).catch(() => {
-      if (!cancelled) setFavoriteItems([]);
+      if (!cancelled) {
+        setCollections([]);
+        setCollectionPage(null);
+      }
     });
     return () => { cancelled = true; };
-  }, [selectedCollection, token, userId]);
+  }, [currentCollectionCursor, token, userId]);
+
+  useEffect(() => {
+    if (!selectedCollection) {
+      queueMicrotask(() => {
+        setFavoriteItems([]);
+        setItemPage(null);
+      });
+      return;
+    }
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setFavoriteItems([]);
+        setItemPage(null);
+      }
+    });
+    void loadPublicFavoriteItems(userId, selectedCollection, token, currentItemCursor).then((page) => {
+      if (!cancelled) { setFavoriteItems(page.items); setItemPage(page); }
+    }).catch(() => {
+      if (!cancelled) {
+        setFavoriteItems([]);
+        setItemPage(null);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [currentItemCursor, selectedCollection, token, userId]);
 
   async function selectContributionYear(year: number) {
     if (!contribution || contribution.year === year || contributionLoading) return;
@@ -119,18 +153,20 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
       <ShowcaseSection description={t("user.editorProjectsDescription")} empty={t("user.noEditorProjects")} items={showcase.editorProjects} title={t("user.editorProjects")} />
       <ShowcaseSection description={t("user.uploadsDescription")} empty={t("user.noUploads")} items={showcase.uploads} title={t("user.uploads")} />
       <ShowcaseSection description={t("user.postsDescription")} empty={t("user.noPosts")} items={showcase.posts} title={t("user.communityPosts")} />
-      {collections.length ? (
+      {collections.length || publicFavoriteCollectionCursorHistory.length > 0 ? (
         <section className="surface p-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-xl font-black">{t("favorites.publicCollections")}</h2>
               <p className="mt-1 text-sm text-[var(--muted)]">{t("favorites.publicCollectionsDescription")}</p>
             </div>
-            <select className="field max-w-xs" value={selectedCollection} onChange={(event) => setSelectedCollection(event.target.value)}>
-              {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.isDefault ? t("favorites.defaultFolder") : collection.name} ({collection.itemCount})</option>)}
+            <select className="field max-w-xs" value={selectedCollection} onChange={(event) => { setSelectedCollection(event.target.value); setPublicFavoriteItemCursorHistory([]); }}>
+              {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.isDefault ? t("favorites.defaultFolder") : collection.name}</option>)}
             </select>
           </div>
-          {favoriteItems.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{favoriteItems.map((item) => <FavoriteCard item={item} key={`${item.entityType}:${item.entityKey}`} />)}</div> : <p className="mt-4 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
+          {collectionPage && (publicFavoriteCollectionCursorHistory.length > 0 || collectionPage.hasMore) ? <div className="mt-3 flex items-center justify-between gap-2"><button className="button-secondary focus-ring" disabled={publicFavoriteCollectionCursorHistory.length === 0} type="button" onClick={() => setPublicFavoriteCollectionCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-xs font-bold text-[var(--muted)]">{t("favorites.page", { page: publicFavoriteCollectionCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={!collectionPage.hasMore || !collectionPage.nextCursor} type="button" onClick={() => setPublicFavoriteCollectionCursorHistory((history) => [...history, collectionPage.nextCursor])}>{t("common.next")}</button></div> : null}
+          {favoriteItems.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{favoriteItems.map((item) => <FavoriteCard item={item} key={`${item.entityType}:${item.entityPublicId}`} />)}</div> : <p className="mt-4 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
+          {itemPage && (publicFavoriteItemCursorHistory.length > 0 || itemPage.hasMore) ? <div className="mt-4 flex items-center justify-between gap-2"><button className="button-secondary focus-ring" disabled={publicFavoriteItemCursorHistory.length === 0} type="button" onClick={() => setPublicFavoriteItemCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-xs font-bold text-[var(--muted)]">{t("favorites.page", { page: publicFavoriteItemCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={!itemPage.hasMore || !itemPage.nextCursor} type="button" onClick={() => setPublicFavoriteItemCursorHistory((history) => [...history, itemPage.nextCursor])}>{t("common.next")}</button></div> : null}
         </section>
       ) : null}
       <ContributionHeatmap
@@ -171,8 +207,8 @@ function ShowcaseCard({ item }: { item: ShowcaseItem }) {
 }
 
 function FavoriteCard({ item }: { item: FavoriteCollectionItem }) {
-  const name = item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityKey;
-  return <Link className="focus-ring flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)}><CatalogResourceIconValue className="h-11 w-11" fallbackName={name} value={item.metadata.iconUrl || ""} /><span className="min-w-0"><strong className="block truncate">{name}</strong><small className="mt-1 block truncate text-[var(--muted)]">{item.entityKey}</small></span></Link>;
+  const name = item.metadata.primaryName || item.metadata.secondaryName || item.metadata.title || item.entityPublicId;
+  return <Link className="focus-ring flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={favoriteItemHref(item)}><CatalogResourceIconValue className="h-11 w-11" fallbackName={name} value={item.metadata.iconUrl || ""} /><span className="min-w-0"><strong className="block truncate">{name}</strong><small className="mt-1 block truncate text-[var(--muted)]">{item.entityPublicId}</small></span></Link>;
 }
 
 function ContributionHeatmap({ contribution, loading, message, onYearChange }: {

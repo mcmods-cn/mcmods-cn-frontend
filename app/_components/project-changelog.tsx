@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
@@ -17,15 +17,39 @@ export function ProjectChangelog({ targetId, targetType }: { targetId: string; t
   const [collection, setCollection] = useState<ChangelogCollection>();
   const [activeGroup, setActiveGroup] = useState("");
   const [message, setMessage] = useState("");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestVersion = useRef(0);
 
   useEffect(() => {
     if (!ready || !targetId) return;
+    const version = ++requestVersion.current;
     const controller = new AbortController();
     loadProjectChangelogs(targetType, targetId, locale, token, controller.signal)
-      .then((value) => { setCollection(value); setMessage(""); })
-      .catch((error) => setMessage(error instanceof Error ? error.message : t("changelog.loadFailed")));
+      .then((value) => { if (requestVersion.current === version) { setCollection(value); setMessage(""); } })
+      .catch((error) => { if (requestVersion.current === version) setMessage(error instanceof Error ? error.message : t("changelog.loadFailed")); });
     return () => controller.abort();
   }, [locale, ready, t, targetId, targetType, token]);
+
+  async function loadMore() {
+    if (!collection?.nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    setMessage("");
+    const version = requestVersion.current;
+    try {
+      const page = await loadProjectChangelogs(targetType, targetId, locale, token, undefined, collection.nextCursor, collection.limit);
+      setCollection((current) => {
+        if (requestVersion.current !== version) return current;
+        if (!current) return page;
+        const items = new Map(current.items.map((item) => [item.id, item]));
+        page.items.forEach((item) => items.set(item.id, item));
+        return { ...page, categories: page.categories.length ? page.categories : current.categories, items: [...items.values()] };
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("changelog.loadFailed"));
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const groups = useMemo(() => buildGroups(collection), [collection]);
   const visibleItems = useMemo(() => {
@@ -57,11 +81,13 @@ export function ProjectChangelog({ targetId, targetType }: { targetId: string; t
             <div className="flex flex-wrap gap-2">{item.canEdit && !item.pendingChange ? <Link className="button-secondary focus-ring px-3 py-2 text-sm" href={`/changelogs/${item.id}/edit`}>{t("common.edit")}</Link> : null}<Link className="button-secondary focus-ring px-3 py-2 text-sm" href={`/changelogs/${item.id}/history`}>{t("mods.detail.history")}</Link></div>
           </div>
           {item.pendingChange ? <p className="mt-2 text-sm font-bold text-[var(--warning)]">{t("changelog.pendingChange")}</p> : null}
-          <div className="markdown-preview mt-4 min-w-0"><MarkdownRenderer config={defaultMarkdownConfig} emptyText={t("changelog.emptyBody")} markdown={item.bodyMarkdown} /></div>
+          <div className="markdown-preview mt-4 min-w-0"><MarkdownRenderer config={defaultMarkdownConfig} emptyText={t("changelog.emptyBody")} markdown={item.bodyExcerpt} /></div>
+          {item.bodyTruncated ? <Link className="mt-3 inline-flex font-bold text-[var(--accent)] hover:underline" href={`/changelogs/${item.id}`}>{t("changelog.viewFull")}</Link> : null}
           <p className="mt-4 text-xs text-[var(--muted)]">{t("changelog.submittedBy")} <Link className="font-bold text-[var(--accent)] hover:underline" href={`/user/${item.createdById}`}>{item.createdByName}</Link></p>
         </div>
       </article>)}
     </div> : <div className="mt-6 grid min-h-48 place-items-center rounded-xl border border-dashed border-[var(--line)] text-center font-bold text-[var(--muted)]">{t("changelog.empty")}</div>}
+    {collection.hasMore ? <div className="mt-6 flex justify-center"><button className="button-secondary focus-ring" disabled={loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("changelog.loadingMore") : t("changelog.loadMore")}</button></div> : null}
   </section>;
 }
 

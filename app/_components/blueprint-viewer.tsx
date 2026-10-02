@@ -67,11 +67,12 @@ export function BlueprintViewer({
   const structureSource = useMemo(() => ({
     key: `${publicId}:${record.updatedAt}`,
     name: `${publicId}.json`,
-    load: async () => {
+    load: async (signal?: AbortSignal) => {
       const headers = isBearerAccessToken(token) ? { Authorization: `Bearer ${token}` } : undefined;
       const response = await backendFetch(`${API_BASE_URL}/api/v1/blueprints/${encodeURIComponent(publicId)}/render`, {
         credentials: "include",
         headers,
+        signal,
       });
       if (!response.ok) throw new Error(await readResponseError(response));
       return new Uint8Array(await response.arrayBuffer());
@@ -151,8 +152,8 @@ function LayerControl({ activeLayer, topLayer, showAbove, showBelow, onLayerChan
 
 export function blueprintMaterialDetailsURL(material?: BlueprintMaterial) {
   if (material?.detailUrl) return material.detailUrl;
-  if (!material?.sourceModSiteId || !material.sourceVersionPublicId || !material.entityId) return "";
-  return `/mods/${encodeURIComponent(material.sourceModSiteId)}/resources/${encodeURIComponent(material.entityId)}?version=${encodeURIComponent(material.sourceVersionPublicId)}`;
+  if (!material?.sourceModSiteId || !material.sourceVersionPublicId || !material.publicId) return "";
+  return `/mods/${encodeURIComponent(material.sourceModSiteId)}/resources/${encodeURIComponent(material.publicId)}?version=${encodeURIComponent(material.sourceVersionPublicId)}`;
 }
 
 function stateLabel(id: string, properties: Record<string, string>) {

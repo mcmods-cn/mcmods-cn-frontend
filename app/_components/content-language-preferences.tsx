@@ -1,5 +1,7 @@
 "use client";
 
+import { apiErrorMessage } from "../_lib/api-error.mts";
+
 import { useEffect, useMemo, useState } from "react";
 import { loadContentLanguageSettings, saveContentLanguageSettings } from "../_lib/content-language-api";
 import { useI18n } from "../_lib/i18n-provider";
@@ -32,7 +34,7 @@ export function ContentLanguagePreferences({ token }: { token: string }) {
         setEditableLocales(settings.editableLocales);
       })
       .catch((error: unknown) => {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : t("contentLanguage.loadFailed"));
+        if (!cancelled) setMessage(apiErrorMessage(error, t, t("contentLanguage.loadFailed")));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -58,7 +60,7 @@ export function ContentLanguagePreferences({ token }: { token: string }) {
       setEditableLocales(settings.editableLocales);
       setMessage(t("contentLanguage.saved"));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("contentLanguage.saveFailed"));
+      setMessage(apiErrorMessage(error, t, t("contentLanguage.saveFailed")));
     } finally {
       setSaving(false);
     }

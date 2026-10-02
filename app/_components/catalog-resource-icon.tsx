@@ -4,11 +4,17 @@ import { useEffect, useMemo, useState } from "react";
 import { loadCatalogResourcePresentation, catalogResourceIconURL } from "../_lib/editor-api";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
+import { ExpiringPromiseCache } from "../_lib/sticker-catalog-cache.mts";
 import { ResourcePickerDialog } from "./editor/resource-picker-dialog";
 import { CatalogResourceIcon } from "./editor/selected-resource-list";
 
 const catalogIconPrefix = "catalog:";
-const resourceCache = new Map<string, Promise<CatalogResourceRef | null>>();
+const CATALOG_ICON_CACHE_STALE_TIME_MS = 5 * 60 * 1000;
+const CATALOG_ICON_CACHE_MAX_ENTRIES = 128;
+const resourceCache = new ExpiringPromiseCache<CatalogResourceRef | null>(
+  CATALOG_ICON_CACHE_STALE_TIME_MS,
+  CATALOG_ICON_CACHE_MAX_ENTRIES,
+);
 type CatalogIconReference = { publicId?: string; identifier?: string };
 
 export function CatalogResourceIconPicker({
@@ -142,14 +148,5 @@ function placeholderResource(reference: CatalogIconReference, name: string, loca
 function resolveCatalogResource(reference: CatalogIconReference, locale: string) {
   const query = reference.publicId || reference.identifier || "";
   const key = `${query}\u0000${locale}`;
-  let request = resourceCache.get(key);
-  if (!request) {
-    request = loadCatalogResourcePresentation(query, locale)
-      .catch((reason) => {
-        resourceCache.delete(key);
-        throw reason;
-      });
-    resourceCache.set(key, request);
-  }
-  return request;
+  return resourceCache.get(key, () => loadCatalogResourcePresentation(query, locale));
 }

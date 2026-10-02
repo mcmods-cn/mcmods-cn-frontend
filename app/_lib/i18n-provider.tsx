@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 import en from "../_locales/en-US";
 import zhCN from "../_locales/zh-CN";
 import zhTW from "../_locales/zh-TW";
@@ -9,21 +9,20 @@ import fr from "../_locales/fr";
 import de from "../_locales/de";
 import es from "../_locales/es";
 import ru from "../_locales/ru";
+import {
+  defaultUILocale,
+  normalizeUILocale,
+  readUILocaleCookie,
+  serializeUILocaleCookie,
+  supportedUILocales,
+  type UILocale,
+} from "./ui-locale.mts";
 
-export type Locale = "zh-CN" | "zh-TW" | "en-US" | "ja-JP" | "fr-FR" | "de-DE" | "es-ES" | "ru-RU";
+export type Locale = UILocale;
 export type TranslationValue = string | { [key: string]: TranslationValue };
 
-const defaultLocale: Locale = "zh-CN";
-export const supportedLocales: Array<{ code: Locale; label: string }> = [
-  { code: "zh-CN", label: "简体中文" },
-  { code: "zh-TW", label: "繁體中文" },
-  { code: "en-US", label: "English (US)" },
-  { code: "ja-JP", label: "日本語" },
-  { code: "fr-FR", label: "Français" },
-  { code: "de-DE", label: "Deutsch" },
-  { code: "es-ES", label: "Español" },
-  { code: "ru-RU", label: "Русский" },
-];
+const defaultLocale = defaultUILocale;
+export const supportedLocales = supportedUILocales;
 
 const dictionaries: Record<Locale, TranslationValue> = {
   "zh-CN": zhCN,
@@ -36,7 +35,7 @@ const dictionaries: Record<Locale, TranslationValue> = {
   "ru-RU": ru,
 };
 
-const localeStorageKey = "mcmods-ui-locale";
+const localeSyncStorageKey = "mcmods-ui-locale-sync";
 const overrideStorageKey = "mcmods-i18n-overrides";
 type I18nOverrides = Partial<Record<Locale, Record<string, string>>>;
 
@@ -53,16 +52,22 @@ const I18nContext = createContext<{
   translationKeys: string[];
 } | null>(null);
 
-export function I18nProvider({ children }: { children: React.ReactNode }) {
-  const locale = useSyncExternalStore(subscribeLocale, getLocaleSnapshot, () => defaultLocale);
+export function I18nProvider({ children, initialLocale = defaultLocale }: { children: React.ReactNode; initialLocale?: Locale }) {
+  const locale = useSyncExternalStore(subscribeLocale, getLocaleSnapshot, () => initialLocale);
   const overrideSnapshot = useSyncExternalStore(subscribeLocale, getOverrideSnapshot, () => "{}");
   const overrides = useMemo(() => parseOverrides(overrideSnapshot), [overrideSnapshot]);
   const translationKeys = useMemo(() => flattenKeys(en), []);
 
   const setLocale = useCallback((nextLocale: Locale) => {
-    window.localStorage.setItem(localeStorageKey, nextLocale);
+    document.cookie = serializeUILocaleCookie(nextLocale);
+    document.documentElement.lang = nextLocale;
+    window.localStorage.setItem(localeSyncStorageKey, `${Date.now()}:${nextLocale}`);
     window.dispatchEvent(new Event("mcmods-locale-change"));
   }, []);
+
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
 
   const getBaseTranslation = useCallback((nextLocale: Locale, key: string) => {
     return readMessage(dictionaries[nextLocale], key) ?? readMessage(en, key) ?? key;
@@ -135,8 +140,7 @@ function subscribeLocale(onStoreChange: () => void) {
 }
 
 function getLocaleSnapshot(): Locale {
-  const saved = window.localStorage.getItem(localeStorageKey);
-  return normalizeUILocale(saved) ?? defaultLocale;
+  return readUILocaleCookie(document.cookie) ?? defaultLocale;
 }
 
 function getOverrideSnapshot() {
@@ -169,21 +173,6 @@ function parseOverrides(value: string): I18nOverrides {
   } catch {
     return {};
   }
-}
-
-function normalizeUILocale(value: string | null | undefined): Locale | undefined {
-  const normalized = value?.trim().replaceAll("_", "-").toLowerCase();
-  const aliases: Record<string, Locale> = {
-    "zh": "zh-CN", "zh-cn": "zh-CN", "zh-hans": "zh-CN",
-    "zh-tw": "zh-TW", "zh-hk": "zh-TW", "zh-hant": "zh-TW",
-    "en": "en-US", "en-us": "en-US",
-    "ja": "ja-JP", "ja-jp": "ja-JP",
-    "fr": "fr-FR", "fr-fr": "fr-FR",
-    "de": "de-DE", "de-de": "de-DE",
-    "es": "es-ES", "es-es": "es-ES",
-    "ru": "ru-RU", "ru-ru": "ru-RU",
-  };
-  return normalized ? aliases[normalized] : undefined;
 }
 
 function formatMessage(message: string, params?: Record<string, string | number>) {

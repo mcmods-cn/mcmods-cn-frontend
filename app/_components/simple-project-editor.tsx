@@ -10,7 +10,8 @@ import type { CatalogResourceRef } from "../_lib/editor-types";
 import { supportedLocales, useI18n, type Locale } from "../_lib/i18n-provider";
 import type { BackendModAuthor, BackendModGalleryImage } from "../_lib/mod-api";
 import { licenseOptions, maintenanceOptions, sourceOptions } from "../_lib/mod-catalog-data";
-import { uploadUserFileToOSS } from "../_lib/oss-upload";
+import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
+import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
 import { emptySimpleProject, simpleProjectConfig, simpleProjectIconURL, simpleProjectImportProviders, type SimpleProjectImportJob, type SimpleProjectImportProvider, type SimpleProjectLocalization, type SimpleProjectParent, type SimpleProjectPayload, type SimpleProjectRecord, type SimpleProjectType } from "../_lib/simple-project-api";
 import { CreatorPicker } from "./creator-picker";
@@ -25,6 +26,7 @@ import { useAutoDraft } from "../_lib/use-auto-draft";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { Field, FormSection, SelectField } from "./project-editor-fields";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
+import { OSSUploadBatchStatus } from "./oss-upload-batch-status";
 
 export function SimpleProjectEditor({ projectType, siteId, importMethod = "manual", importURL = "" }: { projectType: SimpleProjectType; siteId?: string; importMethod?: string; importURL?: string }) {
   const { ready, token } = useAuthSnapshot();
@@ -45,6 +47,7 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
   const [iconUploading, setIconUploading] = useState(false);
   const [iconPreviewUrl, setIconPreviewUrl] = useState("");
   const [galleryUploading, setGalleryUploading] = useState(false);
+  const [galleryUploadTasks, setGalleryUploadTasks] = useState<OSSUploadBatchTask<File, OSSFileRecord>[]>([]);
   const [message, setMessage] = useState("");
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
@@ -106,17 +109,34 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
   }
 
   async function uploadGallery(files: File[]) {
-    if (!token) return;
+    if (!token || galleryUploading) return;
+    const tasks = createOSSUploadBatchTasks<File, OSSFileRecord>(files, {
+      capacity: Math.max(0, 32 - draft.galleryImages.length),
+      capacityError: t("uploadBatch.capacityReached"),
+      identity: (file, index) => `${file.name}:${file.size}:${file.lastModified}:${index}`,
+      validate: (file) => file.type.startsWith("image/") ? "" : t("uploadBatch.imageOnly"),
+    });
+    if (!tasks.length) return;
+    await processGalleryUploadTasks(tasks);
+  }
+
+  async function processGalleryUploadTasks(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string) {
+    if (!token || galleryUploading) return;
     setGalleryUploading(true);
+    setMessage("");
     try {
-      const uploaded = await Promise.all(files.filter((file) => file.type.startsWith("image/")).slice(0, 32 - draft.galleryImages.length).map(async (file) => {
-        const stored = await uploadUserFileToOSS(file, token, `simple_project_gallery:${projectType}:${siteId || "draft"}`);
-        return { fileId: stored.id, name: stored.originalName, contentType: stored.contentType, sizeBytes: stored.sizeBytes, url: stored.accessUrl || stored.url } satisfies BackendModGalleryImage;
-      }));
-      setDraft((current) => ({ ...current, galleryImages: [...current.galleryImages, ...uploaded] }));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.submission.galleryUploadFailed"));
-    } finally { setGalleryUploading(false); }
+      const result = await processOSSUploadBatch(tasks, {
+        upload: (file) => uploadUserFileToOSS(file, token, `simple_project_gallery:${projectType}:${siteId || "draft"}`),
+        shouldProcess: retryKey ? (task) => task.key === retryKey : undefined,
+        onChange: setGalleryUploadTasks,
+        onUploaded: (_task, record) => setDraft((current) => current.galleryImages.some((image) => image.fileId === record.id)
+          ? current
+          : { ...current, galleryImages: [...current.galleryImages, { fileId: record.id, name: record.originalName, contentType: record.contentType, sizeBytes: record.sizeBytes, url: record.accessUrl || record.url } satisfies BackendModGalleryImage].slice(0, 32) }),
+      });
+      if (result.some((task) => task.stage === "failed")) setMessage(t("mods.submission.galleryUploadFailed"));
+    } finally {
+      setGalleryUploading(false);
+    }
   }
 
   async function importFromProvider(provider: SimpleProjectImportProvider, sourceURL: string) {
@@ -173,7 +193,6 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
           projectKey: `simple-project:${projectType}:${targetSiteId}`,
           projectTitle: localizationFor(snapshot, snapshot.defaultLocale).name,
           targetUrl: `${config.path}/${targetSiteId}`,
-          reviewStatus: result.status,
           changeRequestId: result.changeRequestId,
         }).catch(() => undefined);
         router.push(`${config.path}/${targetSiteId}`);
@@ -183,7 +202,6 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
           projectKey: `simple-project:${projectType}:${result.siteId}`,
           projectTitle: localizationFor(result, result.defaultLocale).name,
           targetUrl: `${config.path}/${result.siteId}`,
-          reviewStatus: result.reviewStatus === "approved" ? "approved" : "pending",
           changeRequestId: result.changeRequestId,
         }).catch(() => undefined);
         router.push(`${config.path}/${result.siteId}`);
@@ -209,8 +227,8 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
     <FormSection title={t("mods.submission.sections.authors")}><CreatorPicker value={draft.authors} onChange={(authors: BackendModAuthor[]) => setDraft({ ...draft, authors })} /></FormSection>
     <FormSection title={t("mods.submission.sections.links")} description={t("largeProjects.editor.linksRequired")}><ModLinkEditor links={draft.links} onChange={(links) => setDraft({ ...draft, links })} /></FormSection>
     <FormSection title={t("mods.submission.sections.platformIDs")} description={t("largeProjects.editor.downloadSourcesHint")}><div className="grid gap-4 md:grid-cols-2"><Field label={t("mods.submission.fields.curseforgeProjectId")}><input className="field font-mono" value={draft.curseforgeProjectId} onChange={(event) => setDraft({ ...draft, curseforgeProjectId: event.target.value })} /></Field><Field label={t("mods.submission.fields.modrinthProjectId")}><input className="field font-mono" value={draft.modrinthProjectId} onChange={(event) => setDraft({ ...draft, modrinthProjectId: event.target.value })} /></Field></div></FormSection>
-    <FormSection title={t("mods.submission.sections.body")} description={t("mods.submission.sections.bodyHint")}><div className="overflow-hidden rounded-lg border border-[var(--line)]"><ToolsPlayground embedded editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} uploadSource={`simple_project_text:${projectType}:${siteId || "draft"}`} value={localization.bodyMarkdown} onChange={(bodyMarkdown) => updateLocalization(setDraft, selectedLocale, { bodyMarkdown })} /></div></FormSection>
-    <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft({ ...draft, galleryImages: draft.galleryImages.filter((_, itemIndex) => itemIndex !== index) })}>{t("common.delete")}</button></div>)}</div></FormSection>
+    <FormSection title={t("mods.submission.sections.body")} description={t("mods.submission.sections.bodyHint")}><div className="overflow-hidden rounded-lg border border-[var(--line)]"><ToolsPlayground embedded documentId={`simple-project:${projectType}:${siteId || "draft"}:${selectedLocale}:body`} editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} uploadSource={`simple_project_text:${projectType}:${siteId || "draft"}`} value={localization.bodyMarkdown} onChange={(bodyMarkdown) => updateLocalization(setDraft, selectedLocale, { bodyMarkdown })} /></div></FormSection>
+    <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={(key) => void processGalleryUploadTasks(galleryUploadTasks, key)} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft({ ...draft, galleryImages: draft.galleryImages.filter((_, itemIndex) => itemIndex !== index) })}>{t("common.delete")}</button></div>)}</div></FormSection>
     {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24" value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
     {message ? <p className="mb-5 rounded-xl border border-[var(--red)] p-4 font-bold text-[var(--red)]">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={submitting} type="submit">{t("common.save")}</button></div>
     <SquareImageCropDialog file={iconCropFile} minimumSize={128} outputSizes={[128]} onCancel={() => setIconCropFile(undefined)} onConfirm={(output) => { setIconCropFile(undefined); void uploadIcon(output); }} />

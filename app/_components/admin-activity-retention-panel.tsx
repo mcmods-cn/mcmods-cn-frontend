@@ -8,6 +8,7 @@ type Policy = { enabled: boolean; allowDelete: boolean; retentionDays: number; b
 type RetentionConfig = { enabled: boolean; runIntervalMinutes: number; default: Policy; actions: Record<string, Policy> };
 type RetentionResponse = { config: RetentionConfig; actions: string[]; objectTypes: string[] };
 type AdminUserOption = { id: string; username: string };
+type CleanupExecution = { deletedCount: number; status: "completed" | "audit_pending" };
 type CleanupPreview = {
   previewId: string;
   confirmationToken: string;
@@ -119,11 +120,13 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
     setBusy(true);
     setMessage("");
     try {
-      const result = await apiRequest<{ deletedCount: number }>("/api/v1/admin/activity-logs/cleanup/execute", {
+      const result = await apiRequest<CleanupExecution>("/api/v1/admin/activity-logs/cleanup/execute", {
         method: "POST",
         body: JSON.stringify({ previewId: preview.previewId, confirmationToken: preview.confirmationToken, confirmation }),
       }, token);
-      setMessage(t("admin.activityRetention.deleted", { count: result.deletedCount }));
+      setMessage(result.status === "audit_pending"
+        ? t("admin.activityRetention.auditPending", { count: result.deletedCount })
+        : t("admin.activityRetention.deleted", { count: result.deletedCount }));
       setPreview(null);
       setConfirmation("");
     } catch (error) {

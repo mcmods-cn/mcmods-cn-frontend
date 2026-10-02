@@ -1,25 +1,11 @@
 import { reportBackendAvailability } from "./backend-status";
+import { ApiError } from "./api-error.mts";
+export { ApiError } from "./api-error.mts";
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 let observedAuthorizationVersion = "";
-
-export class ApiError extends Error {
-  status: number;
-  code: string;
-  retryAfter: number;
-  details?: unknown;
-
-  constructor(message: string, status: number, code = "", retryAfter = 0, details?: unknown) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = code;
-    this.retryAfter = retryAfter;
-    this.details = details;
-  }
-}
 
 type ApiEnvelope<T> = {
   data?: T;
@@ -58,7 +44,7 @@ export async function apiRequest<T>(
     throw new ApiError(envelope.error ?? "请求失败", response.status, envelope.code, envelope.retryAfter, envelope.details);
   }
   if (typeof envelope.data === "undefined") {
-    throw new ApiError("接口响应为空", response.status);
+    throw new ApiError("API response is missing data", response.status, "API_RESPONSE_EMPTY");
   }
   return envelope.data;
 }

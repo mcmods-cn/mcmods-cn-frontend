@@ -7,11 +7,14 @@ import {
   FavoriteModpackExportDetail,
   FavoriteModpackExportItem,
   FavoriteModpackExportPreview,
+  FavoriteModpackExportStatus,
   FavoriteModpackExportTask,
   loadFavoriteModpackExport,
   loadFavoriteModpackExports,
   preflightFavoriteModpackExport,
+  rebuildFavoriteModpackExportPreview,
 } from "../_lib/favorite-api";
+import { ApiError } from "../_lib/api";
 import { formatBytes } from "../_lib/oss-upload";
 import { useI18n } from "../_lib/i18n-provider";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
@@ -28,6 +31,9 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   const [open, setOpen] = useState(false);
   const [activeCollectionId, setActiveCollectionId] = useState(collectionId);
   const [history, setHistory] = useState<FavoriteModpackExportTask[]>([]);
+  const [historyStatus, setHistoryStatus] = useState<FavoriteModpackExportStatus>("all");
+  const [historyCursor, setHistoryCursor] = useState("");
+  const [historyHasMore, setHistoryHasMore] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [minecraftVersions, setMinecraftVersions] = useState<string[]>([]);
   const [loader, setLoader] = useState<"neoforge" | "fabric" | "forge">("neoforge");
@@ -81,7 +87,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     setBusy(true);
     setError("");
     try {
-      const result = await createFavoriteModpackExport(token, activeCollectionId, selectedVersion, loader, hasOmissions);
+      const result = await createFavoriteModpackExport(token, activeCollectionId, preview, preview.allowCompatibleOnly || hasOmissions);
       setDetail(await loadFavoriteModpackExport(token, result.taskId));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("favorites.modpackExport.createFailed"));
@@ -96,8 +102,49 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     setDetail(null);
     setShowHistory(true);
     try {
-      setHistory(await loadFavoriteModpackExports(token));
+      const page = await loadFavoriteModpackExports(token, { status: historyStatus });
+      setHistory(page.items);
+      setHistoryCursor(page.nextCursor);
+      setHistoryHasMore(page.hasMore);
     } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadMoreHistory() {
+    if (!historyHasMore || !historyCursor) return;
+    setBusy(true);
+    setError("");
+    try {
+      const page = await loadFavoriteModpackExports(token, { status: historyStatus, cursor: historyCursor });
+      setHistory((current) => {
+        const known = new Set(current.map((task) => task.id));
+        return [...current, ...page.items.filter((task) => !known.has(task.id))];
+      });
+      setHistoryCursor(page.nextCursor);
+      setHistoryHasMore(page.hasMore);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changeHistoryStatus(status: FavoriteModpackExportStatus) {
+    setHistoryStatus(status);
+    setBusy(true);
+    setError("");
+    try {
+      const page = await loadFavoriteModpackExports(token, { status });
+      setHistory(page.items);
+      setHistoryCursor(page.nextCursor);
+      setHistoryHasMore(page.hasMore);
+    } catch (reason) {
+      setHistory([]);
+      setHistoryCursor("");
+      setHistoryHasMore(false);
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setBusy(false);
@@ -117,13 +164,23 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     }
   }
 
-  function returnToSettings(task: FavoriteModpackExportDetail["task"]) {
-    setMinecraftVersions([task.minecraftVersion]);
-    setLoader(task.loader as typeof loader);
-    setActiveCollectionId(task.collectionId);
-    setShowHistory(false);
-    setDetail(null);
-    setPreview(null);
+  async function rebuildFromHistory(source: "current_collection" | "original_snapshot") {
+    if (!detail) return;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await rebuildFavoriteModpackExportPreview(token, detail.task.id, source);
+      setMinecraftVersions([next.minecraftVersion]);
+      setLoader(next.loader);
+      setActiveCollectionId(next.collectionId);
+      setShowHistory(false);
+      setDetail(null);
+      setPreview(next);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
   }
 
   useEffect(() => {
@@ -150,8 +207,8 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     if (!detail?.downloadAvailable || detail.task.status !== "ready" || downloadedTask.current === detail.task.id) return;
     downloadedTask.current = detail.task.id;
     void downloadFavoriteModpackExport(token, detail.task.id, exportFilename(detail.task))
-      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
-  }, [detail, token]);
+      .catch((reason) => setError(t(favoriteModpackExportDownloadErrorKey(reason))));
+  }, [detail, t, token]);
 
   return (
     <>
@@ -241,9 +298,27 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
             ) : null}
             {preview && !detail && !showHistory ? <ExportPreview preview={preview} busy={busy} onCreate={() => void createExport()} /> : null}
             {showHistory && !detail ? (
-              <ExportHistory busy={busy} history={history} onBack={() => setShowHistory(false)} onSelect={openHistoryTask} />
+              <ExportHistory
+                busy={busy}
+                hasMore={historyHasMore}
+                history={history}
+                status={historyStatus}
+                onBack={() => setShowHistory(false)}
+                onLoadMore={loadMoreHistory}
+                onSelect={openHistoryTask}
+                onStatusChange={changeHistoryStatus}
+              />
             ) : null}
-            {detail ? <ExportResult detail={detail} token={token} onBack={() => returnToSettings(detail.task)} /> : null}
+            {detail ? (
+              <ExportResult
+                busy={busy}
+                detail={detail}
+                onDownload={() => downloadFavoriteModpackExport(token, detail.task.id, exportFilename(detail.task))
+                  .catch((reason) => setError(t(favoriteModpackExportDownloadErrorKey(reason))))}
+                onRebuildCurrent={() => rebuildFromHistory("current_collection")}
+                onRebuildOriginal={() => rebuildFromHistory("original_snapshot")}
+              />
+            ) : null}
           </section>
         </div>
       ) : null}
@@ -253,20 +328,35 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
 
 type ExportHistoryProps = {
   busy: boolean;
+  hasMore: boolean;
   history: FavoriteModpackExportTask[];
+  status: FavoriteModpackExportStatus;
   onBack: () => void;
+  onLoadMore: () => Promise<void>;
   onSelect: (task: FavoriteModpackExportTask) => Promise<void>;
+  onStatusChange: (status: FavoriteModpackExportStatus) => Promise<void>;
 };
 
-function ExportHistory({ busy, history, onBack, onSelect }: ExportHistoryProps) {
+function ExportHistory({ busy, hasMore, history, status, onBack, onLoadMore, onSelect, onStatusChange }: ExportHistoryProps) {
   const { t } = useI18n();
+  const statuses: FavoriteModpackExportStatus[] = ["all", "pending", "processing", "ready", "failed", "expired", "cancelled"];
   return (
     <div className="mt-5 grid gap-3">
-      {busy ? <p>{t("common.loading")}</p> : null}
+      <label className="grid max-w-xs gap-2 text-sm font-bold">
+        {t("favorites.modpackExport.historyStatus")}
+        <select className="field" disabled={busy} value={status} onChange={(event) => void onStatusChange(event.target.value as FavoriteModpackExportStatus)}>
+          {statuses.map((value) => (
+            <option key={value} value={value}>
+              {value === "all" ? t("favorites.modpackExport.statusAll") : t(`favorites.modpackExport.status.${value}`)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {busy && history.length === 0 ? <p>{t("common.loading")}</p> : null}
       {!busy && history.length === 0 ? (
         <p className="py-10 text-center text-[var(--muted)]">{t("favorites.modpackExport.historyEmpty")}</p>
       ) : null}
-      {!busy ? history.map((task) => (
+      {history.map((task) => (
         <button
           className="focus-ring rounded-lg border border-[var(--line)] p-3 text-left hover:border-[var(--accent)]"
           key={task.id}
@@ -278,10 +368,17 @@ function ExportHistory({ busy, history, onBack, onSelect }: ExportHistoryProps) 
             Minecraft {task.minecraftVersion} · {task.loader} {task.loaderVersion} · {t(`favorites.modpackExport.status.${task.status}`)} · {new Date(task.createdAt).toLocaleString()}
           </span>
         </button>
-      )) : null}
-      <button className="button-secondary focus-ring justify-self-start" type="button" onClick={onBack}>
-        {t("common.back")}
-      </button>
+      ))}
+      <div className="flex flex-wrap justify-between gap-2">
+        <button className="button-secondary focus-ring" type="button" onClick={onBack}>
+          {t("common.back")}
+        </button>
+        {hasMore ? (
+          <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void onLoadMore()}>
+            {busy ? t("common.loading") : t("favorites.modpackExport.loadMoreHistory")}
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -318,7 +415,19 @@ function ExportPreview({ preview, busy, onCreate }: { preview: FavoriteModpackEx
   );
 }
 
-function ExportResult({ detail, token, onBack }: { detail: FavoriteModpackExportDetail; token: string; onBack: () => void }) {
+function ExportResult({
+  busy,
+  detail,
+  onDownload,
+  onRebuildCurrent,
+  onRebuildOriginal,
+}: {
+  busy: boolean;
+  detail: FavoriteModpackExportDetail;
+  onDownload: () => Promise<void>;
+  onRebuildCurrent: () => Promise<void>;
+  onRebuildOriginal: () => Promise<void>;
+}) {
   const { t } = useI18n();
   const groups = useMemo(() => ({
     exported: detail.items.filter((item) => item.resultType === "exported"),
@@ -364,14 +473,17 @@ function ExportResult({ detail, token, onBack }: { detail: FavoriteModpackExport
             {t("favorites.modpackExport.copyFailed")}
           </button>
         ) : null}
-        <button className="button-secondary focus-ring" type="button" onClick={onBack}>
-          {t("favorites.modpackExport.sameSettings")}
+        <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void onRebuildCurrent()}>
+          {t("favorites.modpackExport.rebuildCurrentCollection")}
+        </button>
+        <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void onRebuildOriginal()}>
+          {t("favorites.modpackExport.rebuildOriginalSnapshot")}
         </button>
         {detail.downloadAvailable ? (
           <button
             className="button-primary focus-ring"
             type="button"
-            onClick={() => void downloadFavoriteModpackExport(token, detail.task.id, exportFilename(detail.task))}
+            onClick={() => void onDownload()}
           >
             {t("favorites.modpackExport.download")}
           </button>
@@ -434,4 +546,16 @@ function ExportItemGroup({ items, title }: { items: FavoriteModpackExportItem[];
 
 function exportFilename(task: FavoriteModpackExportDetail["task"]) {
   return `${task.packName}-${task.minecraftVersion}-${task.loader}.mrpack`.replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-");
+}
+
+function favoriteModpackExportDownloadErrorKey(reason: unknown) {
+  if (reason instanceof ApiError) {
+    if (reason.code === "MODPACK_EXPORT_DOWNLOAD_EXPIRED" || reason.status === 410) {
+      return "favorites.modpackExport.downloadExpired";
+    }
+    if (reason.status === 401 || reason.status === 403) {
+      return "favorites.modpackExport.downloadForbidden";
+    }
+  }
+  return "favorites.modpackExport.downloadFailed";
 }

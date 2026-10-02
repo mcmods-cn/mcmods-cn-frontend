@@ -184,7 +184,7 @@ function readCatalogPreferences<TSort extends string>(
       view: value.view === "grid" ? "grid" : "list",
       pageSize: [20, 40, 60].includes(Number(value.pageSize)) ? Number(value.pageSize) : 20,
       sort,
-      sortDirection: normalizeCatalogSortDirection(value.sortDirection, defaultSortDirection, value.sort),
+      sortDirection: normalizeCatalogSortDirection(value.sortDirection, defaultSortDirection, sort),
     };
   } catch {
     return { view: "list", pageSize: 20, sort: defaultSort, sortDirection: defaultSortDirection };

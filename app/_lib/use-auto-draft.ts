@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { shouldPersistAutoDraft } from "./auto-draft-save-state";
 import { completeUserDraft, loadUserDraft, saveUserDraft } from "./draft-api";
 
 const autosaveIntervalMilliseconds = 15_000;
@@ -34,7 +35,6 @@ export function useAutoDraft<T extends object>({
   const valueRef = useRef(value);
   const restoreRef = useRef(onRestore);
   const metadataRef = useRef({ draftKey, projectKey, editUrl, kind, title });
-  const baselineRef = useRef("");
   const lastSavedRef = useRef("");
   const initializedKeyRef = useRef("");
   const restoringRef = useRef(false);
@@ -48,7 +48,6 @@ export function useAutoDraft<T extends object>({
     if (!enabled || !token || initializedKeyRef.current === draftKey) return;
     initializedKeyRef.current = draftKey;
     const initial = serializeDraft(valueRef.current);
-    baselineRef.current = initial;
     lastSavedRef.current = initial;
     const draftID = new URLSearchParams(window.location.search).get("draft");
     if (!draftID) return;
@@ -64,7 +63,6 @@ export function useAutoDraft<T extends object>({
         if (!draft || cancelled) return;
         if (draft.draftKey !== draftKey) throw new Error("draft editor does not match");
         const restored = serializeDraft(draft.payload);
-        baselineRef.current = restored;
         lastSavedRef.current = restored;
         restoreRef.current(draft.payload);
         setSavedAt(draft.updatedAt);
@@ -82,16 +80,27 @@ export function useAutoDraft<T extends object>({
   const saveLatest = useCallback(async (keepalive = false) => {
     if (!enabled || !token || restoringRef.current || savingRef.current) return;
     const serialized = serializeDraft(valueRef.current);
-    if (!serialized || serialized === baselineRef.current || serialized === lastSavedRef.current) return;
+    if (!shouldPersistAutoDraft(serialized, lastSavedRef.current)) return;
     savingRef.current = true;
     setStatus("saving");
     try {
-      const metadata = metadataRef.current;
-      const result = await saveUserDraft({ ...metadata, payload: valueRef.current }, token, keepalive && serialized.length < 60_000);
-      lastSavedRef.current = serialized;
-      setSavedAt(result.updatedAt);
-      setError("");
-      setStatus("saved");
+      const persistCurrent = async (allowKeepalive: boolean) => {
+        const payload = valueRef.current;
+        const snapshot = serializeDraft(payload);
+        if (!shouldPersistAutoDraft(snapshot, lastSavedRef.current)) return false;
+        const result = await saveUserDraft({ ...metadataRef.current, payload }, token, allowKeepalive && snapshot.length < 60_000);
+        lastSavedRef.current = snapshot;
+        setSavedAt(result.updatedAt);
+        setError("");
+        setStatus("saved");
+        return true;
+      };
+      const savedOnce = await persistCurrent(keepalive);
+      const latest = serializeDraft(valueRef.current);
+      if (savedOnce && shouldPersistAutoDraft(latest, lastSavedRef.current)) {
+        setStatus("saving");
+        await persistCurrent(false);
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
       setStatus("error");
@@ -117,7 +126,6 @@ export function useAutoDraft<T extends object>({
     projectKey: string;
     projectTitle: string;
     targetUrl: string;
-    reviewStatus: "pending" | "approved";
     changeRequestId?: string;
     reviewTargetType?: "server";
     reviewTargetPublicId?: string;
@@ -129,7 +137,6 @@ export function useAutoDraft<T extends object>({
       payload: valueRef.current,
     }, token);
     const current = serializeDraft(valueRef.current);
-    baselineRef.current = current;
     lastSavedRef.current = current;
     setSavedAt("");
     setStatus("idle");

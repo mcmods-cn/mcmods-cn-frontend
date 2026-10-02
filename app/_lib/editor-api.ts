@@ -6,11 +6,11 @@ import type {
   CatalogResourceRef,
   ContentTranslationTask,
   LocalizedContentFields,
-  LocalizationVersion,
   ResolvedContentDocument,
   TranslationRequest,
   TranslationRequestResult,
 } from "./editor-types";
+import { parseLocalizedContentVersion, parseLocalizedContentVersions } from "./localization-boundary.mts";
 
 export function loadCatalogResources(query: CatalogResourceQuery, token = "", signal?: AbortSignal) {
   const parameters = new URLSearchParams();
@@ -148,8 +148,8 @@ export function normalizeResolvedContent(value: unknown): ResolvedContentDocumen
     resolvedLocale: text(source.resolvedLocale),
     defaultLocale: text(source.defaultLocale) || "en-US",
     resolution: normalizeResolution(source.resolution),
-    localization: source.localization ? normalizeResolvedLocalization(source.localization) : undefined,
-    available: Array.isArray(source.available) ? source.available.map(normalizeResolvedLocalization).filter((item) => item.locale) : [],
+    localization: source.localization ? parseLocalizedContentVersion(source.localization) : undefined,
+    available: parseLocalizedContentVersions(source.available, "available"),
     editableLocales: Array.isArray(source.editableLocales) ? source.editableLocales.filter((item): item is string => typeof item === "string") : [],
     translation: {
       status: normalizeTranslationState(record(source.translation).status),
@@ -158,26 +158,6 @@ export function normalizeResolvedContent(value: unknown): ResolvedContentDocumen
       canRequest: record(source.translation).canRequest === true,
       countsTowardDailyTokenQuota: record(source.translation).countsTowardDailyTokenQuota === true,
     },
-  };
-}
-
-function normalizeResolvedLocalization(value: unknown): LocalizationVersion<LocalizedContentFields> {
-  const source = record(value);
-  const provenance = text(source.provenance);
-  const reviewStatus = text(source.reviewStatus);
-  return {
-    locale: text(source.locale),
-    fields: {
-      name: text(source.name),
-      summary: text(source.summary),
-      contentMarkdown: text(source.contentMarkdown),
-    },
-    revisionId: text(source.publishedRevisionId) || undefined,
-    provenance: provenance === "ai" || provenance === "human_corrected" || provenance === "original" || provenance === "import" ? provenance : "human",
-    reviewStatus: reviewStatus === "pending" || reviewStatus === "rejected" || reviewStatus === "draft" ? reviewStatus : "approved",
-    generatedFromLocale: text(source.sourceLocale) || undefined,
-    editable: source.editable !== false,
-    updatedAt: text(source.updatedAt) || undefined,
   };
 }
 
@@ -193,6 +173,31 @@ function normalizeTranslationState(value: unknown): ResolvedContentDocument["tra
   return candidate === "queued" || candidate === "running" || candidate === "retrying" || candidate === "completed"
     || candidate === "ready" || candidate === "failed" || candidate === "request_required" || candidate === "unavailable"
     || candidate === "no_source" ? candidate : "not_required";
+}
+
+export function loadCatalogResourcePresentations(
+  resources: readonly CatalogResourceRef[],
+  locale: string,
+  token = "",
+  signal?: AbortSignal,
+) {
+  if (!resources.length) return Promise.resolve<CatalogResourceRef[]>([]);
+  return apiRequest<{ items: CatalogResourceRef[] }>("/api/v1/catalog/resource-presentations", {
+    method: "POST",
+    signal,
+    body: JSON.stringify({
+      locale,
+      items: resources.map((resource) => ({
+        publicId: resource.publicId,
+        id: resource.rawIdentifier || resource.id,
+        kind: resource.kind,
+        registry: resource.registry,
+      })),
+    }),
+  }, token || undefined).then((response) => response.items.map((resource) => ({
+    ...resource,
+    names: resource.names ?? {},
+  })));
 }
 
 export function loadCatalogResourcePresentation(reference: string, locale = "", signal?: AbortSignal) {

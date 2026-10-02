@@ -47,9 +47,8 @@ export function ContentMetricsPanel({ publicId, pageKey = "detail" }: { publicId
       <MetricValue label={labels.created} value={formatDate(metrics.createdAt, locale)} />
       <MetricValue label={labels.lastEdited} value={metrics.lastEditedAt ? formatDate(metrics.lastEditedAt, locale) : labels.notEdited} />
     </dl>
-    <div className="mt-5 grid gap-5 xl:grid-cols-2">
+    <div className="mt-5">
       <ActorList actors={metrics.recentEditors} empty={labels.noEditors} locale={locale} title={labels.recentEditors} />
-      <ActorList actors={metrics.recentViewers} empty={labels.noViewers} locale={locale} title={labels.recentViewers} />
     </div>
     {metrics.editors.length ? <div className="mt-5"><h3 className="text-sm font-black">{labels.projectEditors}</h3><div className="mt-2 flex gap-2 overflow-x-auto pb-1">{metrics.editors.map((editor) => <Link className="focus-ring flex min-w-44 shrink-0 items-center gap-2 rounded-lg border border-[var(--line)] p-2 hover:border-[var(--accent)]" href={editor.url} key={editor.id}><Avatar avatar={editor.avatarUrl} name={editor.name} /><span className="min-w-0"><strong className="block truncate text-sm">{editor.name}</strong><span className="block truncate text-xs text-[var(--muted)]">{editor.role === "developer" ? labels.verifiedDeveloper : labels.editor}</span></span></Link>)}</div></div> : null}
     {metrics.developers.length ? <div className="mt-5"><h3 className="text-sm font-black">{labels.developers}</h3><div className="mt-2 flex gap-2 overflow-x-auto pb-1">{metrics.developers.map((developer) => <Link className="focus-ring flex min-w-44 shrink-0 items-center gap-2 rounded-lg border border-[var(--line)] p-2 hover:border-[var(--accent)]" href={developer.url} key={`${developer.kind}-${developer.id}`}><Avatar avatar={developer.avatarUrl} name={developer.name} /><span className="min-w-0"><strong className="block truncate text-sm">{developer.name}</strong>{developer.role ? <span className="block truncate text-xs text-[var(--muted)]">{developer.role}</span> : null}</span></Link>)}</div></div> : null}
@@ -86,13 +85,13 @@ function metricLabels(locale: string) {
   if (locale.toLowerCase().startsWith("zh")) return {
     title: "资料统计", updated: "统计截至", heat: "项目热度", totalViews: "总浏览量", direct: "本页", children: "子资料",
     edits: "编辑次数", created: "创建时间", lastEdited: "最后编辑时间", notEdited: "暂无已通过的编辑",
-    recentEditors: "最近参与编辑的人", recentViewers: "最近浏览的用户", noEditors: "暂时没有编辑记录。", noViewers: "暂时没有已登录用户的浏览记录。",
+    recentEditors: "最近参与编辑的人", noEditors: "暂时没有编辑记录。",
     projectEditors: "本站项目权限", verifiedDeveloper: "已认证开发者", editor: "本站编辑员", developers: "项目作者与团队", tutorials: "相关教程", issues: "相关 BUG / 特性", questions: "相关问题", news: "相关新闻",
   };
   return {
     title: "Content statistics", updated: "Statistics as of", heat: "Project heat", totalViews: "Total views", direct: "Direct", children: "Child content",
     edits: "Edits", created: "Created", lastEdited: "Last edited", notEdited: "No approved edits yet",
-    recentEditors: "Recent editors", recentViewers: "Recent signed-in viewers", noEditors: "No edit history yet.", noViewers: "No signed-in viewers yet.",
+    recentEditors: "Recent editors", noEditors: "No edit history yet.",
     projectEditors: "Site project access", verifiedDeveloper: "Verified developer", editor: "Site editor", developers: "Project authors and teams", tutorials: "Tutorials", issues: "Bugs / features", questions: "Questions", news: "News",
   };
 }

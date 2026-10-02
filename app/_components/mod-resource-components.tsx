@@ -680,7 +680,7 @@ function ModRecipeSlot({
   const tagPublicId = stringValue(slot.tagPublicId) || stringValue(slot.tagEntityId);
   const sourceRevisionId = stringValue(item.sourceRevisionId);
   const sourceSiteId = stringValue(item.sourceModSiteId);
-  const sourceEntityId = stringValue(item.entityId);
+  const sourcePublicId = stringValue(item.publicId);
   const iconPath = stringValue(item.iconPath);
   const resourceId = tagId ? `#${tagId}` : itemId;
   const displayName = localizedRecordValue(item.names, minecraftLocale(locale)) || resourceId;
@@ -713,7 +713,7 @@ function ModRecipeSlot({
       || canonicalImportedResourceHref(
         sourceSiteId,
         stringValue(item.sourceVersionPublicId),
-        sourceEntityId,
+        sourcePublicId,
       );
     if (href) {
       return <Link aria-label={label} className={slotClass} href={href} style={presentation.style} target="_blank" rel="noopener noreferrer">{content}</Link>;
@@ -735,7 +735,7 @@ function modRecipeMaterialHref(slot: Record<string, unknown>, item: Record<strin
     || canonicalImportedResourceHref(
       sourceSiteId,
       stringValue(item.sourceVersionPublicId),
-      stringValue(item.entityId),
+      stringValue(item.publicId),
     )
     || undefined;
 }
@@ -754,7 +754,7 @@ function resourceSourceHref(source: Record<string, unknown>) {
     || canonicalImportedResourceHref(
       stringValue(source.sourceModSiteId),
       stringValue(source.sourceVersionPublicId),
-      stringValue(source.entityId),
+      stringValue(source.publicId),
     );
 }
 

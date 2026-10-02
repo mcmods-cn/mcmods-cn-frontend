@@ -45,7 +45,6 @@ export type ContentMetrics = {
   totalViews: number;
   heatScore?: number;
   recentEditors: ContentMetricActor[];
-  recentViewers: ContentMetricActor[];
   editors: ContentMetricEditor[];
   developers: ContentMetricDeveloper[];
   tutorials: ContentMetricReference[];

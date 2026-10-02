@@ -1,5 +1,8 @@
 import type { BackendModAuthor, BackendModGalleryImage, BackendModRecord } from "./mod-api";
-import { API_BASE_URL } from "./api";
+import { API_BASE_URL, apiRequest } from "./api";
+import { normalizeSimpleProjectParentFacetPage, simpleProjectParentFacetPagePath, type SimpleProjectParentFacetPage } from "./simple-project-facets.mts";
+
+export type { SimpleProjectParentFacet, SimpleProjectParentFacetPage } from "./simple-project-facets.mts";
 
 const simpleProjectTypes = ["plugin", "map", "resource_pack", "shader_pack", "datapack", "addon"] as const;
 export type SimpleProjectType = (typeof simpleProjectTypes)[number];
@@ -10,6 +13,8 @@ export type SimpleProjectLocalization = {
   summary: string;
   bodyMarkdown: string;
 };
+
+export type SimpleProjectCardLocalization = Omit<SimpleProjectLocalization, "bodyMarkdown">;
 
 export type SimpleProjectParent = {
   publicId?: string;
@@ -58,9 +63,34 @@ export type SimpleProjectRecord = {
   canEdit?: boolean;
 };
 
+export type SimpleProjectCard = Pick<SimpleProjectRecord,
+  "id" | "projectType" | "siteId" | "defaultLocale" | "abbreviation" | "minecraftVersions" | "loaders" |
+  "categories" | "features" | "resolution" | "performance" | "mapSize" | "officialStatus" | "sourceStatus" |
+  "license" | "iconUrl" | "reviewStatus" | "createdAt" | "updatedAt" | "publishedAt"
+> & {
+  localizations: SimpleProjectCardLocalization[];
+  authors: Array<Pick<BackendModAuthor, "name" | "role">>;
+  parentProjects: Array<Pick<SimpleProjectParent, "publicId" | "type" | "identifier" | "name" | "siteId" | "unresolved">>;
+};
+
 export type SimpleProjectPayload = Omit<SimpleProjectRecord,
   "id" | "reviewStatus" | "submittedBy" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
-export type SimpleProjectList = { items: SimpleProjectRecord[]; total: number };
+export type SimpleProjectList = { items: SimpleProjectCard[]; total: number };
+
+export async function loadSimpleProjectParentFacetPage(
+  projectType: SimpleProjectType,
+  cursor: string,
+  selected: string[],
+  token?: string,
+  signal?: AbortSignal,
+): Promise<SimpleProjectParentFacetPage> {
+  const response = await apiRequest<unknown>(
+    simpleProjectParentFacetPagePath(projectType, cursor, selected),
+    { signal },
+    token,
+  );
+  return normalizeSimpleProjectParentFacetPage(response);
+}
 
 export type SimpleProjectImportProvider = "modrinth" | "curseforge";
 export type SimpleProjectImportJob = {
@@ -150,12 +180,17 @@ export function largeProjectIconURL(project: Pick<SimpleProjectParent, "type" | 
   return `${API_BASE_URL}/api/v1/content-projects/${encodeURIComponent(project.type)}/${encodeURIComponent(project.siteId)}/icon`;
 }
 
-export function localizedSimpleProject(record: Pick<SimpleProjectRecord, "defaultLocale" | "localizations">, locale: string) {
-  return record.localizations.find((item) => item.locale === locale)
+export function localizedSimpleProject(
+  record: { defaultLocale: string; localizations: Array<SimpleProjectCardLocalization & { bodyMarkdown?: string }> },
+  locale: string,
+): SimpleProjectLocalization {
+  const localization = record.localizations.find((item) => item.locale === locale)
     || record.localizations.find((item) => item.locale.toLowerCase().startsWith(locale.slice(0, 2).toLowerCase()))
     || record.localizations.find((item) => item.locale === record.defaultLocale)
-    || record.localizations[0]
-    || { locale: record.defaultLocale, name: "", summary: "", bodyMarkdown: "" };
+    || record.localizations[0];
+  return localization
+    ? { ...localization, bodyMarkdown: localization.bodyMarkdown || "" }
+    : { locale: record.defaultLocale, name: "", summary: "", bodyMarkdown: "" };
 }
 
 export function emptySimpleProject(type: SimpleProjectType): SimpleProjectPayload {

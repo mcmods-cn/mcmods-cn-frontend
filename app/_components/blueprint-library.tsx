@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { API_BASE_URL, apiRequest, backendFetch, isBearerAccessToken } from "../_lib/api";
-import { BlueprintListResponse, type BlueprintRequiredMod } from "../_lib/blueprint-api";
+import { type BlueprintRequiredMod, type BlueprintSummary } from "../_lib/blueprint-api";
 import { useAuthSnapshot } from "../_lib/auth";
+import { loadBlueprintPage, mergeBlueprintPageItems } from "../_lib/blueprint-pagination.mts";
 import { type CatalogSortDirection, type CatalogSortField, coreCatalogSortFields } from "../_lib/catalog-sort";
 import { useI18n } from "../_lib/i18n-provider";
 import { notifySite } from "../_lib/site-notice";
@@ -18,24 +19,77 @@ export function BlueprintLibrary() {
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [sort, setSort] = useState<CatalogSortField>("updated");
   const [sortDirection, setSortDirection] = useState<CatalogSortDirection>("desc");
-  const [records, setRecords] = useState<BlueprintListResponse | null>(null);
+  const [records, setRecords] = useState<BlueprintSummary[]>([]);
+  const [nextCursor, setNextCursor] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const requestGeneration = useRef(0);
 
   useEffect(() => {
     if (!ready) return;
+	const generation = ++requestGeneration.current;
     let cancelled = false;
-    queueMicrotask(() => { if (!cancelled) setLoading(true); });
-    const params = new URLSearchParams({ limit: "60", q: submittedQuery, sort, order: sortDirection });
-    apiRequest<BlueprintListResponse>(`/api/v1/blueprints?${params}`, {}, token)
-      .then((result) => { if (!cancelled) setRecords(result); })
-      .catch((error) => { if (!cancelled) notifySite(cleanError(error), t("blueprints.title"), "danger"); })
+    const controller = new AbortController();
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setLoading(true);
+        setLoadingMore(false);
+        setRecords([]);
+        setNextCursor("");
+      }
+    });
+    loadBlueprintPage<BlueprintSummary>(
+      (path, signal) => apiRequest(path, { signal }, token),
+      { limit: 36, query: submittedQuery, sort, order: sortDirection },
+      "",
+      controller.signal,
+    )
+      .then((result) => {
+        if (!cancelled && requestGeneration.current === generation) {
+          setRecords(result.items);
+          setNextCursor(result.hasMore ? result.nextCursor : "");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled && requestGeneration.current === generation) {
+          setRecords([]);
+          setNextCursor("");
+          notifySite(cleanError(error), t("blueprints.title"), "danger");
+        }
+      })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [ready, sort, sortDirection, submittedQuery, t, token]);
 
   function search(event: FormEvent) {
     event.preventDefault();
     setSubmittedQuery(query.trim());
+  }
+
+  async function loadMore() {
+    const cursor = nextCursor;
+    if (!cursor || loadingMore) return;
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
+    try {
+      const result = await loadBlueprintPage<BlueprintSummary>(
+        (path, signal) => apiRequest(path, { signal }, token),
+        { limit: 36, query: submittedQuery, sort, order: sortDirection },
+        cursor,
+      );
+      if (requestGeneration.current !== generation) return;
+      setRecords((current) => mergeBlueprintPageItems(current, result.items));
+      setNextCursor(result.hasMore ? result.nextCursor : "");
+    } catch (error) {
+      if (requestGeneration.current === generation) {
+        notifySite(cleanError(error), t("blueprints.title"), "danger");
+      }
+    } finally {
+      if (requestGeneration.current === generation) setLoadingMore(false);
+    }
   }
 
   return (
@@ -55,9 +109,9 @@ export function BlueprintLibrary() {
 
       <section className="mx-auto max-w-7xl px-4 py-7">
         {loading ? <p className="py-16 text-center text-[var(--muted)]">{t("common.loading")}</p> : null}
-        {!loading && records?.items.length === 0 ? <p className="surface rounded-lg border border-[var(--line)] p-12 text-center text-[var(--muted)]">{t("blueprints.empty")}</p> : null}
+        {!loading && records.length === 0 ? <p className="surface rounded-lg border border-[var(--line)] p-12 text-center text-[var(--muted)]">{t("blueprints.empty")}</p> : null}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {records?.items.map((item) => (
+          {records.map((item) => (
             <article key={item.id} className="surface flex min-h-64 flex-col overflow-hidden rounded-lg border border-[var(--line)] transition hover:-translate-y-0.5 hover:border-[var(--accent)]">
               {item.coverUrl ? <BlueprintCover path={item.coverUrl} token={token} /> : null}
               <div className="flex flex-1 flex-col p-5">
@@ -72,6 +126,7 @@ export function BlueprintLibrary() {
             </article>
           ))}
         </div>
+        {nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("common.loading") : t("blueprints.loadMore")}</button> : null}
       </section>
     </main>
   );

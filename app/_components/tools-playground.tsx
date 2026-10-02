@@ -3,11 +3,20 @@
 import { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, RefObject, useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { createPortal } from "react-dom";
-import { apiRequest } from "../_lib/api";
+import { ApiError, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { DRAWIO_ORIGIN, parseDrawioMessage, type DrawioEditorMessage } from "../_lib/drawio";
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
+import {
+  applyMarkdownDraftSaveResult,
+  createMarkdownDraftSaveCoordinator,
+  issueMarkdownDraftSave,
+  parseMarkdownDraftConflict,
+  rebaseMarkdownDraftSaveCoordinator,
+  type MarkdownDraftConflict,
+} from "../_lib/markdown-draft-save.mts";
+import { createMarkdownEditorSession, editMarkdownEditorSession, synchronizeMarkdownEditorSession } from "../_lib/markdown-editor-session.mts";
 import { markdownForUploadedFile, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { StickerPicker } from "./sticker-picker";
@@ -44,15 +53,17 @@ type MarkdownCommand =
   | "table"
   | "divider";
 
-type ToolsPlaygroundProps = {
-  embedded?: boolean;
+type ToolsPlaygroundSharedProps = {
   editorDescription?: string;
   editorTitle?: string;
   onBusyChange?: (busy: boolean) => void;
-  onChange?: (markdown: string) => void;
   uploadSource?: string;
-  value?: string;
 };
+
+type ToolsPlaygroundProps = ToolsPlaygroundSharedProps & (
+  | { embedded: true; documentId: string; onChange: (markdown: string) => void; value: string }
+  | { embedded?: false; documentId?: never; onChange?: never; value?: never }
+);
 
 const defaultDrawioXml =
   '<mxfile host="embed.diagrams.net"><diagram id="mcmods-markdown-diagram" name="Page 1"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>';
@@ -87,7 +98,7 @@ const mediaPresets: MediaPreset[] = [
   { fields: ["geogebra"], id: "geogebra", labelKey: "tools.playground.mediaGeogebra", template: "[GeoGebra:{{geogebra}}]" },
 ];
 
-export function ToolsPlayground({ embedded = false, editorDescription, editorTitle, onBusyChange, onChange, uploadSource = "playground", value }: ToolsPlaygroundProps = {}) {
+export function ToolsPlayground({ documentId, embedded = false, editorDescription, editorTitle, onBusyChange, onChange, uploadSource = "playground", value }: ToolsPlaygroundProps = {}) {
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -98,7 +109,13 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   const onChangeRef = useRef(onChange);
   const onBusyChangeRef = useRef(onBusyChange);
   const uploadingRef = useRef(false);
+  const draftSaveSessionIDRef = useRef("");
+  const draftSaveCoordinatorRef = useRef(createMarkdownDraftSaveCoordinator(0));
+  const draftSaveAbortRef = useRef<AbortController | null>(null);
+  const lastPersistedMarkdownRef = useRef<string | null>(null);
   const [markdown, setMarkdown] = useState(() => value ?? t("tools.playground.defaultMarkdown"));
+  const markdownRef = useRef(markdown);
+  const controlledSessionRef = useRef(createMarkdownEditorSession(documentId ?? "", markdown));
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
   const [rendererConfig, setRendererConfig] = useState<MarkdownRendererConfig>(defaultMarkdownConfig);
   const [editorMessage, setEditorMessage] = useState("");
@@ -108,9 +125,25 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [savedAt, setSavedAt] = useState("");
+  const [draftConflict, setDraftConflict] = useState<MarkdownDraftConflict | null>(null);
+  const [draftLoadFailed, setDraftLoadFailed] = useState(false);
+  const [draftLoadRetry, setDraftLoadRetry] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const activeDrawioFence = findDrawioFence(markdown, cursorPosition, cursorPosition);
+
+  const replaceMarkdownState = useCallback((nextMarkdown: string) => {
+    markdownRef.current = nextMarkdown;
+    setMarkdown(nextMarkdown);
+  }, []);
+
+  const commitMarkdown = useCallback((nextValue: string | ((current: string) => string)) => {
+    const nextMarkdown = typeof nextValue === "function" ? nextValue(markdownRef.current) : nextValue;
+    markdownRef.current = nextMarkdown;
+    if (embedded) controlledSessionRef.current = editMarkdownEditorSession(controlledSessionRef.current, nextMarkdown);
+    setMarkdown(nextMarkdown);
+    if (embedded) onChangeRef.current?.(nextMarkdown);
+  }, [embedded]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -121,8 +154,18 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   }, [onBusyChange]);
 
   useEffect(() => {
-    if (embedded) onChangeRef.current?.(markdown);
-  }, [embedded, markdown]);
+    if (!embedded) return;
+    const previousSession = controlledSessionRef.current;
+    const nextSession = synchronizeMarkdownEditorSession(previousSession, documentId ?? "", value ?? "");
+    const documentChanged = previousSession.documentId !== nextSession.documentId;
+    controlledSessionRef.current = nextSession;
+    if (markdownRef.current !== nextSession.markdown) replaceMarkdownState(nextSession.markdown);
+    if (documentChanged) {
+      setCursorPosition(0);
+      setDrawioSession(null);
+      setMediaInsertSession(null);
+    }
+  }, [documentId, embedded, replaceMarkdownState, value]);
 
   useEffect(() => () => {
     if (previewPositionFrameRef.current !== null) window.cancelAnimationFrame(previewPositionFrameRef.current);
@@ -159,83 +202,150 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   useEffect(() => {
     if (embedded) return;
     let cancelled = false;
+    const loadController = new AbortController();
+    draftSaveAbortRef.current?.abort();
+    draftSaveAbortRef.current = null;
+    draftSaveCoordinatorRef.current = createMarkdownDraftSaveCoordinator(0);
+    draftSaveSessionIDRef.current = globalThis.crypto?.randomUUID?.() ?? `markdown-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    lastPersistedMarkdownRef.current = null;
     queueMicrotask(() => {
-      if (!cancelled) setDraftLoaded(false);
+      if (!cancelled) {
+        setDraftConflict(null);
+        setDraftLoadFailed(false);
+        setSaving(false);
+        setDraftLoaded(false);
+      }
     });
     if (!token) {
       const localDraft = window.localStorage.getItem("mcmods-markdown-playground-draft");
       queueMicrotask(() => {
         if (cancelled) return;
-        if (localDraft) setMarkdown(localDraft);
+        if (localDraft !== null) {
+          replaceMarkdownState(localDraft);
+          lastPersistedMarkdownRef.current = localDraft;
+        }
         setDraftLoaded(true);
       });
       return () => {
         cancelled = true;
+        loadController.abort();
       };
     }
-    apiRequest<{ content: string; updatedAt?: string | null }>("/api/v1/users/me/markdown-playground", {}, token)
+    apiRequest<{ content: string; revision: number; updatedAt?: string | null }>("/api/v1/users/me/markdown-playground", { signal: loadController.signal }, token)
       .then((draft) => {
         if (cancelled) return;
-        if (draft.content) setMarkdown(draft.content);
+        draftSaveCoordinatorRef.current = createMarkdownDraftSaveCoordinator(draft.revision);
+        if (draft.revision > 0) {
+          replaceMarkdownState(draft.content);
+          lastPersistedMarkdownRef.current = draft.content;
+        }
         if (draft.updatedAt) setSavedAt(draft.updatedAt);
+        setDraftLoadFailed(false);
         setDraftLoaded(true);
       })
       .catch((error) => {
-        if (!cancelled) {
+        if (!cancelled && !isRequestAbort(error)) {
           setEditorMessage(cleanPlaygroundError(error, t("tools.playground.operationFailed")));
-          setDraftLoaded(true);
+          setDraftLoadFailed(true);
+          setDraftLoaded(false);
         }
       });
     return () => {
       cancelled = true;
+      loadController.abort();
+      draftSaveAbortRef.current?.abort();
     };
-  }, [embedded, t, token]);
+  }, [draftLoadRetry, embedded, replaceMarkdownState, t, token]);
 
   const saveDraft = useCallback(async () => {
     if (embedded) return;
     if (!draftLoaded) return;
+    const requestedMarkdown = markdownRef.current;
     if (!token) {
-      window.localStorage.setItem("mcmods-markdown-playground-draft", markdown);
+      window.localStorage.setItem("mcmods-markdown-playground-draft", requestedMarkdown);
+      lastPersistedMarkdownRef.current = requestedMarkdown;
       setEditorMessage(t("tools.playground.savedLocal"));
       return;
     }
+    const issued = issueMarkdownDraftSave(draftSaveCoordinatorRef.current, draftSaveSessionIDRef.current, requestedMarkdown);
+    draftSaveCoordinatorRef.current = issued.coordinator;
+    draftSaveAbortRef.current?.abort();
+    const saveController = new AbortController();
+    draftSaveAbortRef.current = saveController;
     setSaving(true);
     try {
-      const result = await apiRequest<{ updatedAt: string }>(
+      const result = await apiRequest<{ clientSequence: number; revision: number; updatedAt: string }>(
         "/api/v1/users/me/markdown-playground",
-        { method: "PUT", body: JSON.stringify({ content: markdown }) },
+        { method: "PUT", body: JSON.stringify(issued.request), signal: saveController.signal },
         token,
       );
+      const applied = applyMarkdownDraftSaveResult(draftSaveCoordinatorRef.current, result);
+      draftSaveCoordinatorRef.current = applied.coordinator;
+      if (!applied.isLatest || markdownRef.current !== requestedMarkdown) return;
+      lastPersistedMarkdownRef.current = requestedMarkdown;
       setSavedAt(result.updatedAt);
+      setDraftConflict(null);
       setEditorMessage(t("tools.playground.saved"));
     } catch (error) {
+      if (isRequestAbort(error)) return;
+      if (issued.request.clientSequence !== draftSaveCoordinatorRef.current.latestIssuedSequence) return;
+      if (error instanceof ApiError && error.status === 409 && error.code === "MARKDOWN_DRAFT_CONFLICT") {
+        const conflict = parseMarkdownDraftConflict(error.details);
+        if (conflict && conflict.clientSequence === issued.request.clientSequence) {
+          const applied = applyMarkdownDraftSaveResult(draftSaveCoordinatorRef.current, conflict);
+          draftSaveCoordinatorRef.current = applied.coordinator;
+          setDraftConflict(conflict);
+          setEditorMessage(t("tools.playground.draftConflict"));
+          return;
+        }
+      }
       setEditorMessage(cleanPlaygroundError(error, t("tools.playground.operationFailed")));
     } finally {
-      setSaving(false);
+      if (issued.request.clientSequence === draftSaveCoordinatorRef.current.latestIssuedSequence) {
+        if (draftSaveAbortRef.current === saveController) draftSaveAbortRef.current = null;
+        setSaving(false);
+      }
     }
-  }, [draftLoaded, embedded, markdown, t, token]);
+  }, [draftLoaded, embedded, t, token]);
 
   useEffect(() => {
     if (embedded) return;
     if (!draftLoaded) return;
+    if (draftConflict) return;
+    if (lastPersistedMarkdownRef.current === markdown) return;
     const timer = window.setTimeout(() => {
-      if (!token) {
-        window.localStorage.setItem("mcmods-markdown-playground-draft", markdown);
-        return;
-      }
       void saveDraft();
     }, 1800);
     return () => window.clearTimeout(timer);
-  }, [draftLoaded, embedded, markdown, saveDraft, token]);
+  }, [draftConflict, draftLoaded, embedded, markdown, saveDraft]);
+
+  const keepLocalDraft = useCallback(() => {
+    if (!draftConflict) return;
+    draftSaveCoordinatorRef.current = rebaseMarkdownDraftSaveCoordinator(draftSaveCoordinatorRef.current, draftConflict.revision);
+    setDraftConflict(null);
+    void saveDraft();
+  }, [draftConflict, saveDraft]);
+
+  const useServerDraft = useCallback(() => {
+    if (!draftConflict) return;
+    draftSaveAbortRef.current?.abort();
+    draftSaveCoordinatorRef.current = rebaseMarkdownDraftSaveCoordinator(draftSaveCoordinatorRef.current, draftConflict.revision);
+    replaceMarkdownState(draftConflict.content);
+    lastPersistedMarkdownRef.current = draftConflict.content;
+    if (draftConflict.updatedAt) setSavedAt(draftConflict.updatedAt);
+    setDraftConflict(null);
+    setSaving(false);
+    setEditorMessage(t("tools.playground.serverDraftLoaded"));
+  }, [draftConflict, replaceMarkdownState, t]);
 
   const replaceSelection = useCallback((nextValue: string, selectionStart: number, selectionEnd: number) => {
-    setMarkdown(nextValue);
+    commitMarkdown(nextValue);
     setCursorPosition(selectionStart);
     requestAnimationFrame(() => {
       textareaRef.current?.focus();
       textareaRef.current?.setSelectionRange(selectionStart, selectionEnd);
     });
-  }, []);
+  }, [commitMarkdown]);
 
   const closeDrawioEditor = useCallback(() => {
     setDrawioSession(null);
@@ -497,7 +607,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
   }
 
   function replaceMarkdownSnippet(marker: string, replacement: string) {
-    setMarkdown((current) => current.replace(marker, replacement));
+    commitMarkdown((current) => current.replace(marker, replacement));
   }
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(event.clipboardData.files);
@@ -553,7 +663,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
             ) : null}
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {!embedded ? <button className="button-primary focus-ring" disabled={saving || uploading} type="button" onClick={() => void saveDraft()}>
+            {!embedded ? <button className="button-primary focus-ring" disabled={!draftLoaded || saving || uploading || Boolean(draftConflict)} type="button" onClick={() => void saveDraft()}>
               {saving ? t("tools.playground.saving") : uploading ? t("tools.playground.uploading") : t("common.save")}
             </button> : null}
             <button
@@ -567,6 +677,19 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
           </div>
           <div className="w-full md:hidden">{viewModeSwitch}</div>
         </div>
+
+        {!embedded && draftConflict ? <section className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--warning)] bg-[var(--panel)] p-3" role="alert">
+          <p className="text-sm font-bold">{t("tools.playground.draftConflict")}</p>
+          <div className="flex gap-2">
+            <button className="button-secondary focus-ring" type="button" onClick={useServerDraft}>{t("tools.playground.useServerDraft")}</button>
+            <button className="button-primary focus-ring" type="button" onClick={keepLocalDraft}>{t("tools.playground.keepLocalDraft")}</button>
+          </div>
+        </section> : null}
+
+        {!embedded && token && draftLoadFailed ? <section className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--red)] bg-[var(--panel)] p-3" role="alert">
+          <p className="text-sm font-bold">{t("tools.playground.draftLoadFailed")}</p>
+          <button className="button-secondary focus-ring" type="button" onClick={() => setDraftLoadRetry((current) => current + 1)}>{t("tools.playground.retryDraftLoad")}</button>
+        </section> : null}
 
         <div className={`grid gap-4 md:min-h-0 md:flex-1 md:grid-cols-2 ${isFullscreen ? "min-h-0 flex-1" : "min-h-[28rem]"}`}>
           <section
@@ -588,7 +711,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
               onUploadBlueprint={() => blueprintInputRef.current?.click()}
             />
             <div className="flex items-center border-b border-[var(--line)] px-3 py-2">
-              <StickerPicker inputRef={textareaRef} value={markdown} onChange={setMarkdown} />
+              <StickerPicker inputRef={textareaRef} value={markdown} onChange={commitMarkdown} />
             </div>
             <input
               ref={blueprintInputRef}
@@ -616,7 +739,7 @@ export function ToolsPlayground({ embedded = false, editorDescription, editorTit
               className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-6 outline-none"
               spellCheck={false}
               value={markdown}
-              onChange={(event) => { setMarkdown(event.target.value); revealPreviewAtCursor(event.currentTarget); }}
+              onChange={(event) => { commitMarkdown(event.target.value); revealPreviewAtCursor(event.currentTarget); }}
               onClick={(event) => revealPreviewAtCursor(event.currentTarget, event.clientY)}
               onKeyUp={(event) => revealPreviewAtCursor(event.currentTarget)}
               onSelect={(event) => revealPreviewAtCursor(event.currentTarget)}
@@ -996,6 +1119,10 @@ function findDrawioFence(markdown: string, selectionStart: number, selectionEnd:
 function cleanPlaygroundError(error: unknown, fallback: string) {
   if (error instanceof Error) return error.message;
   return fallback;
+}
+
+function isRequestAbort(error: unknown) {
+  return typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
 }
 
 function safeUploadCommentName(name: string) {

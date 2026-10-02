@@ -39,17 +39,19 @@ const BlockModelCanvas = dynamic(() => import("@/components/mcmods-exporter/Bloc
 export function ModContentResourceDetail({ siteId, resourceId, versionId, sectionId }: { siteId: string; resourceId: string; versionId: string; sectionId: string }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
+  const capabilityRequestKey = `${siteId}\u0000${resourceId}\u0000${token}`;
   const [detail, setDetail] = useState<ModContentResource>();
+  const [detailCapabilityKey, setDetailCapabilityKey] = useState("");
   const [similarResources, setSimilarResources] = useState<ModContentSimilarResource[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     loadModContentResource(siteId, resourceId, token)
-      .then((value) => { if (!cancelled) { setDetail(value); setSimilarResources([]); } })
+      .then((value) => { if (!cancelled) { setDetail(value); setDetailCapabilityKey(capabilityRequestKey); setSimilarResources([]); } })
       .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => { cancelled = true; };
-  }, [resourceId, siteId, token]);
+  }, [capabilityRequestKey, resourceId, siteId, token]);
 
   useEffect(() => {
     if (!detail) return;
@@ -71,12 +73,13 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
   const currentIndex = requestedIndex >= 0 ? requestedIndex : Math.max(0, firstDetailedIndex);
   const current = detail.versions[currentIndex];
   const versionDetail = detail.details.find((item) => item.versionPublicId === current?.publicId);
+  const canEditResource = detailCapabilityKey === capabilityRequestKey && detail.capabilities.editResource;
   const localization = resolveVersionLocalization(versionDetail?.localizations || [], locale, versionDetail?.defaultLocale || "en-US");
 
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><article className="mx-auto max-w-6xl">
     <header className="border-b border-[var(--line)] pb-5">
       <Link className="font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("mods.detail.back")}</Link>
-      <div className="mt-3 flex flex-wrap items-end justify-between gap-4"><h1 className="text-3xl font-black">{localization?.name || detail.canonicalId}</h1>{current ? <div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/history?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("contentHistory.title")}</Link>{token && versionDetail ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/edit?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("common.edit")}</Link> : null}</div> : null}</div>
+      <div className="mt-3 flex flex-wrap items-end justify-between gap-4"><h1 className="text-3xl font-black">{localization?.name || detail.canonicalId}</h1>{current ? <div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/history?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("contentHistory.title")}</Link>{canEditResource && versionDetail ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/edit?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("common.edit")}</Link> : null}</div> : null}</div>
       <div className="mt-4 flex gap-1 overflow-x-auto">{detail.versions.map((version, index) => {
         const href = version.detailUrl || `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}?version=${encodeURIComponent(version.publicId)}`;
         return <Link className={`focus-ring shrink-0 rounded px-2 py-1 text-xs font-black ${index === currentIndex ? "bg-[var(--accent)] text-white" : version.hasDetail ? "bg-[var(--panel-subtle)]" : "border border-[var(--red)] text-[var(--red)]"}`} href={href} key={version.publicId}>{version.label}</Link>;

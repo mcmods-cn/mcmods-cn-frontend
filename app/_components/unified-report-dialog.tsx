@@ -1,9 +1,10 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
+import { processEvidenceUploadBatch } from "../_lib/report-evidence-batch";
 import {
   completeOSSUpload,
   computeFileSHA256,
@@ -11,9 +12,10 @@ import {
   OSSDirectUploadTicket,
   putFileToOSS,
 } from "../_lib/oss-upload";
+import { FileDropZone } from "./file-drop-zone";
 
 export type ReportTargetType =
-  | "mod" | "plugin" | "map" | "shader" | "resource_pack" | "datapack" | "addon"
+  | "mod" | "modpack" | "plugin" | "map" | "shader" | "resource_pack" | "datapack" | "addon"
   | "discussion" | "bug" | "news" | "tutorial" | "skin" | "blueprint" | "server"
   | "comment" | "user";
 
@@ -27,6 +29,11 @@ type UploadedEvidence = {
   id: string;
   originalName: string;
   sizeBytes: number;
+};
+
+type EvidenceUploadFailure = {
+  message: string;
+  originalName: string;
 };
 
 type ReportDialogProps = {
@@ -72,6 +79,7 @@ export function UnifiedReportDialog({ open, targetType, targetId, targetSummary,
   const [customReason, setCustomReason] = useState("");
   const [detail, setDetail] = useState("");
   const [evidence, setEvidence] = useState<UploadedEvidence[]>([]);
+  const [evidenceFailures, setEvidenceFailures] = useState<EvidenceUploadFailure[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState("");
@@ -92,19 +100,18 @@ export function UnifiedReportDialog({ open, targetType, targetId, targetSummary,
   if (!open) return null;
   const selectedReason = reasons.find((item) => item.code === reasonCode);
 
-  async function addEvidence(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files || []);
-    event.target.value = "";
+  async function uploadEvidenceFiles(files: File[]) {
     if (!token || files.length === 0) return;
+    if (uploading) return;
     if (files.length + evidence.length > 5) {
       setMessage(t("reports.maximumEvidence"));
       return;
     }
     setUploading(true);
     setMessage("");
+    setEvidenceFailures([]);
     try {
-      const uploaded: UploadedEvidence[] = [];
-      for (const file of files) {
+      await processEvidenceUploadBatch(files, async (file) => {
         const sha256 = await computeFileSHA256(file);
         const ticket = await apiRequest<OSSDirectUploadTicket>("/api/v1/reports/evidence/uploads", {
           method: "POST",
@@ -115,18 +122,19 @@ export function UnifiedReportDialog({ open, targetType, targetId, targetSummary,
             sha256,
             category: "report_evidence",
             source: "report_evidence",
-            preferMultipart: true,
           }),
         }, token);
         if (ticket.uploadRequired !== false) await putFileToOSS(ticket, file);
         const completed = ticket.uploadRequired === false && ticket.file?.id
           ? ticket.file
           : await completeOSSUpload<{ id: string; originalName?: string; sizeBytes?: number }>("/api/v1/reports/evidence/uploads/complete", ticket, token);
-        uploaded.push({ id: completed.id, originalName: completed.originalName || file.name, sizeBytes: completed.sizeBytes ?? file.size });
-      }
-      setEvidence((current) => [...current, ...uploaded]);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("reports.uploadFailed"));
+        return { id: completed.id, originalName: completed.originalName || file.name, sizeBytes: completed.sizeBytes ?? file.size };
+      }, (uploaded) => {
+        setEvidence((current) => current.some((item) => item.id === uploaded.id) ? current : [...current, uploaded]);
+      }, (file, error) => {
+        setEvidenceFailures((current) => [...current, { message: error instanceof Error ? error.message : t("reports.uploadFailed"), originalName: file.name }]);
+        setMessage(t("reports.someEvidenceFailed"));
+      });
     } finally {
       setUploading(false);
     }
@@ -153,6 +161,7 @@ export function UnifiedReportDialog({ open, targetType, targetId, targetSummary,
       setCustomReason("");
       setDetail("");
       setEvidence([]);
+      setEvidenceFailures([]);
       onSubmitted?.();
       onClose();
     } catch (error) {
@@ -176,7 +185,32 @@ export function UnifiedReportDialog({ open, targetType, targetId, targetSummary,
       <label className="mt-5 block"><span className="mb-2 block text-sm font-black">{t("reports.reason")}</span><select className="field" required value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>{reasons.map((item) => <option key={item.code} value={item.code}>{t(item.i18nKey)}</option>)}</select></label>
       {selectedReason?.requiresCustomText ? <label className="mt-4 block"><span className="mb-2 block text-sm font-black">{t("reports.customReason")}</span><textarea className="field min-h-24 resize-y" maxLength={500} required value={customReason} onChange={(event) => setCustomReason(event.target.value)} /></label> : null}
       <label className="mt-4 block"><span className="mb-2 block text-sm font-black">{t("reports.detail")}</span><textarea className="field min-h-32 resize-y" maxLength={4000} value={detail} onChange={(event) => setDetail(event.target.value)} /></label>
-      <div className="mt-4"><span className="block text-sm font-black">{t("reports.evidence")}</span><label className="button-secondary focus-ring mt-2 inline-flex cursor-pointer"><input className="sr-only" type="file" multiple disabled={uploading || evidence.length >= 5} onChange={(event) => void addEvidence(event)} />{uploading ? t("reports.uploading") : t("reports.addEvidence")}</label><div className="mt-3 grid gap-2">{evidence.map((item) => <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--line)] px-3 py-2 text-sm" key={item.id}><span className="min-w-0 truncate">{item.originalName} · {formatBytes(item.sizeBytes)}</span><button className="text-[var(--red)]" type="button" onClick={() => setEvidence((current) => current.filter((value) => value.id !== item.id))}>{t("common.delete")}</button></div>)}</div></div>
+      <div className="mt-4">
+        <span className="block text-sm font-black">{t("reports.evidence")}</span>
+        <FileDropZone
+          accept=""
+          className="mt-2 min-h-28 p-4"
+          disabled={uploading || evidence.length >= 5}
+          hint={t("reports.dragEvidence")}
+          multiple
+          title={uploading ? t("reports.uploading") : t("reports.addEvidence")}
+          onFiles={(files) => void uploadEvidenceFiles(files)}
+        />
+        <div className="mt-3 grid gap-2">
+          {evidence.map((item) => (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm" key={item.id}>
+              <span className="min-w-0 truncate">{item.originalName} · {formatBytes(item.sizeBytes)}</span>
+              <button className="text-[var(--red)]" type="button" onClick={() => setEvidence((current) => current.filter((value) => value.id !== item.id))}>{t("common.delete")}</button>
+            </div>
+          ))}
+          {evidenceFailures.map((item, index) => (
+            <div className="rounded-md border border-[var(--red)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--red)]" key={`${item.originalName}-${index}`}>
+              <strong className="block truncate">{item.originalName}</strong>
+              <span>{item.message}</span>
+            </div>
+          ))}
+        </div>
+      </div>
       <p className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4 text-sm leading-6 text-[var(--muted)]">{t("reports.notice")}</p>
       {message ? <p aria-live="polite" className="mt-4 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{message}</p> : null}
       <div className="mt-5 flex justify-end gap-2"><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.cancel")}</button><button className="button-primary focus-ring" disabled={loading || uploading || !reasonCode} type="submit">{loading ? t("reports.submitting") : t("reports.submit")}</button></div>

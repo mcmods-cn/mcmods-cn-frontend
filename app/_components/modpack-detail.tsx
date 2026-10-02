@@ -2,9 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
-import { ApiError, apiRequest } from "../_lib/api";
+import { useCallback } from "react";
+import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { modpackIconURL, modpackModIconURL, type BackendModpackRecord } from "../_lib/modpack-api";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
@@ -21,34 +20,33 @@ import { ProjectChangelog } from "./project-changelog";
 import { ContentMetricsPanel } from "./content-metrics-panel";
 import { ProjectFollowButton } from "./project-follow-button";
 import { ProjectEditorApplicationButton } from "./project-editor-application";
+import { UnifiedReportButton } from "./unified-report-dialog";
+import { ProjectDetailLoadFeedback, useProjectDetailQuery } from "./project-detail-load-boundary";
+import { useProjectDetailTab } from "./use-project-detail-tab";
 
-type ModpackTab = "introduction" | "mods" | "downloads" | "changelog" | "gallery" | "discussion" | "tutorial" | "issues" | "news";
+const MODPACK_DETAIL_TABS = ["introduction", "mods", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as const;
+type ModpackTab = (typeof MODPACK_DETAIL_TABS)[number];
 
 export function ModpackDetailLoader({ siteId }: { siteId: string }) {
   const { ready, token } = useAuthSnapshot();
   const { t } = useI18n();
-  const [record, setRecord] = useState<BackendModpackRecord>();
-  const [notFound, setNotFound] = useState(false);
+  const load = useCallback((signal: AbortSignal) => {
+    return apiRequest<BackendModpackRecord>(
+      `/api/v1/modpacks/${encodeURIComponent(siteId)}`,
+      { signal },
+      token,
+    );
+  }, [siteId, token]);
+  const { state, retry } = useProjectDetailQuery<BackendModpackRecord>(ready, load);
 
-  useEffect(() => {
-    if (!ready) return;
-    let cancelled = false;
-    apiRequest<BackendModpackRecord>(`/api/v1/modpacks/${encodeURIComponent(siteId)}`, {}, token)
-      .then((value) => { if (!cancelled) setRecord(value); })
-      .catch((error) => { if (!cancelled && error instanceof ApiError && error.status === 404) setNotFound(true); });
-    return () => { cancelled = true; };
-  }, [ready, siteId, token]);
-
-  if (record) return <ModpackDetail record={record} />;
-  return <main className="grid min-h-[60vh] place-items-center px-4 text-center"><h1 className="text-2xl font-black">{notFound ? t("modpacks.detail.notFound") : t("common.loading")}</h1></main>;
+  if (state.status === "ready") return <ModpackDetail record={state.data} />;
+  return <ProjectDetailLoadFeedback errorTitle={t("modpacks.detail.loadFailed")} notFoundTitle={t("modpacks.detail.notFound")} onRetry={retry} state={state} />;
 }
 
 function ModpackDetail({ record }: { record: BackendModpackRecord }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
-  const searchParams = useSearchParams();
-  const [selectedTab, setSelectedTab] = useState<ModpackTab>();
-  const tab = selectedTab ?? (searchParams.get("tab") === "changelog" ? "changelog" : "introduction");
+  const { tab, selectTab } = useProjectDetailTab<ModpackTab>(MODPACK_DETAIL_TABS, "introduction");
   const displayName = locale.startsWith("zh") && record.secondaryName ? record.secondaryName : record.primaryName;
   const secondaryName = displayName === record.primaryName ? record.secondaryName : record.primaryName;
   const versions = [...new Set(record.compatibilities.flatMap((item) => item.versions))];
@@ -56,13 +54,13 @@ function ModpackDetail({ record }: { record: BackendModpackRecord }) {
 
   return <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
     <header className="border-b border-[var(--line)] bg-[var(--panel)]"><div className="mx-auto max-w-[1440px] px-4 py-7 lg:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href="/modpacks">{t("modpacks.detail.back")}</Link><div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`/modpacks/${record.siteId}/history`}>{t("mods.detail.history")}</Link><ProjectEditorApplicationButton canEdit={Boolean(record.canEdit)} projectId={record.id} projectName={displayName} projectType="modpack" returnPath={`/modpacks/${record.siteId}`} /><ReviewAwareEditAction canEdit={Boolean(record.canEdit)} editHref={`/modpacks/${record.siteId}/edit`} entityType="modpack" publicId={record.id} /></div></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href="/modpacks">{t("modpacks.detail.back")}</Link><div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`/modpacks/${record.siteId}/history`}>{t("mods.detail.history")}</Link><UnifiedReportButton targetAuthor={record.authors.map((item) => item.name).filter(Boolean).join("、")} targetId={record.id} targetSummary={displayName} targetType="modpack" /><ProjectEditorApplicationButton canEdit={Boolean(record.canEdit)} projectId={record.id} projectName={displayName} projectType="modpack" returnPath={`/modpacks/${record.siteId}`} /><ReviewAwareEditAction canEdit={Boolean(record.canEdit)} editHref={`/modpacks/${record.siteId}/edit`} entityType="modpack" publicId={record.id} /></div></div>
       <div className="mt-5 flex flex-col gap-5 sm:flex-row"><ProjectIcon icon={modpackIconURL(record)} name={displayName} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-black sm:text-3xl">{record.abbreviation ? `[${record.abbreviation}] ` : ""}{displayName}</h1>{record.reviewStatus === "pending" ? <Badge>{t("mods.detail.pendingReview")}</Badge> : null}</div>{secondaryName && secondaryName !== displayName ? <p className="mt-1 font-semibold text-[var(--muted)]">{secondaryName}</p> : null}<p className="mt-4 max-w-4xl text-sm leading-7 text-[var(--muted)] sm:text-base">{record.summary}</p></div></div>
     </div></header>
     <div className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6">
       <div className="mb-4"><ProjectFollowButton publicId={record.id} /></div>
       <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("mods.detail.compatibility")}</h2><div className="mt-4 grid gap-4 md:grid-cols-3"><Detail label={t("mods.card.loaders")} value={loaders.join("、")} /><Detail label={t("mods.card.versions")} value={versions.join("、")} /><Detail label={t("mods.card.environment")} value={t(`mods.environments.${record.environment}`)} /><Detail label={t("modpacks.editor.packType")} value={t(`modpacks.packTypes.${record.packType || "native"}`)} /><Detail label={t("modpacks.editor.packagingMethod")} value={t(`modpacks.packagingMethods.${record.packagingMethod || "other"}`)} /><Detail label={t("modpacks.editor.categories")} value={record.tags.map((category) => t(`modpacks.categories.${category}`)).join("、")} /></div></section>
-      <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("modpacks.detail.sections")}>{(["introduction", "mods", "downloads", "changelog", "gallery", "discussion", "tutorial", "issues", "news"] as ModpackTab[]).map((item) => <button key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setSelectedTab(item)}><strong className="block whitespace-nowrap">{t(`modpacks.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
+      <nav className="mt-5 flex overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]" aria-label={t("modpacks.detail.sections")}>{MODPACK_DETAIL_TABS.map((item) => <button aria-current={tab === item ? "page" : undefined} key={item} className={`focus-ring min-w-36 border-r border-[var(--line)] px-4 py-4 text-left last:border-r-0 ${tab === item ? "text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => selectTab(item)}><strong className="block whitespace-nowrap">{t(`modpacks.detail.tabs.${item}`)}</strong><span className={`mt-2 block h-0.5 ${tab === item ? "bg-[var(--accent)]" : "bg-transparent"}`} /></button>)}</nav>
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]"><div className="min-w-0">
         {tab === "introduction" ? <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText={record.summary} markdown={record.bodyMarkdown} /></section> : null}
         {tab === "mods" ? <ModpackMods record={record} /> : null}

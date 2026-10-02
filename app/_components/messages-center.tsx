@@ -4,11 +4,12 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
-import type { AITokenBalance, OnlineStatus } from "../_lib/user-api";
+import { loadPublicUserProfile, type AITokenBalance, type OnlineStatus } from "../_lib/user-api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
 import { normalizeInternalPath } from "../_lib/navigation";
+import { realtimeQueryCoordinator, realtimeQueryKeys } from "../_lib/realtime-query-cache.mts";
 import { OnlineStatusDot, UserAvatar } from "./user-avatar";
 
 type NotificationKind = "system" | "reply_mention" | "comment_watch_reply" | "review" | "new_follower";
@@ -27,6 +28,13 @@ type NotificationItem = {
 	translationAllowed: boolean;
 };
 
+type NotificationPage = {
+  items: NotificationItem[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
 type Conversation = {
   id: string;
   partnerId: string;
@@ -39,6 +47,13 @@ type Conversation = {
   canMessage: boolean;
 };
 
+type ConversationPage = {
+  items: Conversation[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
 type DirectMessage = {
   id: string;
   conversationId: string;
@@ -49,10 +64,20 @@ type DirectMessage = {
   createdAt: string;
 };
 
+type DirectMessagePage = {
+  items: DirectMessage[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
 type Translation = { title: string; body: string };
 type NotificationTarget = { href: string; label: string };
 
 const notificationKinds: NotificationKind[] = ["system", "reply_mention", "comment_watch_reply", "review", "new_follower"];
+const emptyNotificationPage = (): NotificationPage => ({ items: [], limit: 50, hasMore: false, nextCursor: "" });
+const emptyConversationPage = (): ConversationPage => ({ items: [], limit: 30, hasMore: false, nextCursor: "" });
+const emptyDirectMessagePage = (): DirectMessagePage => ({ items: [], limit: 100, hasMore: false, nextCursor: "" });
 
 export function MessagesCenter() {
   const { t, locale } = useI18n();
@@ -62,66 +87,230 @@ export function MessagesCenter() {
   const targetUserID = searchParams.get("user") ?? "";
   const [mode, setMode] = useState<"notifications" | "chats">(targetUserID ? "chats" : "notifications");
   const [kind, setKind] = useState<NotificationKind>("system");
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationPage>(emptyNotificationPage);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversationPage, setConversationPage] = useState<ConversationPage>(emptyConversationPage);
   const [selectedConversationID, setSelectedConversationID] = useState<string | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [messageHistory, setMessageHistory] = useState<DirectMessagePage>(emptyDirectMessagePage);
   const [messageDraft, setMessageDraft] = useState("");
   const [translations, setTranslations] = useState<Record<string, Translation>>({});
   const [translatingID, setTranslatingID] = useState<string | null>(null);
   const [markingAllRead, setMarkingAllRead] = useState(false);
-  const [aiBalance, setAIBalance] = useState<AITokenBalance | null>(null);
+  const [aiBalanceSnapshot, setAIBalanceSnapshot] = useState<{ token: string; balance: AITokenBalance } | null>(null);
   const [status, setStatus] = useState("");
   const lastMessageIDRef = useRef("");
-  const messagesLoadingRef = useRef(false);
-  const conversationsLoadingRef = useRef(false);
+  const selectedConversationIDRef = useRef<string | null>(null);
+  const messagesLoadingConversationRef = useRef("");
+  const messageRefreshSequenceRef = useRef(0);
+  const messageRequestAbortRef = useRef<AbortController | null>(null);
+  const olderMessageRequestAbortRef = useRef<AbortController | null>(null);
+  const conversationRequestVersionRef = useRef(0);
+  const messageRequestVersionRef = useRef(0);
+  const notificationRequestVersionRef = useRef(0);
+  const [loadingMoreNotifications, setLoadingMoreNotifications] = useState(false);
+  const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
 
+  const conversations = conversationPage.items;
   const selectedConversation = conversations.find((item) => item.id === selectedConversationID) ?? null;
+  const hasTranslatableNotifications = notifications.items.some((item) => item.translationAllowed);
+  const aiBalance = aiBalanceSnapshot?.token === token ? aiBalanceSnapshot.balance : null;
+  const hasCurrentAIBalance = aiBalance !== null;
+
+  useEffect(() => {
+    selectedConversationIDRef.current = selectedConversationID;
+  }, [selectedConversationID]);
+
+  const invalidateMessageRequests = useCallback(() => {
+    messageRequestVersionRef.current++;
+    messageRequestAbortRef.current?.abort();
+    messageRequestAbortRef.current = null;
+    olderMessageRequestAbortRef.current?.abort();
+    olderMessageRequestAbortRef.current = null;
+    messagesLoadingConversationRef.current = "";
+  }, []);
+
+  const selectConversation = useCallback((conversationID: string) => {
+    if (selectedConversationIDRef.current === conversationID) return;
+    invalidateMessageRequests();
+    selectedConversationIDRef.current = conversationID;
+    lastMessageIDRef.current = "";
+    setMessages([]);
+    setMessageHistory(emptyDirectMessagePage());
+    setMessageDraft("");
+    setLoadingOlderMessages(false);
+    setSelectedConversationID(conversationID);
+  }, [invalidateMessageRequests]);
 
   const loadNotifications = useCallback(async () => {
-    if (!token) return;
-    const result = await apiRequest<NotificationItem[]>(`/api/v1/notifications?kind=${kind}`, {}, token);
-    setNotifications(result);
-  }, [kind, token]);
+    if (!token || !user) return;
+    const requestVersion = ++notificationRequestVersionRef.current;
+    const result = await realtimeQueryCoordinator.readQuery(
+      realtimeQueryKeys.notifications(user.id, kind),
+      () => apiRequest<NotificationPage>(`/api/v1/notifications?kind=${kind}`, {}, token),
+      { maxAgeMs: 1_000 },
+    );
+    if (requestVersion === notificationRequestVersionRef.current) setNotifications(result);
+  }, [kind, token, user]);
+
+  async function loadMoreNotifications() {
+    if (!token || !notifications.hasMore || !notifications.nextCursor || loadingMoreNotifications) return;
+    const requestVersion = notificationRequestVersionRef.current;
+    setLoadingMoreNotifications(true);
+    try {
+      const result = await apiRequest<NotificationPage>(`/api/v1/notifications?kind=${kind}&limit=${notifications.limit}&cursor=${encodeURIComponent(notifications.nextCursor)}`, {}, token);
+      if (requestVersion !== notificationRequestVersionRef.current) return;
+      setNotifications((current) => {
+        const existing = new Set(current.items.map((item) => item.id));
+        return { ...result, items: [...current.items, ...result.items.filter((item) => !existing.has(item.id))] };
+      });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+    } finally {
+      setLoadingMoreNotifications(false);
+    }
+  }
 
   const loadUnreadNotifications = useCallback(async () => {
-    if (!token) return;
-    const result = await apiRequest<{ notifications: number }>("/api/v1/me/unread-summary", {}, token);
+    if (!token || !user) return;
+    const result = await realtimeQueryCoordinator.readQuery(
+      realtimeQueryKeys.unreadSummary(user.id),
+      () => apiRequest<{ notifications: number }>("/api/v1/me/unread-summary", {}, token),
+      { maxAgeMs: 1_000 },
+    );
     setUnreadNotifications(result.notifications);
-  }, [token]);
+  }, [token, user]);
 
   const loadConversations = useCallback(async () => {
-    if (!token || conversationsLoadingRef.current) return;
-    conversationsLoadingRef.current = true;
-    try {
-      const result = await apiRequest<Conversation[]>("/api/v1/messages/conversations", {}, token);
-      setConversations(result);
-    } finally { conversationsLoadingRef.current = false; }
-  }, [token]);
+    if (!token || !user) return;
+    const requestVersion = ++conversationRequestVersionRef.current;
+    const result = await realtimeQueryCoordinator.readQuery(
+      realtimeQueryKeys.conversations(user.id),
+      () => apiRequest<ConversationPage>("/api/v1/messages/conversations?limit=30", {}, token),
+      { maxAgeMs: 1_000 },
+    );
+    if (requestVersion !== conversationRequestVersionRef.current) return;
+    setConversationPage((current) => {
+      const selected = current.items.find((item) => item.id === selectedConversationIDRef.current);
+      if (!selected || result.items.some((item) => item.id === selected.id)) return result;
+      return { ...result, items: [...result.items, selected] };
+    });
+  }, [token, user]);
 
-  const loadBalance = useCallback(async () => {
+  async function loadMoreConversations() {
+    if (!token || !conversationPage.hasMore || !conversationPage.nextCursor || loadingMoreConversations) return;
+    const requestVersion = conversationRequestVersionRef.current;
+    setLoadingMoreConversations(true);
+    try {
+      const result = await apiRequest<ConversationPage>(`/api/v1/messages/conversations?limit=${conversationPage.limit}&cursor=${encodeURIComponent(conversationPage.nextCursor)}`, {}, token);
+      if (requestVersion !== conversationRequestVersionRef.current) return;
+      setConversationPage((current) => {
+        const existing = new Set(current.items.map((item) => item.id));
+        return { ...result, items: [...current.items, ...result.items.filter((item) => !existing.has(item.id))] };
+      });
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+    } finally {
+      setLoadingMoreConversations(false);
+    }
+  }
+
+  const loadBalance = useCallback(async (signal?: AbortSignal) => {
     if (!token) return;
-    setAIBalance(await apiRequest<AITokenBalance>("/api/v1/notifications/ai-balance", {}, token));
+    const balance = await apiRequest<AITokenBalance>("/api/v1/notifications/ai-balance", { signal }, token);
+    if (signal?.aborted) return;
+    setAIBalanceSnapshot({ token, balance });
   }, [token]);
 
-  const loadMessages = useCallback(async (conversationID: string) => {
-    if (!token || messagesLoadingRef.current) return;
-    messagesLoadingRef.current = true;
+  useEffect(() => {
+    if (!hasTranslatableNotifications || hasCurrentAIBalance) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void loadBalance(controller.signal).catch((error) => {
+        if (!controller.signal.aborted) setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+      });
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [hasCurrentAIBalance, hasTranslatableNotifications, loadBalance, t]);
+
+  const loadMessages = useCallback(async (conversationID: string, initial = false) => {
+    if (!token) return;
+    const refreshSequence = ++messageRefreshSequenceRef.current;
+    if (!initial && messagesLoadingConversationRef.current === conversationID) return;
+    messageRequestAbortRef.current?.abort();
+    const requestController = new AbortController();
+    messageRequestAbortRef.current = requestController;
+    const requestVersion = ++messageRequestVersionRef.current;
+    messagesLoadingConversationRef.current = conversationID;
     try {
-      const after = lastMessageIDRef.current ? `?after=${encodeURIComponent(lastMessageIDRef.current)}` : "";
-      const result = await apiRequest<DirectMessage[]>(`/api/v1/messages/conversations/${conversationID}${after}`, {}, token);
-      if (result.length > 0) {
-        lastMessageIDRef.current = result[result.length - 1].id;
-        setMessages((current) => {
-          if (!after) return result;
-          const existing = new Set(current.map((item) => item.id));
-          return [...current, ...result.filter((item) => !existing.has(item.id))];
-        });
-      } else if (!after) setMessages([]);
-      window.dispatchEvent(new Event("mcmods-unread-change"));
-    } finally { messagesLoadingRef.current = false; }
+      let observedRefreshSequence = refreshSequence;
+      let loadInitialPage = initial;
+      do {
+        let afterID = loadInitialPage ? "" : lastMessageIDRef.current;
+        loadInitialPage = false;
+        if (!afterID) {
+          const page = await apiRequest<DirectMessagePage>(`/api/v1/messages/conversations/${conversationID}?limit=100`, { signal: requestController.signal }, token);
+          if (requestController.signal.aborted || selectedConversationIDRef.current !== conversationID || requestVersion !== messageRequestVersionRef.current) return;
+          setMessages(page.items);
+          setMessageHistory(page);
+          lastMessageIDRef.current = page.items.at(-1)?.id ?? "";
+        } else {
+          let page: DirectMessagePage;
+          do {
+            page = await apiRequest<DirectMessagePage>(`/api/v1/messages/conversations/${conversationID}?limit=100&after=${encodeURIComponent(afterID)}`, { signal: requestController.signal }, token);
+            if (requestController.signal.aborted || selectedConversationIDRef.current !== conversationID || requestVersion !== messageRequestVersionRef.current) return;
+            if (page.items.length > 0) {
+              afterID = page.items.at(-1)!.id;
+              lastMessageIDRef.current = afterID;
+              setMessages((current) => {
+                const existing = new Set(current.map((item) => item.id));
+                return [...current, ...page.items.filter((item) => !existing.has(item.id))];
+              });
+            }
+          } while (page.hasMore && page.items.length > 0);
+        }
+        if (observedRefreshSequence === messageRefreshSequenceRef.current) break;
+        observedRefreshSequence = messageRefreshSequenceRef.current;
+      } while (selectedConversationIDRef.current === conversationID);
+    } catch (error) {
+      if (requestController.signal.aborted) return;
+      throw error;
+    } finally {
+      if (messageRequestAbortRef.current === requestController) messageRequestAbortRef.current = null;
+      if (messagesLoadingConversationRef.current === conversationID) messagesLoadingConversationRef.current = "";
+    }
   }, [token]);
+
+  async function loadOlderMessages() {
+    if (!token || !selectedConversationID || !messageHistory.hasMore || !messageHistory.nextCursor || loadingOlderMessages) return;
+    const conversationID = selectedConversationID;
+    const requestVersion = messageRequestVersionRef.current;
+    olderMessageRequestAbortRef.current?.abort();
+    const requestController = new AbortController();
+    olderMessageRequestAbortRef.current = requestController;
+    setLoadingOlderMessages(true);
+    try {
+      const result = await apiRequest<DirectMessagePage>(`/api/v1/messages/conversations/${conversationID}?limit=${messageHistory.limit}&cursor=${encodeURIComponent(messageHistory.nextCursor)}`, { signal: requestController.signal }, token);
+      if (requestController.signal.aborted || selectedConversationIDRef.current !== conversationID || requestVersion !== messageRequestVersionRef.current) return;
+      setMessages((current) => {
+        const existing = new Set(current.map((item) => item.id));
+        return [...result.items.filter((item) => !existing.has(item.id)), ...current];
+      });
+      setMessageHistory(result);
+    } catch (error) {
+      if (requestController.signal.aborted) return;
+      setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+    } finally {
+      if (olderMessageRequestAbortRef.current === requestController) {
+        olderMessageRequestAbortRef.current = null;
+        setLoadingOlderMessages(false);
+      }
+    }
+  }
 
   useEffect(() => {
     if (!token) return;
@@ -134,42 +323,66 @@ export function MessagesCenter() {
   }, [loadConversations, loadNotifications, loadUnreadNotifications, t, token]);
 
   useEffect(() => {
-    if (!token) return;
-    const receive = (event: Event) => {
-      const detail = event instanceof CustomEvent ? event.detail : null;
-      if (detail?.type?.startsWith("notification.")) {
-        void Promise.all([loadNotifications(), loadUnreadNotifications()]);
-      }
-      if (detail?.type === "message.created") void loadConversations();
+    if (!token || !user) return;
+    const unsubscribeNotifications = realtimeQueryCoordinator.subscribe(
+      realtimeQueryKeys.notifications(user.id, kind),
+      () => { void loadNotifications(); },
+    );
+    const unsubscribeConversations = realtimeQueryCoordinator.subscribe(
+      realtimeQueryKeys.conversations(user.id),
+      () => { void loadConversations(); },
+    );
+    const unsubscribeUnread = realtimeQueryCoordinator.subscribe(
+      realtimeQueryKeys.unreadSummary(user.id),
+      () => { void loadUnreadNotifications(); },
+    );
+    return () => {
+      unsubscribeNotifications();
+      unsubscribeConversations();
+      unsubscribeUnread();
     };
-    window.addEventListener("mcmods-realtime", receive);
-    return () => window.removeEventListener("mcmods-realtime", receive);
-  }, [loadConversations, loadNotifications, loadUnreadNotifications, token]);
+  }, [kind, loadConversations, loadNotifications, loadUnreadNotifications, token, user]);
 
   useEffect(() => {
-    if (!token || !targetUserID || targetUserID === user?.id) return;
+    if (!token || !user || !targetUserID || targetUserID === user.id) return;
     let cancelled = false;
-    apiRequest<{ id: string }>(
-      "/api/v1/messages/conversations",
-      { method: "POST", body: JSON.stringify({ userId: targetUserID }) },
-      token,
-    ).then(async (result) => {
+    Promise.all([
+      apiRequest<{ id: string }>(
+        "/api/v1/messages/conversations",
+        { method: "POST", body: JSON.stringify({ userId: targetUserID }) },
+        token,
+      ),
+      loadPublicUserProfile(targetUserID, token),
+    ]).then(async ([result, profile]) => {
       if (cancelled) return;
       setMode("chats");
-      setSelectedConversationID(result.id);
+      selectConversation(result.id);
+      realtimeQueryCoordinator.invalidate(realtimeQueryKeys.conversations(user.id));
       await loadConversations();
+      if (cancelled) return;
+      setConversationPage((current) => current.items.some((item) => item.id === result.id) ? current : {
+        ...current,
+        items: [...current.items, {
+          id: result.id,
+          partnerId: profile.id,
+          username: profile.username,
+          avatarUrl: profile.avatarUrl,
+          onlineStatus: profile.onlineStatus,
+          lastMessage: "",
+          unreadCount: 0,
+          canMessage: profile.canMessage,
+        }],
+      });
     }).catch((error) => setStatus(error instanceof Error ? error.message : t("messages.startFailed")));
     return () => {
       cancelled = true;
     };
-  }, [loadConversations, t, targetUserID, token, user?.id]);
+  }, [loadConversations, selectConversation, t, targetUserID, token, user]);
 
   useEffect(() => {
-    if (!selectedConversationID || !token) return;
-    lastMessageIDRef.current = "";
+    if (!selectedConversationID || !token || !user) return;
     const initialTimer = window.setTimeout(() => {
-      setMessages([]);
-      void loadMessages(selectedConversationID).catch((error) => setStatus(error instanceof Error ? error.message : t("messages.loadFailed")));
+      void loadMessages(selectedConversationID, true).catch((error) => setStatus(error instanceof Error ? error.message : t("messages.loadFailed")));
     }, 0);
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
@@ -180,27 +393,36 @@ export function MessagesCenter() {
     const presence = window.setInterval(() => {
       if (document.visibilityState === "visible") void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token);
     }, 20_000);
-    const realtime = (event: Event) => {
-      const detail = event instanceof CustomEvent ? event.detail : null;
-      if (detail?.type === "message.created" || detail?.type === "unread.changed") refresh();
-    };
-    window.addEventListener("mcmods-realtime", realtime);
+    const unsubscribeMessages = realtimeQueryCoordinator.subscribe(
+      realtimeQueryKeys.messages(user.id, selectedConversationID),
+      () => {
+        if (document.visibilityState !== "visible") {
+          realtimeQueryCoordinator.invalidate(realtimeQueryKeys.unreadSummary(user.id));
+          return;
+        }
+        void loadMessages(selectedConversationID).catch((error) => {
+          setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+          realtimeQueryCoordinator.invalidate(realtimeQueryKeys.unreadSummary(user.id));
+        });
+      },
+    );
     void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token);
     return () => {
+      invalidateMessageRequests();
       window.clearTimeout(initialTimer);
       window.clearInterval(timer);
       window.clearInterval(presence);
-      window.removeEventListener("mcmods-realtime", realtime);
+      unsubscribeMessages();
     };
-  }, [loadConversations, loadMessages, selectedConversationID, t, token]);
+  }, [invalidateMessageRequests, loadConversations, loadMessages, selectedConversationID, t, token, user]);
 
   async function markRead(item: NotificationItem) {
-    if (!token || item.read) return;
+    if (!token || !user || item.read) return;
     try {
       await apiRequest(`/api/v1/notifications/${item.id}/read`, { method: "POST" }, token);
-      setNotifications((current) => current.map((entry) => entry.id === item.id ? { ...entry, read: true } : entry));
+      setNotifications((current) => ({ ...current, items: current.items.map((entry) => entry.id === item.id ? { ...entry, read: true } : entry) }));
       setUnreadNotifications((current) => Math.max(0, current - 1));
-      window.dispatchEvent(new Event("mcmods-unread-change"));
+      realtimeQueryCoordinator.invalidate(realtimeQueryKeys.unreadSummary(user.id));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("messages.markReadFailed"));
     }
@@ -214,14 +436,14 @@ export function MessagesCenter() {
   }
 
   async function markAllRead() {
-    if (!token || markingAllRead || unreadNotifications === 0) return;
+    if (!token || !user || markingAllRead || unreadNotifications === 0) return;
     setMarkingAllRead(true);
     setStatus("");
     try {
-      await apiRequest<{ read: true; updated: number }>("/api/v1/notifications/read-all", { method: "POST" }, token);
-      setNotifications((current) => current.map((item) => ({ ...item, read: true })));
+      await apiRequest<{ read: true; readBefore: string }>("/api/v1/notifications/read-all", { method: "POST" }, token);
+      setNotifications((current) => ({ ...current, items: current.items.map((item) => ({ ...item, read: true })) }));
       setUnreadNotifications(0);
-      window.dispatchEvent(new Event("mcmods-unread-change"));
+      realtimeQueryCoordinator.invalidate(realtimeQueryKeys.unreadSummary(user.id));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("messages.markReadFailed"));
     } finally {
@@ -233,36 +455,50 @@ export function MessagesCenter() {
 	if (!token || translatingID || !item.translationAllowed) return;
     setTranslatingID(item.id);
     setStatus("");
+    let balanceRefreshNeeded = false;
+    let translationFailed = false;
     try {
       const started = await apiRequest<{ cached: boolean; taskId?: string; translation?: Translation }>(
         `/api/v1/notifications/${item.id}/translate`,
         { method: "POST", body: JSON.stringify({ targetLocale: locale }) },
         token,
       );
+      balanceRefreshNeeded = !started.cached;
       let translation = started.translation;
       if (!started.cached && started.taskId) {
         translation = await waitForTranslation(started.taskId, token);
       }
       if (translation) setTranslations((current) => ({ ...current, [item.id]: translation! }));
-      await loadBalance();
     } catch (error) {
+      translationFailed = true;
       setStatus(error instanceof Error ? error.message : t("messages.translationFailed"));
     } finally {
+      if (balanceRefreshNeeded) {
+        try {
+          await loadBalance();
+        } catch (error) {
+          if (!translationFailed) setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+        }
+      }
       setTranslatingID(null);
     }
   }
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !selectedConversationID || !selectedConversation?.canMessage || !messageDraft.trim()) return;
+    if (!token || !user || !selectedConversationID || !selectedConversation?.canMessage || !messageDraft.trim()) return;
+    const conversationID = selectedConversationID;
     try {
       const result = await apiRequest<{ message: DirectMessage }>(
-        `/api/v1/messages/conversations/${selectedConversationID}`,
+        `/api/v1/messages/conversations/${conversationID}`,
         { method: "POST", body: JSON.stringify({ body: messageDraft }) },
         token,
       );
+      if (selectedConversationIDRef.current !== conversationID) return;
       setMessages((current) => [...current, result.message]);
+      lastMessageIDRef.current = result.message.id;
       setMessageDraft("");
+      realtimeQueryCoordinator.invalidate(realtimeQueryKeys.conversations(user.id));
       await loadConversations();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("messages.sendFailed"));
@@ -292,12 +528,12 @@ export function MessagesCenter() {
             <aside className="surface h-fit p-3">
               <nav className="grid gap-1">
                 {notificationKinds.map((item) => (
-                  <button key={item} className={`focus-ring rounded-md px-3 py-3 text-left text-sm font-bold ${kind === item ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setKind(item)}>
+                  <button key={item} className={`focus-ring rounded-md px-3 py-3 text-left text-sm font-bold ${kind === item ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => { notificationRequestVersionRef.current++; setNotifications(emptyNotificationPage()); setTranslations({}); setKind(item); }}>
                     {t(`messages.kinds.${item}`)}
                   </button>
                 ))}
               </nav>
-			  {notifications.some((item) => item.translationAllowed) && aiBalance ? <AIBalanceCard balance={aiBalance} /> : null}
+			  {hasTranslatableNotifications && hasCurrentAIBalance && aiBalance ? <AIBalanceCard balance={aiBalance} /> : null}
             </aside>
             <section className="grid content-start gap-3">
               <div className="flex justify-end">
@@ -305,7 +541,7 @@ export function MessagesCenter() {
                   {markingAllRead ? t("messages.markingAllRead") : t("messages.markAllRead")}
                 </button>
               </div>
-              {notifications.map((item) => {
+              {notifications.items.map((item) => {
                 const translated = translations[item.id];
                 const target = notificationTarget(item, t("messages.openRelatedContent"));
                 const title = translated?.title || item.title;
@@ -355,7 +591,8 @@ export function MessagesCenter() {
                   </article>
                 );
               })}
-              {notifications.length === 0 ? <MessageState text={t("messages.emptyNotifications")} /> : null}
+              {notifications.items.length === 0 ? <MessageState text={t("messages.emptyNotifications")} /> : null}
+              {notifications.hasMore ? <button className="button-secondary focus-ring justify-self-center" disabled={loadingMoreNotifications} type="button" onClick={() => void loadMoreNotifications()}>{loadingMoreNotifications ? t("messages.loadingMoreNotifications") : t("messages.loadMoreNotifications")}</button> : null}
             </section>
           </div>
         ) : (
@@ -364,7 +601,7 @@ export function MessagesCenter() {
               <div className="border-b border-[var(--line)] p-4 font-bold">{t("messages.conversations")}</div>
               <div className="max-h-[620px] overflow-y-auto">
                 {conversations.map((item) => (
-                  <button key={item.id} className={`focus-ring flex w-full items-start gap-3 border-b border-[var(--line)] p-4 text-left ${selectedConversationID === item.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setSelectedConversationID(item.id)}>
+                  <button key={item.id} className={`focus-ring flex w-full items-start gap-3 border-b border-[var(--line)] p-4 text-left ${selectedConversationID === item.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => selectConversation(item.id)}>
                     <UserAvatar avatarUrl={item.avatarUrl} onlineStatus={item.onlineStatus} size={40} username={item.username} />
                     <span className="min-w-0 flex-1">
 <span className="flex items-center justify-between gap-2"><strong className="truncate">{item.username}</strong>{item.unreadCount > 0 ? <b className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">{item.unreadCount}</b> : null}</span>
@@ -372,6 +609,7 @@ export function MessagesCenter() {
                     </span>
                   </button>
                 ))}
+                {conversationPage.hasMore ? <button className="button-secondary focus-ring m-3 w-[calc(100%-1.5rem)]" disabled={loadingMoreConversations} type="button" onClick={() => void loadMoreConversations()}>{loadingMoreConversations ? t("messages.loadingMoreConversations") : t("messages.loadMoreConversations")}</button> : null}
               </div>
             </aside>
             <section className="flex min-h-0 flex-col">
@@ -381,6 +619,7 @@ export function MessagesCenter() {
                     <Link className="flex items-center gap-2 font-bold hover:text-[var(--accent)]" href={`/user/${selectedConversation.partnerId}`}><OnlineStatusDot className="h-3 w-3" status={selectedConversation.onlineStatus} />{selectedConversation.username}</Link>
                   </div>
                   <div className="flex-1 space-y-3 overflow-y-auto bg-[var(--background)] p-4">
+                    {messageHistory.hasMore ? <div className="flex justify-center"><button className="button-secondary focus-ring" disabled={loadingOlderMessages} type="button" onClick={() => void loadOlderMessages()}>{loadingOlderMessages ? t("messages.loadingOlderMessages") : t("messages.loadOlderMessages")}</button></div> : null}
                     {messages.map((item) => <MessageBubble key={item.id} item={item} own={item.senderId === user.id} />)}
                   </div>
                   {selectedConversation.canMessage ? (

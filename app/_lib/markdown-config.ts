@@ -21,6 +21,8 @@ export type MarkdownRendererConfig = {
   tocMaxDepth: number;
 };
 
+export const PLANTUML_PROXY_PATH = "/plantuml";
+
 export const defaultMarkdownConfig: MarkdownRendererConfig = {
   core: true,
   abbreviations: true,
@@ -32,27 +34,34 @@ export const defaultMarkdownConfig: MarkdownRendererConfig = {
   katex: true,
   expandTabs: true,
   imageSize: true,
-  plantUML: true,
+  plantUML: false,
   codeHighlight: true,
   enhancedTables: true,
   collapsibleBlocks: true,
   alertBlocks: true,
   toc: true,
   tabSize: 2,
-  plantUMLServer: "https://www.plantuml.com/plantuml",
+  plantUMLServer: PLANTUML_PROXY_PATH,
   tocMinDepth: 2,
   tocMaxDepth: 3,
 };
 
 export function normalizeMarkdownConfig(config?: Partial<MarkdownRendererConfig> | null): MarkdownRendererConfig {
+  const plantUMLServerIsTrusted = isPlantUMLProxyPath(config?.plantUMLServer);
   return {
     ...defaultMarkdownConfig,
     ...(config ?? {}),
     tabSize: clampNumber(config?.tabSize, 1, 8, defaultMarkdownConfig.tabSize),
     tocMinDepth: clampNumber(config?.tocMinDepth, 1, 6, defaultMarkdownConfig.tocMinDepth),
     tocMaxDepth: clampNumber(config?.tocMaxDepth, 1, 6, defaultMarkdownConfig.tocMaxDepth),
-    plantUMLServer: String(config?.plantUMLServer || defaultMarkdownConfig.plantUMLServer).replace(/\/$/, ""),
+    plantUML: Boolean(config?.plantUML ?? defaultMarkdownConfig.plantUML) && plantUMLServerIsTrusted,
+    plantUMLServer: PLANTUML_PROXY_PATH,
   };
+}
+
+function isPlantUMLProxyPath(value: unknown) {
+  const normalized = String(value ?? "").trim().replace(/\/+$/, "");
+  return normalized === "" || normalized === PLANTUML_PROXY_PATH;
 }
 
 function clampNumber(value: unknown, min: number, max: number, fallback: number) {

@@ -55,12 +55,33 @@ export type BackendModpackRecord = {
   canEdit?: boolean;
 };
 
+export type BackendModpackCard = Pick<BackendModpackRecord,
+  "id" | "siteId" | "primaryName" | "secondaryName" | "abbreviation" | "summary" | "defaultLocale" |
+  "environment" | "primaryCategory" | "compatibilities" | "tags" | "searchKeywords" | "officialStatus" |
+  "sourceStatus" | "license" | "curseforgeProjectId" | "modrinthProjectId" | "iconUrl" | "reviewStatus" |
+  "createdAt" | "updatedAt" | "publishedAt"
+> & {
+  authors: Array<Pick<BackendModAuthor, "name" | "role">>;
+  hasGallery: boolean;
+};
+
 export const modpackCategoryOptions = ["technology", "magic", "adventure", "building", "map", "quests", "optimization", "hardcore", "casual", "large", "lightweight", "story", "kitchen_sink", "skyblock", "pvp", "chinese"] as const;
 export const modpackTypeOptions = ["native", "customized"] as const;
 export const modpackPackagingMethodOptions = ["curseforge", "ftb", "other_launcher", "manual", "atlauncher", "modrinth", "mcbbs", "other"] as const;
 
-export type BackendModpackList = { items: BackendModpackRecord[]; total: number };
+export type BackendModpackList = { items: BackendModpackCard[]; total: number };
 export type CreateModpackPayload = Omit<BackendModpackRecord, "id" | "reviewStatus" | "submittedBy" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId" | "createdAt" | "updatedAt" | "publishedAt" | "canEdit">;
+export type BackendModpackImportSelection = {
+  provider: "modrinth" | "curseforge";
+  projectId: string;
+  versionId: string;
+  versionName: string;
+  fileId: string;
+  fileName: string;
+  releaseType: "release";
+  publishedAt: string;
+};
+export type BackendModpackImportResult = CreateModpackPayload & { importSelection: BackendModpackImportSelection };
 export type BackendModpackImportJob = {
   id: string;
   projectType: "modpack";
@@ -68,19 +89,19 @@ export type BackendModpackImportJob = {
   sourceUrl: string;
   status: "queued" | "running" | "completed" | "failed";
   progress: number;
-  result?: CreateModpackPayload;
+  result?: BackendModpackImportResult;
   error?: string;
   createdAt: string;
   updatedAt: string;
 };
 
-export function backendModpackToCatalogEntry(record: BackendModpackRecord): ModCatalogEntry {
+export function backendModpackToCatalogEntry(record: BackendModpackCard): ModCatalogEntry {
   return {
     ...baseProjectCatalogEntry(record),
     uniqueId: record.id,
     modId: "",
     icon: modpackIconURL(record),
-    features: { ...emptyModFeatures, reviewed: record.reviewStatus === "approved", downloads: true, gallery: record.galleryImages.length > 0 },
+    features: { ...emptyModFeatures, reviewed: record.reviewStatus === "approved", downloads: true, gallery: record.hasGallery },
     relationshipGroups: [],
     stats: { downloads: 0, views: 0, favorites: 0, rating: 0, comments: 0, downloadSource: record.modrinthProjectId ? "Modrinth" : record.curseforgeProjectId ? "CurseForge" : "Internal" },
   };
