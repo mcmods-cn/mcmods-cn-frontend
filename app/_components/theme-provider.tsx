@@ -6,8 +6,9 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
 } from "react";
+import { readBrowserStorage, writeBrowserStorage } from "../_lib/browser-storage.mts";
 
 type Theme = "light" | "dark";
 
@@ -17,22 +18,21 @@ type ThemeContextValue = {
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
+const themeEvent = "mcmods-theme-change";
+let temporaryTheme: Theme | undefined;
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
+  const theme = useSyncExternalStore(subscribeTheme, getInitialTheme, () => "light" as const);
 
   useEffect(() => {
-    window.localStorage.setItem("mcmods-theme", theme);
     document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
-    setTheme((current) => {
-      const next = current === "dark" ? "light" : "dark";
-      window.localStorage.setItem("mcmods-theme", next);
-      document.documentElement.classList.toggle("dark", next === "dark");
-      return next;
-    });
+    const next = getInitialTheme() === "dark" ? "light" : "dark";
+    temporaryTheme = next;
+    writeBrowserStorage("mcmods-theme", next);
+    window.dispatchEvent(new Event(themeEvent));
   }, []);
 
   const value = useMemo(() => ({ theme, toggleTheme }), [theme, toggleTheme]);
@@ -52,9 +52,28 @@ function getInitialTheme(): Theme {
   if (typeof window === "undefined") {
     return "light";
   }
-  const saved = window.localStorage.getItem("mcmods-theme");
+  if (temporaryTheme) return temporaryTheme;
+  const saved = readBrowserStorage("mcmods-theme");
   if (saved === "light" || saved === "dark") {
     return saved;
   }
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function subscribeTheme(onChange: () => void) {
+  const media = window.matchMedia("(prefers-color-scheme: dark)");
+  const storage = (event: StorageEvent) => {
+    if (event.key === "mcmods-theme" || event.key === null) {
+      temporaryTheme = undefined;
+      onChange();
+    }
+  };
+  window.addEventListener(themeEvent, onChange);
+  window.addEventListener("storage", storage);
+  media.addEventListener("change", onChange);
+  return () => {
+    window.removeEventListener(themeEvent, onChange);
+    window.removeEventListener("storage", storage);
+    media.removeEventListener("change", onChange);
+  };
 }

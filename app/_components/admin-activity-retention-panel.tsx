@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
+import { parseActivityCleanupObjects } from "../_lib/activity-cleanup-filter.mts";
 import { useI18n } from "../_lib/i18n-provider";
 
 type Policy = { enabled: boolean; allowDelete: boolean; retentionDays: number; batchSize: number };
@@ -38,17 +39,22 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [preview, setPreview] = useState<CleanupPreview | null>(null);
+  const [previewKey, setPreviewKey] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const translation = useRef(t);
+  useEffect(() => { translation.current = t; }, [t]);
+  const filterKey = JSON.stringify([selectedUsers.map((item) => item.id), objectsText, selectedObjectTypes, selectedActions, from, to]);
+  const currentPreview = previewKey === filterKey ? preview : null;
 
   useEffect(() => {
     let cancelled = false;
     apiRequest<RetentionResponse>("/api/v1/admin/activity-logs/retention", {}, token)
       .then((value) => { if (!cancelled) { setData(value); setConfig(value.config); } })
-      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("admin.activityRetention.loadFailed")); });
+      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : translation.current("admin.activityRetention.loadFailed")); });
     return () => { cancelled = true; };
-  }, [t, token]);
+  }, [token]);
 
   useEffect(() => {
     const query = userQuery.trim();
@@ -65,10 +71,7 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [token, userQuery]);
 
-  const parsedObjects = useMemo(() => objectsText.split(/\r?\n|,/).map((value) => value.trim()).filter(Boolean).map((value) => {
-    const separator = value.indexOf(":");
-    return separator > 0 ? { type: value.slice(0, separator).trim(), id: value.slice(separator + 1).trim() } : null;
-  }).filter((value): value is { type: string; id: string } => Boolean(value?.type && value.id)), [objectsText]);
+  const parsedObjects = useMemo(() => parseActivityCleanupObjects(objectsText), [objectsText]);
 
   function policyFor(action: string) {
     return config?.actions[action] ?? config?.default ?? emptyPolicy;
@@ -95,6 +98,10 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
 
   async function createPreview() {
     if (!selectedActions.length) return;
+    if (parsedObjects.invalidEntries.length) {
+      setMessage(t("admin.activityRetention.invalidObjects", { count: parsedObjects.invalidEntries.length }));
+      return;
+    }
     setBusy(true);
     setMessage("");
     setPreview(null);
@@ -102,11 +109,12 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
       const result = await apiRequest<CleanupPreview>("/api/v1/admin/activity-logs/cleanup/preview", {
         method: "POST",
         body: JSON.stringify({
-          users: selectedUsers.map((item) => item.id), objects: parsedObjects, objectTypes: selectedObjectTypes,
+          users: selectedUsers.map((item) => item.id), objects: parsedObjects.objects, objectTypes: selectedObjectTypes,
           actions: selectedActions, from: localDateTimeToRFC3339(from), to: localDateTimeToRFC3339(to),
         }),
       }, token);
       setPreview(result);
+      setPreviewKey(filterKey);
       setConfirmation("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.activityRetention.previewFailed"));
@@ -116,13 +124,13 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
   }
 
   async function executeCleanup() {
-    if (!preview || confirmation !== preview.confirmationText) return;
+    if (!currentPreview || confirmation !== currentPreview.confirmationText) return;
     setBusy(true);
     setMessage("");
     try {
       const result = await apiRequest<CleanupExecution>("/api/v1/admin/activity-logs/cleanup/execute", {
         method: "POST",
-        body: JSON.stringify({ previewId: preview.previewId, confirmationToken: preview.confirmationToken, confirmation }),
+        body: JSON.stringify({ previewId: currentPreview.previewId, confirmationToken: currentPreview.confirmationToken, confirmation }),
       }, token);
       setMessage(result.status === "audit_pending"
         ? t("admin.activityRetention.auditPending", { count: result.deletedCount })
@@ -156,14 +164,14 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
         <fieldset className="mt-4"><legend className="text-sm font-black">{t("admin.activityRetention.actions")}</legend><div className="mt-2 flex flex-wrap gap-2">{data.actions.map((action) => <label className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${policyFor(action).allowDelete ? "border-[var(--line)]" : "border-[var(--line)] opacity-45"}`} key={action}><input className="mr-1.5" checked={selectedActions.includes(action)} disabled={!policyFor(action).allowDelete} type="checkbox" onChange={() => setSelectedActions((current) => toggleValue(current, action))} />{action}</label>)}</div></fieldset>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           <div><label className="text-sm font-black">{t("admin.activityRetention.users")}<input className="field mt-1" value={userQuery} placeholder={t("admin.activityRetention.userSearch")} onChange={(event) => setUserQuery(event.target.value)} /></label>{userResults.length ? <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-[var(--line)]">{userResults.map((item) => <button className="focus-ring flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-[var(--panel-subtle)]" key={item.id} type="button" onClick={() => { setSelectedUsers((current) => current.some((value) => value.id === item.id) ? current : [...current, item]); setUserQuery(""); setUserResults([]); }}><span>{item.username}</span><code>{item.id}</code></button>)}</div> : null}<div className="mt-2 flex flex-wrap gap-2">{selectedUsers.map((item) => <button className="rounded-full border border-[var(--line)] px-3 py-1 text-xs" key={item.id} type="button" onClick={() => setSelectedUsers((current) => current.filter((value) => value.id !== item.id))}>{item.username} · {item.id} ×</button>)}</div></div>
-          <label className="text-sm font-black">{t("admin.activityRetention.objects")}<textarea className="field mt-1 min-h-28 font-mono text-xs" value={objectsText} placeholder={t("admin.activityRetention.objectsPlaceholder")} onChange={(event) => setObjectsText(event.target.value)} /><span className="mt-1 block font-normal text-[var(--muted)]">{t("admin.activityRetention.objectsParsed", { count: parsedObjects.length })}</span></label>
+          <label className="text-sm font-black">{t("admin.activityRetention.objects")}<textarea className="field mt-1 min-h-28 font-mono text-xs" value={objectsText} placeholder={t("admin.activityRetention.objectsPlaceholder")} onChange={(event) => setObjectsText(event.target.value)} /><span className="mt-1 block font-normal text-[var(--muted)]">{t("admin.activityRetention.objectsParsed", { count: parsedObjects.objects.length })}</span></label>
         </div>
         <fieldset className="mt-4"><legend className="text-sm font-black">{t("admin.activityRetention.objectTypes")}</legend><div className="mt-2 flex flex-wrap gap-2">{data.objectTypes.map((value) => <label className="rounded-full border border-[var(--line)] px-3 py-1.5 text-xs" key={value}><input className="mr-1.5" checked={selectedObjectTypes.includes(value)} type="checkbox" onChange={() => setSelectedObjectTypes((current) => toggleValue(current, value))} />{value}</label>)}</div></fieldset>
         <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-sm font-black">{t("admin.activityRetention.from")}<input className="field mt-1" type="datetime-local" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label className="text-sm font-black">{t("admin.activityRetention.to")}<input className="field mt-1" type="datetime-local" value={to} onChange={(event) => setTo(event.target.value)} /></label></div>
         <button className="button-secondary focus-ring mt-4" disabled={busy || !selectedActions.length} type="button" onClick={() => void createPreview()}>{t("admin.activityRetention.preview")}</button>
       </div>
 
-      {preview ? <div className={`rounded-lg border p-4 ${preview.dangerous ? "border-red-500" : "border-[var(--line)]"}`}><h3 className="font-black">{t("admin.activityRetention.previewResult")}</h3><p className="mt-2 text-3xl font-black">{preview.matchedCount.toLocaleString()}</p><p className="text-sm text-[var(--muted)]">{t("admin.activityRetention.matched")}</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><CountGroup title={t("admin.activityRetention.byAction")} values={preview.byAction} /><CountGroup title={t("admin.activityRetention.byObjectType")} values={preview.byObjectType} /><CountGroup title={t("admin.activityRetention.byUser")} values={preview.byUser} /></div>{preview.samples.length ? <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-[var(--panel-subtle)] p-3 text-xs">{JSON.stringify(preview.samples, null, 2)}</pre> : null}<label className="mt-4 block text-sm font-black">{t("admin.activityRetention.confirm", { text: preview.confirmationText })}<input className="field mt-1" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label><button className="button-primary focus-ring mt-3 border-red-600 bg-red-600" disabled={busy || confirmation !== preview.confirmationText} type="button" onClick={() => void executeCleanup()}>{t("admin.activityRetention.execute")}</button></div> : null}
+      {currentPreview ? <div className={`rounded-lg border p-4 ${currentPreview.dangerous ? "border-red-500" : "border-[var(--line)]"}`}><h3 className="font-black">{t("admin.activityRetention.previewResult")}</h3><p className="mt-2 text-3xl font-black">{currentPreview.matchedCount.toLocaleString()}</p><p className="text-sm text-[var(--muted)]">{t("admin.activityRetention.matched")}</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><CountGroup title={t("admin.activityRetention.byAction")} values={currentPreview.byAction} /><CountGroup title={t("admin.activityRetention.byObjectType")} values={currentPreview.byObjectType} /><CountGroup title={t("admin.activityRetention.byUser")} values={currentPreview.byUser} /></div>{currentPreview.samples.length ? <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-[var(--panel-subtle)] p-3 text-xs">{JSON.stringify(currentPreview.samples, null, 2)}</pre> : null}<label className="mt-4 block text-sm font-black">{t("admin.activityRetention.confirm", { text: currentPreview.confirmationText })}<input className="field mt-1" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label><button className="button-primary focus-ring mt-3 border-red-600 bg-red-600" disabled={busy || confirmation !== currentPreview.confirmationText} type="button" onClick={() => void executeCleanup()}>{t("admin.activityRetention.execute")}</button></div> : null}
     </section>
   );
 }

@@ -201,7 +201,7 @@ function CatalogResourceFrame({ children }: { children: React.ReactNode }) {
           <nav className="flex flex-wrap rounded-lg border border-[var(--line)] bg-[var(--panel)] p-1">
             <Link className="rounded-md px-4 py-2 font-bold" href="/mods-tag">{t("globalCatalog.tags.short")}</Link>
             <Link className="rounded-md px-4 py-2 font-bold" href="/recipe-types">{t("globalCatalog.recipeTypes.short")}</Link>
-            <Link className="rounded-md bg-[var(--accent)] px-4 py-2 font-bold text-white" href="/admin/global-resources">{t("resourceEditor.catalogShort")}</Link>
+            <Link className="rounded-md bg-[var(--accent)] px-4 py-2 font-bold text-[var(--on-accent)]" href="/admin/global-resources">{t("resourceEditor.catalogShort")}</Link>
           </nav>
         </div>
       </header>

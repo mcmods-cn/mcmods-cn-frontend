@@ -85,7 +85,11 @@ export function ServerSubmissionWizard({
     () => initialServer?.mods.map(serverModResource) ?? [],
   );
   const [proofFiles, setProofFiles] = useState<OSSFileRecord[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [operationBusy, setOperationBusy] = useState(false);
+  const [editorBusy, setEditorBusy] = useState(false);
+  const operationInFlight = useRef(false);
+  const editorInFlight = useRef(false);
+  const busy = operationBusy || editorBusy;
   const [message, setMessage] = useState("");
   const proofFileRef = useRef<HTMLInputElement | null>(null);
 
@@ -127,9 +131,14 @@ export function ServerSubmissionWizard({
     [proofFiles],
   );
 
+  function close() {
+    if (!operationInFlight.current && !editorInFlight.current) onClose();
+  }
+
   async function runProbe() {
-    if (!address.trim()) return;
-    setBusy(true);
+    if (operationInFlight.current || editorInFlight.current || !address.trim()) return;
+    operationInFlight.current = true;
+    setOperationBusy(true);
     setMessage("");
     try {
       const result = await probeServer(address.trim(), token);
@@ -145,7 +154,8 @@ export function ServerSubmissionWizard({
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("servers.wizard.probeFailed"));
     } finally {
-      setBusy(false);
+      operationInFlight.current = false;
+      setOperationBusy(false);
     }
   }
 
@@ -173,7 +183,7 @@ export function ServerSubmissionWizard({
   async function uploadProofFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (!files.length) return;
+    if (!files.length || operationInFlight.current || editorInFlight.current) return;
     if (proofFiles.length + files.length > settings.maxProofFiles) {
       setMessage(t("servers.wizard.proofCountError", { count: settings.maxProofFiles }));
       return;
@@ -182,7 +192,8 @@ export function ServerSubmissionWizard({
       setMessage(t("servers.wizard.proofSizeError", { size: formatBytes(settings.maxProofTotalBytes) }));
       return;
     }
-    setBusy(true);
+    operationInFlight.current = true;
+    setOperationBusy(true);
     setMessage("");
     try {
       for (const file of files) {
@@ -192,7 +203,8 @@ export function ServerSubmissionWizard({
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("servers.wizard.uploadFailed"));
     } finally {
-      setBusy(false);
+      operationInFlight.current = false;
+      setOperationBusy(false);
     }
   }
 
@@ -211,6 +223,7 @@ export function ServerSubmissionWizard({
   }
 
   function goToProof() {
+    if (operationInFlight.current || editorInFlight.current) return;
     const error = validateStepTwo();
     if (error) {
       setMessage(error);
@@ -221,7 +234,7 @@ export function ServerSubmissionWizard({
   }
 
   async function submit() {
-    if (!editing && !probe) return;
+    if (operationInFlight.current || editorInFlight.current || !editing && !probe) return;
     const validationError = validateStepTwo();
     if (validationError) {
       setMessage(validationError);
@@ -231,7 +244,8 @@ export function ServerSubmissionWizard({
       setMessage(t("servers.wizard.proofRequired"));
       return;
     }
-    setBusy(true);
+    operationInFlight.current = true;
+    setOperationBusy(true);
     setMessage("");
     try {
       const mods = serverModsFromResources(selectedMods, probe?.mods ?? initialServer?.mods ?? []);
@@ -256,7 +270,7 @@ export function ServerSubmissionWizard({
           targetUrl: `/servers/${initialServer.id}`,
           reviewTargetType: "server",
           reviewTargetPublicId: initialServer.id,
-        });
+        }).catch(() => { setMessage(t("drafts.completionFailed")); });
         onSubmitted(initialServer.id, initialServer.reviewStatus === "approved");
         return;
       }
@@ -272,12 +286,13 @@ export function ServerSubmissionWizard({
         targetUrl: `/servers/${result.id}`,
         reviewTargetType: "server",
         reviewTargetPublicId: result.id,
-      });
+      }).catch(() => { setMessage(t("drafts.completionFailed")); });
       onSubmitted(result.id, result.published);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t(editing ? "servers.wizard.updateFailed" : "servers.wizard.submitFailed"));
     } finally {
-      setBusy(false);
+      operationInFlight.current = false;
+      setOperationBusy(false);
     }
   }
 
@@ -296,20 +311,20 @@ export function ServerSubmissionWizard({
               <p className="mt-1 text-sm text-[var(--muted)]">{t(editing ? "servers.wizard.editHint" : `servers.wizard.step${step}Hint`)}</p>
               <DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} />
             </div>
-            <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={onClose}>
+            <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={close}>
               {t(presentation === "page" ? "common.cancel" : "common.close")}
             </button>
           </div>
           {!editing ? <ol className={`mt-4 grid gap-2 ${reviewRequired ? "grid-cols-3" : "grid-cols-2"}`} aria-label={t("servers.wizard.progress")}>
             {(reviewRequired ? [1, 2, 3] : [1, 2]).map((value) => (
-              <li key={value} className={`rounded-md px-3 py-2 text-center text-xs font-black sm:text-sm ${step === value ? "bg-[var(--accent)] text-white" : step > value ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-subtle)] text-[var(--muted)]"}`}>
+              <li key={value} className={`rounded-md px-3 py-2 text-center text-xs font-black sm:text-sm ${step === value ? "bg-[var(--accent)] text-[var(--on-accent)]" : step > value ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-subtle)] text-[var(--muted)]"}`}>
                 {t(`servers.wizard.step${value}`)}
               </li>
             ))}
           </ol> : null}
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <fieldset className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6" disabled={busy}>
           {step === 1 ? (
             <div className="mx-auto max-w-2xl">
               <label className="text-sm font-black" htmlFor="server-address">{t("servers.wizard.address")}</label>
@@ -412,7 +427,7 @@ export function ServerSubmissionWizard({
                   editorTitle={t("servers.wizard.body")}
                   uploadSource="server-content"
                   value={draft.bodyMarkdown}
-                  onBusyChange={setBusy}
+                  onBusyChange={(value) => { editorInFlight.current = value; setEditorBusy(value); }}
                   onChange={(bodyMarkdown) => setDraft((current) => ({ ...current, bodyMarkdown }))}
                 />
               </Field>
@@ -452,7 +467,7 @@ export function ServerSubmissionWizard({
           ) : null}
 
           {message ? <p aria-live="polite" className="mt-5 rounded-md border border-[var(--danger)] bg-[var(--danger-soft)] p-3 text-sm font-bold text-[var(--danger)]">{message}</p> : null}
-        </div>
+        </fieldset>
 
         <footer className="flex items-center justify-between gap-3 border-t border-[var(--line)] px-4 py-4 sm:px-6">
           <button className="button-secondary focus-ring" disabled={busy || step === 1 || editing} type="button" onClick={() => { setMessage(""); setStep((current) => Math.max(1, current - 1)); }}>{t("common.previous")}</button>
@@ -474,7 +489,7 @@ export function ServerSubmissionWizard({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-2 sm:p-5" role="presentation" onMouseDown={onClose}>
+    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-2 sm:p-5" role="presentation" onMouseDown={close}>
       {form}
     </div>
   );

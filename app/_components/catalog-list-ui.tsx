@@ -296,7 +296,7 @@ export function CatalogPagination({
           <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={currentPage <= 1} type="button" onClick={() => onPageChange(currentPage - 1)}>{labels.previous}</button>
           {pages.map((page, index) => page === "ellipsis"
             ? <span key={`ellipsis-${index}`} className="px-2 text-[var(--muted)]">…</span>
-            : <button key={page} className={`focus-ring h-9 min-w-9 rounded-md border px-2 text-sm font-bold ${page === currentPage ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)] bg-[var(--panel)]"}`} type="button" onClick={() => onPageChange(page)}>{page}</button>)}
+            : <button key={page} className={`focus-ring h-9 min-w-9 rounded-md border px-2 text-sm font-bold ${page === currentPage ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]" : "border-[var(--line)] bg-[var(--panel)]"}`} type="button" onClick={() => onPageChange(page)}>{page}</button>)}
           <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={currentPage >= totalPages} type="button" onClick={() => onPageChange(currentPage + 1)}>{labels.next}</button>
         </div>
         <label className="flex items-center gap-2 text-sm font-bold text-[var(--muted)]">

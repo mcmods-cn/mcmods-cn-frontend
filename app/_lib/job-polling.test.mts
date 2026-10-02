@@ -1,3 +1,4 @@
+import { getEventListeners } from "node:events";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -37,4 +38,24 @@ test("mod export domain entry points share one internal polling implementation",
   assert.equal(source.match(/for \(;;\)/g)?.length ?? 0, 0);
   assert.equal(source.match(/confirmation_required", "ready", "partial", "failed", "cancelled/g)?.length, 1);
   assert.equal(source.includes("abortableDelay"), false);
+});
+
+
+test("completed polling delays release abort listeners and progress cancellation is immediate", async () => {
+  const controller = new AbortController();
+  let loads = 0;
+  await waitForPolledJob(async () => ({ status: ++loads === 4 ? "ready" : "queued" }), new Set(["ready"]), () => undefined, controller.signal, undefined, 0);
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  const cancelled = new AbortController();
+  await assert.rejects(waitForPolledJob(async () => ({ status: "queued" }), new Set(["ready"]), () => cancelled.abort(), cancelled.signal, undefined, 0), { name: "AbortError" });
+});
+
+test("cancelled in-flight loads do not publish obsolete progress", async () => {
+  const controller = new AbortController();
+  let publications = 0;
+  await assert.rejects(waitForPolledJob(async () => {
+    controller.abort();
+    return { status: "ready" };
+  }, new Set(["ready"]), () => { publications += 1; }, controller.signal), { name: "AbortError" });
+  assert.equal(publications, 0);
 });

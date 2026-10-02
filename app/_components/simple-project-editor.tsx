@@ -13,6 +13,7 @@ import { licenseOptions, maintenanceOptions, sourceOptions } from "../_lib/mod-c
 import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
 import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
+import { waitForPolledJob } from "../_lib/job-polling.mts";
 import { emptySimpleProject, simpleProjectConfig, simpleProjectIconURL, simpleProjectImportProviders, type SimpleProjectImportJob, type SimpleProjectImportProvider, type SimpleProjectLocalization, type SimpleProjectParent, type SimpleProjectPayload, type SimpleProjectRecord, type SimpleProjectType } from "../_lib/simple-project-api";
 import { CreatorPicker } from "./creator-picker";
 import { ModResourceSelectionField, type ProjectResourceType } from "./editor/mod-resource-picker";
@@ -29,6 +30,11 @@ import { LoginRequiredState, PageFeedback } from "./page-feedback";
 import { OSSUploadBatchStatus } from "./oss-upload-batch-status";
 
 export function SimpleProjectEditor({ projectType, siteId, importMethod = "manual", importURL = "" }: { projectType: SimpleProjectType; siteId?: string; importMethod?: string; importURL?: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <SimpleProjectEditorForm key={`${user?.id || "guest"}:${token || "guest"}:${projectType}:${siteId || "new"}:${importMethod}:${importURL}`} projectType={projectType} siteId={siteId} importMethod={importMethod} importURL={importURL} />;
+}
+
+function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL }: { projectType: SimpleProjectType; siteId?: string; importMethod: string; importURL: string }) {
   const { ready, token } = useAuthSnapshot();
   const { t } = useI18n();
   const router = useRouter();
@@ -52,12 +58,24 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
   const automaticImportRef = useRef(false);
+  const loadedEditorKey = useRef("");
+  const [recordLoaded, setRecordLoaded] = useState(!siteId);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [markdownUploading, setMarkdownUploading] = useState(false);
+  const submitInFlight = useRef(false);
+  const importController = useRef<AbortController | null>(null);
+  useEffect(() => () => importController.current?.abort(), [token]);
 
   useEffect(() => {
     if (!ready || !token || !siteId) return;
+    const editorKey = `${projectType}:${siteId}:${token}`;
+    if (loadedEditorKey.current === editorKey) return;
     const controller = new AbortController();
     apiRequest<SimpleProjectRecord>(`/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}/editor`, { signal: controller.signal }, token)
       .then((record) => {
+        if (controller.signal.aborted) return;
+        loadedEditorKey.current = editorKey;
+          setRecordLoaded(true);
         setDraft(record);
         setIconPreviewUrl(simpleProjectIconURL(record));
         setPublicId(record.id);
@@ -65,10 +83,10 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
         setSelectedLocale((record.defaultLocale || "zh-CN") as Locale);
         setKeywordsInput(record.searchKeywords.join(", "));
       })
-      .catch((error) => setMessage(error instanceof Error ? error.message : t("largeProjects.editor.loadFailed")))
-      .finally(() => setLoading(false));
+      .catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : t("largeProjects.editor.loadFailed")); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [projectType, ready, siteId, t, token]);
+  }, [loadAttempt, projectType, ready, siteId, t, token]);
 
   const localization = useMemo(() => localizationFor(draft, selectedLocale), [draft, selectedLocale]);
   const parentPickerValues = useMemo(() => draft.parentProjects.filter((item) => item.type === parentType).map(parentToPickerResource), [draft.parentProjects, parentType]);
@@ -76,7 +94,7 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
     draftKey: `simple-project:${projectType}:${siteId || "new"}`,
     projectKey: `simple-project:${projectType}:${siteId || "new"}`,
     editUrl: siteId ? `${config.path}/${encodeURIComponent(siteId)}/edit` : `${config.path}/new`,
-    enabled: ready && Boolean(token) && !loading,
+    enabled: ready && Boolean(token) && !loading && recordLoaded,
     kind: "simple_project",
     title: localizationFor(draft, draft.defaultLocale).name.trim() || t(siteId ? "largeProjects.editor.editTitle" : "largeProjects.editor.createTitle", { type: t(`largeProjects.types.${projectType}`) }),
     token,
@@ -96,7 +114,7 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
 
   async function uploadIcon(output: SquareCropOutput) {
     const file = output.files.get(128);
-    if (!file || !token) return;
+    if (!file || !token) { URL.revokeObjectURL(output.previewUrl); return; }
     setIconUploading(true);
     try {
       const stored = await uploadUserFileToOSS(file, token, `simple_project_icon:${projectType}:${siteId || "draft"}`);
@@ -105,7 +123,7 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
       setIconPreviewUrl(stored.accessUrl || stored.url || storageUrl);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("mods.submission.iconUploadFailed"));
-    } finally { setIconUploading(false); }
+    } finally { URL.revokeObjectURL(output.previewUrl); setIconUploading(false); }
   }
 
   async function uploadGallery(files: File[]) {
@@ -140,7 +158,10 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
   }
 
   async function importFromProvider(provider: SimpleProjectImportProvider, sourceURL: string) {
-    if (!token || !sourceURL.trim()) return;
+    if (!token || importing || !sourceURL.trim()) return;
+    importController.current?.abort();
+    const controller = new AbortController();
+    importController.current = controller;
     setImporting(true);
     setImportProgress(0);
     setMessage("");
@@ -148,13 +169,18 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
       const root = `/api/v1/content-project-imports/${projectType}`;
       let job = await apiRequest<SimpleProjectImportJob>(root, {
         method: "POST",
+        signal: controller.signal,
         body: JSON.stringify({ provider, url: sourceURL.trim() }),
       }, token);
-      while (job.status === "queued" || job.status === "running") {
+      if (job.status === "queued" || job.status === "running") {
         setImportProgress(job.progress);
-        await new Promise((resolve) => window.setTimeout(resolve, 900));
-        job = await apiRequest<SimpleProjectImportJob>(`${root}/${encodeURIComponent(job.id)}`, {}, token);
+        const jobId = job.id;
+        job = await waitForPolledJob(
+          (signal) => apiRequest<SimpleProjectImportJob>(`${root}/${encodeURIComponent(jobId)}`, { signal }, token),
+          new Set(["completed", "failed"]), (next) => setImportProgress(next.progress), controller.signal, undefined, 900,
+        );
       }
+      if (controller.signal.aborted) return;
       const imported = job.result;
       if (job.status !== "completed" || !imported) throw new Error(job.error || t("mods.submission.importFailed"));
       setDraft((current) => ({
@@ -166,22 +192,27 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
       setKeywordsInput(imported.searchKeywords.join(", "));
       setImportProgress(100);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.submission.importFailed"));
+      if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : t("mods.submission.importFailed"));
     } finally {
-      setImporting(false);
+      if (!controller.signal.aborted) setImporting(false);
     }
   }
 
   useEffect(() => {
     const provider = importProviders.includes(importMethod as SimpleProjectImportProvider) ? importMethod as SimpleProjectImportProvider : undefined;
     if (!ready || !token || siteId || !provider || !importURL || automaticImportRef.current) return;
-    automaticImportRef.current = true;
-    void importFromProvider(provider, importURL);
+    const timer = window.setTimeout(() => {
+      automaticImportRef.current = true;
+      void importFromProvider(provider, importURL);
+    }, 0);
+    return () => window.clearTimeout(timer);
   });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (submitInFlight.current || submitting || !recordLoaded || iconUploading || galleryUploading || markdownUploading) return;
     if (!token) return;
+    submitInFlight.current = true;
     setSubmitting(true);
     setMessage("");
     const snapshot = { ...draft, searchKeywords: splitValues(keywordsInput), projectType };
@@ -194,7 +225,7 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
           projectTitle: localizationFor(snapshot, snapshot.defaultLocale).name,
           targetUrl: `${config.path}/${targetSiteId}`,
           changeRequestId: result.changeRequestId,
-        }).catch(() => undefined);
+        }).catch(() => { window.alert(t("drafts.completionFailed")); });
         router.push(`${config.path}/${targetSiteId}`);
       } else {
         const result = await apiRequest<SimpleProjectRecord>(`/api/v1/content-projects/${projectType}`, { method: "POST", body: JSON.stringify(snapshot) }, token);
@@ -203,19 +234,21 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
           projectTitle: localizationFor(result, result.defaultLocale).name,
           targetUrl: `${config.path}/${result.siteId}`,
           changeRequestId: result.changeRequestId,
-        }).catch(() => undefined);
+        }).catch(() => { window.alert(t("drafts.completionFailed")); });
         router.push(`${config.path}/${result.siteId}`);
       }
     } catch (error) {
       setMessage(error instanceof ApiError ? error.message : t("largeProjects.editor.saveFailed"));
-    } finally { setSubmitting(false); }
+    } finally { submitInFlight.current = false;
+      setSubmitting(false); }
   }
 
-  if (!ready || loading || importing) return <PageFeedback title={importing ? t("mods.submission.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
+  if (!ready || (Boolean(token) && (loading || importing))) return <PageFeedback title={importing ? t("mods.submission.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
   if (!token) return <LoginRequiredState nextPath={siteId ? `${config.path}/${siteId}/edit` : `${config.path}/new`} />;
+  if (!recordLoaded) return <PageFeedback title={message || t("common.loadFailed")} tone="danger" action={<button className="button-secondary focus-ring" type="button" onClick={() => { setLoading(true); setMessage(""); setLoadAttempt((attempt) => attempt + 1); }}>{t("common.retry")}</button>} />;
 
-  const editor = <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]"><form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}>
-    <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={siteId ? `${config.path}/${siteId}` : config.path}>← {t("largeProjects.detail.back")}</Link><h1 className="mt-2 text-3xl font-black">{t(siteId ? "largeProjects.editor.editTitle" : "largeProjects.editor.createTitle", { type: t(`largeProjects.types.${projectType}`) })}</h1></div><div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t("common.save")}</button></div></header>
+  const editor = <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]"><form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}><fieldset disabled={submitting} className="min-w-0">
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={siteId ? `${config.path}/${siteId}` : config.path}>← {t("largeProjects.detail.back")}</Link><h1 className="mt-2 text-3xl font-black">{t(siteId ? "largeProjects.editor.editTitle" : "largeProjects.editor.createTitle", { type: t(`largeProjects.types.${projectType}`) })}</h1></div><div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting || iconUploading || galleryUploading || markdownUploading} type="submit">{submitting ? t("mods.submission.actions.submitting") : t("common.save")}</button></div></header>
 
     <FormSection title={t("mods.submission.sections.identity")}><div className="grid gap-4 md:grid-cols-2"><Field label={t("mods.submission.fields.siteId")}><input className="field font-mono" required value={draft.siteId} onChange={(event) => setDraft({ ...draft, siteId: normalizeProjectSiteIdInput(event.target.value) })} /></Field>{publicId ? <Field label={t("mods.submission.fields.uniqueId")}><input className="field font-mono" readOnly value={publicId} /></Field> : null}<Field label={t("mods.submission.fields.abbreviation")}><input className="field" maxLength={32} value={draft.abbreviation} onChange={(event) => setDraft({ ...draft, abbreviation: event.target.value })} /></Field><Field label={t("mods.submission.defaultLocale")}><select className="field" value={draft.defaultLocale} onChange={(event) => { const locale = event.target.value as Locale; setDraft({ ...draft, defaultLocale: locale }); selectLocale(locale); }}>{supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></Field></div><div className="mt-4 flex items-center gap-4"><div className="grid h-28 w-28 place-items-center overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]">{draft.iconUrl ? <Image unoptimized alt="" className="h-full w-full object-contain" height={128} src={iconPreviewUrl || draft.iconUrl} width={128} /> : "?"}</div><label className="button-secondary focus-ring cursor-pointer">{iconUploading ? t("mods.submission.actions.uploadingIcon") : t("mods.submission.actions.uploadIcon")}<input accept="image/*" className="sr-only" type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setIconCropFile(file); }} /></label></div></FormSection>
 
@@ -227,12 +260,12 @@ export function SimpleProjectEditor({ projectType, siteId, importMethod = "manua
     <FormSection title={t("mods.submission.sections.authors")}><CreatorPicker value={draft.authors} onChange={(authors: BackendModAuthor[]) => setDraft({ ...draft, authors })} /></FormSection>
     <FormSection title={t("mods.submission.sections.links")} description={t("largeProjects.editor.linksRequired")}><ModLinkEditor links={draft.links} onChange={(links) => setDraft({ ...draft, links })} /></FormSection>
     <FormSection title={t("mods.submission.sections.platformIDs")} description={t("largeProjects.editor.downloadSourcesHint")}><div className="grid gap-4 md:grid-cols-2"><Field label={t("mods.submission.fields.curseforgeProjectId")}><input className="field font-mono" value={draft.curseforgeProjectId} onChange={(event) => setDraft({ ...draft, curseforgeProjectId: event.target.value })} /></Field><Field label={t("mods.submission.fields.modrinthProjectId")}><input className="field font-mono" value={draft.modrinthProjectId} onChange={(event) => setDraft({ ...draft, modrinthProjectId: event.target.value })} /></Field></div></FormSection>
-    <FormSection title={t("mods.submission.sections.body")} description={t("mods.submission.sections.bodyHint")}><div className="overflow-hidden rounded-lg border border-[var(--line)]"><ToolsPlayground embedded documentId={`simple-project:${projectType}:${siteId || "draft"}:${selectedLocale}:body`} editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} uploadSource={`simple_project_text:${projectType}:${siteId || "draft"}`} value={localization.bodyMarkdown} onChange={(bodyMarkdown) => updateLocalization(setDraft, selectedLocale, { bodyMarkdown })} /></div></FormSection>
+    <FormSection title={t("mods.submission.sections.body")} description={t("mods.submission.sections.bodyHint")}><div className="overflow-hidden rounded-lg border border-[var(--line)]"><ToolsPlayground embedded onBusyChange={setMarkdownUploading} documentId={`simple-project:${projectType}:${siteId || "draft"}:${selectedLocale}:body`} editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} uploadSource={`simple_project_text:${projectType}:${siteId || "draft"}`} value={localization.bodyMarkdown} onChange={(bodyMarkdown) => updateLocalization(setDraft, selectedLocale, { bodyMarkdown })} /></div></FormSection>
     <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={(key) => void processGalleryUploadTasks(galleryUploadTasks, key)} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft({ ...draft, galleryImages: draft.galleryImages.filter((_, itemIndex) => itemIndex !== index) })}>{t("common.delete")}</button></div>)}</div></FormSection>
     {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24" value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
-    {message ? <p className="mb-5 rounded-xl border border-[var(--red)] p-4 font-bold text-[var(--red)]">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={submitting} type="submit">{t("common.save")}</button></div>
+    {message ? <p className="mb-5 rounded-xl border border-[var(--red)] p-4 font-bold text-[var(--red)]" role="alert">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={submitting || iconUploading || galleryUploading || markdownUploading} type="submit">{t("common.save")}</button></div>
     <SquareImageCropDialog file={iconCropFile} minimumSize={128} outputSizes={[128]} onCancel={() => setIconCropFile(undefined)} onConfirm={(output) => { setIconCropFile(undefined); void uploadIcon(output); }} />
-  </form></main>;
+  </fieldset></form></main>;
   return siteId && publicId ? <ReviewLockGate entityType={projectType} publicId={publicId} returnHref={`${config.path}/${siteId}`}>{editor}</ReviewLockGate> : editor;
 }
 
@@ -242,4 +275,4 @@ function splitValues(value: string) { return [...new Set(value.split(/[,，\n]/)
 function pickerResourceToParent(resource: CatalogResourceRef, type: ProjectResourceType): SimpleProjectParent { return { publicId: resource.unresolved ? undefined : resource.publicId, type: type as SimpleProjectParent["type"], identifier: resource.unresolved ? resource.rawIdentifier || resource.id : undefined, name: resource.resolvedName, siteId: resource.source?.siteId, iconUrl: resource.iconUrl, unresolved: resource.unresolved }; }
 function parentToPickerResource(parent: SimpleProjectParent): CatalogResourceRef { return { publicId: parent.publicId || `unresolved:${parent.type}:${parent.identifier}`, id: parent.identifier || parent.siteId || parent.name || "", registry: parent.type, kind: parent.type, names: {}, resolvedName: parent.name, iconUrl: parent.iconUrl, unresolved: parent.unresolved, rawIdentifier: parent.identifier, source: parent.siteId ? { publicId: parent.publicId || "", siteId: parent.siteId, name: parent.name || parent.siteId } : undefined }; }
 function OptionGrid({ label, options, values, onChange }: { label: string; options: readonly string[]; values: string[]; onChange: (values: string[]) => void }) { const { t } = useI18n(); return <fieldset className="mt-5 rounded-xl border border-[var(--line)] bg-[var(--panel-subtle)] p-4"><legend className="px-2 font-black">{label}</legend><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{options.map((option) => <label className="flex items-center gap-2 text-sm font-bold" key={option}><input type="checkbox" checked={values.includes(option)} onChange={() => onChange(values.includes(option) ? values.filter((item) => item !== option) : [...values, option])} />{t(`largeProjects.options.${option}`)}</label>)}</div></fieldset>; }
-function ParentList({ parents, onRemove }: { parents: SimpleProjectParent[]; onRemove: (index: number) => void }) { const { t } = useI18n(); return <div className="grid gap-2 sm:grid-cols-2">{parents.map((parent, index) => <div className="flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-3" key={`${parent.type}-${parent.publicId || parent.identifier}-${index}`}><span className="grid h-10 w-10 place-items-center rounded bg-[var(--panel-subtle)]">{parent.unresolved ? "?" : [...(parent.name || parent.identifier || "R")].slice(0, 2).join("")}</span><span className="min-w-0 flex-1"><strong className="block truncate">{parent.name || parent.identifier}</strong><small>{t(`largeProjects.types.${parent.type}`)}</small></span><button className="font-bold text-[var(--red)]" type="button" onClick={() => onRemove(index)}>×</button></div>)}</div>; }
+function ParentList({ parents, onRemove }: { parents: SimpleProjectParent[]; onRemove: (index: number) => void }) { const { t } = useI18n(); return <div className="grid gap-2 sm:grid-cols-2">{parents.map((parent, index) => <div className="flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-3" key={`${parent.type}-${parent.publicId || parent.identifier}-${index}`}><span className="grid h-10 w-10 place-items-center rounded bg-[var(--panel-subtle)]">{parent.unresolved ? "?" : [...(parent.name || parent.identifier || "R")].slice(0, 2).join("")}</span><span className="min-w-0 flex-1"><strong className="block truncate">{parent.name || parent.identifier}</strong><small>{t(`largeProjects.types.${parent.type}`)}</small></span><button aria-label={`${t("common.delete")} ${parent.name || parent.identifier || ""}`} className="font-bold text-[var(--red)]" type="button" onClick={() => onRemove(index)}>×</button></div>)}</div>; }

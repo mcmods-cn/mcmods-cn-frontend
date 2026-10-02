@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage, toEditableContentLanguage } from "../_lib/content-language";
 import {
@@ -79,7 +79,12 @@ type ModResourceAutoDraft = {
   selectedSectionId: string;
 };
 
-export function ModContentResourceEditor({
+export function ModContentResourceEditor(props: Parameters<typeof ModContentResourceEditorSession>[0]) {
+  const { token, user } = useAuthSnapshot();
+  return <ModContentResourceEditorSession key={`${user?.id || "guest"}:${token || "guest"}:${props.siteId}:${props.mode}:${props.resourceId || ""}:${props.versionId || ""}:${props.sectionId || ""}`} {...props} />;
+}
+
+function ModContentResourceEditorSession({
   mode,
   siteId,
   resourceId = "",
@@ -126,6 +131,8 @@ export function ModContentResourceEditor({
   const [uploadingMarkdownAsset, setUploadingMarkdownAsset] = useState(false);
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [message, setMessage] = useState("");
@@ -138,6 +145,7 @@ export function ModContentResourceEditor({
     tokenRef.current = token;
   }, [token]);
 
+  const missingTargetError = useEffectEvent(() => t("modContent.resourceEdit.missingTarget"));
   useEffect(() => {
     if (!ready || missingCreateTarget) return;
     const requestToken = tokenRef.current;
@@ -169,6 +177,9 @@ export function ModContentResourceEditor({
           resolvedVersionId,
         );
         const resolvedCategories = resolvedRoot ? sectionsForRoot(sections, resolvedRoot) : [];
+        if (!resolvedRoot || !resolvedVersionId || (resource && versionId && !resource.versions.some((item) => item.publicId === versionId))) {
+          throw new Error(missingTargetError());
+        }
 
         setActiveVersionId(resolvedVersionId || resolvedRoot?.versionPublicId || "");
         setRootSection(resolvedRoot);
@@ -221,7 +232,8 @@ export function ModContentResourceEditor({
             ? modContentResourceAssetURL(resourceId, resourceVersion.publicId, "render")
             : importedRender);
         } else {
-          const initialKind = suggestedKinds[0] || "";
+          const initialKind = resource?.kindCode || suggestedKinds[0] || "";
+          setCanonicalId(resource?.canonicalId || "");
           setKindCode(initialKind);
           setEntryTypeCode(inferredEntryTypeCode(effectiveTemplate?.definition.entryTypes, initialKind));
           setDefaultLocale(initialLocale);
@@ -229,6 +241,7 @@ export function ModContentResourceEditor({
           setLocalizations([emptyLocalization(initialLocale)]);
           setBaselineDefinition({});
         }
+        setLoaded(true);
       } catch (cause) {
         if (!cancelled) setError(errorText(cause));
       } finally {
@@ -236,7 +249,7 @@ export function ModContentResourceEditor({
       }
     })();
     return () => { cancelled = true; };
-  }, [authenticated, initialLocale, missingCreateTarget, mode, ready, resourceId, sectionId, siteId, versionId]);
+  }, [authenticated, initialLocale, loadAttempt, missingCreateTarget, mode, ready, resourceId, sectionId, siteId, versionId]);
 
   useEffect(() => () => {
     if (iconPreview.startsWith("blob:")) URL.revokeObjectURL(iconPreview);
@@ -293,7 +306,7 @@ export function ModContentResourceEditor({
     draftKey: `mod-resource:${siteId}:${mode}:${resourceId || `${versionId}:${sectionId}`}`,
     projectKey: `mod:${siteId}`,
     editUrl: resourceEditorEditURL(mode, siteId, resourceId, activeVersionId, selectedSectionId),
-    enabled: ready && Boolean(token) && !loading && !missingCreateTarget,
+    enabled: ready && Boolean(token) && loaded && !loading && !missingCreateTarget,
     kind: "mod_resource",
     title: fields.name.trim() || canonicalId.trim() || t(mode === "create" ? "modContent.sectionActions.addTitle" : "modContent.resourceEdit.title"),
     token,
@@ -316,6 +329,7 @@ export function ModContentResourceEditor({
   });
   const canSubmit = Boolean(
     token
+    && loaded
     && kindCode.trim()
     && effectiveEntryTypeCode.trim()
     && canonicalId.trim()
@@ -463,7 +477,7 @@ export function ModContentResourceEditor({
         projectTitle: siteId,
         targetUrl,
         changeRequestId: result.changeRequestId,
-      }).catch(() => undefined);
+      }).catch(() => { window.alert(t("drafts.completionFailed")); });
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       if (result.reviewStatus === "pending") setSubmittedPending(true);
       if (result.reviewStatus === "approved") {
@@ -490,7 +504,7 @@ export function ModContentResourceEditor({
         projectTitle: siteId,
         targetUrl: backHref,
         changeRequestId: result.changeRequestId,
-      }).catch(() => undefined);
+      }).catch(() => { window.alert(t("drafts.completionFailed")); });
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       if (result.reviewStatus === "pending") setSubmittedPending(true);
       else {
@@ -508,6 +522,7 @@ export function ModContentResourceEditor({
   if (!user || !token) return <LoginRequiredState nextPath={mode === "edit" ? `/mods/${siteId}/resources/${resourceId}/edit` : `/mods/${siteId}/resources/new`} description={t("catalogEditor.loginRequired")} />;
   if (missingCreateTarget) return <PageFeedback title={t("modContent.resourceEdit.missingTarget")} />;
   if (loading) return <PageFeedback title={t("common.loading")} />;
+  if (!loaded) return <PageFeedback title={t("modContent.resourceEdit.title")} description={error} tone="danger" action={<button className="button-secondary focus-ring" type="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t("common.retry")}</button>} />;
 
   return <EditorShell
     aside={<EditorAside
@@ -823,6 +838,8 @@ function DefinitionFieldEditor({
       ? value === undefined || value === null ? "" : JSON.stringify(value, null, 2) || ""
       : value === undefined || value === null ? "" : String(value);
   const [draftState, setDraftState] = useState({ external: text, value: text });
+  const resetValidity = useEffectEvent(() => onValidityChange(fieldId, true));
+  useEffect(() => resetValidity(), [fieldId, text]);
   if ((field.kind === "reference" || field.kind === "reference-list") && field.referenceKind) {
     return <ReferenceListFieldEditor
       definition={definition}
@@ -844,6 +861,7 @@ function DefinitionFieldEditor({
       readOnly={!field.editable}
       maximum={typeof values[1] === "number" ? values[1] : undefined}
       minimum={typeof values[0] === "number" ? values[0] : undefined}
+      onValidityChange={(valid) => onValidityChange(fieldId, valid)}
       onChange={(minimum, maximum, valid) => {
         onValidityChange(fieldId, valid);
         if (!valid) return;
@@ -954,10 +972,15 @@ function DefinitionFieldEditor({
   </label>;
 }
 
-function RangeFieldEditor({ label, minimum, maximum, readOnly, onChange }: { label: string; minimum?: number; maximum?: number; readOnly: boolean; onChange: (minimum: number | undefined, maximum: number | undefined, valid: boolean) => void }) {
-  const [draft, setDraft] = useState({ minimum: minimum === undefined ? "" : String(minimum), maximum: maximum === undefined ? "" : String(maximum) });
+function RangeFieldEditor({ label, minimum, maximum, readOnly, onChange, onValidityChange }: { label: string; minimum?: number; maximum?: number; readOnly: boolean; onChange: (minimum: number | undefined, maximum: number | undefined, valid: boolean) => void; onValidityChange: (valid: boolean) => void }) {
+  const external = JSON.stringify([minimum, maximum]);
+  const fromExternal = { minimum: minimum === undefined ? "" : String(minimum), maximum: maximum === undefined ? "" : String(maximum) };
+  const [draftState, setDraft] = useState({ external, value: fromExternal });
+  const draft = draftState.external === external ? draftState.value : fromExternal;
+  const resetValidity = useEffectEvent(() => onValidityChange(true));
+  useEffect(() => resetValidity(), [external]);
   function update(next: { minimum: string; maximum: string }) {
-    setDraft(next);
+    setDraft({ external, value: next });
     const parsedMinimum = next.minimum.trim() === "" ? undefined : Number(next.minimum);
     const parsedMaximum = next.maximum.trim() === "" ? undefined : Number(next.maximum);
     const valid = (parsedMinimum === undefined && parsedMaximum === undefined)

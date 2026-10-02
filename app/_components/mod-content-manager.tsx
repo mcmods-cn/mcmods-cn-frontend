@@ -9,7 +9,14 @@ import { useI18n } from "../_lib/i18n-provider";
 import { ModContentWorkspace } from "./mod-content-workspace";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
-export function ModContentManager({ siteId, importSource, versionId, createNew }: { siteId: string; importSource: "" | "icon" | "exporter" | "iconrenderer" | "letmeseesee" | "irr"; versionId?: string; createNew?: boolean }) {
+type ManagerProps = { siteId: string; importSource: "" | "icon" | "exporter" | "iconrenderer" | "letmeseesee" | "irr"; versionId?: string; createNew?: boolean };
+
+export function ModContentManager(props: ManagerProps) {
+  const { token, user } = useAuthSnapshot();
+  return <ModContentManagerSession key={`${user?.id || "guest"}:${token}:${props.siteId}:${props.versionId || ""}:${props.createNew || false}:${props.importSource}`} {...props} />;
+}
+
+function ModContentManagerSession({ siteId, importSource, versionId, createNew }: ManagerProps) {
   const { t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const [mod, setMod] = useState<BackendModRecord>();

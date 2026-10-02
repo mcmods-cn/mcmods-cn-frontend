@@ -70,6 +70,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
   const [parentFacetsLoading, setParentFacetsLoading] = useState(false);
   const [parentFacetsError, setParentFacetsError] = useState("");
   const parentFacetGenerationRef = useRef(0);
+  const listControllerRef = useRef<AbortController | null>(null);
   const {
     paramsKey, preferences, expandedGroups, mobileFiltersOpen, setMobileFiltersOpen,
     queryDraft, setQueryDraft, notice, setNotice, replaceParams, toggleListParam, clearFilters,
@@ -126,7 +127,11 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
 
   const load = useCallback(async () => {
     if (!ready) return;
+    listControllerRef.current?.abort();
+    const controller = new AbortController();
+    listControllerRef.current = controller;
     setLoading(true);
+    let correctedPage = false;
     try {
       const requestParams = new URLSearchParams(paramsKey);
       requestParams.delete("page");
@@ -137,22 +142,33 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
       requestParams.set("limit", String(filters.pageSize));
       requestParams.set("offset", String((filters.page - 1) * filters.pageSize));
       requestParams.set("locale", locale);
-      const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?${requestParams}`, {}, token);
+      const result = await apiRequest<SimpleProjectList>(`/api/v1/content-projects/${projectType}?${requestParams}`, { signal: controller.signal }, token);
+      if (controller.signal.aborted) return;
+      const lastPage = Math.max(1, Math.ceil(result.total / filters.pageSize));
+      if (filters.page > lastPage) {
+        correctedPage = true;
+        replaceParams({ page: lastPage }, false);
+        return;
+      }
       setItems(result.items);
       setBackendTotal(result.total);
       setMessage("");
     } catch (error) {
+      if (controller.signal.aborted) return;
       setItems([]);
       setBackendTotal(0);
       setMessage(error instanceof Error ? error.message : t("largeProjects.catalog.loadFailed"));
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && !correctedPage) setLoading(false);
     }
-  }, [filters.page, filters.pageSize, filters.sort, filters.sortDirection, locale, paramsKey, projectType, ready, t, token]);
+  }, [filters.page, filters.pageSize, filters.sort, filters.sortDirection, locale, paramsKey, projectType, ready, replaceParams, t, token]);
 
   useEffect(() => {
     const task = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(task);
+    return () => {
+      window.clearTimeout(task);
+      listControllerRef.current?.abort();
+    };
   }, [load]);
 
   async function shareProject(item: SimpleProjectCard) {
@@ -179,7 +195,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
         total={t("largeProjects.catalog.total", { count: backendTotal })}
       >
           <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
-            <input className="field h-12" value={queryDraft} placeholder={t("largeProjects.catalog.searchPlaceholder")} onChange={(event) => setQueryDraft(event.target.value)} />
+            <input aria-label={t("largeProjects.catalog.searchPlaceholder")} className="field h-12" type="search" value={queryDraft} placeholder={t("largeProjects.catalog.searchPlaceholder")} onChange={(event) => setQueryDraft(event.target.value)} />
             <button className="button-primary focus-ring h-12 px-6" type="submit">{t("common.search")}</button>
           </form>
       </CatalogHero>
@@ -224,7 +240,7 @@ export function SimpleProjectCatalog({ projectType }: { projectType: SimpleProje
                     onFieldChange={(sort) => changePreference({ sort })}
                   />
                   <div className="grid grid-cols-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-1" aria-label={t("largeProjects.catalog.viewLabel")}>
-                    {(["list", "grid"] as const).map((view) => <button key={view} className={`focus-ring min-w-16 rounded-md px-3 py-1.5 text-sm font-bold ${filters.view === view ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`} type="button" onClick={() => changePreference({ view })}>{t(`largeProjects.catalog.view.${view}`)}</button>)}
+                    {(["list", "grid"] as const).map((view) => <button key={view} className={`focus-ring min-w-16 rounded-md px-3 py-1.5 text-sm font-bold ${filters.view === view ? "bg-[var(--accent)] text-[var(--on-accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => changePreference({ view })}>{t(`largeProjects.catalog.view.${view}`)}</button>)}
                   </div>
                 </div>
               </div>
@@ -368,7 +384,7 @@ function ProjectCard({ item, config, locale, t, view, onShare }: { item: SimpleP
 
   function openDetails() { router.push(`${config.path}/${item.siteId}`); }
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === "Enter" || event.key === " ") {
+    if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
       openDetails();
     }
@@ -428,6 +444,7 @@ function CardMeta({ label, value }: { label: string; value: string }) {
 }
 
 function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<CatalogSortField>, config: SimpleProjectConfig) {
+  const requestedPage = Number(params.get("page"));
   const pageSize = [20, 40, 60].includes(Number(params.get("size"))) ? Number(params.get("size")) : preferences.pageSize;
   const view = params.get("view") === "grid" || params.get("view") === "list" ? params.get("view") as CatalogView : preferences.view;
   const rawSort = params.get("sort");
@@ -450,7 +467,7 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<C
     sort,
     sortDirection,
     view,
-    page: Math.max(1, Number(params.get("page")) || 1),
+    page: Number.isSafeInteger(requestedPage) && requestedPage > 0 && Number.isSafeInteger((requestedPage - 1) * pageSize) ? requestedPage : 1,
     pageSize,
   };
 }

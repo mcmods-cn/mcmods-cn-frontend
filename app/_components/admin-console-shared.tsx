@@ -553,7 +553,7 @@ function AdminGateMessage({ text }: { text: string }) {
   return (
     <main className="grid min-h-screen place-items-center bg-[var(--background)] px-4 text-[var(--foreground)]">
       <div className="surface w-full max-w-md rounded-lg p-6 text-center">
-        <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">
+        <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-lg bg-[var(--accent)] font-bold text-[var(--on-accent)]">
           M
         </div>
         <h1 className="text-xl font-bold">{t("admin.title")}</h1>

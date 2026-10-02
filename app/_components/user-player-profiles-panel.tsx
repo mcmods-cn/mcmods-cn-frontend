@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import {
   createPlayerProfile,
@@ -35,7 +36,12 @@ const SkinViewerCanvas = dynamic(
 
 const playerProfileNamePattern = /^[A-Za-z0-9_]{3,16}$/;
 
-export function UserPlayerProfilesPanel({ token }: { token: string }) {
+export function UserPlayerProfilesPanel(props: { token: string }) {
+  const { user } = useAuthSnapshot();
+  return <UserPlayerProfilesSession key={`${user?.id || "guest"}:${props.token}`} {...props} />;
+}
+
+function UserPlayerProfilesSession({ token }: { token: string }) {
   const { locale, t } = useI18n();
   const [service, setService] = useState<SkinServiceInfo | null>(null);
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
@@ -55,8 +61,12 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState("");
+  const inFlight = useRef(false);
+  const refreshing = useRef(false);
 
   const load = useCallback(async () => {
+    if (inFlight.current || refreshing.current) return;
+    refreshing.current = true;
     setLoading(true);
     const results = await Promise.allSettled([
       loadSkinService(token),
@@ -80,32 +90,39 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     const failure = results.find((result) => result.status === "rejected");
     if (failure?.status === "rejected") setMessage(errorMessage(failure.reason, t("skins.profileLoadFailed")));
     else setMessage("");
+    refreshing.current = false;
     setLoading(false);
   }, [t, token]);
 
+  const initialLoad = useEffectEvent(() => { void load(); });
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
+    const timer = window.setTimeout(initialLoad, 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [token]);
 
   const selected = profiles.find((profile) => profile.publicId === selectedId) ?? null;
-  useEffect(() => {
+  const loadSelectedDraft = useEffectEvent(() => {
     if (!selected) return;
+    setDraft({ name: selected.name, bio: selected.bio || "", visibility: selected.visibility, isDefault: selected.isDefault });
+    setSkinId(selected.skin?.publicId || "");
+    setCapeId(selected.cape?.publicId || "");
+  });
+  useEffect(() => {
+    if (!selected?.publicId) return;
     let cancelled = false;
     queueMicrotask(() => {
       if (cancelled) return;
-      setDraft({ name: selected.name, bio: selected.bio || "", visibility: selected.visibility, isDefault: selected.isDefault });
-      setSkinId(selected.skin?.publicId || "");
-      setCapeId(selected.cape?.publicId || "");
+      loadSelectedDraft();
     });
     return () => { cancelled = true; };
-  }, [selected]);
+  }, [selected?.publicId]);
 
   const skins = useMemo(() => wardrobeTextureOptions(wardrobe, selected?.skin, "skin"), [selected?.skin, wardrobe]);
   const capes = useMemo(() => wardrobeTextureOptions(wardrobe, selected?.cape, "cape"), [selected?.cape, wardrobe]);
 
   async function loadMoreWardrobe() {
-    if (!wardrobeHasMore || !wardrobeNextCursor || busy) return;
+    if (!wardrobeHasMore || !wardrobeNextCursor || busy || inFlight.current || refreshing.current) return;
+    inFlight.current = true;
     setBusy("wardrobe:more");
     try {
       const page = await loadWardrobe(token, { limit: 100, cursor: wardrobeNextCursor });
@@ -120,12 +137,14 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     } catch (reason) {
       notifySite(errorMessage(reason, t("skins.profileLoadFailed")), t("skins.wardrobe"), "danger");
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
 
   async function createProfile() {
-    if (!playerProfileNamePattern.test(newProfileName.trim())) return;
+    if (busy || inFlight.current || refreshing.current || !playerProfileNamePattern.test(newProfileName.trim())) return;
+    inFlight.current = true;
     setBusy("create");
     try {
       const created = await createPlayerProfile({ name: newProfileName.trim(), visibility: "public" }, token);
@@ -136,12 +155,14 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     } catch (reason) {
       notifySite(errorMessage(reason, t("skins.createFailed")), t("skins.playerProfiles"), "danger");
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
 
   async function saveProfile() {
-    if (!selected || !playerProfileNamePattern.test(draft.name.trim())) return;
+    if (busy || inFlight.current || refreshing.current || !selected || !playerProfileNamePattern.test(draft.name.trim())) return;
+    inFlight.current = true;
     setBusy("profile");
     try {
       const updated = await updatePlayerProfile(selected.publicId, { ...draft, name: draft.name.trim() }, token);
@@ -150,12 +171,14 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     } catch (reason) {
       notifySite(errorMessage(reason, t("skins.saveFailed")), selected.name, "danger");
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
 
   async function saveTextures() {
-    if (!selected) return;
+    if (!selected || busy || inFlight.current || refreshing.current) return;
+    inFlight.current = true;
     setBusy("textures");
     try {
       const updated = await updatePlayerTextures(selected.publicId, { skinPublicId: skinId || null, capePublicId: capeId || null }, token);
@@ -164,12 +187,14 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     } catch (reason) {
       notifySite(errorMessage(reason, t("skins.saveFailed")), selected.name, "danger");
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
 
   async function removeProfile() {
-    if (!selected || !window.confirm(t("skins.deleteProfileConfirm", { name: selected.name }))) return;
+    if (busy || inFlight.current || refreshing.current || !selected || !window.confirm(t("skins.deleteProfileConfirm", { name: selected.name }))) return;
+    inFlight.current = true;
     setBusy("delete-profile");
     try {
       await deletePlayerProfile(selected.publicId, token);
@@ -180,12 +205,14 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     } catch (reason) {
       notifySite(errorMessage(reason, t("skins.deleteFailed")), selected.name, "danger");
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
 
   async function removeWardrobeItem(texture: SkinTexture) {
-    if (!window.confirm(t("skins.removeWardrobeConfirm", { name: texture.name }))) return;
+    if (busy || inFlight.current || refreshing.current || !window.confirm(t("skins.removeWardrobeConfirm", { name: texture.name }))) return;
+    inFlight.current = true;
     setBusy(`wardrobe:${texture.publicId}`);
     try {
       await removeFromWardrobe(texture.publicId, token);
@@ -195,11 +222,13 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     } catch (reason) {
       notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
 
   async function updateCredential() {
+    if (busy || inFlight.current || refreshing.current) return;
     if (service?.enabled !== true) {
       setMessage(t("skins.launcherServiceUnavailable"));
       return;
@@ -208,6 +237,7 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
       setMessage(t("skins.launcherPasswordTooShort"));
       return;
     }
+    inFlight.current = true;
     setBusy("credential");
     try {
       const result = await saveLauncherCredential(launcherPassword, token);
@@ -226,12 +256,14 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     } catch (reason) {
       setMessage(errorMessage(reason, t("skins.saveFailed")));
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
 
   async function revokeCredential() {
-    if (!window.confirm(t("skins.revokeCredentialConfirm"))) return;
+    if (busy || inFlight.current || refreshing.current || !window.confirm(t("skins.revokeCredentialConfirm"))) return;
+    inFlight.current = true;
     setBusy("revoke-credential");
     try {
       await deleteLauncherCredential(token);
@@ -244,11 +276,14 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     } catch (reason) {
       setMessage(errorMessage(reason, t("skins.deleteFailed")));
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
 
   async function revokeSession(session: LauncherSession) {
+    if (busy || inFlight.current || refreshing.current) return;
+    inFlight.current = true;
     setBusy(`session:${session.id}`);
     try {
       await deleteLauncherSession(session.id, token);
@@ -256,6 +291,7 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
     } catch (reason) {
       setMessage(errorMessage(reason, t("skins.deleteFailed")));
     } finally {
+      inFlight.current = false;
       setBusy("");
     }
   }
@@ -279,7 +315,7 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
   const authlibValue = `authlib-injector:yggdrasil-server:${encodeURIComponent(apiRoot)}`;
 
   return (
-    <section className="grid gap-4">
+    <fieldset className="grid min-w-0 gap-4" disabled={loading || Boolean(busy)}>
       <div className="surface rounded-lg p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div><h2 className="text-xl font-black">{t("skins.playerProfiles")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("skins.playerProfilesDescription")}</p></div>
@@ -290,14 +326,14 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
           <aside className="space-y-3">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <input className="field" maxLength={16} minLength={3} pattern="[A-Za-z0-9_]{3,16}" placeholder={t("skins.profileName")} value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createProfile(); } }} />
-              <button className="button-primary focus-ring" disabled={!playerProfileNamePattern.test(newProfileName.trim()) || busy === "create" || Boolean(service?.profileLimit && profiles.length >= service.profileLimit)} type="button" onClick={() => void createProfile()}>+</button>
+              <button aria-label={t("common.create")} className="button-primary focus-ring" disabled={!playerProfileNamePattern.test(newProfileName.trim()) || busy === "create" || Boolean(service?.profileLimit && profiles.length >= service.profileLimit)} type="button" onClick={() => void createProfile()}>+</button>
             </div>
             {service?.profileLimit ? <p className="text-xs text-[var(--muted)]">{t("skins.profileLimit", { used: profiles.length, limit: service.profileLimit })}</p> : null}
             <div className="grid gap-2">
               {profiles.map((profile) => (
                 <button className={`focus-ring flex items-center gap-3 rounded-lg border p-3 text-left ${selectedId === profile.publicId ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] hover:border-[var(--accent)]"}`} key={profile.publicId} type="button" onClick={() => setSelectedId(profile.publicId)}>
                   <SkinPreview2D className="h-20 w-14 shrink-0 rounded-md" kind="skin" label={profile.name} model={profile.skin?.model || "default"} src={skinTextureURL(profile.skin)} />
-                  <span className="min-w-0"><span className="block truncate font-black">{profile.name}</span><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{profile.uuid}</code>{profile.isDefault ? <span className="mt-1 inline-block rounded bg-[var(--accent)] px-1.5 py-0.5 text-[10px] font-bold text-white">{t("skins.defaultProfile")}</span> : null}</span>
+                  <span className="min-w-0"><span className="block truncate font-black">{profile.name}</span><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{profile.uuid}</code>{profile.isDefault ? <span className="mt-1 inline-block rounded bg-[var(--accent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--on-accent)]">{t("skins.defaultProfile")}</span> : null}</span>
                 </button>
               ))}
               {!loading && profiles.length === 0 ? <p className="rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">{t("skins.noProfiles")}</p> : null}
@@ -362,7 +398,7 @@ export function UserPlayerProfilesPanel({ token }: { token: string }) {
           </div>
         </div>
       </section>
-    </section>
+    </fieldset>
   );
 }
 

@@ -31,7 +31,7 @@ export default async function RootLayout({
   const cookieStore = await cookies();
   const initialLocale = normalizeUILocale(cookieStore.get(uiLocaleCookieName)?.value) ?? defaultUILocale;
   return (
-    <html lang={initialLocale} className="h-full" suppressHydrationWarning>
+    <html lang={initialLocale} dir="ltr" className="h-full" suppressHydrationWarning>
       <body className="min-h-full">
         <IconfontLoader symbolUrl={iconfontConfig?.symbolUrl} integrity={iconfontConfig?.integrity} />
         <ThemeProvider>

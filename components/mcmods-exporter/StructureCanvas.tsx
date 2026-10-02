@@ -64,6 +64,7 @@ export function StructureCanvas({
   const onLoadedRef = useRef(onLoaded)
   const onRenderedCoverRef = useRef(onRenderedCover)
   const onSelectBlockRef = useRef(onSelectBlock)
+  const firstPersonRef = useRef(firstPerson)
   const [progress, setProgress] = useState<RendererProgress>()
   const [error, setError] = useState('')
 
@@ -80,34 +81,42 @@ export function StructureCanvas({
     const controller = new AbortController()
     setError('')
     setProgress({ finishedStates: 0, totalStates: 0, currentState: t('mods.exportImport.renderer.reading') })
-    const renderer = new StructureRenderer(host, assetSource, {
-      autoRotate,
-      showGrid,
-      cullInvisibleFaces,
-      onProgress: (value) => { if (!cancelled) setProgress(value) },
-      onLoaded: (value) => {
-        if (!cancelled) {
-          setProgress(undefined)
-          onLoadedRef.current?.(value)
-          if (onRenderedCoverRef.current) {
-            renderer.captureImage()
-              .then((cover) => onRenderedCoverRef.current?.(cover))
-              .catch(() => undefined)
-          }
-        }
-      },
-      onSelectBlock: (block) => { if (!cancelled) onSelectBlockRef.current?.(block) },
-      onError: (reason) => { if (!cancelled) setError(reason.message) },
-    })
-    rendererRef.current = renderer
+    let renderer: StructureRenderer | undefined
     source.load(controller.signal)
-      .then((bytes) => renderer.load(bytes, source.name, controller.signal))
+      .then((bytes) => {
+        if (cancelled) return
+        const activeRenderer = new StructureRenderer(host, assetSource, {
+          autoRotate,
+          showGrid,
+          cullInvisibleFaces,
+          onProgress: (value) => { if (!cancelled) setProgress(value) },
+          onLoaded: (value) => {
+            if (!cancelled) {
+              setProgress(undefined)
+              onLoadedRef.current?.(value)
+              if (onRenderedCoverRef.current) {
+                activeRenderer.captureImage()
+                  .then((cover) => { if (!cancelled) return onRenderedCoverRef.current?.(cover) })
+                  .catch(() => undefined)
+              }
+            }
+          },
+          onSelectBlock: (block) => { if (!cancelled) onSelectBlockRef.current?.(block) },
+          onError: (reason) => { if (!cancelled) setError(reason.message) },
+        })
+        renderer = activeRenderer
+        activeRenderer.setFirstPerson(firstPersonRef.current)
+        rendererRef.current = activeRenderer
+        return activeRenderer.load(bytes, source.name, controller.signal)
+      })
       .then(() => {
+        if (cancelled || !renderer) return
         const layer = layerViewRef.current
         renderer.setLayerView(layer.min, layer.max, layer.mode, layer.showContextBelow, layer.showContextAbove)
       })
       .catch((reason: unknown) => {
         if (!cancelled && !(reason instanceof DOMException && reason.name === 'AbortError')) {
+          setProgress(undefined)
           setError(reason instanceof Error ? reason.message : String(reason))
         }
       })
@@ -115,7 +124,7 @@ export function StructureCanvas({
       cancelled = true
       controller.abort()
       rendererRef.current = null
-      renderer.dispose()
+      renderer?.dispose()
     }
   }, [assetSource, source, source.key, source.name, autoRotate, showGrid, cullInvisibleFaces, t])
 
@@ -124,7 +133,10 @@ export function StructureCanvas({
     rendererRef.current?.setLayerView(layerMin, layerMax, outsideLayerMode, showContextBelow, showContextAbove)
   }, [layerMin, layerMax, outsideLayerMode, showContextBelow, showContextAbove])
 
-  useEffect(() => rendererRef.current?.setFirstPerson(firstPerson), [firstPerson])
+  useEffect(() => {
+    firstPersonRef.current = firstPerson
+    rendererRef.current?.setFirstPerson(firstPerson)
+  }, [firstPerson])
 
   const percent = progress?.totalStates
     ? Math.round(progress.finishedStates / progress.totalStates * 100)

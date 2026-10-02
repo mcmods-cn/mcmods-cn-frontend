@@ -27,13 +27,20 @@ import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 type EditorMode = "create" | "edit";
 
-export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; publicId?: string }) {
+export function CatalogTagEditor(props: { mode: EditorMode; publicId?: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <CatalogTagEditorSession key={`${user?.id || "guest"}:${token || "guest"}:${props.mode}:${props.publicId || ""}`} {...props} />;
+}
+
+function CatalogTagEditorSession({ mode, publicId = "" }: { mode: EditorMode; publicId?: string }) {
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
-  const initialLocale = toEditableContentLanguage(locale) ?? "zh-CN";
+  const [initialLocale] = useState<Locale>(() => toEditableContentLanguage(locale) ?? "zh-CN");
+  const [loaded, setLoaded] = useState(mode === "create");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const {
     selectedLocale, setSelectedLocale, defaultLocale, versions, publishedRevisionId, reviewStatus, reason, setReason,
-    loading, setLoading, busy, deleting, finished, error, setError, result, fields, canSubmit,
+    loading, setLoading, busy, deleting, markdownUploading, setMarkdownUploading, finished, error, setError, result, fields, canSubmit,
     loadDocument, updateFields, chooseDefaultLocale, buildLocalizationPayload, runSave, runArchive,
   } = useCatalogEditorState(mode, initialLocale);
   const [registry, setRegistry] = useState("minecraft:item");
@@ -44,20 +51,21 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
   useEffect(() => {
     if (mode !== "edit" || !publicId || !token) return;
     let cancelled = false;
-    loadCatalogTagForEditing(publicId, token, locale).then((document) => {
+    loadCatalogTagForEditing(publicId, token, initialLocale).then((document) => {
       if (cancelled) return;
       const nextDefault = toEditableContentLanguage(document.defaultLocale) ?? initialLocale;
       setRegistry(document.registry);
       setCanonicalId(document.canonicalId);
       loadDocument(document, nextDefault);
       setMembers(document.members);
+      setLoaded(true);
     }).catch((reasonValue: unknown) => {
       if (!cancelled) setError(errorText(reasonValue));
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [initialLocale, loadDocument, locale, mode, publicId, setError, setLoading, token]);
+  }, [initialLocale, loadAttempt, loadDocument, mode, publicId, setError, setLoading, token]);
 
   const valid = Boolean(token && registry.trim() && canonicalId.trim() && canSubmit);
 
@@ -90,13 +98,14 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
   if (!ready) return <CatalogEditorGate loading nextPath={loginNextPath} />;
   if (!user) return <CatalogEditorGate nextPath={loginNextPath} />;
   if (loading) return <CatalogEditorGate loading nextPath={loginNextPath} />;
+  if (!loaded) return <PageFeedback title={t("catalogEditor.loadFailed")} description={error} tone="danger" action={<button className="button-secondary focus-ring" type="button" onClick={() => { setLoading(true); setLoadAttempt((attempt) => attempt + 1); }}>{t("common.retry")}</button>} />;
 
   return <>
     <EditorShell
       backHref="/mods-tag"
       busy={busy}
-      canDelete={mode === "edit" && !finished && reviewStatus !== "pending"}
-      canSubmit={valid}
+      canDelete={mode === "edit" && !finished && reviewStatus !== "pending" && !markdownUploading}
+      canSubmit={valid && !markdownUploading}
       deleting={deleting}
       description={t("catalogEditor.tagDescription")}
       languageSwitcher={<ContentLanguageSwitcher value={selectedLocale} versions={versions} onChange={setSelectedLocale} labels={{ title: t("catalogEditor.editLanguage") }} />}
@@ -137,7 +146,7 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
         onChoose={() => setPickerOpen(true)}
         onRemove={(resource) => setMembers((current) => current.filter((item) => item.publicId !== resource.publicId))}
       />
-      <MarkdownContentPanel documentId={`catalog-tag:${publicId || "draft"}:${selectedLocale}:content`} fields={fields} locale={selectedLocale} onChange={updateFields} />
+      <MarkdownContentPanel documentId={`catalog-tag:${publicId || "draft"}:${selectedLocale}:content`} fields={fields} locale={selectedLocale} onChange={updateFields} onBusyChange={setMarkdownUploading} />
     </EditorShell>
     <ResourcePickerDialog
       multiple
@@ -158,13 +167,20 @@ export function CatalogTagEditor({ mode, publicId = "" }: { mode: EditorMode; pu
   </>;
 }
 
-export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorMode; publicId?: string }) {
+export function CatalogRecipeTypeEditor(props: { mode: EditorMode; publicId?: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <CatalogRecipeTypeEditorSession key={`${user?.id || "guest"}:${token || "guest"}:${props.mode}:${props.publicId || ""}`} {...props} />;
+}
+
+function CatalogRecipeTypeEditorSession({ mode, publicId = "" }: { mode: EditorMode; publicId?: string }) {
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
-  const initialLocale = toEditableContentLanguage(locale) ?? "zh-CN";
+  const [initialLocale] = useState<Locale>(() => toEditableContentLanguage(locale) ?? "zh-CN");
+  const [loaded, setLoaded] = useState(mode === "create");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const {
     selectedLocale, setSelectedLocale, defaultLocale, versions, publishedRevisionId, reviewStatus, reason, setReason,
-    loading, setLoading, busy, deleting, finished, error, setError, result, fields, canSubmit,
+    loading, setLoading, busy, deleting, markdownUploading, setMarkdownUploading, finished, error, setError, result, fields, canSubmit,
     loadDocument, updateFields, chooseDefaultLocale, buildLocalizationPayload, runSave, runArchive,
   } = useCatalogEditorState(mode, initialLocale);
   const [canonicalId, setCanonicalId] = useState("");
@@ -176,7 +192,7 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
   useEffect(() => {
     if (mode !== "edit" || !publicId || !token) return;
     let cancelled = false;
-    loadCatalogRecipeTypeForEditing(publicId, token, locale).then((document) => {
+    loadCatalogRecipeTypeForEditing(publicId, token, initialLocale).then((document) => {
       if (cancelled) return;
       const nextDefault = toEditableContentLanguage(document.defaultLocale) ?? initialLocale;
       setCanonicalId(document.canonicalId);
@@ -184,13 +200,14 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
       setDefinition(document.definition);
       setCatalysts(document.catalysts);
       setTemplateCount(document.templateCount);
+      setLoaded(true);
     }).catch((reasonValue: unknown) => {
       if (!cancelled) setError(errorText(reasonValue));
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [initialLocale, loadDocument, locale, mode, publicId, setError, setLoading, token]);
+  }, [initialLocale, loadAttempt, loadDocument, mode, publicId, setError, setLoading, token]);
 
   const valid = Boolean(token && canonicalId.trim() && canSubmit);
 
@@ -223,13 +240,14 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
   if (!ready) return <CatalogEditorGate loading nextPath={loginNextPath} />;
   if (!user) return <CatalogEditorGate nextPath={loginNextPath} />;
   if (loading) return <CatalogEditorGate loading nextPath={loginNextPath} />;
+  if (!loaded) return <PageFeedback title={t("catalogEditor.loadFailed")} description={error} tone="danger" action={<button className="button-secondary focus-ring" type="button" onClick={() => { setLoading(true); setLoadAttempt((attempt) => attempt + 1); }}>{t("common.retry")}</button>} />;
 
   return <>
     <EditorShell
       backHref="/recipe-types"
       busy={busy}
-      canDelete={mode === "edit" && !finished && reviewStatus !== "pending"}
-      canSubmit={valid}
+      canDelete={mode === "edit" && !finished && reviewStatus !== "pending" && !markdownUploading}
+      canSubmit={valid && !markdownUploading}
       deleting={deleting}
       description={t("catalogEditor.recipeTypeDescription")}
       languageSwitcher={<ContentLanguageSwitcher value={selectedLocale} versions={versions} onChange={setSelectedLocale} labels={{ title: t("catalogEditor.editLanguage") }} />}
@@ -265,7 +283,7 @@ export function CatalogRecipeTypeEditor({ mode, publicId = "" }: { mode: EditorM
         onChoose={() => setPickerOpen(true)}
         onRemove={(resource) => setCatalysts((current) => current.filter((item) => item.publicId !== resource.publicId))}
       />
-      <MarkdownContentPanel documentId={`catalog-recipe-type:${publicId || "draft"}:${selectedLocale}:content`} fields={fields} locale={selectedLocale} onChange={updateFields} />
+      <MarkdownContentPanel documentId={`catalog-recipe-type:${publicId || "draft"}:${selectedLocale}:content`} fields={fields} locale={selectedLocale} onChange={updateFields} onBusyChange={setMarkdownUploading} />
     </EditorShell>
     <ResourcePickerDialog
       multiple
@@ -298,6 +316,8 @@ function useCatalogEditorState(mode: EditorMode, initialLocale: Locale) {
   const [loading, setLoading] = useState(mode === "edit");
   const [busy, setBusy] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [markdownUploading, setMarkdownUploading] = useState(false);
+  const mutationInFlight = useRef(false);
   const [finished, setFinished] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<EditResult>();
@@ -339,6 +359,8 @@ function useCatalogEditorState(mode: EditorMode, initialLocale: Locale) {
   }
 
   async function runSave(operation: () => Promise<EditResult>) {
+    if (mutationInFlight.current || markdownUploading) return;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -354,12 +376,14 @@ function useCatalogEditorState(mode: EditorMode, initialLocale: Locale) {
     } catch (reasonValue) {
       setError(errorText(reasonValue));
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
 
   async function runArchive(confirmMessage: string, operation: () => Promise<EditResult>) {
-    if (!window.confirm(confirmMessage)) return;
+    if (mutationInFlight.current || markdownUploading || !window.confirm(confirmMessage)) return;
+    mutationInFlight.current = true;
     setDeleting(true);
     setError("");
     try {
@@ -370,13 +394,14 @@ function useCatalogEditorState(mode: EditorMode, initialLocale: Locale) {
     } catch (reasonValue) {
       setError(errorText(reasonValue));
     } finally {
+      mutationInFlight.current = false;
       setDeleting(false);
     }
   }
 
   return {
     selectedLocale, setSelectedLocale, defaultLocale, versions, publishedRevisionId, reviewStatus, reason, setReason,
-    loading, setLoading, busy, deleting, finished, error, setError, result, fields, canSubmit,
+    loading, setLoading, busy, deleting, markdownUploading, setMarkdownUploading, finished, error, setError, result, fields, canSubmit,
     loadDocument, updateFields, chooseDefaultLocale, buildLocalizationPayload, runSave, runArchive,
   };
 }
@@ -409,10 +434,10 @@ function LocalizedFieldsPanel({ fields, locale, onChange }: { fields: LocalizedC
   </section>;
 }
 
-function MarkdownContentPanel({ documentId, fields, locale, onChange }: { documentId: string; fields: LocalizedContentFields; locale: Locale; onChange: (patch: Partial<LocalizedContentFields>) => void }) {
+function MarkdownContentPanel({ documentId, fields, locale, onChange, onBusyChange }: { documentId: string; fields: LocalizedContentFields; locale: Locale; onChange: (patch: Partial<LocalizedContentFields>) => void; onBusyChange: (busy: boolean) => void }) {
   const { t } = useI18n();
   return <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-5">
-    <ToolsPlayground embedded documentId={documentId} editorTitle={`${t("catalogEditor.contentMarkdown")} (${locale})`} value={fields.contentMarkdown} onChange={(value) => onChange({ contentMarkdown: value })} />
+    <ToolsPlayground embedded documentId={documentId} editorTitle={`${t("catalogEditor.contentMarkdown")} (${locale})`} onBusyChange={onBusyChange} value={fields.contentMarkdown} onChange={(value) => onChange({ contentMarkdown: value })} />
   </section>;
 }
 

@@ -14,6 +14,7 @@ import { advancementConnectedGroups } from "../_lib/advancement-graph";
 import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import { createModContentCategoryReparentPolicy } from "../_lib/mod-content-category-tree.mts";
+import { normalizeSimilarResourceGroups } from "../_lib/mod-content-layout-groups.mts";
 import { buildModContentLayoutRenderIndex } from "../_lib/mod-content-layout-render-index.mts";
 import {
   loadModContentLayoutSnapshot,
@@ -67,7 +68,12 @@ const advancementRowHeight = 132;
 const advancementNodeWidth = 240;
 const advancementNodeHeight = 96;
 
-export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: string; sectionId: string }) {
+export function ModContentLayoutEditorPage(props: { siteId: string; sectionId: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <ModContentLayoutEditorSession key={`${user?.id || "guest"}:${token || "guest"}:${props.siteId}:${props.sectionId}`} {...props} />;
+}
+
+function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; sectionId: string }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
   const tokenRef = useRef(token);
@@ -90,6 +96,18 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   const [hasMore, setHasMore] = useState(false);
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
+  const saveInFlight = useRef(false);
+  const saved = useRef(false);
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      if (saved.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -135,7 +153,8 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
     [categories, section?.publicId, sectionId],
   );
 
-  function closeEditor() {
+  function closeEditor(afterSave = false) {
+    if (!afterSave && (busy || dirty && !window.confirm(t("common.discardChangesConfirm")))) return;
     const fallback = section
       ? `/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(section.publicId)}`
       : `/mods/${encodeURIComponent(siteId)}`;
@@ -146,6 +165,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   }
 
   function commitAdvancementLayouts(next: AdvancementLayouts, previous = advancementLayouts) {
+    if (busy) return;
     if (sameAdvancementLayouts(next, previous)) {
       setAdvancementLayouts(next);
       return;
@@ -157,6 +177,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   }
 
   function undoAdvancementLayout() {
+    if (busy) return;
     const previous = advancementHistory.at(-1);
     if (!previous) return;
     setAdvancementLayouts(cloneAdvancementLayouts(previous));
@@ -166,10 +187,12 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
   }
 
   async function save() {
+    if (busy || saveInFlight.current) return;
     if (!section || !pageReady) {
       setError(t("modContent.sectionActions.incompleteLayout"));
       return;
     }
+    saveInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -201,10 +224,14 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
         sectionId: section.publicId,
         result,
       }, window.location.origin);
-      closeEditor();
+      saved.current = true;
+      setDirty(false);
+      closeEditor(true);
     } catch (cause) {
       setError(errorText(cause));
       setBusy(false);
+    } finally {
+      saveInFlight.current = false;
     }
   }
 
@@ -241,7 +268,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
           <h1 className="mt-1 text-3xl font-black">{t("modContent.sectionActions.arrangeTitle")}</h1>
           {section ? <p className="mt-2 text-sm text-[var(--muted)]">{localizedSectionName(section, locale)} · {section.versionPublicId}</p> : null}
         </div>
-        <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={closeEditor}>{t("common.cancel")}</button>
+        <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => closeEditor()}>{t("common.cancel")}</button>
         <button className="button-primary focus-ring" disabled={busy || !pageReady} type="button" onClick={() => void save()}>{t("modContent.sectionActions.submitLayout")}</button>
       </header>
 
@@ -254,6 +281,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
           <button className="button-secondary" disabled={busy || dirty || !cursorHistory.length} type="button" onClick={() => navigateLayoutPage(cursorHistory.at(-1) || "", "previous")}>{t("common.previous")}</button>
           <button className="button-secondary" disabled={busy || dirty || !hasMore || !nextCursor} type="button" onClick={() => navigateLayoutPage(nextCursor, "next")}>{t("common.next")}</button>
         </div>
+        <fieldset disabled={busy} className="min-w-0">
         {isAdvancement
           ? <AdvancementLayoutEditor
             canUndo={advancementHistory.length > 0}
@@ -262,12 +290,13 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
             resources={resources}
             onDrag={setDraggedAdvancement}
             onLayoutsCommit={commitAdvancementLayouts}
-            onLayoutsPreview={setAdvancementLayouts}
+            onLayoutsPreview={(next) => { if (!busy) setAdvancementLayouts(next); }}
             onUndo={undoAdvancementLayout}
             onError={setError}
           />
           : <CategoryLayoutEditor
             categories={categories}
+            completeResourcePage={!hasMore && !pageCursor}
             categoryLocale={categoryLocale}
             depthByID={depthByID}
             draggedResource={draggedResource}
@@ -276,19 +305,20 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
             newCategoryParent={newCategoryParent}
             resources={resources}
             root={section}
-            onCategoriesChange={(value) => { setCategories(value); setDirty(true); }}
+            onCategoriesChange={(value) => { if (busy) return; setCategories(value); setDirty(true); }}
             onCategoryLocaleChange={setCategoryLocale}
             onDraggedResourceChange={setDraggedResource}
             onNewCategoryNameChange={setNewCategoryName}
             onNewCategoryParentChange={setNewCategoryParent}
-            onResourcesChange={(value) => { setResources(value); setDirty(true); }}
+            onResourcesChange={(value) => { if (busy) return; setResources(value); setDirty(true); }}
           />}
         <label className="mt-6 grid gap-2 text-sm font-bold">
           <span>{t("modContent.reason")}</span>
           <input className="field" value={reason} onChange={(event) => setReason(event.target.value)} />
         </label>
+        </fieldset>
         <footer className="mt-6 flex justify-end gap-2 border-t border-[var(--line)] pt-5">
-          <button className="button-secondary" disabled={busy} type="button" onClick={closeEditor}>{t("common.cancel")}</button>
+          <button className="button-secondary" disabled={busy} type="button" onClick={() => closeEditor()}>{t("common.cancel")}</button>
           <button className="button-primary" disabled={busy || !pageReady} type="button" onClick={() => void save()}>{t("modContent.sectionActions.submitLayout")}</button>
         </footer>
       </> : null}
@@ -297,6 +327,7 @@ export function ModContentLayoutEditorPage({ siteId, sectionId }: { siteId: stri
 }
 
 function CategoryLayoutEditor({
+  completeResourcePage,
   root,
   categories,
   resources,
@@ -314,6 +345,7 @@ function CategoryLayoutEditor({
   onDraggedResourceChange,
 }: {
   root: ModContentSection;
+  completeResourcePage: boolean;
   categories: ModContentSection[];
   resources: ModContentLayoutSummary[];
   locale: string;
@@ -337,6 +369,8 @@ function CategoryLayoutEditor({
   const orderedSections = useMemo(() => [root, ...flattenCategoryTree(root.publicId, categories)], [root, categories]);
   const categoryReparentPolicy = useMemo(() => createModContentCategoryReparentPolicy(root.publicId, categories), [root.publicId, categories]);
   const layoutRenderIndex = useMemo(() => buildModContentLayoutRenderIndex(resources, root.publicId), [resources, root.publicId]);
+
+  const normalizeGroups = (value: ModContentLayoutSummary[]) => normalizeSimilarResourceGroups(value, completeResourcePage);
 
   function addCategory() {
     const name = newCategoryName.trim();
@@ -397,9 +431,9 @@ function CategoryLayoutEditor({
     if (!moving) return;
     const without = resources.filter((item) => item.resourcePublicId !== draggedResource);
     const targetItems = without.filter((item) => item.sectionPublicId === targetSectionID).sort((a, b) => a.ordinal - b.ordinal).map((item) => ({ ...item }));
-    targetItems.push({ ...moving, sectionPublicId: targetSectionID });
+    targetItems.push({ ...moving, sectionPublicId: targetSectionID, similarGroupId: moving.sectionPublicId === targetSectionID ? moving.similarGroupId : "" });
     targetItems.forEach((item, itemIndex) => { item.ordinal = itemIndex; });
-    onResourcesChange(normalizeSimilarResourceGroups(normalizeResourceOrdinals([
+    onResourcesChange(normalizeGroups(normalizeResourceOrdinals([
       ...without.filter((item) => item.sectionPublicId !== targetSectionID),
       ...targetItems,
     ])));
@@ -416,7 +450,7 @@ function CategoryLayoutEditor({
     const next = resources.map((item) => item.resourcePublicId === source.resourcePublicId
       ? { ...item, sectionPublicId: targetSectionID, ordinal: target.ordinal + 1, similarGroupId: groupID }
       : item.resourcePublicId === target.resourcePublicId ? { ...item, similarGroupId: groupID } : item);
-    onResourcesChange(normalizeSimilarResourceGroups(normalizeResourceOrdinals(next)));
+    onResourcesChange(normalizeGroups(normalizeResourceOrdinals(next)));
     onDraggedResourceChange("");
   }
 
@@ -440,8 +474,8 @@ function CategoryLayoutEditor({
 
   function moveResourceToCategory(resourceID: string, targetSectionID: string) {
     const targetOrdinal = layoutRenderIndex.sections.get(targetSectionID)?.entries.length || 0;
-    onResourcesChange(normalizeSimilarResourceGroups(normalizeResourceOrdinals(resources.map((item) => item.resourcePublicId === resourceID
-      ? { ...item, sectionPublicId: targetSectionID, ordinal: targetOrdinal }
+    onResourcesChange(normalizeGroups(normalizeResourceOrdinals(resources.map((item) => item.resourcePublicId === resourceID
+      ? { ...item, sectionPublicId: targetSectionID, ordinal: targetOrdinal, similarGroupId: item.sectionPublicId === targetSectionID ? item.similarGroupId : "" }
       : item))));
   }
 
@@ -453,10 +487,10 @@ function CategoryLayoutEditor({
     const targetItems = remaining
       .filter((item) => (item.sectionPublicId || root.publicId) === targetSectionID)
       .sort((left, right) => left.ordinal - right.ordinal);
-    onResourcesChange(normalizeSimilarResourceGroups(normalizeResourceOrdinals([
+    onResourcesChange(normalizeGroups(normalizeResourceOrdinals([
       ...remaining.filter((item) => (item.sectionPublicId || root.publicId) !== targetSectionID),
       ...targetItems,
-      ...moving.map((item, index) => ({ ...item, sectionPublicId: targetSectionID, ordinal: targetItems.length + index })),
+      ...moving.map((item, index) => ({ ...item, sectionPublicId: targetSectionID, ordinal: targetItems.length + index, similarGroupId: item.sectionPublicId === targetSectionID ? item.similarGroupId : "" })),
     ])));
     setSelectedResourceIDs(new Set());
   }
@@ -593,7 +627,7 @@ function CategoryRelationshipEditor({ root, categories, locale, draggedCategoryI
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => { event.preventDefault(); onReparent(draggedCategoryID, root.publicId); }}
         >
-          <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent)] font-black text-white">0</span>
+          <span aria-hidden="true" className="grid h-10 w-10 place-items-center rounded-full bg-[var(--accent)] font-black text-[var(--on-accent)]">0</span>
           <span><strong className="block">{t("modContent.sectionActions.rootCategory")}</strong><small className="text-[var(--muted)]">{t("modContent.sectionActions.dropCategoryHere")}</small></span>
         </article>
         <div className="mt-1">{renderChildren(root.publicId, 0)}</div>
@@ -640,6 +674,11 @@ function AdvancementLayoutEditor({
     const next = cloneAdvancementLayouts(layouts);
     const parent = next[parentResourcePublicId];
     const child = next[childResourcePublicId];
+    if (!parent || !child) {
+      setKeyboardPort(undefined);
+      onError(t("modContent.sectionActions.invalidAdvancementLink"));
+      return;
+    }
     if (parent.groupId !== child.groupId) {
       const offsetX = parent.x + 1 - child.x;
       const offsetY = parent.y - child.y;
@@ -1197,16 +1236,6 @@ function normalizeResourceOrdinals(resources: ModContentLayoutSummary[]) {
   return resources.map((item) => ({ ...item, ordinal: ordinals.get(item.resourcePublicId) || 0 }));
 }
 
-function normalizeSimilarResourceGroups(resources: ModContentLayoutSummary[]) {
-  const members = new Map<string, ModContentLayoutSummary[]>();
-  for (const resource of resources) {
-    if (resource.similarGroupId) members.set(resource.similarGroupId, [...(members.get(resource.similarGroupId) || []), resource]);
-  }
-  const invalid = new Set([...members].filter(([, group]) => group.length < 2 || new Set(group.map((item) => item.sectionPublicId)).size > 1).map(([groupID]) => groupID));
-  return resources.map((resource) => resource.similarGroupId && invalid.has(resource.similarGroupId)
-    ? { ...resource, similarGroupId: "" }
-    : resource);
-}
 
 function categoryDepths(rootID: string, categories: ModContentSection[]) {
   const byID = new Map(categories.map((item) => [item.publicId, item]));

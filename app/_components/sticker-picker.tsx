@@ -19,6 +19,8 @@ export function StickerPicker({ inputRef, value, onChange, disabled = false }: S
   const [packs, setPacks] = useState<StickerCatalogPack[]>([]);
   const [selectedPack, setSelectedPack] = useState("");
   const [query, setQuery] = useState("");
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -27,15 +29,16 @@ export function StickerPicker({ inputRef, value, onChange, disabled = false }: S
       .then((catalog) => {
         if (cancelled) return;
         setPacks(catalog.packs);
-        setSelectedPack((current) => current || catalog.packs[0]?.code || "");
+        setError("");
+        setSelectedPack((current) => catalog.packs.some((pack) => pack.code === current) ? current : catalog.packs[0]?.code || "");
       })
-      .catch(() => {
-        if (!cancelled) setPacks([]);
+      .catch((reason) => {
+        if (!cancelled) { setPacks([]); setError(reason instanceof Error ? reason.message : t("common.loadFailed")); }
       });
     return () => {
       cancelled = true;
     };
-  }, [locale, open]);
+  }, [attempt, locale, open, t]);
 
   function insert(packCode: string, stickerCode: string) {
     const input = inputRef.current;
@@ -75,6 +78,7 @@ export function StickerPicker({ inputRef, value, onChange, disabled = false }: S
           className="absolute bottom-full left-0 z-40 mb-2 w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3 shadow-xl"
           role="dialog"
         >
+          {error ? <div className="mb-3"><p role="alert" className="text-xs text-[var(--red)]">{error}</p><button className="button-secondary focus-ring mt-2 text-xs" type="button" onClick={() => setAttempt((value) => value + 1)}>{t("common.retry")}</button></div> : null}
           <input className="field" value={query} placeholder={t("stickers.search")} onChange={(event) => setQuery(event.target.value)} />
           <div className="mt-3 grid max-h-64 min-h-24 grid-cols-5 gap-2 overflow-y-auto sm:grid-cols-7">
             {visible.map((sticker) => (

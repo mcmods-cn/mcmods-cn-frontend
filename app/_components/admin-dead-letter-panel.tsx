@@ -37,7 +37,7 @@ type DeadLetterFilters = {
 const initialFilters: DeadLetterFilters = { status: "unresolved", aggregateType: "", aggregateId: "" };
 
 export function AdminDeadLetterPanel({ token }: { token: string }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const [draft, setDraft] = useState(initialFilters);
   const [filters, setFilters] = useState(initialFilters);
   const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
@@ -61,7 +61,7 @@ export function AdminDeadLetterPanel({ token }: { token: string }) {
   useEffect(() => {
     const controller = new AbortController();
     apiRequest<DeadLetterPage>(path, { signal: controller.signal }, token)
-      .then((value) => setPage(value))
+      .then((value) => { if (!controller.signal.aborted) { setPage(value); setError(""); } })
       .catch((cause) => {
         if (!controller.signal.aborted) setError(deadLetterError(cause));
       })
@@ -133,7 +133,7 @@ export function AdminDeadLetterPanel({ token }: { token: string }) {
               <div className="min-w-0">
                 <p className="break-all font-semibold">{item.eventType} / {item.eventId}</p>
                 <p className="mt-1 break-all text-xs text-[var(--muted)]">
-                  {item.failureStage} · {item.subject} · {item.aggregateType || "—"}/{item.aggregateId || "—"} · {new Date(item.failedAt).toLocaleString()}
+                  {item.failureStage} · {item.subject} · {item.aggregateType || "—"}/{item.aggregateId || "—"} · {new Date(item.failedAt).toLocaleString(locale)}
                 </p>
               </div>
               {item.status === "unresolved" ? (

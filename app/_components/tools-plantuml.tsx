@@ -15,6 +15,7 @@ export function ToolsPlantUML() {
   const [source, setSource] = useState(() => t("tools.plantuml.defaultSource"));
   const [viewMode, setViewMode] = useState<ViewMode>("edit");
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
   const previewUrl = useMemo(() => {
     const trimmed = source.trim();
     if (!trimmed) return "";
@@ -22,9 +23,15 @@ export function ToolsPlantUML() {
   }, [source]);
 
   async function copySource() {
-    await navigator.clipboard.writeText(source);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
+    setCopyError(false);
+    try {
+      await navigator.clipboard.writeText(source);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+      setCopyError(true);
+    }
   }
 
   function resetExample() {
@@ -36,7 +43,7 @@ export function ToolsPlantUML() {
       <header className="border-b border-[var(--line)] bg-[var(--panel)]">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4">
           <Link className="flex items-center gap-3" href="/">
-            <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">
+            <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-bold text-[var(--on-accent)]">
               M
             </span>
             <span>
@@ -83,7 +90,7 @@ export function ToolsPlantUML() {
               <button
                 key={mode}
                 className={`focus-ring rounded-md px-4 py-2 text-sm font-bold ${
-                  viewMode === mode ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"
+                  viewMode === mode ? "bg-[var(--accent)] text-[var(--on-accent)]" : "text-[var(--muted)]"
                 }`}
                 type="button"
                 onClick={() => setViewMode(mode)}
@@ -94,6 +101,7 @@ export function ToolsPlantUML() {
           </div>
         </div>
 
+        {copyError ? <p role="alert" className="mb-4 text-sm font-bold text-[var(--red)]">{t("common.copyFailed")}</p> : null}
         <div className="grid min-h-[calc(100vh-15rem)] gap-4 md:grid-cols-[0.9fr_1.1fr]">
           <section className={`${viewMode === "preview" ? "hidden md:flex" : "flex"} surface min-h-[28rem] flex-col rounded-lg`}>
             <div className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3">
@@ -101,6 +109,7 @@ export function ToolsPlantUML() {
               <span className="text-xs font-semibold text-[var(--muted)]">{t("tools.plantuml.charCount", { count: source.length })}</span>
             </div>
             <textarea
+              aria-label={t("tools.plantuml.editorTitle")}
               className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-6 outline-none"
               spellCheck={false}
               value={source}

@@ -22,7 +22,12 @@ import { ProjectEditorApplicationButton } from "./project-editor-application";
 type HistoryRange = ServerHistory["range"];
 const ranges: HistoryRange[] = ["24h", "7d", "30d", "90d"];
 
-export function ServerDetail({ serverId }: { serverId: string }) {
+export function ServerDetail(props: { serverId: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <ServerDetailSession key={`${user?.id || "guest"}:${token || "guest"}:${props.serverId}`} {...props} />;
+}
+
+function ServerDetailSession({ serverId }: { serverId: string }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
   const router = useRouter();
@@ -32,6 +37,8 @@ export function ServerDetail({ serverId }: { serverId: string }) {
   const range: HistoryRange = ranges.includes(rawRange as HistoryRange) ? rawRange as HistoryRange : "24h";
   const [record, setRecord] = useState<ServerDetailRecord | null>(null);
   const [history, setHistory] = useState<ServerHistory | null>(null);
+  const [historyError, setHistoryError] = useState("");
+  const [historyAttempt, setHistoryAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editOpen, setEditOpen] = useState(() => searchParams.has("draft"));
@@ -56,11 +63,12 @@ export function ServerDetail({ serverId }: { serverId: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) { setHistory(null); setHistoryError(""); } });
     apiRequest<ServerHistory>(`/api/v1/servers/${encodeURIComponent(serverId)}/history?range=${range}`, {}, token)
       .then((result) => { if (!cancelled) setHistory(result); })
-      .catch(() => { if (!cancelled) setHistory(null); });
+      .catch((reason) => { if (!cancelled) setHistoryError(reason instanceof Error ? reason.message : t("servers.detail.loadFailed")); });
     return () => { cancelled = true; };
-  }, [range, serverId, token]);
+  }, [historyAttempt, range, serverId, t, token]);
 
   function changeRange(nextRange: HistoryRange) {
     const next = new URLSearchParams(searchParams.toString());
@@ -117,7 +125,7 @@ export function ServerDetail({ serverId }: { serverId: string }) {
                   {ranges.map((value) => <button key={value} className={`focus-ring rounded-md border px-3 py-2 text-sm font-black ${range === value ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--line)]"}`} type="button" onClick={() => changeRange(value)}>{t(`servers.ranges.${value}`)}</button>)}
                 </div>
               </div>
-              <PlayerHistoryChart history={history} locale={locale} />
+              {historyError ? <div className="mt-4 flex flex-wrap items-center gap-3"><p role="alert" className="text-sm font-bold text-[var(--red)]">{historyError}</p><button className="button-secondary focus-ring" type="button" onClick={() => setHistoryAttempt((attempt) => attempt + 1)}>{t("common.retry")}</button></div> : <PlayerHistoryChart history={history} locale={locale} />}
             </section>
 
             <section>

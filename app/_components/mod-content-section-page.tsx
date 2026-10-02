@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { contentLanguageCandidates, normalizeContentLanguage } from "../_lib/content-language";
 import { NO_MOD_CONTENT_CAPABILITIES, type ModContentCapabilities } from "../_lib/mod-content-capabilities.mts";
@@ -24,7 +24,13 @@ import { AdvancementResourceIndex, CompactResourceIndex, type CompactResourceGro
 import { useRotatingValue } from "./rotating-resource";
 import { CustomContentTemplateSettings } from "./custom-content-template-settings";
 
-export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; sectionId: string }) {
+export function ModContentSectionPage(props: { siteId: string; sectionId: string }) {
+  const { token, user } = useAuthSnapshot();
+  const { locale } = useI18n();
+  return <ModContentSectionSession key={`${user?.id || "guest"}:${token || "guest"}:${locale}:${props.siteId}:${props.sectionId}`} {...props} />;
+}
+
+function ModContentSectionSession({ siteId, sectionId }: { siteId: string; sectionId: string }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
   const capabilityRequestKey = `${siteId}\u0000${sectionId}\u0000${token}`;
@@ -45,6 +51,10 @@ export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; s
   const [templates, setTemplates] = useState<ModContentTemplate[]>([]);
   const [statusMessage, setStatusMessage] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const queryScope = `${query}:${refreshKey}`;
+  const activeQueryScope = useRef(queryScope);
+  const pagingInFlight = useRef(false);
+  useLayoutEffect(() => { activeQueryScope.current = queryScope; pagingInFlight.current = false; }, [queryScope]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +92,7 @@ export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; s
         setError("");
       }).catch((reason) => {
       if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
-    }), 180);
+    }).finally(() => { if (!cancelled) setLoadingMore(false); }), 180);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [capabilityRequestKey, locale, query, refreshKey, sectionId, siteId, token]);
 
@@ -97,16 +107,20 @@ export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; s
     [advancementResources, displayedResources, locale, section, siteId],
   );
   const capabilities = capabilityState?.key === capabilityRequestKey ? capabilityState.value : NO_MOD_CONTENT_CAPABILITIES;
-  if (!section) return <main className="grid min-h-[65vh] place-items-center p-6">{error || t("common.loading")}</main>;
+  if (!section) return <main className="grid min-h-[65vh] place-items-center p-6"><div>{error ? <><p role="alert">{error}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => setRefreshKey(value => value + 1)}>{t("common.retry")}</button></> : t("common.loading")}</div></main>;
   const title = localizedSectionName(section, locale, t);
   const customTemplate = section.templateBuiltin ? undefined : templates.find((item) => item.publicId === section.templatePublicId);
   const addHref = `/mods/${encodeURIComponent(siteId)}/resources/new?version=${encodeURIComponent(section.versionPublicId)}&section=${encodeURIComponent(section.publicId)}`;
 
   function navigateAdvancementPage(cursor: string, direction: "next" | "previous") {
+    if (loadingMore || pagingInFlight.current) return;
+    pagingInFlight.current = true;
+    const requestScope = queryScope;
     setLoadingMore(true);
     const apiQuery = query.trim().length >= 3 ? query.trim() : "";
     void loadModContentAdvancementGraph(siteId, sectionId, { locale, query: apiQuery, cursor }, token)
       .then((page) => {
+        if (activeQueryScope.current !== requestScope) return;
         setAdvancementResources(page.items);
         setNextCursor(page.nextCursor || "");
         setHasMore(page.hasMore);
@@ -115,14 +129,14 @@ export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; s
         setGraphCursor(cursor);
         window.scrollTo({ top: 0, behavior: "smooth" });
       })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))
-      .finally(() => setLoadingMore(false));
+      .catch((reason) => { if (activeQueryScope.current === requestScope) setError(reason instanceof Error ? reason.message : String(reason)); })
+      .finally(() => { if (activeQueryScope.current === requestScope) { pagingInFlight.current = false; setLoadingMore(false); } });
   }
 
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><div className="mx-auto max-w-[1500px]">
     <header className="flex flex-wrap items-end gap-4 border-b border-[var(--line)] pb-5">
       <div className="min-w-0 flex-1"><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("modContent.sectionPage.back")}</Link><h1 className="mt-2 text-3xl font-black">{title}</h1><p className="mt-2 text-sm text-[var(--muted)]">{versionLabel || section.versionPublicId} · {t("modContent.sectionPage.entryCount", { count: total })}</p></div>
-      <div className="flex w-full flex-wrap gap-2 sm:w-auto"><input className="field min-w-0 flex-1 sm:w-80" type="search" value={query} placeholder={t("modContent.sectionPage.search")} onChange={(event) => { setQuery(event.target.value); setHasMore(false); setNextCursor(""); }} />{capabilities.manageLayout || capabilities.createResource ? <ModContentSectionActions canArrange={capabilities.manageLayout} canCreateResource={capabilities.createResource} onChanged={() => setRefreshKey((value) => value + 1)} section={section} siteId={siteId} /> : null}{capabilities.manageLayout && customTemplate ? <CustomContentTemplateSettings siteId={siteId} template={customTemplate} token={token} onSaved={(result) => { setStatusMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); if (result.reviewStatus === "approved") setRefreshKey((value) => value + 1); }} /> : null}{capabilities.manageLayout ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/data/edit?version=${encodeURIComponent(section.versionPublicId)}`}>{t("common.edit")}</Link> : null}</div>
+      <div className="flex w-full flex-wrap gap-2 sm:w-auto"><input className="field min-w-0 flex-1 sm:w-80" type="search" aria-label={t("modContent.sectionPage.search")} value={query} placeholder={t("modContent.sectionPage.search")} onChange={(event) => { setQuery(event.target.value); setHasMore(false); setNextCursor(""); }} />{capabilities.manageLayout || capabilities.createResource ? <ModContentSectionActions canArrange={capabilities.manageLayout} canCreateResource={capabilities.createResource} onChanged={() => setRefreshKey((value) => value + 1)} section={section} siteId={siteId} /> : null}{capabilities.manageLayout && customTemplate ? <CustomContentTemplateSettings siteId={siteId} template={customTemplate} token={token} onSaved={(result) => { setStatusMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); if (result.reviewStatus === "approved") setRefreshKey((value) => value + 1); }} /> : null}{capabilities.manageLayout ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/data/edit?version=${encodeURIComponent(section.versionPublicId)}`}>{t("common.edit")}</Link> : null}</div>
     </header>
     {statusMessage ? <p className="mt-4 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] p-3 font-bold text-[var(--accent)]" role="status">{statusMessage}</p> : null}
     {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{error}</p> : null}
@@ -137,16 +151,20 @@ export function ModContentSectionPage({ siteId, sectionId }: { siteId: string; s
       <button className="button-secondary focus-ring" disabled={loadingMore || !cursorHistory.length} type="button" onClick={() => navigateAdvancementPage(cursorHistory.at(-1) || "", "previous")}>{t("common.previous")}</button>
       <button className="button-secondary focus-ring" disabled={loadingMore || !hasMore || !nextCursor} type="button" onClick={() => navigateAdvancementPage(nextCursor, "next")}>{t("common.next")}</button>
     </div> : hasMore && nextCursor ? <div className="mt-6 text-center"><button className="button-secondary focus-ring" disabled={loadingMore} type="button" onClick={() => {
+      if (loadingMore || pagingInFlight.current) return;
+      pagingInFlight.current = true;
+      const requestScope = queryScope;
       setLoadingMore(true);
       const apiQuery = query.trim().length >= 3 ? query.trim() : "";
       void loadModContentSectionResources(siteId, sectionId, { locale, query: apiQuery, cursor: nextCursor }, token)
         .then((page) => {
+          if (activeQueryScope.current !== requestScope) return;
           setResources((current) => [...current, ...page.items]);
           setNextCursor(page.nextCursor || "");
           setHasMore(page.hasMore);
         })
-        .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)))
-        .finally(() => setLoadingMore(false));
+        .catch((reason) => { if (activeQueryScope.current === requestScope) setError(reason instanceof Error ? reason.message : String(reason)); })
+        .finally(() => { if (activeQueryScope.current === requestScope) { pagingInFlight.current = false; setLoadingMore(false); } });
     }}>{loadingMore ? t("common.loading") : t("common.next")}</button></div> : null}
   </div></main>;
 }

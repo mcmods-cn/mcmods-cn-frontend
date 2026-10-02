@@ -580,8 +580,8 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
       {slots.map((value, index) => <ModRecipeSlot key={index} locale={locale} scale={displayScale} showVisual={!containsIngredients} slot={value} />)}
     </div>
     : <div className="grid min-h-32 place-items-center p-4 text-sm text-slate-700">{String(recipe.type || "Recipe")}</div>;
-  const editHref = user && recipePublicID && recipeType
-    ? `/recipe-types?editor=recipe-edit&id=${encodeURIComponent(recipeType)}&recipePublicId=${encodeURIComponent(recipePublicID)}`
+  const editHref = user && recipePublicID
+    ? `/recipe-types?editor=recipe-edit&recipePublicId=${encodeURIComponent(recipePublicID)}`
     : "";
   return <UnifiedRecipeCard
     badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}

@@ -1,4 +1,4 @@
-import { API_BASE_URL, apiRequest, backendFetch, isBearerAccessToken } from "./api";
+import { apiRequest } from "./api";
 
 export type RatingTargetType =
   | "mod"
@@ -72,8 +72,8 @@ function ratingPath(targetType: RatingTargetType, targetId: string) {
   return `/api/v1/ratings/${encodeURIComponent(targetType)}/${encodeURIComponent(targetId)}`;
 }
 
-export function getRatingSummary(targetType: RatingTargetType, targetId: string, token?: string) {
-  return apiRequest<RatingSummary>(ratingPath(targetType, targetId), {}, token);
+export function getRatingSummary(targetType: RatingTargetType, targetId: string, token?: string, signal?: AbortSignal) {
+  return apiRequest<RatingSummary>(ratingPath(targetType, targetId), { signal }, token);
 }
 
 export function getRatingReviews(targetType: RatingTargetType, targetId: string, token?: string, cursor = "") {
@@ -89,13 +89,6 @@ export function saveRating(targetType: RatingTargetType, targetId: string, paylo
   }, token);
 }
 
-export async function deleteRating(targetType: RatingTargetType, targetId: string, token?: string) {
-  const headers = new Headers();
-  if (isBearerAccessToken(token)) headers.set("Authorization", `Bearer ${token}`);
-  const response = await backendFetch(`${API_BASE_URL}${ratingPath(targetType, targetId)}`, {
-    method: "DELETE",
-    credentials: "include",
-    headers,
-  });
-  if (!response.ok) throw new Error("failed to delete rating");
+export function deleteRating(targetType: RatingTargetType, targetId: string, token?: string) {
+  return apiRequest<void>(ratingPath(targetType, targetId), { method: "DELETE" }, token);
 }

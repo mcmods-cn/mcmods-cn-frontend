@@ -60,11 +60,12 @@ export function EditorShell({
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!busy && canSubmit) void onSubmit();
+    if (!busy && !deleting && canSubmit) void onSubmit();
   }
 
   return <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
     <form aria-busy={busy || deleting} onSubmit={submit}>
+      <fieldset disabled={busy || deleting} className="min-w-0">
       <header className="border-b border-[var(--line)] bg-[var(--panel)]">
         <div className="mx-auto max-w-[1500px] px-4 py-6 lg:px-6">
           {busy || deleting
@@ -110,6 +111,7 @@ export function EditorShell({
         </div>
         {aside ? <aside className="min-w-0 lg:sticky lg:top-5 lg:self-start">{aside}</aside> : null}
       </div>
+      </fieldset>
     </form>
   </main>;
 }

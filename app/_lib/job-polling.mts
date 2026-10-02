@@ -11,6 +11,7 @@ export async function waitForPolledJob<T extends { status: string }>(
   for (;;) {
     if (signal?.aborted) throw new DOMException("Polling aborted", "AbortError");
     const job = await load(signal);
+    if (signal?.aborted) throw new DOMException("Polling aborted", "AbortError");
     onProgress(job);
     if (terminalStatuses.has(job.status)) return job;
     await delay(intervalMilliseconds, signal);
@@ -19,10 +20,18 @@ export async function waitForPolledJob<T extends { status: string }>(
 
 function abortablePollingDelay(milliseconds: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
-    const timer = globalThis.setTimeout(resolve, milliseconds);
-    signal?.addEventListener("abort", () => {
+    if (signal?.aborted) {
+      reject(new DOMException("Polling aborted", "AbortError"));
+      return;
+    }
+    const abort = () => {
       globalThis.clearTimeout(timer);
       reject(new DOMException("Polling aborted", "AbortError"));
-    }, { once: true });
+    };
+    const timer = globalThis.setTimeout(() => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    }, milliseconds);
+    signal?.addEventListener("abort", abort, { once: true });
   });
 }

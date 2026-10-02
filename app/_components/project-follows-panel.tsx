@@ -17,6 +17,7 @@ export function ProjectFollowsPanel({ token }: { token: string }) {
   const [savingId, setSavingId] = useState("");
   const [error, setError] = useState("");
   const requestGeneration = useRef(0);
+  const mutationInFlight = useRef(false);
   const requestController = useRef<AbortController | null>(null);
 
   const load = useCallback(async (cursor = "") => {
@@ -58,6 +59,8 @@ export function ProjectFollowsPanel({ token }: { token: string }) {
   }, [load]);
 
   async function updateNotifications(item: FollowedProject, notificationsEnabled: boolean) {
+    if (savingId || mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setSavingId(item.id);
     setError("");
     try {
@@ -68,21 +71,36 @@ export function ProjectFollowsPanel({ token }: { token: string }) {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("projectFollows.saveFailed"));
     } finally {
+      mutationInFlight.current = false;
       setSavingId("");
     }
+  }
+
+  async function unfollow(item: FollowedProject) {
+    if (savingId || mutationInFlight.current) return;
+    mutationInFlight.current = true;
+    setSavingId(item.id);
+    setError("");
+    try {
+      await unfollowProject(token, item.id);
+      setItems((current) => current.filter((entry) => entry.id !== item.id));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("projectFollows.saveFailed"));
+    } finally { mutationInFlight.current = false; setSavingId(""); }
   }
 
   return <section className="surface p-5 sm:p-6">
     <h2 className="text-xl font-black">{t("projectFollows.title")}</h2>
     <p className="mt-1 text-sm text-[var(--muted)]">{t("projectFollows.description")}</p>
     <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
-      <input className="field" value={query} onChange={(event) => { setLoading(true); setQuery(event.target.value); }} placeholder={t("projectFollows.search")} />
-      <select className="field" value={type} onChange={(event) => { setLoading(true); setType(event.target.value); }}>
+      <input aria-label={t("projectFollows.search")} className="field" type="search" value={query} onChange={(event) => { setLoading(true); setQuery(event.target.value); }} placeholder={t("projectFollows.search")} />
+      <select aria-label={t("projectFollows.allTypes")} className="field" value={type} onChange={(event) => { setLoading(true); setType(event.target.value); }}>
         <option value="">{t("projectFollows.allTypes")}</option>
         {["mod", "modpack", "plugin", "map", "resource_pack", "shader_pack", "datapack", "addon", "minecraft_server", "community_post", "blueprint", "skin"].map((value) => <option key={value} value={value}>{value}</option>)}
       </select>
     </div>
     {error ? <p className="mt-4 rounded-lg border border-[var(--danger)] bg-[var(--danger-soft)] p-3 font-bold text-[var(--danger)]" role="alert">{error}</p> : null}
+    {error && !loading ? <button className="button-secondary focus-ring mt-3" type="button" onClick={() => void load()}>{t("common.retry")}</button> : null}
     {loading ? <p className="py-10 text-center text-[var(--muted)]">{t("common.loading")}</p> : items.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2">
       {items.map((item) => <article className="rounded-lg border border-[var(--line)] p-4" key={`${item.type}:${item.id}`}>
         {item.unavailable
@@ -92,16 +110,13 @@ export function ProjectFollowsPanel({ token }: { token: string }) {
         <label className="mt-3 flex items-center gap-2 text-sm font-bold">
           <input
             checked={item.notificationsEnabled}
-            disabled={savingId === item.id}
+            disabled={Boolean(savingId)}
             type="checkbox"
             onChange={(event) => void updateNotifications(item, event.target.checked)}
           />
           {t("projectFollows.notifications")}
         </label>
-        <button className="focus-ring mt-3 rounded px-2 py-1 text-sm font-bold text-[var(--danger)]" type="button" onClick={async () => {
-          await unfollowProject(token, item.id);
-          setItems((current) => current.filter((entry) => entry.id !== item.id));
-        }}>{t("projectFollows.unfollow")}</button>
+        <button className="focus-ring mt-3 rounded px-2 py-1 text-sm font-bold text-[var(--danger)]" disabled={Boolean(savingId)} type="button" onClick={() => void unfollow(item)}>{t("projectFollows.unfollow")}</button>
       </article>)}
     </div> : <p className="py-10 text-center text-[var(--muted)]">{t("projectFollows.empty")}</p>}
     {nextCursor && !loading ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadingMore} type="button" onClick={() => void load(nextCursor)}>{loadingMore ? t("common.loading") : t("projectFollows.loadMore")}</button> : null}

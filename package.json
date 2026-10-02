@@ -10,7 +10,8 @@
     "test:browser": "node --test --test-concurrency=1 browser-tests/*.browser.mts",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "check": "npm run lint && npm run typecheck"
+    "check": "npm run lint && npm run typecheck",
+    "test:live": "node --test browser-tests/live-backend.mts"
   },
   "dependencies": {
     "buffer": "^6.0.3",
@@ -30,6 +31,7 @@
     "remark-emoji": "^5.0.2",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "remark-parse": "^11.0.0",
     "sharp": "0.35.4",
     "three": "^0.185.1",
     "unified": "^11.0.5",

@@ -115,6 +115,7 @@ export class StructureRenderer {
     this.canvas.addEventListener('contextmenu', this.preventContextMenu)
     window.addEventListener('keydown', this.handleKeyDown)
     window.addEventListener('keyup', this.handleKeyUp)
+    window.addEventListener('blur', this.handleBlur)
     this.animate()
   }
 
@@ -218,6 +219,7 @@ export class StructureRenderer {
 
   setFirstPerson(enabled: boolean) {
     this.firstPerson = enabled
+    if (!enabled) this.pressedKeys.clear()
     this.controls.enabled = !enabled
     if (!enabled && this.firstPersonControls.isLocked) this.firstPersonControls.unlock()
     this.canvas.style.cursor = enabled ? 'crosshair' : 'grab'
@@ -281,6 +283,7 @@ export class StructureRenderer {
     this.canvas.removeEventListener('contextmenu', this.preventContextMenu)
     window.removeEventListener('keydown', this.handleKeyDown)
     window.removeEventListener('keyup', this.handleKeyUp)
+    window.removeEventListener('blur', this.handleBlur)
     if (this.firstPersonControls.isLocked) this.firstPersonControls.unlock()
 	this.firstPersonControls.disconnect()
     this.controls.dispose()
@@ -313,6 +316,7 @@ export class StructureRenderer {
 	if (this.firstPerson) this.pressedKeys.add(event.code)
   }
   private readonly handleKeyUp = (event: KeyboardEvent) => this.pressedKeys.delete(event.code)
+  private readonly handleBlur = () => this.pressedKeys.clear()
 
   private readonly handlePointerUp = (event: PointerEvent) => {
     if (this.firstPerson) return

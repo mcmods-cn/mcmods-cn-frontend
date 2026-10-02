@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { KeyboardEvent, MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
+import { writeBrowserStorage } from "../_lib/browser-storage.mts";
 import { useAuthSnapshot } from "../_lib/auth";
 import { type CatalogSortField, normalizeCatalogSortDirection, normalizeCatalogSortField } from "../_lib/catalog-sort";
 import {
@@ -59,6 +60,11 @@ const catalogReferenceTime = Date.now();
 const modSortFields: CatalogSortField[] = ["published", "updated", "heat", "views", "relevance", "downloads", "favorites", "rating", "comments", "name"];
 
 export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "modpack" }) {
+  const { token, user } = useAuthSnapshot();
+  return <ModCatalogSession key={`${user?.id || "guest"}:${token || "guest"}:${projectType}`} projectType={projectType} />;
+}
+
+function ModCatalogSession({ projectType }: { projectType: "mod" | "modpack" }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
   const resultsTopRef = useRef<HTMLDivElement | null>(null);
@@ -124,6 +130,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
 
   useEffect(() => {
 	let cancelled = false;
+	let correctedPage = false;
 	queueMicrotask(() => { if (!cancelled) setLoading(true); });
 	const requestParams = new URLSearchParams(paramsKey);
 	requestParams.delete("page");
@@ -136,6 +143,12 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
 	apiRequest<BackendModList | BackendModpackList>(`${isModpack ? "/api/v1/modpacks" : "/api/v1/mods"}?${requestParams}`, {}, token)
       .then((result) => {
         if (!cancelled) {
+          const lastPage = Math.max(1, Math.ceil(result.total / filters.pageSize));
+          if (filters.page > lastPage) {
+            correctedPage = true;
+            replaceParams({ page: lastPage }, false);
+            return;
+          }
           setBackendMods(isModpack
             ? (result as BackendModpackList).items.map(backendModpackToCatalogEntry)
             : (result as BackendModList).items.map(backendModToCatalogEntry));
@@ -150,24 +163,24 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
           setMessage(error instanceof Error ? error.message : t("mods.empty.description"));
         }
       })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => { if (!cancelled && !correctedPage) setLoading(false); });
     return () => {
       cancelled = true;
     };
-	}, [filters.page, filters.pageSize, filters.sort, filters.sortDirection, isModpack, paramsKey, reload, t, token]);
+	}, [filters.page, filters.pageSize, filters.sort, filters.sortDirection, isModpack, paramsKey, reload, replaceParams, t, token]);
 
-  function toggleFavorite(siteId: string) {
+  function toggleFavorite(mod: ModCatalogEntry) {
     if (token) {
-      const target = backendMods.find((item) => item.siteId === siteId);
+      const target = mod;
       if (target) setFavoriteTarget(target);
       return;
     }
     setFavoriteSlugs((current) => {
       const next = new Set(current);
-      if (next.has(siteId)) next.delete(siteId);
-      else next.add(siteId);
-      window.localStorage.setItem(favoriteStorageKey, JSON.stringify([...next]));
-      setNotice(t(next.has(siteId) ? "mods.notices.favorited" : "mods.notices.unfavorited"));
+      if (next.has(mod.uniqueId)) next.delete(mod.uniqueId);
+      else next.add(mod.uniqueId);
+      writeBrowserStorage(favoriteStorageKey, JSON.stringify([...next]));
+      setNotice(t(next.has(mod.uniqueId) ? "mods.notices.favorited" : "mods.notices.unfavorited"));
       return next;
     });
   }
@@ -196,7 +209,9 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
       >
           <form className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitSearch}>
             <input
+              aria-label={t("common.search")}
               className="field h-12"
+              type="search"
               value={queryDraft}
               placeholder={t(isModpack ? "modpacks.searchPlaceholder" : "mods.searchPlaceholder")}
               onChange={(event) => setQueryDraft(event.target.value)}
@@ -253,7 +268,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
                     {(["list", "grid"] as const).map((view) => (
                       <button
                         key={view}
-                        className={`focus-ring min-w-16 rounded-md px-3 py-1.5 text-sm font-bold ${filters.view === view ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`}
+                        className={`focus-ring min-w-16 rounded-md px-3 py-1.5 text-sm font-bold ${filters.view === view ? "bg-[var(--accent)] text-[var(--on-accent)]" : "text-[var(--muted)]"}`}
                         type="button"
                         onClick={() => changePreference({ view })}
                       >
@@ -291,7 +306,7 @@ export function ModCatalog({ projectType = "mod" }: { projectType?: "mod" | "mod
                     onViewDownloads={() => window.open(`https://modrinth.com/${isModpack ? "modpack" : "mod"}/${mod.modrinthProjectId || mod.siteId}/versions`, "_blank", "noopener,noreferrer")}
                     onShare={() => void shareMod(mod)}
                     onToggleExpanded={() => setExpandedCards((current) => toggleSet(current, mod.siteId))}
-                    onToggleFavorite={() => toggleFavorite(mod.siteId)}
+                    onToggleFavorite={() => toggleFavorite(mod)}
                   />
                 ))}
               </div>
@@ -473,6 +488,8 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
   const router = useRouter();
   const displayName = locale.startsWith("zh") ? mod.localizedName : mod.name;
   const secondaryName = locale.startsWith("zh") ? mod.name : mod.localizedName;
+  const categoryNamespace = basePath === "/modpacks" ? "modpacks.categories" : "mods.categories";
+  const tagNamespace = basePath === "/modpacks" ? "modpacks.categories" : "mods.tags";
   const visibleTags = mod.tags.slice(0, 4);
   const visibleVersions = mod.versions.slice(0, 4);
   const stale = catalogReferenceTime - Date.parse(mod.updatedAt) > 730 * 86_400_000;
@@ -485,7 +502,7 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
-    if (event.key === "Enter" || event.key === " ") {
+    if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
       openDetails();
     }
@@ -503,8 +520,8 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
         {view === "list" ? <div className="hidden lg:block"><CardTitle mod={mod} displayName={displayName} secondaryName={secondaryName} t={t} /></div> : null}
         <p className="mt-3 line-clamp-2 text-sm leading-6 text-[var(--muted)]">{modDescription(mod, t)}</p>
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <Tag>{t(`mods.categories.${mod.primaryCategory}`)}</Tag>
-          {visibleTags.map((tag) => <Tag key={tag}>{t(`mods.tags.${tag}`)}</Tag>)}
+          <Tag>{t(`${categoryNamespace}.${mod.primaryCategory}`)}</Tag>
+          {visibleTags.map((tag) => <Tag key={tag}>{t(`${tagNamespace}.${tag}`)}</Tag>)}
           {mod.tags.length > visibleTags.length ? <Tag>+{mod.tags.length - visibleTags.length}</Tag> : null}
         </div>
         {mod.links?.length ? <div className="mt-2 flex flex-wrap gap-1.5">{mod.links.slice(0, 5).map((link, index) => <a className="focus-ring rounded-md border border-[var(--line)] px-2 py-1 text-[11px] font-bold text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]" href={link.url} key={`${link.type}-${index}`} rel="noreferrer" target="_blank" title={link.note || t(`mods.submission.linkTypes.${link.type}`)} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>{t(`mods.submission.linkTypes.${link.type}`)}</a>)}</div> : null}
@@ -566,6 +583,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 
 function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<CatalogSortField>, isModpack: boolean) {
+  const requestedPage = Number(params.get("page"));
   const pageSize = [20, 40, 60].includes(Number(params.get("size"))) ? Number(params.get("size")) : preferences.pageSize;
   const view = params.get("view") === "grid" || params.get("view") === "list" ? params.get("view") as CatalogView : preferences.view;
   const rawSort = params.get("sort");
@@ -589,7 +607,7 @@ function parseFilters(params: URLSearchParams, preferences: CatalogPreferences<C
     sort,
     sortDirection,
     view,
-    page: Math.max(1, Number(params.get("page")) || 1),
+    page: Number.isSafeInteger(requestedPage) && requestedPage > 0 && Number.isSafeInteger((requestedPage - 1) * pageSize) ? requestedPage : 1,
     pageSize,
   };
 }

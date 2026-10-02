@@ -508,6 +508,7 @@ export function disposeStructureGroup(root: THREE.Object3D) {
   const textures = new Set<THREE.Texture>()
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh)) return
+    if (object instanceof THREE.InstancedMesh) object.dispose()
     geometries.add(object.geometry)
     const entries = Array.isArray(object.material) ? object.material : [object.material]
     entries.forEach((material) => {

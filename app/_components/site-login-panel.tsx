@@ -127,7 +127,7 @@ export function SiteLoginPanel() {
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] w-full max-w-6xl items-center gap-6 lg:grid-cols-[1fr_420px]">
         <section className="space-y-5">
           <Link className="inline-flex items-center gap-3" href="/">
-            <span className="grid h-11 w-11 place-items-center rounded-lg bg-[var(--accent)] font-bold text-white">M</span>
+            <span className="grid h-11 w-11 place-items-center rounded-lg bg-[var(--accent)] font-bold text-[var(--on-accent)]">M</span>
             <span className="text-xl font-bold">{t("common.appName")}</span>
           </Link>
           <div className="max-w-2xl space-y-3">

@@ -96,7 +96,7 @@ export function UserCommentWatchesPanel({ token }: { token: string }) {
                 <Link className="font-black hover:text-[var(--accent)]" href={`${item.target.url}#comment-${item.comment.id}`}>{item.target.title}</Link>
                 <p className="mt-1 text-xs text-[var(--muted)]">{t("commentWatches.watchedCommentBy", { name: authorName })} · {new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(item.createdAt))}</p>
               </div>
-              {item.unreadCount ? <span className="rounded-full bg-[var(--accent)] px-2.5 py-1 text-xs font-black text-white">{t("commentWatches.unreadCount", { count: item.unreadCount })}</span> : null}
+              {item.unreadCount ? <span className="rounded-full bg-[var(--accent)] px-2.5 py-1 text-xs font-black text-[var(--on-accent)]">{t("commentWatches.unreadCount", { count: item.unreadCount })}</span> : null}
             </div>
             <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-[var(--muted)]">{item.comment.deleted ? t("mods.comments.deleted") : item.comment.body}</p>
             <dl className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[var(--muted)]">

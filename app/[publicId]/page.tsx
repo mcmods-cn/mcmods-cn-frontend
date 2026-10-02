@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
-import { classifyShortLinkFailure, type ShortLinkState } from "../_lib/short-link-state.mts";
+import { classifyShortLinkFailure, resolveSafeShortLinkTarget, type ShortLinkState } from "../_lib/short-link-state.mts";
 
 export default function PublicShortLinkPage() {
   const params = useParams<{ publicId: string }>();
@@ -22,8 +22,8 @@ export default function PublicShortLinkPage() {
     void (async () => {
       try {
         const result = await apiRequest<{ target?: unknown }>(`/api/v1/public-links/${publicId}`, { signal: controller.signal });
-        const target = typeof result.target === "string" ? result.target.trim() : "";
-        if (!target) throw new Error("Public link response is missing its target");
+        const target = resolveSafeShortLinkTarget(result.target, window.location.origin);
+        if (!target) throw new Error("Public link response has an invalid target");
         if (!controller.signal.aborted) router.replace(target);
       } catch (error) {
         if (controller.signal.aborted) return;

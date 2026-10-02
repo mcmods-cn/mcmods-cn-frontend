@@ -15,6 +15,11 @@ import { CatalogHero, CatalogSortControl } from "./catalog-list-ui";
 const creatorSortFields: CatalogSortField[] = [...coreCatalogSortFields, "relevance", "name"];
 
 export function CreatorCatalog() {
+  const { token, user } = useAuthSnapshot();
+  return <CreatorCatalogSession key={`${user?.id || "guest"}:${token}`} />;
+}
+
+function CreatorCatalogSession() {
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
   const [kind, setKind] = useState<"" | CreatorKind>("");
@@ -24,9 +29,12 @@ export function CreatorCatalog() {
   const [items, setItems] = useState<CreatorSummary[]>([]);
   const [counts, setCounts] = useState({ author: 0, team: 0 });
   const [nextCursor, setNextCursor] = useState("");
+  const scope = JSON.stringify([token, kind, query, sort, sortDirection]);
+  const [loadedScope, setLoadedScope] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [message, setMessage] = useState("");
+  const [attempt, setAttempt] = useState(0);
   const requestGeneration = useRef(0);
 
   useEffect(() => {
@@ -44,6 +52,7 @@ export function CreatorCatalog() {
       )
         .then((result) => {
           if (!cancelled && requestGeneration.current === generation) {
+            setLoadedScope(scope);
             setItems(result.items);
             setNextCursor(result.nextCursor);
             if (result.counts) {
@@ -69,11 +78,11 @@ export function CreatorCatalog() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [kind, query, sort, sortDirection, t, token]);
+  }, [attempt, kind, query, scope, sort, sortDirection, t, token]);
 
   async function loadMore() {
     const cursor = nextCursor;
-    if (!cursor || loadingMore) return;
+    if (!cursor || loadedScope !== scope || loading || loadingMore) return;
     const generation = requestGeneration.current;
     setLoadingMore(true);
     setMessage("");
@@ -110,17 +119,17 @@ export function CreatorCatalog() {
               <FilterButton active={kind === "author"} onClick={() => setKind("author")}>{t("creators.kinds.author")} {counts.author}</FilterButton>
               <FilterButton active={kind === "team"} onClick={() => setKind("team")}>{t("creators.kinds.team")} {counts.team}</FilterButton>
             </div>
-            <input className="field h-12" value={query} placeholder={t("creators.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
+            <input aria-label={t("creators.searchPlaceholder")} type="search" className="field h-12" value={query} placeholder={t("creators.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
             <CatalogSortControl className="min-h-12 lg:flex-nowrap" direction={sortDirection} field={sort} fields={creatorSortFields} onDirectionChange={setSortDirection} onFieldChange={setSort} />
           </div>
       </CatalogHero>
 
       <section className="mx-auto max-w-7xl px-4 py-6">
-        {message ? <p className="mt-4 rounded-lg border border-[var(--red)] p-4 font-bold text-[var(--red)]">{message}</p> : null}
+        {message ? <div className="mt-4 rounded-lg border border-[var(--red)] p-4 font-bold text-[var(--red)]"><p role="alert">{message}</p><button className="button-secondary focus-ring mt-3" type="button" disabled={loading || loadingMore} onClick={() => { setLoading(true); setAttempt(value => value + 1); }}>{t("common.retry")}</button></div> : null}
         {loading ? <p className="py-16 text-center font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
-        {!loading && !items.length ? <p className="py-16 text-center text-[var(--muted)]">{t("creators.noResults")}</p> : null}
+        {!loading && !message && loadedScope === scope && !items.length ? <p className="py-16 text-center text-[var(--muted)]">{t("creators.noResults")}</p> : null}
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {items.map((creator) => (
+          {(loadedScope === scope ? items : []).map((creator) => (
             <Link className="focus-ring group flex min-w-0 gap-4 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 transition hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg" href={creatorHref(creator)} key={creator.publicId}>
               <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent-soft)] text-2xl font-black text-[var(--accent)]">
                 {creator.avatarUrl ? (
@@ -142,12 +151,12 @@ export function CreatorCatalog() {
             </Link>
           ))}
         </div>
-        {nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("common.loading") : t("creators.loadMore")}</button> : null}
+        {nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadedScope !== scope || loading || loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("common.loading") : t("creators.loadMore")}</button> : null}
       </section>
     </main>
   );
 }
 
 function FilterButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
-  return <button className={`focus-ring whitespace-nowrap rounded-md px-4 py-2 text-sm font-black ${active ? "bg-[var(--accent)] text-white" : "text-[var(--muted)] hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={onClick}>{children}</button>;
+  return <button className={`focus-ring whitespace-nowrap rounded-md px-4 py-2 text-sm font-black ${active ? "bg-[var(--accent)] text-[var(--on-accent)]" : "text-[var(--muted)] hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={onClick}>{children}</button>;
 }

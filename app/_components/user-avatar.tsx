@@ -60,7 +60,12 @@ export function UserAvatar({
   );
 }
 
-export function UserCardAvatar({
+export function UserCardAvatar(props: Parameters<typeof UserCardAvatarSession>[0]) {
+  const { token, user } = useAuthSnapshot();
+  return <UserCardAvatarSession key={`${user?.id || "guest"}:${token || "guest"}:${props.userId}`} {...props} />;
+}
+
+function UserCardAvatarSession({
   userId,
   username,
   avatarUrl,

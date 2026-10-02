@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
@@ -14,8 +14,13 @@ import { UserProfileOverview } from "./user-profile-overview";
 import { UserAvatar } from "./user-avatar";
 import { UnifiedReportButton } from "./unified-report-dialog";
 
-export function UserProfile({ userId }: { userId: string }) {
-  const { t } = useI18n();
+export function UserProfile(props: { userId: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <UserProfileSession key={`${user?.id || "guest"}:${token || "guest"}:${props.userId}`} {...props} />;
+}
+
+function UserProfileSession({ userId }: { userId: string }) {
+  const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const searchParams = useSearchParams();
   const preview = searchParams.get("preview") === "1";
@@ -23,48 +28,62 @@ export function UserProfile({ userId }: { userId: string }) {
   const [playerProfiles, setPlayerProfiles] = useState<PlayerProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [playersError, setPlayersError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [mutating, setMutating] = useState(false);
+  const mutationInFlight = useRef(false);
+  const loadErrorText = useEffectEvent((error: unknown, key: string) => error instanceof Error ? error.message : t(key));
 
   useEffect(() => {
     if (!ready) return;
+    let cancelled = false;
     const timer = window.setTimeout(() => {
       setLoading(true);
       Promise.allSettled([
         loadPublicUserProfile(userId, token || undefined),
         loadPublicPlayerProfiles(userId, token || undefined),
       ]).then(([profileResult, playersResult]) => {
+        if (cancelled) return;
         if (profileResult.status === "fulfilled") {
           setProfile(profileResult.value);
           setMessage("");
         } else {
-          setMessage(profileResult.reason instanceof Error ? profileResult.reason.message : t("user.profileLoadFailed"));
+          setMessage(loadErrorText(profileResult.reason, "user.profileLoadFailed"));
         }
-        if (playersResult.status === "fulfilled") setPlayerProfiles(playersResult.value);
-      }).finally(() => setLoading(false));
+        if (playersResult.status === "fulfilled") { setPlayerProfiles(playersResult.value); setPlayersError(""); }
+        else setPlayersError(loadErrorText(playersResult.reason, "common.loadFailed"));
+      }).finally(() => { if (!cancelled) setLoading(false); });
     }, 0);
-    return () => window.clearTimeout(timer);
-  }, [ready, t, token, userId]);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [attempt, ready, token, userId]);
 
   async function toggleFollow() {
-    if (!token || !profile) return;
+    if (!token || !profile || mutationInFlight.current) return;
+    mutationInFlight.current = true;
+    setMutating(true);
+    setMessage("");
     try {
       const result = await apiRequest<{ following: boolean }>(
         `/api/v1/users/${profile.id}/follow`,
         { method: profile.isFollowing ? "DELETE" : "POST" },
         token,
       );
-      setProfile({
-        ...profile,
+      setProfile(current => current ? {
+        ...current,
         isFollowing: result.following,
-        followers: Math.max(0, profile.followers + (result.following ? 1 : -1)),
-      });
+        followers: Math.max(0, current.followers + (current.isFollowing === result.following ? 0 : result.following ? 1 : -1)),
+      } : current);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("user.followFailed"));
-    }
+    } finally { mutationInFlight.current = false; setMutating(false); }
   }
 
   async function toggleBlock() {
-    if (!token || !profile || !profile.canBlock) return;
+    if (!token || !profile || !profile.canBlock || mutationInFlight.current) return;
     if (!profile.isBlocked && !window.confirm(t("user.blockConfirm", { name: profile.username }))) return;
+    mutationInFlight.current = true;
+    setMutating(true);
+    setMessage("");
     try {
       await apiRequest<{ blocked: boolean }>(
         `/api/v1/users/${profile.id}/block`,
@@ -76,14 +95,14 @@ export function UserProfile({ userId }: { userId: string }) {
       setMessage(t(profile.isBlocked ? "user.unblockSucceeded" : "user.blockSucceeded"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t(profile.isBlocked ? "user.unblockFailed" : "user.blockFailed"));
-    }
+    } finally { mutationInFlight.current = false; setMutating(false); }
   }
 
   if (loading) {
     return <ProfileState text={t("common.loading")} />;
   }
   if (!profile) {
-    return <ProfileState text={message || t("user.profileLoadFailed")} />;
+    return <ProfileState text={message || t("user.profileLoadFailed")} action={<button className="button-secondary focus-ring mt-3" type="button" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button>} />;
   }
   if (profile.isOwn && !preview) {
     return <UserHome />;
@@ -110,7 +129,7 @@ export function UserProfile({ userId }: { userId: string }) {
                 <p className="text-sm font-semibold text-[var(--accent)]">{preview ? t("user.previewMode") : t("user.publicProfile")}</p>
               <h1 className="truncate text-2xl font-black">{profile.username}</h1>
                 <p className="mt-1 text-sm text-[var(--muted)]">ID {profile.id}</p>
-                <p className="mt-2 text-sm text-[var(--muted)]">{t("user.joinedAt", { time: new Date(profile.createdAt).toLocaleDateString() })}</p>
+                <p className="mt-2 text-sm text-[var(--muted)]">{t("user.joinedAt", { time: new Date(profile.createdAt).toLocaleDateString(locale) })}</p>
                 {profile.signature ? <p className="mt-3 max-w-2xl whitespace-pre-wrap text-sm leading-6">{profile.signature}</p> : null}
               </div>
             </div>
@@ -121,14 +140,14 @@ export function UserProfile({ userId }: { userId: string }) {
                 </Link>
               ) : user ? (
                 <>
-                  <button className="button-primary focus-ring" disabled={!profile.canFollow && !profile.isFollowing} type="button" onClick={() => void toggleFollow()}>
+                  <button className="button-primary focus-ring" disabled={mutating || !profile.canFollow && !profile.isFollowing} type="button" onClick={() => void toggleFollow()}>
                     {profile.isFollowing ? t("user.unfollow") : t("user.follow")}
                   </button>
                   <Link className={`button-secondary focus-ring ${profile.canMessage ? "" : "pointer-events-none opacity-50"}`} href={`/messages?user=${profile.id}`}>
                     {t("user.privateMessage")}
                   </Link>
                   {profile.canBlock ? (
-                    <button className="button-secondary focus-ring text-[var(--danger)]" type="button" onClick={() => void toggleBlock()}>
+                    <button className="button-secondary focus-ring text-[var(--danger)]" disabled={mutating} type="button" onClick={() => void toggleBlock()}>
                       {profile.isBlocked ? t("user.unblock") : t("user.block")}
                     </button>
                   ) : null}
@@ -160,7 +179,8 @@ export function UserProfile({ userId }: { userId: string }) {
         <section className="surface p-5">
           <h2 className="text-xl font-black">{t("skins.publicPlayerProfiles")}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{t("skins.publicPlayerProfilesDescription")}</p>
-          {playerProfiles.length ? <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{playerProfiles.map((item) => <PublicPlayerCard key={item.publicId} profile={item} />)}</div> : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("skins.noPublicProfiles")}</p>}
+          {playersError ? <p role="alert" className="mt-5 text-sm text-[var(--danger)]">{playersError}<button className="button-secondary focus-ring ml-3" type="button" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button></p> : null}
+          {playerProfiles.length ? <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{playerProfiles.map((item) => <PublicPlayerCard key={item.publicId} profile={item} />)}</div> : !playersError ? <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("skins.noPublicProfiles")}</p> : null}
         </section>
       </section>
     </main>
@@ -169,13 +189,13 @@ export function UserProfile({ userId }: { userId: string }) {
 
 function PublicPlayerCard({ profile }: { profile: PlayerProfile }) {
   const { t } = useI18n();
-  return <Link className="focus-ring grid grid-cols-[86px_minmax(0,1fr)] items-center gap-4 overflow-hidden rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={`/players/${profile.publicId}`}><SkinPreview2D className="h-28 w-[86px] rounded-md" kind="skin" label={profile.name} model={profile.skin?.model || "default"} src={skinTextureURL(profile.skin)} /><span className="min-w-0"><strong className="block truncate text-lg">{profile.name}</strong><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{profile.uuid}</code>{profile.isDefault ? <span className="mt-2 inline-block rounded-md bg-[var(--accent)] px-2 py-1 text-[10px] font-bold text-white">{t("skins.defaultProfile")}</span> : null}</span></Link>;
+  return <Link className="focus-ring grid grid-cols-[86px_minmax(0,1fr)] items-center gap-4 overflow-hidden rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={`/players/${profile.publicId}`}><SkinPreview2D className="h-28 w-[86px] rounded-md" kind="skin" label={profile.name} model={profile.skin?.model || "default"} src={skinTextureURL(profile.skin)} /><span className="min-w-0"><strong className="block truncate text-lg">{profile.name}</strong><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{profile.uuid}</code>{profile.isDefault ? <span className="mt-2 inline-block rounded-md bg-[var(--accent)] px-2 py-1 text-[10px] font-bold text-[var(--on-accent)]">{t("skins.defaultProfile")}</span> : null}</span></Link>;
 }
 
-function ProfileState({ text }: { text: string }) {
+function ProfileState({ text, action }: { text: string; action?: React.ReactNode }) {
   return (
     <main className="grid min-h-[60vh] place-items-center px-4">
-      <div className="surface w-full max-w-lg p-6 text-center text-sm text-[var(--muted)]">{text}</div>
+      <div className="surface w-full max-w-lg p-6 text-center text-sm text-[var(--muted)]">{text}{action}</div>
     </main>
   );
 }

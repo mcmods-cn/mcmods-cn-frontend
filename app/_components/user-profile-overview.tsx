@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { favoriteItemHref, FavoriteCollection, FavoriteCollectionItem, FavoritePage, loadPublicFavoriteCollections, loadPublicFavoriteItems } from "../_lib/favorite-api";
 import { useI18n } from "../_lib/i18n-provider";
@@ -61,6 +61,16 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
   const [contributionLoading, setContributionLoading] = useState(false);
   const [contributionMessage, setContributionMessage] = useState("");
   const [message, setMessage] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [collectionAttempt, setCollectionAttempt] = useState(0);
+  const [itemAttempt, setItemAttempt] = useState(0);
+  const [collectionError, setCollectionError] = useState("");
+  const [itemError, setItemError] = useState("");
+  const [collectionLoading, setCollectionLoading] = useState(true);
+  const [itemLoading, setItemLoading] = useState(false);
+  const contributionInFlight = useRef(false);
+  const showcaseFailed = useEffectEvent((reason: unknown) => reason instanceof Error ? reason.message : t("user.showcaseLoadFailed"));
+  const favoritesFailed = useEffectEvent((reason: unknown) => reason instanceof Error ? reason.message : t("favorites.loadFailed"));
   const currentCollectionCursor = publicFavoriteCollectionCursorHistory.at(-1) ?? "";
   const currentItemCursor = publicFavoriteItemCursorHistory.at(-1) ?? "";
 
@@ -72,9 +82,9 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
         setContribution(result.contributions);
         setMessage("");
       }
-    }).catch((reason) => { if (!cancelled) setMessage(reason instanceof Error ? reason.message : t("user.showcaseLoadFailed")); });
+    }).catch((reason) => { if (!cancelled) setMessage(showcaseFailed(reason)); });
     return () => { cancelled = true; };
-  }, [t, token, userId]);
+  }, [attempt, token, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +92,8 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
       if (!cancelled) {
         setFavoriteItems([]);
         setItemPage(null);
+        setCollectionLoading(true);
+        setCollectionError("");
       }
     });
     void loadPublicFavoriteCollections(userId, token, currentCollectionCursor).then((page) => {
@@ -90,14 +102,16 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
       setCollectionPage(page);
       setSelectedCollection(page.items[0]?.id ?? "");
       setPublicFavoriteItemCursorHistory([]);
-    }).catch(() => {
+    }).catch(reason => {
       if (!cancelled) {
+        setCollectionError(favoritesFailed(reason));
         setCollections([]);
         setCollectionPage(null);
+        setSelectedCollection("");
       }
-    });
+    }).finally(() => { if (!cancelled) setCollectionLoading(false); });
     return () => { cancelled = true; };
-  }, [currentCollectionCursor, token, userId]);
+  }, [collectionAttempt, currentCollectionCursor, token, userId]);
 
   useEffect(() => {
     if (!selectedCollection) {
@@ -112,21 +126,25 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
       if (!cancelled) {
         setFavoriteItems([]);
         setItemPage(null);
+        setItemLoading(true);
+        setItemError("");
       }
     });
     void loadPublicFavoriteItems(userId, selectedCollection, token, currentItemCursor).then((page) => {
       if (!cancelled) { setFavoriteItems(page.items); setItemPage(page); }
-    }).catch(() => {
+    }).catch(reason => {
       if (!cancelled) {
+        setItemError(favoritesFailed(reason));
         setFavoriteItems([]);
         setItemPage(null);
       }
-    });
+    }).finally(() => { if (!cancelled) setItemLoading(false); });
     return () => { cancelled = true; };
-  }, [currentItemCursor, selectedCollection, token, userId]);
+  }, [currentItemCursor, itemAttempt, selectedCollection, token, userId]);
 
   async function selectContributionYear(year: number) {
-    if (!contribution || contribution.year === year || contributionLoading) return;
+    if (!contribution || contribution.year === year || contributionLoading || contributionInFlight.current) return;
+    contributionInFlight.current = true;
     setContributionLoading(true);
     setContributionMessage("");
     try {
@@ -139,12 +157,13 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
     } catch (error) {
       setContributionMessage(error instanceof Error ? error.message : t("user.contributionLoadFailed"));
     } finally {
+      contributionInFlight.current = false;
       setContributionLoading(false);
     }
   }
 
   if (!showcase && !message) return <section className="surface p-5 text-sm text-[var(--muted)]">{t("common.loading")}</section>;
-  if (!showcase) return <section className="surface p-5 text-sm text-[var(--danger)]">{message || t("user.showcaseLoadFailed")}</section>;
+  if (!showcase) return <section className="surface p-5 text-sm text-[var(--danger)]"><p role="alert">{message || t("user.showcaseLoadFailed")}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => { setMessage(""); setAttempt(value => value + 1); }}>{t("common.retry")}</button></section>;
 
   return (
     <div className="grid gap-4">
@@ -153,19 +172,19 @@ export function UserProfileOverview({ userId, token }: { userId: string; token?:
       <ShowcaseSection description={t("user.editorProjectsDescription")} empty={t("user.noEditorProjects")} items={showcase.editorProjects} title={t("user.editorProjects")} />
       <ShowcaseSection description={t("user.uploadsDescription")} empty={t("user.noUploads")} items={showcase.uploads} title={t("user.uploads")} />
       <ShowcaseSection description={t("user.postsDescription")} empty={t("user.noPosts")} items={showcase.posts} title={t("user.communityPosts")} />
-      {collections.length || publicFavoriteCollectionCursorHistory.length > 0 ? (
+      {collectionLoading || collectionError || collections.length || publicFavoriteCollectionCursorHistory.length > 0 ? (
         <section className="surface p-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-xl font-black">{t("favorites.publicCollections")}</h2>
               <p className="mt-1 text-sm text-[var(--muted)]">{t("favorites.publicCollectionsDescription")}</p>
             </div>
-            <select className="field max-w-xs" value={selectedCollection} onChange={(event) => { setSelectedCollection(event.target.value); setPublicFavoriteItemCursorHistory([]); }}>
+            <select aria-label={t("favorites.publicCollections")} disabled={collectionLoading || Boolean(collectionError)} className="field max-w-xs" value={selectedCollection} onChange={(event) => { setSelectedCollection(event.target.value); setPublicFavoriteItemCursorHistory([]); }}>
               {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.isDefault ? t("favorites.defaultFolder") : collection.name}</option>)}
             </select>
           </div>
           {collectionPage && (publicFavoriteCollectionCursorHistory.length > 0 || collectionPage.hasMore) ? <div className="mt-3 flex items-center justify-between gap-2"><button className="button-secondary focus-ring" disabled={publicFavoriteCollectionCursorHistory.length === 0} type="button" onClick={() => setPublicFavoriteCollectionCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-xs font-bold text-[var(--muted)]">{t("favorites.page", { page: publicFavoriteCollectionCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={!collectionPage.hasMore || !collectionPage.nextCursor} type="button" onClick={() => setPublicFavoriteCollectionCursorHistory((history) => [...history, collectionPage.nextCursor])}>{t("common.next")}</button></div> : null}
-          {favoriteItems.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{favoriteItems.map((item) => <FavoriteCard item={item} key={`${item.entityType}:${item.entityPublicId}`} />)}</div> : <p className="mt-4 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
+          {collectionError ? <div className="mt-4"><p role="alert">{collectionError}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => setCollectionAttempt(value => value + 1)}>{t("common.retry")}</button></div> : itemError ? <div className="mt-4"><p role="alert">{itemError}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => setItemAttempt(value => value + 1)}>{t("common.retry")}</button></div> : collectionLoading || itemLoading ? <p className="mt-4">{t("common.loading")}</p> : favoriteItems.length ? <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{favoriteItems.map((item) => <FavoriteCard item={item} key={`${item.entityType}:${item.entityPublicId}`} />)}</div> : <p className="mt-4 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("favorites.empty")}</p>}
           {itemPage && (publicFavoriteItemCursorHistory.length > 0 || itemPage.hasMore) ? <div className="mt-4 flex items-center justify-between gap-2"><button className="button-secondary focus-ring" disabled={publicFavoriteItemCursorHistory.length === 0} type="button" onClick={() => setPublicFavoriteItemCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-xs font-bold text-[var(--muted)]">{t("favorites.page", { page: publicFavoriteItemCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={!itemPage.hasMore || !itemPage.nextCursor} type="button" onClick={() => setPublicFavoriteItemCursorHistory((history) => [...history, itemPage.nextCursor])}>{t("common.next")}</button></div> : null}
         </section>
       ) : null}
@@ -220,7 +239,7 @@ function ContributionHeatmap({ contribution, loading, message, onYearChange }: {
   const { locale, t } = useI18n();
   const cells = useMemo(() => contributionCells(contribution), [contribution]);
   const active = cells.filter((cell) => cell.count > 0);
-  const formatter = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "medium" }), [locale]);
+  const formatter = useMemo(() => new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }), [locale]);
   const monthLabels = useMemo(() => contributionMonthLabels(contribution, locale), [contribution, locale]);
   const activityGroups = useMemo(() => groupContributionActivities(contribution.recentActivity, locale), [contribution.recentActivity, locale]);
   const weekCount = Math.ceil(cells.length / 7);
@@ -245,7 +264,7 @@ function ContributionHeatmap({ contribution, loading, message, onYearChange }: {
         <nav aria-label={t("user.contributionYears")} className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
           {contribution.years.map((year) => <button
             aria-pressed={year === contribution.year}
-            className={`focus-ring min-w-24 rounded-lg px-3 py-2 text-left text-sm font-bold transition ${year === contribution.year ? "bg-[var(--accent)] text-white" : "text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]"}`}
+            className={`focus-ring min-w-24 rounded-lg px-3 py-2 text-left text-sm font-bold transition ${year === contribution.year ? "bg-[var(--accent)] text-[var(--on-accent)]" : "text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]"}`}
             disabled={loading}
             key={year}
             type="button"
@@ -288,7 +307,7 @@ function ContributionHeatmap({ contribution, loading, message, onYearChange }: {
 
 function ContributionActivityRow({ item }: { item: ContributionActivity }) {
   const { locale, t } = useI18n();
-  const date = new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(new Date(item.occurredAt));
+  const date = new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }).format(new Date(item.occurredAt));
   const name = item.href
     ? <Link className="font-bold text-[var(--accent)] hover:underline" href={item.href}>{item.name}</Link>
     : <strong>{item.name}</strong>;

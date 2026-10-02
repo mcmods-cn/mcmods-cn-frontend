@@ -54,6 +54,9 @@ export function ServerCatalog() {
   const sort = serverSortFields.includes(normalizedSort) ? normalizedSort : "heat";
   const sortDirection = normalizeCatalogSortDirection(searchParams.get("order"), "desc", normalizedSort);
 
+  const scope = JSON.stringify([paramsKey, pageSize, sort, sortDirection, token]);
+  const [loadedScope, setLoadedScope] = useState("");
+
   const canCreate = ready && hasPermission(user, "server.create");
   const activeFilterCount = useMemo(
     () => ["tag", "language", "version", "mods", "modded", "online", "whitelist", "onlineMode"].filter((key) => searchParams.has(key)).length,
@@ -79,7 +82,7 @@ export function ServerCatalog() {
       controller.signal,
     )
       .then((response) => {
-        if (!cancelled && requestGeneration.current === generation) setResult(response);
+        if (!cancelled && requestGeneration.current === generation) { setLoadedScope(scope); setResult(response); }
       })
       .catch((reason) => {
         if (!cancelled && requestGeneration.current === generation) {
@@ -94,7 +97,7 @@ export function ServerCatalog() {
       cancelled = true;
       controller.abort();
     };
-  }, [pageSize, paramsKey, sort, sortDirection, t, token]);
+  }, [pageSize, paramsKey, scope, sort, sortDirection, t, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -119,7 +122,7 @@ export function ServerCatalog() {
 
   async function loadMore() {
     const cursor = result?.nextCursor ?? "";
-    if (!cursor || loadingMore) return;
+    if (!cursor || loadedScope !== scope || loading || loadingMore) return;
     const generation = requestGeneration.current;
     setLoadingMore(true);
     setError("");
@@ -245,7 +248,7 @@ export function ServerCatalog() {
                 onClear={clearFilters}
               />
             ) : null}
-            {result?.nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>
+            {result?.nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadedScope !== scope || loading || loadingMore} type="button" onClick={() => void loadMore()}>
               {loadingMore ? t("common.loading") : t("servers.loadMore")}
             </button> : null}
           </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { localizedCatalogResourceName } from "../../_lib/content-language";
 import { loadCatalogResourcePresentations, loadCatalogResources } from "../../_lib/editor-api";
@@ -70,6 +70,13 @@ function OpenResourcePickerDialog({
   onConfirm,
 }: Omit<ResourcePickerProps, "open"> & { open?: boolean }) {
   const { locale, t } = useI18n();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const node = dialog.current;
+    node?.showModal();
+    return () => node?.close();
+  }, []);
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [kind, setKind] = useState(initialKind || (kindOptions.length === 1 ? kindOptions[0].value : ""));
@@ -85,6 +92,11 @@ function OpenResourcePickerDialog({
     () => new Map(value.map((resource) => [resource.publicId, resource])),
   );
   const pageSize = 40;
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) { setPage(1); setPageCursors([""]); setLoading(true); } });
+    return () => { cancelled = true; };
+  }, [locale, token]);
 
   useEffect(() => {
     if (manualMode) return;
@@ -187,11 +199,11 @@ function OpenResourcePickerDialog({
     setManualMode(false);
   }
 
-  return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-4" role="presentation" onMouseDown={onClose}>
-    <section aria-modal="true" className="surface flex h-[min(760px,90dvh)] w-full max-w-5xl flex-col overflow-hidden rounded-lg shadow-2xl" role="dialog" onMouseDown={(event) => event.stopPropagation()}>
+  return <dialog ref={dialog} aria-labelledby={titleId} className="fixed inset-0 m-auto w-[calc(100%_-_2rem)] max-w-5xl rounded-lg border-0 bg-transparent p-0 text-[var(--foreground)] backdrop:bg-black/55" onCancel={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="surface flex h-[min(760px,90dvh)] w-full max-w-5xl flex-col overflow-hidden rounded-lg shadow-2xl">
       <header className="flex items-start justify-between gap-3 border-b border-[var(--line)] p-4">
         <div>
-          <h2 className="text-xl font-black">{labels.title ?? t("common.select")}</h2>
+          <h2 id={titleId} className="text-xl font-black">{labels.title ?? t("common.select")}</h2>
           {labels.description ? <p className="mt-1 text-sm text-[var(--muted)]">{labels.description}</p> : null}
         </div>
         <button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button>
@@ -205,7 +217,7 @@ function OpenResourcePickerDialog({
         onReturn={returnFromManualMode}
       /> : <>
         <form className="grid gap-2 border-b border-[var(--line)] p-4 md:grid-cols-[minmax(0,1fr)_180px_220px_auto]" onSubmit={search}>
-          <input className="field" type="search" value={query} placeholder={labels.searchPlaceholder ?? t("common.search")} onChange={(event) => setQuery(event.target.value)} />
+          <input className="field" type="search" aria-label={labels.searchPlaceholder ?? t("common.search")} value={query} placeholder={labels.searchPlaceholder ?? t("common.search")} onChange={(event) => setQuery(event.target.value)} />
           {kindOptions.length ? <select aria-label={labels.kind} className="field" value={kind} onChange={(event) => { setLoading(true); setPage(1); setPageCursors([""]); setKind(event.target.value); }}><option value="">{labels.kind ?? t("common.all")}</option>{kindOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
           {registryOptions.length ? <select aria-label={labels.registry} className="field" value={registry} onChange={(event) => { setLoading(true); setPage(1); setPageCursors([""]); setRegistry(event.target.value); }}><option value="">{labels.registry ?? t("common.all")}</option>{registryOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : null}
           <button className="button-primary focus-ring" type="submit">{t("common.search")}</button>
@@ -219,7 +231,7 @@ function OpenResourcePickerDialog({
             {result.items.map((resource) => {
               const active = selected.has(resource.publicId);
               return <button aria-pressed={active} className={`focus-ring flex min-w-0 items-center gap-3 rounded-lg border p-3 text-left ${active ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] hover:border-[var(--accent)]"}`} key={resource.publicId} type="button" onClick={() => toggle(resource)}>
-                <span aria-hidden className={`grid h-5 w-5 shrink-0 place-items-center border text-xs font-black ${multiple ? "rounded" : "rounded-full"} ${active ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)]"}`}>{active ? "✓" : ""}</span>
+                <span aria-hidden className={`grid h-5 w-5 shrink-0 place-items-center border text-xs font-black ${multiple ? "rounded" : "rounded-full"} ${active ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]" : "border-[var(--line)]"}`}>{active ? "✓" : ""}</span>
                 <CatalogResourceIdentity labels={labels} resource={resource} />
               </button>;
             })}
@@ -251,13 +263,13 @@ function OpenResourcePickerDialog({
             }}>{t("common.next")}</button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {allowUnresolved ? <button className="button-secondary focus-ring" type="button" onClick={() => setManualMode(true)}>{labels.notFound ?? "没有我寻找的资源？"}</button> : null}
+            {allowUnresolved ? <button className="button-secondary focus-ring" type="button" onClick={() => setManualMode(true)}>{labels.notFound ?? t("catalogEditor.resourceNotFound")}</button> : null}
             <button className="button-primary focus-ring" type="button" onClick={() => onConfirm(selectedItems)}>{labels.insert ?? t("common.confirm")}</button>
           </div>
         </footer>
       </>}
     </section>
-  </div>;
+  </dialog>;
 }
 
 function ManualIdentifierPanel({
@@ -273,12 +285,14 @@ function ManualIdentifierPanel({
   onChange: (inputs: string[]) => void;
   onReturn: () => void;
 }) {
+  const { t } = useI18n();
   return <div className="flex min-h-0 flex-1 flex-col">
     <div className="min-h-0 flex-1 overflow-y-auto p-6">
-      <h3 className="text-lg font-black">{labels.manualPrompt ?? "请在这里填写资源 ID"}</h3>
+      <h3 className="text-lg font-black">{labels.manualPrompt ?? t("catalogEditor.manualResourcePrompt")}</h3>
       <div className="mt-4 grid gap-3">
         {inputs.map((input, index) => <input
           autoFocus={index === 0}
+          aria-label={`${labels.manualPrompt ?? t("catalogEditor.manualResourcePrompt")} ${index + 1}`}
           className="field font-mono"
           key={index}
           placeholder={labels.manualPlaceholder ?? "namespace:identifier"}
@@ -286,11 +300,11 @@ function ManualIdentifierPanel({
           onChange={(event) => onChange(inputs.map((item, itemIndex) => itemIndex === index ? event.target.value : item))}
         />)}
       </div>
-      {invalid ? <p className="mt-3 text-sm font-bold text-[var(--red)]">{labels.invalidIdentifier ?? "ID 格式无效"}</p> : null}
-      <button aria-label={labels.addManualInput ?? "新增输入框"} className="button-secondary focus-ring mt-4 h-11 w-11 rounded-full p-0 text-xl" type="button" onClick={() => onChange([...inputs, ""])}>+</button>
+      {invalid ? <p className="mt-3 text-sm font-bold text-[var(--red)]">{labels.invalidIdentifier ?? t("catalogEditor.invalidIdentifier")}</p> : null}
+      <button aria-label={labels.addManualInput ?? t("catalogEditor.addManualInput")} className="button-secondary focus-ring mt-4 h-11 w-11 rounded-full p-0 text-xl" type="button" onClick={() => onChange([...inputs, ""])}>+</button>
     </div>
     <footer className="flex justify-end border-t border-[var(--line)] p-4">
-      <button className="button-primary focus-ring" disabled={invalid} type="button" onClick={onReturn}>{labels.backToResults ?? "返回"}</button>
+      <button className="button-primary focus-ring" disabled={invalid} type="button" onClick={onReturn}>{labels.backToResults ?? t("common.back")}</button>
     </footer>
   </div>;
 }

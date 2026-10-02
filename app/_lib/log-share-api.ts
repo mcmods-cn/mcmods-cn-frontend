@@ -81,12 +81,12 @@ export function loadPublicLogShareEntry(code: string, entryIndex: number, option
   });
 }
 
-export async function loadMyLogShares(token: string, options: { query?: string; sourceType?: string; status?: string; direction?: "asc" | "desc"; limit?: number; offset?: number } = {}) {
+export async function loadMyLogShares(token: string, options: { query?: string; sourceType?: string; status?: string; direction?: "asc" | "desc"; limit?: number; offset?: number; signal?: AbortSignal } = {}) {
   const parameters = new URLSearchParams({ limit: String(options.limit ?? 30), offset: String(options.offset ?? 0), direction: options.direction ?? "desc" });
   if (options.query?.trim()) parameters.set("q", options.query.trim());
   if (options.sourceType?.trim()) parameters.set("sourceType", options.sourceType.trim());
   if (options.status?.trim()) parameters.set("status", options.status.trim());
-  const value = await apiRequest<{ items: Array<Record<string, unknown>>; total: number; limit: number; offset: number }>(`/api/v1/log-shares/me?${parameters}`, { cache: "no-store" }, token);
+  const value = await apiRequest<{ items: Array<Record<string, unknown>>; total: number; limit: number; offset: number }>(`/api/v1/log-shares/me?${parameters}`, { cache: "no-store", signal: options.signal }, token);
   return { ...value, items: value.items.map((item): LogShareHistoryItem => ({
     publicCode: text(item.public_code),
     sourceType: text(item.source_type),

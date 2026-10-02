@@ -85,3 +85,13 @@ test("the log tool renders stable per-file task facts through the shared boundar
   assert.match(source, /task\.stage/);
   assert.doesNotMatch(source, /for \(const file of files\)[\s\S]{0,400}throw new Error/);
 });
+
+test("local upload and share failures use the caller's localized messages", async () => {
+  const messages = { unsupportedFile: (name: string) => `Unsupported: ${name}`, missingUploadID: "Missing uploaded ID", missingResult: "Missing share", failed: "Share failed", invalidStatus: "Invalid share status" };
+  const result = await processLogUploadBatch(tasks("bad.jar", "noid.log", "missing.log", "failed.log", "invalid.log"), {
+    messages,
+    upload: async (file) => ({ id: file.name === "noid.log" ? "" : file.name }),
+    createShares: async () => ({ items: [{ fileId: "failed.log", status: "failed" }, { fileId: "invalid.log", status: "unknown" }] }),
+  });
+  assert.deepEqual(result.map((item) => item.error), ["Unsupported: bad.jar", "Missing uploaded ID", "Missing share", "Share failed", "Invalid share status"]);
+});

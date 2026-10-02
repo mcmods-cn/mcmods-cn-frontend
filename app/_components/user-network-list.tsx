@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
@@ -27,7 +27,13 @@ type UserConnectionsPayload = {
   nextCursor?: string;
 };
 
-export function UserNetworkList({ network, userId }: { network: NetworkType; userId: string }) {
+export function UserNetworkList(props: { network: NetworkType; userId: string }) {
+  const { locale } = useI18n();
+  const { token, user } = useAuthSnapshot();
+  return <UserNetworkListSession key={`${user?.id || "guest"}:${token || "guest"}:${locale}:${props.userId}:${props.network}`} {...props} />;
+}
+
+function UserNetworkListSession({ network, userId }: { network: NetworkType; userId: string }) {
   const { t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [profile, setProfile] = useState<PublicUserProfile | null>(null);
@@ -35,6 +41,10 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
   const [page, setPage] = useState(1);
   const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
   const [message, setMessage] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [unblocking, setUnblocking] = useState(false);
+  const unblockInFlight = useRef(false);
   const currentCursor = cursorHistory[cursorHistory.length - 1] || "";
   const canLoadNetwork = profile !== null && (network !== "blocked" || profile.isOwn);
 
@@ -46,16 +56,18 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
         const nextProfile = await loadPublicUserProfile(userId, token || undefined);
         if (cancelled) return;
         setProfile(nextProfile);
+        setLoadFailed(false);
         if (network === "blocked" && !nextProfile.isOwn) {
           setPayload(null);
+          setLoadFailed(true);
           setMessage(t("user.blacklistPrivate"));
         }
       } catch (error) {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : t("user.networkLoadFailed"));
+        if (!cancelled) { setLoadFailed(true); setMessage(error instanceof Error ? error.message : t("user.networkLoadFailed")); }
       }
     })();
     return () => { cancelled = true; };
-  }, [network, ready, t, token, userId]);
+  }, [attempt, network, ready, t, token, userId]);
 
   useEffect(() => {
     if (!ready || !canLoadNetwork) return;
@@ -68,16 +80,19 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
         const nextPayload = await apiRequest<UserConnectionsPayload>(endpoint, {}, token || undefined);
         if (cancelled) return;
         setPayload(nextPayload);
+        setLoadFailed(false);
         setMessage("");
       } catch (error) {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : t("user.networkLoadFailed"));
+        if (!cancelled) { setLoadFailed(true); setMessage(error instanceof Error ? error.message : t("user.networkLoadFailed")); }
       }
     })();
     return () => { cancelled = true; };
-  }, [canLoadNetwork, currentCursor, network, page, ready, t, token, userId]);
+  }, [attempt, canLoadNetwork, currentCursor, network, page, ready, t, token, userId]);
 
   async function unblockUser(item: UserConnection) {
-    if (!token) return;
+    if (!token || unblockInFlight.current) return;
+    unblockInFlight.current = true;
+    setUnblocking(true);
     try {
       await apiRequest<{ blocked: boolean }>(`/api/v1/users/${encodeURIComponent(item.id)}/block`, { method: "DELETE" }, token);
       setPayload((current) => current ? {
@@ -89,7 +104,7 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
       setMessage(t("user.unblockSucceeded"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("user.unblockFailed"));
-    }
+    } finally { unblockInFlight.current = false; setUnblocking(false); }
   }
 
   const pages = useMemo(() => Math.max(1, Math.ceil((payload?.total || 0) / (payload?.pageSize || 24))), [payload]);
@@ -107,9 +122,10 @@ export function UserNetworkList({ network, userId }: { network: NetworkType; use
             <NetworkTab active={network === "following"} count={profile?.following} href={`${profileHref}/following`} label={t("user.following")} />
             {profile?.isOwn ? <NetworkTab active={network === "blocked"} count={profile.blocked} href={`${profileHref}/blocked`} label={t("user.blocked")} /> : null}
           </nav>
-          {message ? <p className="mt-5 rounded-lg border border-[var(--danger)] px-4 py-3 text-sm text-[var(--danger)]">{message}</p> : !payload ? <p className="mt-5 text-sm text-[var(--muted)]">{t("common.loading")}</p> : payload.items.length ? (
+          {message ? <p role="status" className="mt-5 rounded-lg border border-[var(--line)] px-4 py-3 text-sm">{message}</p> : null}
+          {!payload ? loadFailed ? <button className="button-secondary focus-ring mt-3" type="button" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button> : <p className="mt-5 text-sm text-[var(--muted)]">{t("common.loading")}</p> : payload.items.length ? (
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {payload.items.map((item) => <UserConnectionCard item={item} key={item.id} onUnblock={network === "blocked" ? unblockUser : undefined} />)}
+              {payload.items.map((item) => <UserConnectionCard item={item} key={item.id} unblocking={unblocking} onUnblock={network === "blocked" ? unblockUser : undefined} />)}
             </div>
           ) : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t(networkEmptyKey(network))}</p>}
           {showPagination ? (
@@ -129,12 +145,12 @@ function NetworkTab({ active, count, href, label }: { active: boolean; count?: n
   return <Link className={`focus-ring whitespace-nowrap border-b-2 px-5 py-3 font-black ${active ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)] hover:text-[var(--foreground)]"}`} href={href}>{label} {count ?? "-"}</Link>;
 }
 
-function UserConnectionCard({ item, onUnblock }: { item: UserConnection; onUnblock?: (item: UserConnection) => void }) {
+function UserConnectionCard({ item, onUnblock, unblocking }: { item: UserConnection; unblocking: boolean; onUnblock?: (item: UserConnection) => void }) {
   const { t } = useI18n();
   return (
     <article className="flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-4 transition hover:border-[var(--accent)]">
       <Link className="focus-ring flex min-w-0 flex-1 items-center gap-4" href={`/user/${encodeURIComponent(item.id)}`}>
-        <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent)] text-xl font-black text-white">
+        <span className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent)] text-xl font-black text-[var(--on-accent)]">
           {item.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img alt="" className="h-full w-full object-cover" src={item.avatarUrl} />
@@ -146,7 +162,7 @@ function UserConnectionCard({ item, onUnblock }: { item: UserConnection; onUnblo
           {item.signature ? <span className="mt-2 line-clamp-2 block text-sm leading-6 text-[var(--muted)]">{item.signature}</span> : null}
         </span>
       </Link>
-      {onUnblock ? <button className="button-secondary focus-ring shrink-0" type="button" onClick={() => onUnblock(item)}>{t("user.unblock")}</button> : null}
+      {onUnblock ? <button className="button-secondary focus-ring shrink-0" disabled={unblocking} type="button" onClick={() => onUnblock(item)}>{t("user.unblock")}</button> : null}
     </article>
   );
 }

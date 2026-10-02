@@ -179,7 +179,7 @@ export function useBanReasons(
       { signal: controller.signal },
       token,
     )
-      .then((value) => setResult({ requestKey, items: value.items, error: "" }))
+      .then((value) => { if (!controller.signal.aborted) setResult({ requestKey, items: value.items, error: "" }); })
       .catch((error) => {
         if (!controller.signal.aborted)
           setResult({ requestKey, items: [], error: errorMessage(error) });

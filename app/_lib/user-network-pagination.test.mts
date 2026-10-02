@@ -34,8 +34,8 @@ test("network UI consumes cursor pages while the private block list keeps its se
   assert.match(source, /cursorHistory/);
   assert.match(source, /nextCursor/);
   assert.match(source, /hasMore/);
-  assert.match(source, /\}, \[network, ready, t, token, userId\]\);/);
-  assert.match(source, /\[canLoadNetwork, currentCursor, network, page, ready, t, token, userId\]/);
+  assert.match(source, /\}, \[attempt, network, ready, t, token, userId\]\);/);
+  assert.match(source, /\[attempt, canLoadNetwork, currentCursor, network, page, ready, t, token, userId\]/);
   assert.doesNotMatch(source, /users\/\$\{encodeURIComponent\(userId\)\}\/\$\{network\}\?page=/);
   assert.match(source, /users\/me\/blocks\?page=/);
 });

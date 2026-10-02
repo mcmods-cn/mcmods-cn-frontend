@@ -40,6 +40,11 @@ const resourceKindIds = [
 ] as const;
 
 export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind; id?: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <CommunityPostEditorContent key={`${user?.id || "guest"}:${kind}:${id}:${token}`} kind={kind} id={id} />;
+}
+
+function CommunityPostEditorContent({ kind, id }: { kind: CommunityPostKind; id: string }) {
   const router = useRouter();
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
@@ -50,6 +55,8 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
   const [coverPreview, setCoverPreview] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(Boolean(id));
+  const [recordLoaded, setRecordLoaded] = useState(!id);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [message, setMessage] = useState("");
   const [baseRevisionId, setBaseRevisionId] = useState("");
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -64,7 +71,7 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
     draftKey: `community:${kind}:${id || "new"}`,
     projectKey: `community:${kind}:${id || "new"}`,
     editUrl: id ? `/${collection}/${encodeURIComponent(id)}/edit` : `/${collection}/new`,
-    enabled: ready && Boolean(token) && !loading,
+    enabled: ready && Boolean(token) && !loading && recordLoaded,
     kind: "community_post",
     title: draft.title.trim() || t(`communityPosts.${kind}.create`),
     token,
@@ -76,20 +83,24 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
   useEffect(() => {
     const controller = new AbortController();
     loadCommunityPostCategories(kind, controller.signal)
-      .then((result) => setCategories(result.items))
+      .then((result) => { if (!controller.signal.aborted) setCategories(result.items); })
       .catch(() => undefined);
     return () => controller.abort();
   }, [kind]);
 
   useEffect(() => {
     if (kind !== "discussion") return;
-    apiRequest<{ items: Currency[] }>("/api/v1/economy/currencies", { cache: "no-store" }, token || undefined)
-      .then((result) => setCurrencies(result.items.filter((currency) => currency.status === "active")))
-      .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
+    const controller = new AbortController();
+    apiRequest<{ items: Currency[] }>("/api/v1/economy/currencies", { cache: "no-store", signal: controller.signal }, token || undefined)
+      .then((result) => { if (!controller.signal.aborted) setCurrencies(result.items.filter((currency) => currency.status === "active")); })
+      .catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : String(error)); });
+    return () => controller.abort();
   }, [kind, token]);
   useEffect(() => {
     if (!id || !token) return;
-    loadCommunityPost(id, token).then((post) => {
+    const controller = new AbortController();
+    loadCommunityPost(id, token, controller.signal).then((post) => {
+      if (controller.signal.aborted) return;
       if (post.kind !== kind) throw new Error("community post kind mismatch");
       setDraft({
         kind: post.kind, category: post.category, title: post.title, sourceLocale: post.sourceLocale, bodyMarkdown: post.bodyMarkdown, minecraftVersions: post.minecraftVersions,
@@ -100,11 +111,14 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
       });
       setBaseRevisionId(post.publishedRevisionId || "");
       setCoverPreview(communityPostCoverURL(post.coverUrl));
-    }).catch((error) => setMessage(error instanceof Error ? error.message : String(error))).finally(() => setLoading(false));
-  }, [id, kind, token]);
+      setRecordLoaded(true);
+      setMessage("");
+    }).catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : String(error)); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [id, kind, loadAttempt, token]);
 
   async function submit() {
-    if (!token) return;
+    if (!token || busy || loading || !recordLoaded) return;
     if (!draft.title.trim() || !draft.bodyMarkdown.trim()) { setMessage(t("communityPosts.validation.content")); return; }
     if (!draft.sourceLocale) { setMessage(t("communityPosts.validation.sourceLocale")); return; }
     if (draft.projects.length > communityPostProjectReferenceLimit || draft.resources.length > communityPostResourceReferenceLimit) { setMessage(t("communityPosts.validation.referenceLimit", { projects: communityPostProjectReferenceLimit, resources: communityPostResourceReferenceLimit })); return; }
@@ -121,7 +135,7 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
         projectTitle: draft.title.trim(),
         targetUrl,
         changeRequestId: result.changeRequestId,
-      }).catch(() => undefined);
+      }).catch(() => { window.alert(t("drafts.completionFailed")); });
       router.push(targetUrl);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409 && error.code === "COMMUNITY_POST_EDIT_CONFLICT") {
@@ -136,7 +150,7 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
 
   async function confirmCoverCrop(output: { files: Map<string, File>; previewUrl: string }) {
     const file = output.files.get("cover");
-    if (!file || !token) return;
+    if (!file || !token) { URL.revokeObjectURL(output.previewUrl); return; }
     setCoverCropFile(undefined);
     setBusy(true);
     try {
@@ -144,6 +158,7 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
       setDraft((current) => ({ ...current, coverFileId: uploaded.id }));
       setCoverPreview(output.previewUrl);
     } catch (error) {
+      URL.revokeObjectURL(output.previewUrl);
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
@@ -153,11 +168,12 @@ export function CommunityPostEditor({ kind, id = "" }: { kind: CommunityPostKind
   if (!ready) return <PageFeedback title={t("common.loading")} />;
   if (!user || !token) return <LoginRequiredState nextPath={id ? `/${collection}/${id}/edit` : `/${collection}/new`} />;
   if (loading) return <PageFeedback title={t("common.loading")} />;
+  if (!recordLoaded) return <PageFeedback tone="danger" title={message || t("communityPosts.validation.saveFailed")} action={<button className="button-secondary focus-ring" type="button" onClick={() => { setLoading(true); setMessage(""); setLoadAttempt((attempt) => attempt + 1); }}>{t("communityPosts.catalog.retry")}</button>} />;
 
   const editor = <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]">
     <article className="mx-auto max-w-6xl">
       <header className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="font-bold text-[var(--accent)] hover:underline" href={`/${communityPostCollection(kind)}`}>← {t(`communityPosts.${kind}.title`)}</Link><h1 className="mt-2 text-3xl font-black">{id ? t("common.edit") : t(`communityPosts.${kind}.create`)}</h1></div><div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={busy || loading} type="button" onClick={() => void submit()}>{busy ? t("common.loading") : t("common.submit")}</button></div></header>
-      {message ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{message}</p> : null}
+      {message ? <p role="alert" className="mt-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{message}</p> : null}
       <div className="mt-6 grid gap-6">
         <label className="block font-black">{t("communityPosts.fields.title")}<input className="field mt-2" maxLength={160} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
         <label className="font-black">{t("communityPosts.fields.category")}<select className="field mt-2" value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>{categories.map((category) => <option key={category} value={category}>{t(`communityPosts.categories.${kind}.${category}`)}</option>)}</select></label>

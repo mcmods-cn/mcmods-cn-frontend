@@ -82,7 +82,7 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
       <div className="mt-3 flex flex-wrap items-end justify-between gap-4"><h1 className="text-3xl font-black">{localization?.name || detail.canonicalId}</h1>{current ? <div className="flex flex-wrap gap-2"><Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/history?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("contentHistory.title")}</Link>{canEditResource && versionDetail ? <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}/edit?version=${encodeURIComponent(current.publicId)}&section=${encodeURIComponent(sectionId)}`}>{t("common.edit")}</Link> : null}</div> : null}</div>
       <div className="mt-4 flex gap-1 overflow-x-auto">{detail.versions.map((version, index) => {
         const href = version.detailUrl || `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}?version=${encodeURIComponent(version.publicId)}`;
-        return <Link className={`focus-ring shrink-0 rounded px-2 py-1 text-xs font-black ${index === currentIndex ? "bg-[var(--accent)] text-white" : version.hasDetail ? "bg-[var(--panel-subtle)]" : "border border-[var(--red)] text-[var(--red)]"}`} href={href} key={version.publicId}>{version.label}</Link>;
+        return <Link className={`focus-ring shrink-0 rounded px-2 py-1 text-xs font-black ${index === currentIndex ? "bg-[var(--accent)] text-[var(--on-accent)]" : version.hasDetail ? "bg-[var(--panel-subtle)]" : "border border-[var(--red)] text-[var(--red)]"}`} href={href} key={version.publicId}>{version.label}</Link>;
       })}</div>
     </header>
     {current && similarResources.length > 1 ? <SimilarResourceStrip currentResourceId={resourceId} locale={locale} resources={similarResources} sectionId={sectionId} siteId={siteId} versionId={current.publicId} /> : null}
@@ -206,8 +206,8 @@ function ResourcePresentation({
               : <strong className="text-[var(--muted)]">{registry}</strong>}
         </div>
         {canShow3D ? <div className="grid grid-cols-2 border-t border-[var(--line)]">
-          <button className={`focus-ring p-3 font-bold ${!display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => setDisplay3D(false)}>2D</button>
-          <button className={`focus-ring p-3 font-bold ${display3D ? "bg-[var(--accent)] text-white" : ""}`} type="button" onClick={() => setDisplay3D(true)}>3D</button>
+          <button className={`focus-ring p-3 font-bold ${!display3D ? "bg-[var(--accent)] text-[var(--on-accent)]" : ""}`} type="button" onClick={() => setDisplay3D(false)}>2D</button>
+          <button className={`focus-ring p-3 font-bold ${display3D ? "bg-[var(--accent)] text-[var(--on-accent)]" : ""}`} type="button" onClick={() => setDisplay3D(true)}>3D</button>
         </div> : null}
       </div> : null}
       <dl className="mt-4 grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-sm">

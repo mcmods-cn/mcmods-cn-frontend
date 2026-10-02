@@ -28,7 +28,7 @@
     packed[cursors[layer]++] = block;
   }
   const matrices = new Float32Array(count * 16);
-  const context = new Float32Array(6_000 * 16);
+  const context = new Float32Array(9_000 * 16);
   for (let index = 0; index < count; index++) {
     const base = index * 16;
     matrices[base] = 1;

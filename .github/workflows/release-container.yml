@@ -17,6 +17,12 @@ jobs:
       NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
       NEXT_PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
       NEXT_PUBLIC_YGGDRASIL_API_ROOT: ${{ vars.NEXT_PUBLIC_YGGDRASIL_API_ROOT }}
+      NEXT_PUBLIC_ICONFONT_SYMBOL_URL: ${{ vars.NEXT_PUBLIC_ICONFONT_SYMBOL_URL }}
+      NEXT_PUBLIC_ICONFONT_SYMBOL_INTEGRITY: ${{ vars.NEXT_PUBLIC_ICONFONT_SYMBOL_INTEGRITY }}
+      NEXT_PUBLIC_CSP_CONNECT_ORIGINS: ${{ vars.NEXT_PUBLIC_CSP_CONNECT_ORIGINS }}
+      NEXT_PUBLIC_CSP_IMAGE_ORIGINS: ${{ vars.NEXT_PUBLIC_CSP_IMAGE_ORIGINS }}
+      NEXT_PUBLIC_CSP_MEDIA_ORIGINS: ${{ vars.NEXT_PUBLIC_CSP_MEDIA_ORIGINS }}
+      NEXT_PUBLIC_CSP_FONT_ORIGINS: ${{ vars.NEXT_PUBLIC_CSP_FONT_ORIGINS }}
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -25,7 +31,6 @@ jobs:
         run: |
           test -n "$NEXT_PUBLIC_API_BASE_URL"
           test -n "$NEXT_PUBLIC_SITE_URL"
-          test -n "$NEXT_PUBLIC_YGGDRASIL_API_ROOT"
       - name: Authenticate to GitHub Container Registry
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
       - name: Build and publish immutable image
@@ -37,6 +42,12 @@ jobs:
             --build-arg NEXT_PUBLIC_API_BASE_URL="$NEXT_PUBLIC_API_BASE_URL" \
             --build-arg NEXT_PUBLIC_SITE_URL="$NEXT_PUBLIC_SITE_URL" \
             --build-arg NEXT_PUBLIC_YGGDRASIL_API_ROOT="$NEXT_PUBLIC_YGGDRASIL_API_ROOT" \
+            --build-arg NEXT_PUBLIC_ICONFONT_SYMBOL_URL="$NEXT_PUBLIC_ICONFONT_SYMBOL_URL" \
+            --build-arg NEXT_PUBLIC_ICONFONT_SYMBOL_INTEGRITY="$NEXT_PUBLIC_ICONFONT_SYMBOL_INTEGRITY" \
+            --build-arg NEXT_PUBLIC_CSP_CONNECT_ORIGINS="$NEXT_PUBLIC_CSP_CONNECT_ORIGINS" \
+            --build-arg NEXT_PUBLIC_CSP_IMAGE_ORIGINS="$NEXT_PUBLIC_CSP_IMAGE_ORIGINS" \
+            --build-arg NEXT_PUBLIC_CSP_MEDIA_ORIGINS="$NEXT_PUBLIC_CSP_MEDIA_ORIGINS" \
+            --build-arg NEXT_PUBLIC_CSP_FONT_ORIGINS="$NEXT_PUBLIC_CSP_FONT_ORIGINS" \
             --tag "${image}:${tag}" --tag "${image}:sha-${GITHUB_SHA}" .
           docker push "${image}:${tag}"
           docker push "${image}:sha-${GITHUB_SHA}"

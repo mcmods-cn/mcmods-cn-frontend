@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { createEmptyLocalizedContent, ensureLocalizedContent, updateLocalizedContent } from "../_lib/content-language";
@@ -20,6 +20,11 @@ import { LoginRequiredState, PageFeedback } from "./page-feedback";
 const blueprintAccept = ".nbt,.schem,.schematic,.litematic";
 
 export function BlueprintUpload() {
+  const { token, user } = useAuthSnapshot();
+  return <BlueprintUploadContent key={`${user?.id || "guest"}:${token}`} />;
+}
+
+function BlueprintUploadContent() {
   const router = useRouter();
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
@@ -32,7 +37,10 @@ export function BlueprintUpload() {
   const [defaultLocale, setDefaultLocale] = useState<Locale>(initialLocale);
   const [localizations, setLocalizations] = useState<LocalizationVersion<LocalizedContentFields>[]>(() => [createEmptyLocalizedContent(initialLocale)]);
   const [uploading, setUploading] = useState(false);
+  const submitInFlight = useRef(false);
   const [progress, setProgress] = useState(0);
+  const [uploadedBlueprint, setUploadedBlueprint] = useState<{ file: File; publicId: string }>();
+  const uploadedCover = useRef<{ publicId: string; file: File } | null>(null);
   const selected = localizations.find((item) => item.locale === selectedLocale) ?? createEmptyLocalizedContent(selectedLocale);
   const defaultVersion = localizations.find((item) => item.locale === defaultLocale) ?? createEmptyLocalizedContent(defaultLocale);
 
@@ -41,20 +49,28 @@ export function BlueprintUpload() {
   function selectBlueprint(file?: File) {
     if (!file) return;
     setBlueprint(file);
+    setUploadedBlueprint(undefined);
+    uploadedCover.current = null;
     if (!selected.fields.name) setLocalizations((items) => updateLocalizedContent(items, selectedLocale, { name: file.name.replace(/\.[^.]+$/, "") }));
   }
 
   async function submit() {
-    if (!blueprint || !token || !defaultVersion.fields.name.trim()) return;
+    if (!blueprint || !token || submitInFlight.current || uploading || !defaultVersion.fields.name.trim()) return;
+    submitInFlight.current = true;
     setUploading(true);
     setProgress(5);
     try {
-      const uploaded = await uploadUserFileToOSS(blueprint, token, "blueprint_library");
-      const publicId = uploaded.blueprintId || uploaded.blueprint?.id;
-      if (!publicId) throw new Error(t("blueprints.uploadFailed"));
+      let publicId = uploadedBlueprint?.file === blueprint ? uploadedBlueprint.publicId : undefined;
+      if (!publicId) {
+        const uploaded = await uploadUserFileToOSS(blueprint, token, "blueprint_library");
+        publicId = uploaded.blueprintId || uploaded.blueprint?.id;
+        if (!publicId) throw new Error(t("blueprints.uploadFailed"));
+        setUploadedBlueprint({ file: blueprint, publicId });
+      }
       setProgress(55);
-      if (cover) {
+      if (cover && (uploadedCover.current?.publicId !== publicId || uploadedCover.current.file !== cover)) {
         await uploadUserFileToOSS(cover, token, `blueprint_cover:${publicId}`);
+        uploadedCover.current = { publicId, file: cover };
       }
       setProgress(82);
       await apiRequest(`/api/v1/blueprints/${encodeURIComponent(publicId)}`, {
@@ -77,6 +93,7 @@ export function BlueprintUpload() {
     } catch (error) {
       notifySite(error instanceof Error ? error.message : String(error), t("blueprints.title"), "danger");
     } finally {
+      submitInFlight.current = false;
       setUploading(false);
     }
   }
@@ -87,7 +104,7 @@ export function BlueprintUpload() {
   return <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
     <header className="border-b border-[var(--line)] bg-[var(--panel)]"><div className="mx-auto max-w-6xl px-4 py-7"><Link className="text-sm font-bold text-[var(--accent)]" href="/blueprints">{t("blueprints.title")}</Link><h1 className="mt-2 text-3xl font-black">{t("blueprints.uploadPage.title")}</h1><p className="mt-2 text-[var(--muted)]">{t("blueprints.uploadPage.subtitle")}</p></div></header>
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <div className="space-y-6">
+      <fieldset disabled={uploading} className="space-y-6">
         <ContentLanguageSwitcher value={selectedLocale} versions={localizations} onChange={setSelectedLocale} />
         <label className="block font-black">{t("mods.submission.defaultLocale")}<select className="field mt-2" value={defaultLocale} onChange={(event) => { const next = event.target.value as Locale; setDefaultLocale(next); setLocalizations((items) => ensureLocalizedContent(items, next)); }}>
           {supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
@@ -106,10 +123,11 @@ export function BlueprintUpload() {
         </section>
         <section><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("blueprints.introduction")} ({selectedLocale})</h2><span className="text-sm text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded documentId={`blueprint-upload:${selectedLocale}:content`} editorTitle={t("blueprints.introduction")} value={selected.fields.contentMarkdown} onChange={(contentMarkdown) => setLocalizations((items) => updateLocalizedContent(items, selectedLocale, { contentMarkdown }))} /></section>
         <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_280px] sm:items-center">
+          {uploadedBlueprint && !uploading ? <Link className="button-secondary focus-ring" href={`/blueprints/${encodeURIComponent(uploadedBlueprint.publicId)}`}>{t("blueprints.open")}</Link> : null}
         {uploading ? <div className="surface rounded-lg border border-[var(--line)] p-5"><div className="flex justify-between font-bold"><span>{t("blueprints.uploadPage.uploading")}</span><span>{progress}%</span></div><div className="mt-3 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div><p className="mt-3 text-sm text-[var(--muted)]">{t("blueprints.uploadPage.canClose")}</p></div> : null}
           <button className="button-primary focus-ring w-full sm:col-start-2" disabled={!blueprint || !defaultVersion.fields.name.trim() || uploading} type="button" onClick={() => void submit()}>{uploading ? t("tools.playground.uploading") : t("blueprints.upload")}</button>
         </div>
-      </div>
+      </fieldset>
     </div>
     <AspectImageCropDialog aspectHeight={75} aspectWidth={121} file={coverCropFile} minimumHeight={75} minimumWidth={121}
       outputs={[{ key: "cover", width: 1210, height: 750, type: "image/webp", quality: 0.86 }]}

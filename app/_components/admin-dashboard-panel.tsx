@@ -455,6 +455,7 @@ function formatChartDate(value: string, locale: string, includeYear = false) {
   return new Date(`${value}T00:00:00Z`).toLocaleDateString(locale, {
     day: "numeric",
     month: "short",
+    timeZone: "UTC",
     ...(includeYear ? { year: "numeric" as const } : {}),
   });
 }

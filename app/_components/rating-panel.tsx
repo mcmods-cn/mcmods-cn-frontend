@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import {
@@ -24,37 +24,52 @@ type RatingPanelProps = {
 };
 
 export function RatingPanel({ targetType, targetId, targetName }: RatingPanelProps) {
-  const { t } = useI18n();
+  const { token, user } = useAuthSnapshot();
+  return <RatingPanelContent key={`${user?.id || "guest"}:${targetType}:${targetId}:${token}`} targetType={targetType} targetId={targetId} targetName={targetName} />;
+}
+
+function RatingPanelContent({ targetType, targetId, targetName }: RatingPanelProps) {
+  const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const [summary, setSummary] = useState<RatingSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editorOpen, setEditorOpen] = useState(false);
   const [reviewsOpen, setReviewsOpen] = useState(false);
+  const summaryRequest = useRef(0);
+  const summaryController = useRef<AbortController | null>(null);
 
   const loadSummary = useCallback(async () => {
+    summaryController.current?.abort();
+    const controller = new AbortController();
+    summaryController.current = controller;
+    const request = ++summaryRequest.current;
     setLoading(true);
     setError("");
     try {
-      setSummary(await getRatingSummary(targetType, targetId, token));
+      const value = await getRatingSummary(targetType, targetId, token, controller.signal);
+      if (request === summaryRequest.current) setSummary(value);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : t("ratings.loadFailed"));
+      if (request === summaryRequest.current) setError(reason instanceof Error ? reason.message : t("ratings.loadFailed"));
     } finally {
-      setLoading(false);
+      if (request === summaryRequest.current) setLoading(false);
     }
   }, [t, targetId, targetType, token]);
+
+  const cancelSummary = useCallback(() => {
+    summaryRequest.current++;
+    summaryController.current?.abort();
+  }, []);
 
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
-    void (async () => {
-      if (!cancelled) await loadSummary();
-    })();
-    return () => { cancelled = true; };
-  }, [loadSummary, ready, targetId, targetType, token]);
+    queueMicrotask(() => { if (!cancelled) void loadSummary(); });
+    return () => { cancelled = true; cancelSummary(); };
+  }, [cancelSummary, loadSummary, ready, targetId, targetType, token]);
 
   if (loading && !summary) return <section className="mt-8 h-64 animate-pulse rounded-xl bg-[var(--panel-subtle)]" aria-label={t("ratings.loading")} />;
-  if (error && !summary) return <section className="mt-8 rounded-xl border border-[var(--danger)] bg-[var(--danger-soft)] p-5 text-sm font-bold text-[var(--danger)]">{t("ratings.loadFailed")}</section>;
+  if (error && !summary) return <section role="alert" className="mt-8 rounded-xl border border-[var(--danger)] bg-[var(--danger-soft)] p-5 text-sm font-bold text-[var(--danger)]">{t("ratings.loadFailed")}<button className="button-secondary focus-ring ml-3" disabled={loading} type="button" onClick={() => void loadSummary()}>{t("common.retry")}</button></section>;
   if (!summary) return null;
 
   return (
@@ -70,17 +85,19 @@ export function RatingPanel({ targetType, targetId, targetName }: RatingPanelPro
         </div>
       </div>
 
+      {error ? <p role="alert" className="mt-4 rounded-md bg-[var(--danger-soft)] p-3 text-sm font-bold text-[var(--danger)]">{t("ratings.loadFailed")}<button className="button-secondary focus-ring ml-3" disabled={loading} type="button" onClick={() => void loadSummary()}>{t("common.retry")}</button></p> : null}
+
       <div className="mt-6 grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-center">
         <div className="rounded-xl bg-[var(--panel-subtle)] p-5 text-center">
           <strong className="block text-5xl font-black text-[var(--accent)]">{summary.ratingCount ? summary.overallAverage.toFixed(1) : "—"}</strong>
           <div className="mt-2 flex justify-center"><ReadonlyStars value={summary.overallAverage} /></div>
           <span className="mt-2 block text-sm font-bold text-[var(--muted)]">{t("ratings.ratingCount", { count: summary.ratingCount })}</span>
           <dl className="mt-5 grid grid-cols-2 gap-2 text-left text-xs">
-            <Metric label={t("ratings.heat")} value={formatNumber(summary.heatScore)} />
-            <Metric label={t("ratings.views")} value={formatNumber(summary.engagement.views)} />
-            <Metric label={t("ratings.favorites")} value={formatNumber(summary.engagement.favorites)} />
-            <Metric label={t("ratings.downloads")} value={formatNumber(summary.engagement.downloads)} />
-            <Metric label={t("ratings.comments")} value={formatNumber(summary.engagement.comments)} />
+            <Metric label={t("ratings.heat")} value={formatNumber(summary.heatScore, locale)} />
+            <Metric label={t("ratings.views")} value={formatNumber(summary.engagement.views, locale)} />
+            <Metric label={t("ratings.favorites")} value={formatNumber(summary.engagement.favorites, locale)} />
+            <Metric label={t("ratings.downloads")} value={formatNumber(summary.engagement.downloads, locale)} />
+            <Metric label={t("ratings.comments")} value={formatNumber(summary.engagement.comments, locale)} />
           </dl>
         </div>
         <div className="grid gap-5 xl:grid-cols-[minmax(300px,440px)_minmax(0,1fr)] xl:items-center">
@@ -106,8 +123,13 @@ function RatingEditor({ summary, targetName, token, onClose, onSaved }: { summar
   const [message, setMessage] = useState(summary.myRating?.message ?? "");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const mutationInFlight = useRef(false);
+
+  function close() { if (!mutationInFlight.current) onClose(); }
 
   async function submit() {
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setSubmitting(true);
     setError("");
     try {
@@ -118,12 +140,14 @@ function RatingEditor({ summary, targetName, token, onClose, onSaved }: { summar
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("ratings.saveFailed"));
     } finally {
+      mutationInFlight.current = false;
       setSubmitting(false);
     }
   }
 
   async function remove() {
-    if (!window.confirm(t("ratings.deleteConfirm"))) return;
+    if (mutationInFlight.current || !window.confirm(t("ratings.deleteConfirm"))) return;
+    mutationInFlight.current = true;
     setSubmitting(true);
     setError("");
     try {
@@ -133,23 +157,24 @@ function RatingEditor({ summary, targetName, token, onClose, onSaved }: { summar
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("ratings.deleteFailed"));
     } finally {
+      mutationInFlight.current = false;
       setSubmitting(false);
     }
   }
 
-  return <Modal title={t("ratings.editorTitle", { name: targetName })} onClose={onClose}>
-    <div className="grid gap-6">
+  return <Modal title={t("ratings.editorTitle", { name: targetName })} onClose={close} busy={submitting}>
+    <fieldset disabled={submitting} aria-busy={submitting} className="grid min-w-0 gap-6">
       <div><span className="block text-sm font-black">{t("ratings.overall")}</span><div className="mt-2"><StarInput value={overallScore} onChange={setOverallScore} /></div></div>
       <div className="overflow-hidden rounded-lg border border-[var(--line)]">
         {summary.dimensions.map((dimension) => <div key={dimension.code} className="grid gap-3 border-b border-[var(--line)] p-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><span className="font-bold">{t(`ratings.dimensions.${dimension.code}`)}</span><StarInput value={scores[dimension.code]} onChange={(value) => setScores((current) => ({ ...current, [dimension.code]: value }))} /></div>)}
       </div>
       <label className="grid gap-2"><span className="font-black">{t("ratings.message")}</span><textarea className="input min-h-32 resize-y" maxLength={2000} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={t("ratings.messagePlaceholder")} /><span className="text-right text-xs text-[var(--muted)]">{message.length}/2000</span></label>
-      {error ? <p className="rounded-md bg-[var(--danger-soft)] p-3 text-sm font-bold text-[var(--danger)]">{error}</p> : null}
+      {error ? <p role="alert" className="rounded-md bg-[var(--danger-soft)] p-3 text-sm font-bold text-[var(--danger)]">{error}</p> : null}
       <div className="flex flex-wrap justify-between gap-3">
         <div>{summary.myRating ? <button className="button-secondary focus-ring text-[var(--danger)]" disabled={submitting} type="button" onClick={remove}>{t("common.delete")}</button> : null}</div>
         <div className="flex gap-2"><button className="button-secondary focus-ring" disabled={submitting} type="button" onClick={onClose}>{t("common.cancel")}</button><button className="button-primary focus-ring" disabled={submitting} type="button" onClick={submit}>{submitting ? t("common.saving") : t("common.save")}</button></div>
       </div>
-    </div>
+    </fieldset>
   </Modal>;
 }
 
@@ -158,6 +183,7 @@ function RatingReviews({ targetType, targetId, targetName, token, onClose }: { t
   const [result, setResult] = useState<RatingList | null>(null);
   const [error, setError] = useState("");
   const [ratingCursorHistory, setRatingCursorHistory] = useState<string[]>([]);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const currentCursor = ratingCursorHistory.at(-1) ?? "";
   useEffect(() => {
     let cancelled = false;
@@ -171,9 +197,9 @@ function RatingReviews({ targetType, targetId, targetName, token, onClose }: { t
       .then((value) => { if (!cancelled) setResult(value); })
       .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : t("ratings.reviewsLoadFailed")); });
     return () => { cancelled = true; };
-  }, [currentCursor, t, targetId, targetType, token]);
+  }, [currentCursor, loadAttempt, t, targetId, targetType, token]);
   return <Modal title={t("ratings.reviewsTitle", { name: targetName })} onClose={onClose} wide>
-    {error ? <p className="rounded-md bg-[var(--danger-soft)] p-3 font-bold text-[var(--danger)]">{error}</p> : null}
+    {error ? <p role="alert" className="rounded-md bg-[var(--danger-soft)] p-3 font-bold text-[var(--danger)]">{error}<button className="button-secondary focus-ring ml-3" type="button" onClick={() => setLoadAttempt(attempt => attempt + 1)}>{t("common.retry")}</button></p> : null}
     {!result && !error ? <div className="h-48 animate-pulse rounded-lg bg-[var(--panel-subtle)]" /> : null}
     <div className="grid gap-4">{result?.items.map((item) => <RatingReviewCard key={item.id} item={item} locale={locale} />)}</div>
     {result && !result.items.length ? <p className="py-12 text-center font-bold text-[var(--muted)]">{t("ratings.empty")}</p> : null}
@@ -240,18 +266,28 @@ function Metric({ label, value }: { label: string; value: string }) {
   return <div className="rounded-md border border-[var(--line)] bg-[var(--panel)] p-2"><dt className="text-[var(--muted)]">{label}</dt><dd className="mt-1 font-black">{value}</dd></div>;
 }
 
-function Modal({ title, children, onClose, wide = false }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+function Modal({ title, children, onClose, wide = false, busy = false }: { title: string; children: React.ReactNode; onClose: () => void; wide?: boolean; busy?: boolean }) {
   const { t } = useI18n();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   useEffect(() => {
+    const node = dialog.current;
+    const previousFocus = document.activeElement;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", close);
-    return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", close); };
-  }, [onClose]);
-  return <div className="fixed inset-0 z-[100] overflow-y-auto bg-black/65 p-3 sm:p-6" role="presentation" onMouseDown={onClose}><div className={`mx-auto my-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] shadow-2xl ${wide ? "max-w-5xl" : "max-w-3xl"}`} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => event.stopPropagation()}><header className="flex items-center justify-between gap-4 border-b border-[var(--line)] p-4 sm:p-6"><h2 className="text-xl font-black sm:text-2xl">{title}</h2><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button></header><div className="p-4 sm:p-6">{children}</div></div></div>;
+    node?.showModal();
+    return () => { document.body.style.overflow = previous; node?.close(); if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus(); };
+  }, []);
+  return <dialog ref={dialog} aria-labelledby={titleId} aria-busy={busy} className={`fixed inset-0 m-auto max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--panel)] p-0 shadow-2xl backdrop:bg-black/65 ${wide ? "max-w-5xl" : "max-w-3xl"}`} onCancel={(event) => { event.preventDefault(); onClose(); }} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} onKeyDown={(event) => {
+    if (event.key !== "Tab") return;
+    const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [tabindex]')).filter(node => node.tabIndex >= 0 && !node.matches(':disabled') && node.getClientRects().length > 0);
+    const first = controls[0], last = controls.at(-1);
+    if (!first) { event.preventDefault(); event.currentTarget.focus(); }
+    else if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) { event.preventDefault(); last?.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }}><header className="flex items-center justify-between gap-4 border-b border-[var(--line)] p-4 sm:p-6"><h2 id={titleId} className="text-xl font-black sm:text-2xl">{title}</h2><button className="button-secondary focus-ring" disabled={busy} type="button" onClick={onClose}>{t("common.close")}</button></header><div className="p-4 sm:p-6">{children}</div></dialog>;
 }
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: value < 100 ? 2 : 0, notation: value >= 10000 ? "compact" : "standard" }).format(value);
+function formatNumber(value: number, locale: string) {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: value < 100 ? 2 : 0, notation: value >= 10000 ? "compact" : "standard" }).format(value);
 }

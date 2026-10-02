@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
+import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 
 type Source = {
@@ -50,7 +51,12 @@ type AutomationData = {
 
 const updateIntervals: UpdateInterval[] = ["week", "month", "quarter", "half_year", "year", "never"];
 
-export function ProjectAutoUpdateSettings({
+export function ProjectAutoUpdateSettings(props: Parameters<typeof ProjectAutoUpdateSettingsSession>[0]) {
+  const { user } = useAuthSnapshot();
+  return <ProjectAutoUpdateSettingsSession key={`${user?.id || "guest"}:${props.token}:${props.projectType}:${props.projectId}`} {...props} />;
+}
+
+function ProjectAutoUpdateSettingsSession({
   projectType,
   projectId,
   token,
@@ -63,10 +69,12 @@ export function ProjectAutoUpdateSettings({
   const [data, setData] = useState<AutomationData>();
   const [runs, setRuns] = useState<AutomationRun[]>([]);
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const base = `/api/v1/projects/${encodeURIComponent(projectType)}/${encodeURIComponent(projectId)}/automation`;
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const [value, history] = await Promise.all([
         apiRequest<AutomationData>(base, {}, token),
@@ -75,8 +83,12 @@ export function ProjectAutoUpdateSettings({
       setData({ ...value, settings: normalizeSettings(value.settings, value.sources) });
       setRuns(history.items);
       setMessage("");
+      return true;
     } catch (error) {
       setMessage(errorMessage(error));
+      return false;
+    } finally {
+      setLoading(false);
     }
   }, [base, token]);
 
@@ -86,21 +98,26 @@ export function ProjectAutoUpdateSettings({
 
   async function bind(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    if (saving) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setSaving(true);
     try {
       await apiRequest(base + "/sources", {
         method: "POST",
         body: JSON.stringify({ sourceType: form.get("sourceType"), url: form.get("url") }),
       }, token);
-      event.currentTarget.reset();
+      formElement.reset();
       await load();
     } catch (error) {
       setMessage(errorMessage(error));
+    } finally {
+      setSaving(false);
     }
   }
 
   async function save() {
-    if (!data) return;
+    if (!data || saving) return;
     setSaving(true);
     try {
       await apiRequest(base, {
@@ -117,8 +134,7 @@ export function ProjectAutoUpdateSettings({
           })),
         }),
       }, token);
-      await load();
-      setMessage(t("projectAutomation.saved"));
+      if (await load()) setMessage(t("projectAutomation.saved"));
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -127,17 +143,20 @@ export function ProjectAutoUpdateSettings({
   }
 
   async function run(kind: UpdateKind) {
+    if (saving) return;
+    setSaving(true);
     try {
       await apiRequest(`${base}/runs`, { method: "POST", body: JSON.stringify({ kind }) }, token);
-      await load();
-      setMessage(t("projectAutomation.queued"));
+      if (await load()) setMessage(t("projectAutomation.queued"));
     } catch (error) {
       setMessage(errorMessage(error));
+    } finally {
+      setSaving(false);
     }
   }
 
   function update(kind: UpdateKind, values: Partial<Setting>) {
-    if (!data) return;
+    if (!data || saving) return;
     setData({
       ...data,
       settings: data.settings.map((item) => item.updateKind === kind ? { ...item, ...values } : item),
@@ -147,25 +166,26 @@ export function ProjectAutoUpdateSettings({
   if (!data) {
     return <section className="mt-6 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5">
       <h2 className="text-xl font-black">{t("projectAutomation.title")}</h2>
-      <p className={`mt-3 text-sm ${message ? "text-[var(--red)]" : "text-[var(--muted)]"}`}>
+      <p role={message ? "alert" : undefined} className={`mt-3 text-sm ${message ? "text-[var(--red)]" : "text-[var(--muted)]"}`}>
         {message || t("common.loading")}
       </p>
+      {message ? <button className="button-secondary focus-ring mt-3" disabled={loading} type="button" onClick={() => void load()}>{t("common.retry")}</button> : null}
     </section>;
   }
 
   return <section className="mt-6 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5">
     <h2 className="text-xl font-black">{t("projectAutomation.title")}</h2>
     <p className="mt-2 text-sm text-[var(--muted)]">{t("projectAutomation.description")}</p>
-    {message ? <p className="mt-3 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
+    {message ? <p role="alert" className="mt-3 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
 
     <form className="mt-5 flex flex-wrap gap-2" onSubmit={bind}>
-      <select className="field w-auto" name="sourceType">
+      <select aria-label={t("projectAutomation.source")} disabled={saving} className="field w-auto" name="sourceType">
         <option value="modrinth">Modrinth</option>
         <option value="curseforge">CurseForge</option>
         <option value="github">GitHub</option>
       </select>
-      <input className="field min-w-64 flex-1" name="url" required type="url" placeholder={t("projectAutomation.sourceUrl")} />
-      <button className="button-secondary focus-ring" type="submit">{t("projectAutomation.verifySource")}</button>
+      <input aria-label={t("projectAutomation.sourceUrl")} disabled={saving} className="field min-w-64 flex-1" name="url" required type="url" placeholder={t("projectAutomation.sourceUrl")} />
+      <button className="button-secondary focus-ring" disabled={saving} type="submit">{t("projectAutomation.verifySource")}</button>
     </form>
 
     <div className="mt-3 flex flex-wrap gap-2">
@@ -189,14 +209,14 @@ export function ProjectAutoUpdateSettings({
               {item.lastStatus}{item.lastError ? ` · ${item.lastError}` : ""}
             </p>
           </div>
-          <button className="button-secondary focus-ring" disabled={!item.sourceType} type="button" onClick={() => void run(item.updateKind)}>
+          <button className="button-secondary focus-ring" disabled={saving || !item.sourceType} type="button" onClick={() => void run(item.updateKind)}>
             {t("projectAutomation.runNow")}
           </button>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="grid gap-1 text-sm font-bold">
             {t("projectAutomation.source")}
-            <select className="field" value={item.sourceType} onChange={(event) => update(item.updateKind, { sourceType: event.target.value })}>
+            <select disabled={saving} className="field" value={item.sourceType} onChange={(event) => update(item.updateKind, { sourceType: event.target.value })}>
               <option value="">—</option>
               {data.sources
                 .filter((source) => item.updateKind !== "minecraft_versions" || source.sourceType !== "github")
@@ -205,23 +225,23 @@ export function ProjectAutoUpdateSettings({
           </label>
           <label className="grid gap-1 text-sm font-bold">
             {t("projectAutomation.interval")}
-            <select className="field" value={item.interval} onChange={(event) => update(item.updateKind, { interval: event.target.value as UpdateInterval })}>
+            <select disabled={saving} className="field" value={item.interval} onChange={(event) => update(item.updateKind, { interval: event.target.value as UpdateInterval })}>
               {updateIntervals.map((value) => <option key={value} value={value}>{t(`projectAutomation.intervals.${value}`)}</option>)}
             </select>
           </label>
           <label className="mt-7 flex gap-2 font-bold">
-            <input checked={item.enabled} type="checkbox" onChange={(event) => update(item.updateKind, { enabled: event.target.checked })} />
+            <input disabled={saving} checked={item.enabled} type="checkbox" onChange={(event) => update(item.updateKind, { enabled: event.target.checked })} />
             {t("common.enabled")}
           </label>
         </div>
         {item.updateKind === "site_downloads" ? <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <label className="flex gap-2 font-bold">
-            <input checked={item.licenseOverride} type="checkbox" onChange={(event) => update(item.updateKind, { licenseOverride: event.target.checked })} />
+            <input disabled={saving} checked={item.licenseOverride} type="checkbox" onChange={(event) => update(item.updateKind, { licenseOverride: event.target.checked })} />
             {t("projectAutomation.licenseOverride")}
           </label>
           {item.licenseOverride ? <>
-            <input className="field" value={item.licenseOverrideReason} onChange={(event) => update(item.updateKind, { licenseOverrideReason: event.target.value })} placeholder={t("projectAutomation.overrideReason")} />
-            <input className="field sm:col-span-2" value={item.licenseOverrideSource} onChange={(event) => update(item.updateKind, { licenseOverrideSource: event.target.value })} placeholder={t("projectAutomation.overrideSource")} />
+            <input aria-label={t("projectAutomation.overrideReason")} disabled={saving} className="field" value={item.licenseOverrideReason} onChange={(event) => update(item.updateKind, { licenseOverrideReason: event.target.value })} placeholder={t("projectAutomation.overrideReason")} />
+            <input aria-label={t("projectAutomation.overrideSource")} disabled={saving} className="field sm:col-span-2" value={item.licenseOverrideSource} onChange={(event) => update(item.updateKind, { licenseOverrideSource: event.target.value })} placeholder={t("projectAutomation.overrideSource")} />
           </> : null}
         </div> : null}
       </article>)}
@@ -252,7 +272,7 @@ function normalizeSettings(settings: Setting[], sources: Source[]) {
     return {
       ...fallback,
       ...current,
-      sourceType: current?.sourceType || sources[0]?.sourceType || "",
+      sourceType: current?.sourceType ?? sources.find((source) => fallback.updateKind !== "minecraft_versions" || source.sourceType !== "github")?.sourceType ?? "",
     };
   });
 }
