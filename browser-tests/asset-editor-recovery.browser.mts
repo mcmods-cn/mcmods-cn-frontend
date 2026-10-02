@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { ProductionBrowserFixture } from "./fixture.mts";
+import { ProductionBrowserFixture, type APIReply } from "./fixture.mts";
 
 const fixture = new ProductionBrowserFixture();
 before(async () => { await fixture.start(); });
@@ -64,4 +64,50 @@ test("skin list retry preserves the submitted filter and only re-reads the list"
     assert.equal(searches.at(-1), "synthetic retry filter");
     assert.equal(searches.filter(value => value === "synthetic retry filter").length, 2);
   } finally { await browser.close(); }
+});
+
+test("skin filters stay disabled until identity settles, then keep the submitted query", { timeout: 30_000 }, async () => {
+  const auth = Promise.withResolvers<APIReply>();
+  const authStarted = Promise.withResolvers<void>();
+  const searches: string[] = [];
+  const authenticatedUser = { id: "delayed-skin-reader", username: "delayed-skin-reader", roleCodes: [], permissionRules: [], permissionVersion: 1, rbacVersion: 1 };
+  const browser = await fixture.page(({ path, method, url }) => {
+    if (path === "/api/v1/auth/me") { authStarted.resolve(); return auth.promise; }
+    if (path === "/api/v1/skins") {
+      assert.equal(method, "GET");
+      searches.push(url.searchParams.get("q") || "");
+      return { data: { items: [], hasMore: false, nextCursor: "" } };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/skins`);
+    const query = page.getByRole("searchbox");
+    await query.waitFor();
+    await authStarted.promise;
+    const form = query.locator("xpath=ancestor::form[1]");
+    assert.equal(await query.isDisabled(), true, "unresolved identity must not expose an input that will be remounted");
+    for (const select of await form.getByRole("combobox").all()) assert.equal(await select.isDisabled(), true);
+    for (const button of await form.getByRole("button").all()) assert.equal(await button.isDisabled(), true);
+    const submit = form.getByRole("button", { name: "Search", exact: true });
+    assert.equal(await submit.isDisabled(), true);
+    await query.evaluate(node => node.focus());
+    await page.keyboard.type("input before identity settles");
+    await submit.evaluate(node => (node as HTMLButtonElement).click());
+    assert.equal(await query.inputValue(), "", "native disabled controls reject input before authentication completes");
+    assert.deepEqual(searches, [], "no skin query may be sent with unresolved identity");
+    auth.resolve({ data: authenticatedUser });
+    await page.waitForFunction(() => {
+      const input = document.querySelector('input[type="search"]');
+      return input !== null && !input.matches(":disabled");
+    });
+    await query.fill("filter after identity settles");
+    const submitted = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/skins" && new URL(response.url()).searchParams.get("q") === "filter after identity settles");
+    await submit.click();
+    await submitted;
+    await page.getByText("No textures match these filters.", { exact: true }).waitFor();
+    assert.equal(await query.inputValue(), "filter after identity settles");
+    assert.equal(searches.at(-1), "filter after identity settles");
+    assert.equal(searches.filter(value => value === "filter after identity settles").length, 1);
+  } finally { auth.resolve({ data: authenticatedUser }); await browser.close(); }
 });

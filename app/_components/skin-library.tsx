@@ -62,7 +62,8 @@ function SkinLibraryContent() {
         kicker={t("skins.kicker")}
         title={t("skins.title")}
       >
-          <form className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_150px_150px_minmax(280px,auto)_auto]" onSubmit={search}>
+          <form onSubmit={search}>
+            <fieldset className="grid min-w-0 gap-2 lg:grid-cols-[minmax(240px,1fr)_150px_150px_minmax(280px,auto)_auto]" disabled={!ready}>
             <input aria-label={t("skins.searchPlaceholder")} className="field h-12" type="search" value={query} placeholder={t("skins.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
             <select aria-label={t("skins.kind")} className="field h-12" value={kind} onChange={(event) => { setKind(event.target.value as "" | SkinKind); setCursorHistory([""]); }}>
               <option value="">{t("skins.allKinds")}</option>
@@ -76,6 +77,7 @@ function SkinLibraryContent() {
             </select>
             <CatalogSortControl className="min-h-12 lg:flex-nowrap" direction={sortDirection} field={sort} fields={skinSortFields} onDirectionChange={(value) => { setSortDirection(value); setCursorHistory([""]); }} onFieldChange={(value) => { setSort(value); setCursorHistory([""]); }} />
             <button className="button-primary focus-ring h-12 px-6" type="submit">{t("home.searchAction")}</button>
+            </fieldset>
           </form>
       </CatalogHero>
 
