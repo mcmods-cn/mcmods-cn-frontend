@@ -61,6 +61,9 @@ test("FP051 imported recipe edit opens its actual type and preserves the draft t
   const typeId = "type-real-01";
   const canonicalType = "minecraft:crafting";
   const templateId = "template-real-01";
+  const typeOptions = Promise.withResolvers<APIReply>();
+  const typeOptionsStarted = Promise.withResolvers<void>();
+  const typeOptionsReply = { data: { items: [{ publicId: typeId, canonicalId: canonicalType, name: "Synthetic crafting" }], total: 1 } };
   let recipeReads = 0;
   const writes: Array<Record<string, unknown>> = [];
   const popupErrors: string[] = [];
@@ -85,7 +88,7 @@ test("FP051 imported recipe edit opens its actual type and preserves the draft t
       if (recipeReads === 1) return { status: 503, error: "Controlled recipe resolution failure" };
       return { data: { publicId: recipeId, recipeTypePublicId: typeId, templatePublicId: templateId, canonicalSourceId: "fixture:crafting_source", applicableVersions: ["1.21"], defaultLocale: "en-US", localizations: [{ locale: "en-US", name: "Synthetic imported recipe", summary: "", contentMarkdown: "", provenance: "import", reviewStatus: "approved", editable: true }], publishedRevisionId: "revision-before", reviewStatus: "approved", definition: {}, bindings: { result: { candidates: [{ resourcePublicId: "resource01", canonicalId: "fixture:item", kindCode: "minecraft.item", name: "Synthetic item", amount: 1 }] } } } };
     }
-    if (path === "/api/v1/recipe-types") return { data: { items: [{ publicId: typeId, canonicalId: canonicalType, name: "Synthetic crafting" }], total: 1 } };
+    if (path === "/api/v1/recipe-types") { typeOptionsStarted.resolve(); return typeOptions.promise; }
     if (path === "/api/v1/catalog/recipe-source-versions") return { data: { items: [] } };
     if (path === `/api/v1/recipe-types/${typeId}/templates`) return { data: { items: [template] } };
     if (path === `/api/v1/recipe-templates/${templateId}`) return { data: template };
@@ -108,7 +111,14 @@ test("FP051 imported recipe edit opens its actual type and preserves the draft t
     const name = popup.getByLabel("Localized name", { exact: true });
     await name.waitFor();
     assert.equal(await name.inputValue(), "Synthetic imported recipe");
-    assert.equal(await popup.getByLabel(/^Recipe methods/).inputValue(), typeId);
+    await typeOptionsStarted.promise;
+    const typeSelect = popup.getByLabel(/^Recipe methods/);
+    assert.equal(await typeSelect.isDisabled(), true, "the imported recipe's type cannot be changed while its independent options request is pending");
+    assert.equal(await typeSelect.locator("option").count(), 1);
+    assert.match(await typeSelect.locator("option").innerText(), /Loading recipe methods/);
+    typeOptions.resolve(typeOptionsReply);
+    await typeSelect.locator(`option[value="${typeId}"]`).waitFor({ state: "attached" });
+    assert.equal(await typeSelect.inputValue(), typeId);
     assert.equal(await popup.getByLabel("Canonical source ID", { exact: true }).inputValue(), "fixture:crafting_source");
     await name.fill("Edited imported recipe");
     await popup.getByRole("button", { name: "Save", exact: true }).click();
@@ -127,7 +137,7 @@ test("FP051 imported recipe edit opens its actual type and preserves the draft t
       assert.deepEqual(write.localizations, [{ locale: "en-US", name: "Edited imported recipe", summary: "", contentMarkdown: "" }]);
     }
     assert.deepEqual(popupErrors, []);
-  } finally { await browser.close(); }
+  } finally { typeOptions.resolve(typeOptionsReply); await browser.close(); }
 });
 
 test("FP068 two native ZIP drops cannot start another import while the initial job POST is pending", { timeout: 35_000 }, async () => {
