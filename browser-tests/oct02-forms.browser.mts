@@ -332,17 +332,19 @@ test("OCT02 guest catalog favorites use one identity and remain usable with deni
 
 
 test("OCT02 a late community translation cannot replace a newly selected target language", { timeout: 30_000 }, async () => {
-  let languageLoads = 0;
+  let primaryLocale = "zh-CN";
+  const initialLanguages = Promise.withResolvers<void>();
   let releaseOld: () => void = () => {};
   let oldStarted: () => void = () => {};
   const oldStart = new Promise<void>((resolve) => { oldStarted = resolve; });
   const oldResult = new Promise<void>((resolve) => { releaseOld = resolve; });
+  const oldReturned = Promise.withResolvers<void>();
   const targets: string[] = [];
   const browser = await formPage(async ({ path, method, body }) => {
     if (path === "/api/v1/community/posts/oct02post") return { data: { id: "oct02post", kind: "tutorial", title: "Original article", sourceLocale: "en-US", bodyMarkdown: "Original content", category: "general", minecraftVersions: [], authorId: "oct02author", authorName: "Fixture author", reviewStatus: "approved", projects: [], resources: [], createdAt: "2026-10-02T01:00:00Z", updatedAt: "2026-10-02T01:00:00Z", canEdit: true, canResolve: false } };
     if (path === "/api/v1/users/me/content-languages") {
-      languageLoads++;
-      return { data: { primaryLocale: languageLoads === 1 ? "zh-CN" : "fr-FR", secondaryLocale: "en-US", editableLocales: ["en-US", "zh-CN", "fr-FR"] } };
+      await initialLanguages.promise;
+      return { data: { primaryLocale, secondaryLocale: "en-US", editableLocales: ["en-US", "zh-CN", "fr-FR"] } };
     }
     if (path === "/api/v1/projects/oct02post/follow") return { data: { followed: false, notificationsEnabled: true } };
     if (path === "/api/v1/review-locks/community_post/oct02post") return { data: { locked: false, subscribed: false, canSubscribe: false } };
@@ -355,6 +357,7 @@ test("OCT02 a late community translation cannot replace a newly selected target 
     }
     if (path === "/api/v1/community/translations/oct02task") {
       oldStarted(); await oldResult;
+      oldReturned.resolve();
       return { data: { status: "completed", translation: { title: "Late Chinese result", bodyMarkdown: "Late Chinese fixture body" } } };
     }
   });
@@ -362,18 +365,30 @@ test("OCT02 a late community translation cannot replace a newly selected target 
     const { page } = browser;
     await page.goto(`${fixture.origin}/tutorials/oct02post`);
     await page.getByRole("heading", { name: "Original article", exact: true }).waitFor();
-    const translationAction = page.locator("article > header button").first();
-    await translationAction.click();
-    await oldStart;
+    // The article arrives before content-language preferences. Its first
+    // button can be Report while the translation action is still absent.
+    const translationAction = page.locator("article > header").getByRole("button", { name: "Translate to my primary language", exact: true });
+    await page.getByRole("button", { name: "Report", exact: true }).waitFor();
+    assert.equal(await translationAction.count(), 0);
+    initialLanguages.resolve();
+    const oldPoll = page.waitForRequest(request => new URL(request.url()).pathname === "/api/v1/community/translations/oct02task");
+    await Promise.all([oldStart, oldPoll, translationAction.click()]);
+    // Preference responses follow the explicit scenario, not request ordinal:
+    // auth remounts may legitimately make another initial settings request.
+    primaryLocale = "fr-FR";
+    const oldCancelled = page.waitForEvent("requestfailed", { predicate: request => new URL(request.url()).pathname === "/api/v1/community/translations/oct02task" });
     await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("fr-FR");
     await page.waitForFunction(() => document.documentElement.lang === "fr-FR");
+    assert.match((await oldCancelled).failure()?.errorText ?? "", /ERR_ABORTED/, "Switching the target must cancel the real pending request");
     await translationAction.click();
     await page.getByRole("heading", { name: "Translated into French", exact: true }).waitFor();
     releaseOld();
-    await page.waitForLoadState("networkidle");
+    await oldReturned.promise;
+    await page.evaluate(async () => { for (let frame = 0; frame < 2; frame++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+    assert.equal(await page.getByRole("heading", { name: "Translated into French", exact: true }).count(), 1);
     assert.deepEqual(targets, ["zh-CN", "fr-FR"]);
     assert.equal(await page.getByRole("heading", { name: "Late Chinese result", exact: true }).count(), 0);
-  } finally { releaseOld(); await browser.close(); }
+  } finally { initialLanguages.resolve(); releaseOld(); await browser.close(); }
 });
 
 test("OCT02 community edit waits for its original record and supports an explicit retry", { timeout: 30_000 }, async () => {
