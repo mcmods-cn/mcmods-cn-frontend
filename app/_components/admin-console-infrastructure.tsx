@@ -340,19 +340,55 @@ function ModImportConfigPanel({ token }: { token: string }) {
   );
 }
 
+function useAISettingsDraft(initialConfig: AIConfig, token: string, normalize: (config: AIConfig) => AIConfig) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(() => normalize(initialConfig));
+  const [ready, setReady] = useState(false);
+  const [loadFailure, setLoadFailure] = useState<unknown>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+    apiRequest<AIConfig>("/api/v1/admin/ai/config", { signal: controller.signal }, token)
+      .then((config) => {
+        if (cancelled) return;
+        setDraft(normalize(config));
+        setReady(true);
+        setLoadFailure(null);
+      })
+      .catch((error) => { if (!cancelled) setLoadFailure(error); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [token, normalize, loadAttempt]);
+
+  function retry() {
+    setLoadFailure(null);
+    setLoadAttempt((current) => current + 1);
+  }
+  return { draft, setDraft, ready, loadError: loadFailure === null ? "" : apiErrorMessage(loadFailure, t, t("common.loadFailed")), retry };
+}
+
+function AISettingsLoadMessage({ ready, error, retry }: { ready: boolean; error: string; retry: () => void }) {
+  const { t } = useI18n();
+  if (ready) return null;
+  return error ? <div role="alert" className="surface flex flex-wrap items-center gap-3 rounded-lg p-4 text-sm text-[var(--danger)]"><span>{error}</span><button className="button-secondary focus-ring" type="button" onClick={retry}>{t("common.retry")}</button></div> : <p role="status" className="text-sm text-[var(--muted)]">{t("common.loading")}</p>;
+}
+
 function AIProvidersPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState(() => normalizeAIProtocols(initialConfig));
+  const { draft, setDraft, ready, loadError, retry } = useAISettingsDraft(initialConfig, token, normalizeAIProtocols);
   const [saving, setSaving] = useState(false);
 
   async function save() {
+    if (!ready || saving) return;
     await saveAIConfig(draft, token, setDraft, setSaving, t);
   }
 
   return (
     <div className="grid gap-4">
-      <AISettingsHeader title={t("admin.ai.providers")} description={t("admin.ai.providersDesc")} saving={saving} onSave={save} />
-      <section className="surface rounded-lg p-4">
+      <AISettingsHeader title={t("admin.ai.providers")} description={t("admin.ai.providersDesc")} saving={saving} disabled={!ready} onSave={save} />
+      <AISettingsLoadMessage ready={ready} error={loadError} retry={retry} />
+      <fieldset disabled={!ready || saving} className="surface rounded-lg p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="font-bold">{t("admin.ai.providerList")}</h3>
           <button className="button-secondary focus-ring" type="button" onClick={() => setDraft({ ...draft, providers: [...draft.providers, { code: "", name: "", enabled: false, baseUrl: "", apiKey: "", protocol: "openai-compatible", notes: "" }] })}>
@@ -389,33 +425,22 @@ function AIProvidersPanel({ initialConfig, token }: { initialConfig: AIConfig; t
             </div>
           ))}
         </div>
-      </section>
+      </fieldset>
     </div>
   );
 }
 
 function AIModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState(() => normalizeAIModelProviders(initialConfig));
+  const { draft, setDraft, ready, loadError, retry } = useAISettingsDraft(initialConfig, token, normalizeAIModelProviders);
   const [saving, setSaving] = useState(false);
   const availableProviders = draft.providers.filter((provider) => provider.code.trim());
 
-  useEffect(() => {
-    let cancelled = false;
-    apiRequest<AIConfig>("/api/v1/admin/ai/config", {}, token)
-      .then((config) => {
-        if (!cancelled) setDraft(normalizeAIModelProviders(config));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-
   return (
     <div className="grid gap-4">
-      <AISettingsHeader title={t("admin.ai.models")} description={t("admin.ai.modelsDesc")} saving={saving} onSave={() => saveAIConfig(draft, token, setDraft, setSaving, t)} />
-      <section className="surface rounded-lg p-4">
+      <AISettingsHeader title={t("admin.ai.models")} description={t("admin.ai.modelsDesc")} saving={saving} disabled={!ready} onSave={() => { if (ready && !saving) void saveAIConfig(draft, token, setDraft, setSaving, t); }} />
+      <AISettingsLoadMessage ready={ready} error={loadError} retry={retry} />
+      <fieldset disabled={!ready || saving} className="surface rounded-lg p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="font-bold">{t("admin.ai.modelList")}</h3>
           <button className="button-secondary focus-ring" type="button" onClick={() => setDraft({ ...draft, models: [...draft.models, { provider: availableProviders[0]?.code ?? "", model: "", displayName: "", enabled: false, contextTokens: 0, maxOutputTokens: 0, inputPricePerMillion: 0, outputPricePerMillion: 0 }] })}>
@@ -458,34 +483,23 @@ function AIModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; toke
             </div>
           ))}
         </div>
-      </section>
+      </fieldset>
     </div>
   );
 }
 
 function AITaskModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState(() => normalizeAIProtocols(initialConfig));
+  const { draft, setDraft, ready, loadError, retry } = useAISettingsDraft(initialConfig, token, normalizeAIProtocols);
   const [saving, setSaving] = useState(false);
   const enabledProviderCodes = new Set(draft.providers.filter((provider) => provider.enabled).map((provider) => provider.code));
   const availableModels = draft.models.filter((model) => model.enabled && enabledProviderCodes.has(model.provider));
 
-  useEffect(() => {
-    let cancelled = false;
-    apiRequest<AIConfig>("/api/v1/admin/ai/config", {}, token)
-      .then((config) => {
-        if (!cancelled) setDraft(normalizeAIProtocols(config));
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-
   return (
     <div className="grid gap-4">
-      <AISettingsHeader title={t("admin.ai.taskModels")} description={t("admin.ai.taskModelsDesc")} saving={saving} onSave={() => saveAIConfig(draft, token, setDraft, setSaving, t)} />
-      <section className="surface rounded-lg p-4">
+      <AISettingsHeader title={t("admin.ai.taskModels")} description={t("admin.ai.taskModelsDesc")} saving={saving} disabled={!ready} onSave={() => { if (ready && !saving) void saveAIConfig(draft, token, setDraft, setSaving, t); }} />
+      <AISettingsLoadMessage ready={ready} error={loadError} retry={retry} />
+      <fieldset disabled={!ready || saving} className="surface rounded-lg p-4">
         <div className="grid gap-3">
           <div className="hidden gap-3 px-3 text-xs font-bold text-[var(--muted)] xl:grid xl:grid-cols-[minmax(190px,1.2fr)_minmax(240px,1.4fr)_120px_minmax(300px,2fr)]">
             <span>{t("admin.ai.taskType")}</span>
@@ -513,7 +527,7 @@ function AITaskModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; 
             </div>
           ))}
         </div>
-      </section>
+      </fieldset>
     </div>
   );
 }
@@ -760,7 +774,7 @@ function AITaskLogsPanel({ token }: { token: string }) {
   );
 }
 
-function AISettingsHeader({ title, description, saving, onSave }: { title: string; description: string; saving: boolean; onSave: () => void }) {
+function AISettingsHeader({ title, description, saving, disabled, onSave }: { title: string; description: string; saving: boolean; disabled: boolean; onSave: () => void }) {
   const { t } = useI18n();
 
   return (
@@ -770,7 +784,7 @@ function AISettingsHeader({ title, description, saving, onSave }: { title: strin
           <h2 className="text-xl font-bold">{title}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{description}</p>
         </div>
-        <button className="button-primary focus-ring" disabled={saving} type="button" onClick={onSave}>
+        <button className="button-primary focus-ring" disabled={saving || disabled} type="button" onClick={onSave}>
           {saving ? t("admin.saving") : t("admin.ai.saveConfig")}
         </button>
       </div>
