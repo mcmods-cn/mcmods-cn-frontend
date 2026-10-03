@@ -32,7 +32,11 @@ test("Live backend: cookie login, persistent favorites, language changes, deleti
   page.on("pageerror", error => errors.push(error.message));
   try {
     assert.equal((await context.request.get(`${api}/api/v1/auth/me`)).status(), 401);
-    await page.goto(`${origin}/login?next=${encodeURIComponent("/user?section=favorites")}`);
+    const documentResponse = await page.goto(`${origin}/login?next=${encodeURIComponent("/user?section=favorites")}`);
+    assert.equal(documentResponse?.status(), 200);
+    const policy = documentResponse?.headers()["content-security-policy"];
+    assert(policy && /script-src[^;]*'nonce-[^']+'/.test(policy) && policy.includes(api),
+      "The independent Next copy must retain its real nonce CSP and configured API origin");
     await page.getByLabel("Account", { exact: true }).fill(account);
     // Evaluation avoids including a generated credential in action diagnostics.
     await page.locator('input[type="password"]').evaluate((input, value) => {

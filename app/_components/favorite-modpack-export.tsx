@@ -54,9 +54,17 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
   useEffect(() => {
     if (!open) return;
     const node = dialog.current;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     node?.showModal();
-    return () => node?.close();
+    return () => {
+      node?.close();
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
   }, [open]);
+
+  useEffect(() => {
+    if (open && busy) dialog.current?.focus();
+  }, [busy, open]);
 
   useEffect(() => {
     if (!initialTaskId) return;
@@ -265,6 +273,13 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
       {open ? (
         <dialog
           ref={dialog}
+          tabIndex={-1}
+          onKeyDown={(event) => {
+            if (busy && event.key === "Tab") {
+              event.preventDefault();
+              event.currentTarget.focus();
+            }
+          }}
           aria-labelledby={titleId}
           className="surface fixed inset-0 m-auto max-h-[92vh] w-[calc(100%_-_1.5rem)] max-w-5xl overflow-y-auto rounded-xl p-4 backdrop:bg-black/55 md:p-6"
           onCancel={(event) => { event.preventDefault(); if (!busy) setOpen(false); }}

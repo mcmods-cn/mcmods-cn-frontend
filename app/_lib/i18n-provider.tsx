@@ -14,6 +14,7 @@ import { formatI18nMessage, parseI18nOverrides } from "./i18n-message.mts";
 import {
   defaultUILocale,
   readUILocaleCookie,
+  resolveUILocaleSyncHint,
   serializeUILocaleCookie,
   supportedUILocales,
   type UILocale,
@@ -37,6 +38,7 @@ const dictionaries: Record<Locale, TranslationValue> = {
 };
 
 const localeSyncStorageKey = "mcmods-ui-locale-sync";
+let localeSyncChangedAt = 0;
 const overrideStorageKey = "mcmods-i18n-overrides";
 const overrideEditStorageKey = "mcmods-i18n-edit-version";
 // In-flight local suggestions must also notice edits that restore the same text.
@@ -68,7 +70,8 @@ export function I18nProvider({ children, initialLocale = defaultLocale }: { chil
     document.cookie = serializeUILocaleCookie(nextLocale);
     document.documentElement.lang = nextLocale;
     document.documentElement.dir = "ltr";
-    writeBrowserStorage(localeSyncStorageKey, `${Date.now()}:${nextLocale}`);
+    localeSyncChangedAt = Date.now();
+    writeBrowserStorage(localeSyncStorageKey, `${localeSyncChangedAt}:${nextLocale}`);
     window.dispatchEvent(new Event("mcmods-locale-change"));
   }, []);
 
@@ -153,6 +156,13 @@ export function useI18n() {
 
 function subscribeLocale(onStoreChange: () => void) {
   const onStorageChange = (event: StorageEvent) => {
+    if (event.key === localeSyncStorageKey) {
+      const hint = resolveUILocaleSyncHint(event.newValue, readBrowserStorage(localeSyncStorageKey), localeSyncChangedAt);
+      if (hint) {
+        localeSyncChangedAt = hint.changedAt;
+        document.cookie = serializeUILocaleCookie(hint.locale);
+      }
+    }
     if (event.key === overrideStorageKey || event.key === overrideEditStorageKey || event.key === null) overrideEditVersion += 1;
     onStoreChange();
   };
