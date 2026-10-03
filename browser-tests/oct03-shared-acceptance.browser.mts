@@ -63,7 +63,11 @@ test("OCT03 FS030 slow runtime polling is serial and stale filters cannot publis
         initialStarted.resolve(); await initialRelease.promise; initialFinished.resolve();
         return logReply(99, "OLD FILTER MUST NOT RETURN");
       }
-      return logReply(7, "CURRENT FILTER ENTRY");
+      if (reads === 2) return logReply(7, "CURRENT FILTER ENTRY");
+      return { data: { items: [
+        { id: 7, createdAt: "2026-10-03T00:00:00Z", level: "info", line: "CURRENT FILTER ENTRY" },
+        { id: 8, createdAt: "2026-10-03T00:00:01Z", level: "info", line: "CURSOR RESPONSE CONSUMED" },
+      ], lastId: 8, oldestId: 7, resetNeeded: false } };
     }
   });
   try {
@@ -80,8 +84,16 @@ test("OCT03 FS030 slow runtime polling is serial and stale filters cannot publis
     initialRelease.resolve(); await initialFinished.promise;
     await page.clock.runFor(100);
     assert.equal(await page.getByText("OLD FILTER MUST NOT RETURN", { exact: false }).count(), 0);
+    const continuationResponse = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/v1/admin/runtime-logs" && url.searchParams.get("q") === "current" && url.searchParams.get("afterId") === "7";
+    });
     await page.clock.runFor(2600);
-    await page.getByRole("log").locator("div").filter({ hasText: "CURRENT FILTER ENTRY" }).waitFor();
+    await (await continuationResponse).finished();
+    // The previous line remains visible while native transport catches up to
+    // the virtual timer. A new marker proves this exact cursor response was
+    // actually consumed by React before checking overlap and cleanup.
+    await page.getByRole("log").locator("div").filter({ hasText: "CURSOR RESPONSE CONSUMED" }).waitFor();
     assert.deepEqual(requests.slice(0, 3), [{ query: "", after: null }, { query: "current", after: null }, { query: "current", after: "7" }]);
     assert.equal(await page.getByRole("log").locator("div").filter({ hasText: "CURRENT FILTER ENTRY" }).count(), 1, "cursor overlap must deduplicate the visible record");
     await page.locator('[data-admin-panel="overview"]').click();
