@@ -56,6 +56,8 @@ export function AdminUnresolvedReferences({ token }: { token: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 	const [referenceTypesError, setReferenceTypesError] = useState("");
+	const [referenceTypesAttempt, setReferenceTypesAttempt] = useState(0);
+	const [referenceTypesLoading, setReferenceTypesLoading] = useState(false);
 	const [requestVersion, setRequestVersion] = useState(0);
   const pageSize = 50;
 
@@ -68,14 +70,16 @@ export function AdminUnresolvedReferences({ token }: { token: string }) {
 
   useEffect(() => {
 		const controller = new AbortController();
+		queueMicrotask(() => { if (!controller.signal.aborted) setReferenceTypesLoading(true); });
 		apiRequest<{ items: string[] }>("/api/v1/admin/unresolved-reference-types", { signal: controller.signal }, token)
-			.then((value) => { setReferenceTypes(value.items); setReferenceTypesError(""); })
+			.then((value) => { if (!controller.signal.aborted) { setReferenceTypes(value.items); setReferenceTypesError(""); } })
 			.catch((reason: unknown) => {
+				if (controller.signal.aborted) return;
 				if (reason instanceof DOMException && reason.name === "AbortError") return;
 				setReferenceTypesError(reason instanceof Error ? reason.message : String(reason));
-			});
+			}).finally(() => { if (!controller.signal.aborted) setReferenceTypesLoading(false); });
 		return () => controller.abort();
-	}, [token]);
+	}, [referenceTypesAttempt, token]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -139,7 +143,7 @@ export function AdminUnresolvedReferences({ token }: { token: string }) {
     </header>
 
     {error ? <p className="m-5 rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]" role="alert">{error}</p> : null}
-    {referenceTypesError ? <p className="m-5 rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]" role="alert">{referenceTypesError}</p> : null}
+    {referenceTypesError ? <div className="m-5"><p className="rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]" role="alert">{referenceTypesError}</p><button className="button-secondary focus-ring mt-3" disabled={referenceTypesLoading} type="button" onClick={() => setReferenceTypesAttempt((current) => current + 1)}>{t("common.retry")}</button></div> : null}
     {loading ? <p className="grid min-h-52 place-items-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
     {!loading && !result.items.length ? <p className="grid min-h-52 place-items-center text-sm text-[var(--muted)]">{t("admin.unresolved.empty")}</p> : null}
     {!loading && result.items.length ? <div className="overflow-x-auto">

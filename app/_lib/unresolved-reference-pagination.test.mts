@@ -37,6 +37,7 @@ test("list and authoritative-type failures remain visible without replacing the 
 	assert.match(panel, /setError\(reason instanceof Error \? reason\.message : String\(reason\)\)/);
 	assert.match(panel, /setReferenceTypesError\(reason instanceof Error \? reason\.message : String\(reason\)\)/);
 	assert.match(panel, /\{error \? <p[^>]+role="alert">\{error\}<\/p> : null\}/);
-	assert.match(panel, /\{referenceTypesError \? <p[^>]+role="alert">\{referenceTypesError\}<\/p> : null\}/);
+	assert.match(panel, /\{referenceTypesError \? <div[^>]*><p[^>]+role="alert">\{referenceTypesError\}<\/p>/);
+	assert.match(panel, /disabled=\{referenceTypesLoading\}[\s\S]*?setReferenceTypesAttempt\(\(current\) => current \+ 1\)[\s\S]*?common\.retry/);
 	assert.doesNotMatch(panel, /\.catch\([^)]*\)\s*=>\s*setResult\(/);
 });

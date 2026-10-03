@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../_lib/api";
 import {
   canSubmitAboutDraft,
@@ -39,8 +39,7 @@ export function AboutAdminPanel({ token }: { token: string }) {
   const [message, setMessage] = useState("");
   const loadGeneration = useRef(0);
   const selectedLocale = useRef(locale);
-
-  const load = useCallback(
+  const load = useEffectEvent(
     async (
       requestedLocale: string,
       requestGeneration: number,
@@ -96,7 +95,6 @@ export function AboutAdminPanel({ token }: { token: string }) {
         }
       }
     },
-    [t, token],
   );
 
   useEffect(() => {
@@ -107,7 +105,7 @@ export function AboutAdminPanel({ token }: { token: string }) {
       () => void load(locale, requestGeneration, controller.signal),
     );
     return () => controller.abort();
-  }, [load, locale, reloadGeneration]);
+  }, [locale, reloadGeneration, token]);
 
   const canEdit = canSubmitAboutDraft({
     draft,
@@ -295,23 +293,45 @@ export function SiteChangelogAdminPanel({ token }: { token: string }) {
   const [publish, setPublish] = useState(false);
   const [preview, setPreview] = useState(false);
   const [message, setMessage] = useState("");
+  const [pageLoading, setPageLoading] = useState(true);
+  const [pageError, setPageError] = useState("");
+  const pageRequest = useRef<{ generation: number; controller?: AbortController }>({ generation: 0 });
   const load = useCallback(
-    (targetCursor = cursor) => {
+    async (targetCursor = cursor) => {
+      pageRequest.current.controller?.abort();
+      const controller = new AbortController();
+      const generation = ++pageRequest.current.generation;
+      pageRequest.current.controller = controller;
+      setPageLoading(true);
+      setPageError("");
+      setPage((current) => ({ ...current, items: [] }));
       const pageCursor = targetCursor
         ? `&cursor=${encodeURIComponent(targetCursor)}`
         : "";
-      return apiRequest<AdminChangelogPage>(
-        `/api/v1/admin/site-affairs/changelogs?limit=30${pageCursor}`,
-        {},
-        token,
-      )
-        .then(setPage)
-        .catch((error) => setMessage(errorMessage(error)));
+      try {
+        const next = await apiRequest<AdminChangelogPage>(
+          `/api/v1/admin/site-affairs/changelogs?limit=30${pageCursor}`,
+          { signal: controller.signal },
+          token,
+        );
+        if (!controller.signal.aborted && generation === pageRequest.current.generation) setPage(next);
+      } catch (error) {
+        if (!controller.signal.aborted && generation === pageRequest.current.generation) setPageError(errorMessage(error));
+      } finally {
+        if (!controller.signal.aborted && generation === pageRequest.current.generation) setPageLoading(false);
+      }
     },
     [cursor, token],
   );
   useEffect(() => {
-    queueMicrotask(() => void load());
+    let cancelled = false;
+    const requestScope = pageRequest.current;
+    queueMicrotask(() => { if (!cancelled) void load(); });
+    return () => {
+      cancelled = true;
+      requestScope.controller?.abort();
+      requestScope.generation++;
+    };
   }, [load]);
   function edit(item: AdminChangelog) {
     const value = changelogDraftForLocale(item.translations, locale);
@@ -396,6 +416,15 @@ export function SiteChangelogAdminPanel({ token }: { token: string }) {
       {message ? <Notice text={message} /> : null}
       <div className="mt-5 grid gap-5 xl:grid-cols-[360px_1fr]">
         <div className="grid content-start gap-2">
+          {pageLoading ? <p role="status">{t("common.loading")}</p> : null}
+          {pageError ? (
+            <div>
+              <p role="alert">{pageError}</p>
+              <button className="button-secondary focus-ring" type="button" onClick={() => void load()}>
+                {t("common.retry")}
+              </button>
+            </div>
+          ) : null}
           {page.items.map((item) => (
             <button
               className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-left hover:border-[var(--accent)]"
@@ -423,7 +452,7 @@ export function SiteChangelogAdminPanel({ token }: { token: string }) {
             </button>
             <button
               className="button-secondary focus-ring"
-              disabled={!page.hasMore || !page.nextCursor}
+              disabled={pageLoading || Boolean(pageError) || !page.hasMore || !page.nextCursor}
               type="button"
               onClick={nextPage}
             >
