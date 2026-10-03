@@ -23,7 +23,7 @@ type GLObservation = {
   liveFramebuffers: number;
   liveRenderbuffers: number;
   instancedDraws: number;
-  draws: Array<{ instances: number; indices: number; sequence: number }>;
+  draws: Array<{ instances: number; indices: number; sequence: number; frame: number }>;
   finishSamplesMs: number[];
   viewMatrix: number[];
   errors: number[];
@@ -43,6 +43,7 @@ declare global {
     oct03RenderObservation: RenderObservation;
     oct03ReleaseCover: (index: number) => void;
     oct03MarkerImagesLoaded: number;
+    oct03OpaqueProbeReads: number;
   }
 }
 
@@ -88,6 +89,12 @@ async function observeNativeRendering(page: Page, holdCovers = false) {
   await page.addInitScript(({ holdCovers }) => {
     const observation: RenderObservation = { contexts: [], pendingCovers: 0, encodedCovers: 0, longTasks: [] };
     window.oct03RenderObservation = observation;
+    window.oct03OpaqueProbeReads = 0;
+    const nativeImageData = CanvasRenderingContext2D.prototype.getImageData;
+    CanvasRenderingContext2D.prototype.getImageData = function (...args: Parameters<typeof nativeImageData>) {
+      window.oct03OpaqueProbeReads++;
+      return Reflect.apply(nativeImageData, this, args);
+    };
     if (PerformanceObserver.supportedEntryTypes.includes("longtask")) {
       new PerformanceObserver(list => {
         for (const entry of list.getEntries()) observation.longTasks.push({ startMs: entry.startTime, durationMs: entry.duration });
@@ -95,6 +102,14 @@ async function observeNativeRendering(page: Page, holdCovers = false) {
       }).observe({ type: "longtask", buffered: true });
     }
     const contexts = new WeakMap<WebGL2RenderingContext, GLObservation>();
+    const nativeAnimationFrame = window.requestAnimationFrame;
+    let activeFrame = 0;
+    window.requestAnimationFrame = callback => nativeAnimationFrame.call(window, timestamp => {
+      const previousFrame = activeFrame;
+      activeFrame = timestamp;
+      try { callback(timestamp); }
+      finally { activeFrame = previousFrame; }
+    });
     const objects = new WeakMap<object, number>();
     const resources = new WeakMap<GLObservation, Map<string, Set<number>>>();
     const sizes = new WeakMap<GLObservation, Map<number, number>>();
@@ -211,7 +226,7 @@ async function observeNativeRendering(page: Page, holdCovers = false) {
       const record = contexts.get(gl);
       if (!record) return;
       record.instancedDraws++;
-      record.draws.push({ instances: Number(args.at(-1)), indices: Number(args[method === "drawElementsInstanced" ? 1 : 2]), sequence: record.instancedDraws });
+      record.draws.push({ instances: Number(args.at(-1)), indices: Number(args[method === "drawElementsInstanced" ? 1 : 2]), sequence: record.instancedDraws, frame: activeFrame });
       if (record.draws.length > 16) record.draws.shift();
       const error = gl.getError();
       if (error !== gl.NO_ERROR) record.errors.push(error);
@@ -287,6 +302,14 @@ async function frames(page: Page, count = 3) {
 async function waitDraw(page: Page, context: number, instances: number, afterSequence = 0) {
   await page.waitForFunction(({ context, instances, afterSequence }) => window.oct03RenderObservation.contexts[context]?.draws.some(draw => draw.instances === instances && draw.sequence > afterSequence), { context, instances, afterSequence }, { timeout: 60_000 });
 }
+function assertFlatFacePassCount(record: GLObservation, instances: number, expectedPasses: number, afterSequence = 0) {
+  const draws = record.draws.filter(draw => draw.instances === instances && draw.sequence > afterSequence && draw.frame > 0);
+  assert.ok(draws.length > 0, "The real flat-face scene must draw during an animation frame");
+  const latestFrame = draws.at(-1)!.frame;
+  const latest = draws.filter(draw => draw.frame === latestFrame);
+  for (const draw of latest) assert.equal(draw.indices, 6, "This check applies to the fixture's single quad, not a combined mesh");
+  assert.equal(latest.length, expectedPasses, "Opaque loaded planes use one pass; alpha/context planes retain back/front ordering");
+}
 function assertReleased(record: GLObservation) {
   assert.equal(record.liveBuffers, 0, "Every application vertex/index/instance buffer must be deleted");
   assert.equal(record.liveBufferBytes, 0);
@@ -347,10 +370,13 @@ test("PERF069 real production renderer submits 600k instances, slices layers and
         await browser.page.goto(`${fixture.origin}/blueprints/oct03-render-large`, { waitUntil: "commit" });
         recordStage("production-600k-admission-and-layers", "document navigation committed", started);
         await waitDraw(browser.page, 0, 600000);
+        await browser.page.waitForFunction(() => window.oct03RenderObservation.contexts[0].liveTextures > 5);
+        await frames(browser.page);
         recordStage("production-600k-admission-and-layers", "native 600k instance draw complete", started);
         const builtMs = performance.now() - started;
         assert.equal(await browser.page.getByRole("alert").filter({ hasText: "The 3D preview could not be rendered." }).count(), 0);
         const initial = (await snapshot(browser.page)).contexts[0];
+        assertFlatFacePassCount(initial, 600000, 1);
         const initialUploadBytes = initial.bufferUploadBytes;
         recordStage("production-600k-admission-and-layers", "begin keyboard layer selection", started);
         await browser.page.getByRole("button", { name: "↓", exact: true }).press("Enter");
@@ -359,12 +385,15 @@ test("PERF069 real production renderer submits 600k instances, slices layers and
         const layered = await snapshot(browser.page);
         recordStage("production-600k-admission-and-layers", "native adjacent and primary layer draws", started);
         assert.ok(layered.contexts[0].draws.some(draw => draw.instances === 3000 && draw.sequence > initial.instancedDraws));
+        assertFlatFacePassCount(layered.contexts[0], 3000, 1, initial.instancedDraws);
+        assertFlatFacePassCount(layered.contexts[0], 6000, 2, initial.instancedDraws);
         const layerUploadBytes = layered.contexts[0].bufferUploadBytes - initialUploadBytes;
         const allStarted = performance.now();
         await browser.page.getByRole("button", { name: "All", exact: true }).focus();
         await browser.page.keyboard.press("Enter");
         await waitDraw(browser.page, 0, 600000, layered.contexts[0].instancedDraws);
         const allRestoreMs = performance.now() - allStarted;
+        assertFlatFacePassCount((await snapshot(browser.page)).contexts[0], 600000, 1, layered.contexts[0].instancedDraws);
         recordStage("production-600k-admission-and-layers", "all layers restored", started);
         // Client navigation preserves this instrumentation window and unmounts the real viewer.
         await browser.page.locator('a[href^="/login"]').first().press("Enter");
@@ -603,10 +632,13 @@ test("PERF070 production unfinished load aborts on unmount and ignores late nati
       assert.equal(pending.encodedCovers, 0, "onLoaded/capture must not run while scene building is unfinished");
       assert.equal(await browser.page.evaluate(() => window.oct03MarkerImagesLoaded), 0);
       await browser.page.locator('a[href^="/login"]').first().press("Enter");
-      await browser.page.waitForURL("**/login?**");
+      // The original document intentionally still owns a held PNG request.
+      // Observe route/DOM readiness; its load event is not an unmount signal.
+      await browser.page.waitForURL("**/login?**", { waitUntil: "domcontentloaded" });
       await browser.page.locator("canvas").waitFor({ state: "detached" });
       await frames(browser.page);
       const unmounted = await snapshot(browser.page);
+      const imageReadsAtUnmount = await browser.page.evaluate(() => window.oct03OpaqueProbeReads);
       unmounted.contexts.forEach(assertReleased);
       textureGate.resolve();
       modelGate.resolve();
@@ -620,8 +652,133 @@ test("PERF070 production unfinished load aborts on unmount and ignores late nati
       assert.equal(late.contexts[0].instancedDraws, 0, "Late responses must not install or draw a disposed scene");
       assert.equal(late.encodedCovers, 0, "Late load completion must not capture a cover");
       assert.deepEqual(late.contexts[0].created, unmounted.contexts[0].created, "Late PNG decoding must not allocate native GPU resources on the disposed renderer");
+      assert.equal(await browser.page.evaluate(() => window.oct03OpaqueProbeReads), imageReadsAtUnmount, "A disposed material must not read pixels or allocate an optimization canvas for a late PNG");
       late.contexts.forEach(assertReleased);
       return { blocks: 30, states: 2, genuinelyUnfinishedLoad: true, textureRequests, modelRequests, cancelledModelRequests, nativeImageLoadsAfterUnmount: 1, beforeCancel: pending, afterUnmount: unmounted, afterLateResponses: late, boundary: "Async model fetch plus native PNG completion; does not claim interruption of synchronous CPU parsing or physical driver memory reclamation" };
     } finally { textureGate.resolve(); modelGate.resolve(); await saveDiagnostic("production-unfinished-load-cancellation", browser.page); await browser.close(); }
+  });
+});
+
+test("OCT03 DB002 flat faces retain front/back visibility and PNG transparency in native production rendering", { timeout: 60_000 }, async (context) => {
+  await runAcceptance("production-flat-face-two-sides-and-alpha", ["OCT03-DB-002"], context.signal, async () => {
+    const rgba = Buffer.alloc(4 * 4 * 4);
+    for (let index = 0; index < 16; index++) {
+      rgba.set([38, 176, 71, index % 4 < 2 ? 128 : 0], index * 4);
+    }
+    const patterned = await sharp(rgba, { raw: { width: 4, height: 4, channels: 4 } }).png().toBuffer();
+    const solid = await sharp({ create: { width: 4, height: 4, channels: 4, background: { r: 38, g: 176, b: 71, alpha: 1 } } }).png().toBuffer();
+    const blank = await sharp(Buffer.alloc(rgba.length), { raw: { width: 4, height: 4, channels: 4 } }).png().toBuffer();
+    const images: Buffer[] = [];
+    let imageWidth = 0;
+    const samples: Array<{ side: string; greenPixels: number; imageSHA256: string }> = [];
+    for (const side of ["up", "down", "solid", "blank"] as const) {
+      const publicId = `oct03-flat-${side}`;
+      const base = provider(publicId, 1);
+      const browser = await scopedPage(async request => {
+        if (request.path === `/api/v1/blueprints/${publicId}/render`) return {
+          bytes: Buffer.from(JSON.stringify({ size: [1, 1, 1], blocks: [{ position: [0, 0, 0], state: { id: "audit:marker" } }] })), contentType: "application/json",
+        };
+        if (request.url.searchParams.get("path") === assetPaths[1]) return {
+          bytes: Buffer.from(JSON.stringify({ textures: { surface: "audit:block/marker" }, elements: [{ from: [0, 8, 0], to: [16, 8, 16], faces: { [side === "down" ? "down" : "up"]: { texture: "#surface", uv: [0, 0, 16, 16], rotation: side === "down" ? 180 : 0 } } }] })), contentType: "application/json",
+        };
+        if (request.url.searchParams.get("path") === assetPaths[2]) return { bytes: side === "blank" ? blank : side === "solid" ? solid : patterned, contentType: "image/png" };
+        return base(request);
+      }, context.signal);
+      try {
+        await observeNativeRendering(browser.page);
+        await browser.page.goto(`${fixture.origin}/blueprints/${publicId}`, { waitUntil: "domcontentloaded" });
+        await waitDraw(browser.page, 0, 1);
+        await browser.page.waitForFunction(() => window.oct03RenderObservation.contexts[0].liveTextures > 5);
+        await frames(browser.page, 8);
+        assertFlatFacePassCount((await snapshot(browser.page)).contexts[0], 1, side === "solid" ? 1 : 2);
+        const nativePNG = await browser.page.locator("canvas").first().screenshot();
+        if (process.env.MCMODS_RENDER_ACCEPTANCE_REPORT) await writeFile(`${process.env.MCMODS_RENDER_ACCEPTANCE_REPORT}.flat-${side}.png`, nativePNG);
+        const { data, info } = await sharp(nativePNG).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+        assert.equal(info.channels, 3);
+        if (imageWidth) assert.equal(info.width, imageWidth);
+        imageWidth = info.width;
+        let greenPixels = 0;
+        for (let offset = 0; offset < data.length; offset += 3) {
+          if (data[offset + 1] > data[offset] * 1.7 && data[offset + 1] > data[offset + 2] * 1.7) greenPixels++;
+        }
+        if (side !== "blank") assert.ok(greenPixels > 100, "The colored part of the real flat face must be visible from either winding");
+        images.push(data);
+        samples.push({ side, greenPixels, imageSHA256: createHash("sha256").update(nativePNG).digest("hex") });
+        assert.deepEqual((await snapshot(browser.page)).contexts[0].errors, []);
+      } finally { await browser.close(); }
+    }
+    diagnostics["production-flat-face-two-sides-and-alpha"] = { samples };
+    assert.equal(images[0].length, images[1].length);
+    let maximumChannelDifference = 0;
+    for (let offset = 0; offset < images[0].length; offset++) maximumChannelDifference = Math.max(maximumChannelDifference, Math.abs(images[0][offset] - images[1][offset]));
+    // Opposite triangle winding may round a texel boundary by one raster pixel.
+    // Check interior pixels exactly; permit differences only at that boundary.
+    const hasPattern = (offset: number) => [0, 1, 2].some(channel => Math.abs(images[0][offset + channel] - images[3][offset + channel]) > 5);
+    let differingBoundaryPixels = 0;
+    for (let offset = 0; offset < images[0].length; offset += 3) {
+      if (![0, 1, 2].some(channel => Math.abs(images[0][offset + channel] - images[1][offset + channel]) > 2)) continue;
+      const x = (offset / 3) % imageWidth;
+      const y = Math.floor(offset / 3 / imageWidth);
+      const neighborhood = [];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const neighbor = ((y + dy) * imageWidth + x + dx) * 3;
+        if (x + dx >= 0 && x + dx < imageWidth && neighbor >= 0 && neighbor < images[0].length) neighborhood.push(hasPattern(neighbor));
+      }
+      assert.ok(neighborhood.includes(true) && neighborhood.includes(false), "Opposite winding must preserve every interior pixel; differences belong only to a texel edge");
+      differingBoundaryPixels++;
+    }
+    assert.ok(differingBoundaryPixels <= 8, "A winding change must not alter a material region or hide one side");
+    let solidChangedPixels = 0;
+    let patternChangedPixels = 0;
+    let blendedPixels = 0;
+    for (let offset = 0; offset < images[0].length; offset += 3) {
+      const changed = (image: Buffer) => [0, 1, 2].some(channel => Math.abs(image[offset + channel] - images[3][offset + channel]) > 5);
+      if (changed(images[2])) solidChangedPixels++;
+      if (changed(images[0])) patternChangedPixels++;
+      const green = offset + 1;
+      if (images[0][green] > images[3][green] + 5 && images[0][green] < images[2][green] - 5) blendedPixels++;
+    }
+    assert.ok(patternChangedPixels > 100 && patternChangedPixels < solidChangedPixels - 100, "Transparent texels must leave part of the underlying real grid/background visible");
+    assert.ok(blendedPixels > 100, "Half-alpha texels must blend between the blank and opaque native images");
+    return { samples, maximumChannelDifference, differingBoundaryPixels, patternChangedPixels, solidChangedPixels, blendedPixels, boundary: "Native canvas PNG pixels with opposite quad windings, half-transparent and fully transparent texels; synthetic transports, no physical GPU claim" };
+  });
+});
+
+test("OCT03 DB002 unreadable and oversized opaque textures keep native two-pass rendering", { timeout: 60_000 }, async (context) => {
+  await runAcceptance("production-flat-face-optimization-fallback", ["OCT03-DB-002"], context.signal, async () => {
+    const widePNG = await sharp({ create: { width: 257, height: 4, channels: 4, background: { r: 38, g: 176, b: 71, alpha: 1 } } }).png().toBuffer();
+    const samples = [];
+    for (const mode of ["unreadable", "oversized"] as const) {
+      const publicId = `oct03-flat-fallback-${mode}`;
+      const base = provider(publicId, 30);
+      const browser = await scopedPage(request => {
+        if (mode === "oversized" && request.url.searchParams.get("path") === assetPaths[2]) return { bytes: widePNG, contentType: "image/png" };
+        return base(request);
+      }, context.signal);
+      try {
+        await observeNativeRendering(browser.page);
+        await browser.page.addInitScript(mode => {
+          window.oct03OpaqueProbeReads = 0;
+          const original = CanvasRenderingContext2D.prototype.getImageData;
+          CanvasRenderingContext2D.prototype.getImageData = function (...args: Parameters<typeof original>) {
+            window.oct03OpaqueProbeReads++;
+            if (mode === "unreadable") throw new DOMException("Synthetic local image-read permission denial", "SecurityError");
+            return Reflect.apply(original, this, args);
+          };
+        }, mode);
+        await browser.page.goto(`${fixture.origin}/blueprints/${publicId}`, { waitUntil: "domcontentloaded" });
+        await waitDraw(browser.page, 0, 30);
+        await browser.page.waitForFunction(() => window.oct03RenderObservation.contexts[0].liveTextures > 5);
+        await frames(browser.page, 8);
+        const record = (await snapshot(browser.page)).contexts[0];
+        assertFlatFacePassCount(record, 30, 2);
+        const reads = await browser.page.evaluate(() => window.oct03OpaqueProbeReads);
+        assert.equal(reads, mode === "unreadable" ? 1 : 0, "Image-read failure falls back once; oversized images must not allocate a probe pixel array");
+        assert.deepEqual(record.errors, []);
+        assert.equal(await browser.page.getByRole("alert").filter({ hasText: "The 3D preview could not be rendered." }).count(), 0);
+        samples.push({ mode, imageReads: reads, realNativePasses: 2 });
+      } finally { await browser.close(); }
+    }
+    return { samples, boundary: "Real loaded PNG and native rendering; unreadable mode injects a local 2D read SecurityError, oversized mode uses a genuine257px PNG; no actual cross-origin policy claim" };
   });
 });
