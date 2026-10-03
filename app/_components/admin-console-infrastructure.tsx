@@ -832,24 +832,33 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
   const [levelConfig, setLevelConfig] = useState<LevelConfig | null>(null);
   const [roleTracks, setRoleTracks] = useState<RoleTrack[]>([]);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   const reportLoadError = useEffectEvent((error: unknown) => notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"));
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     Promise.all([
-      apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", {}, token),
-      apiRequest<LevelConfig>("/api/v1/admin/levels/config", {}, token),
-      apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", {}, token),
+      apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", { signal: controller.signal }, token),
+      apiRequest<LevelConfig>("/api/v1/admin/levels/config", { signal: controller.signal }, token),
+      apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", { signal: controller.signal }, token),
     ])
       .then(([nextDefaults, nextLevelConfig, nextRoleTracks]) => {
         if (cancelled) return;
         setDefaults(nextDefaults);
         setLevelConfig(nextLevelConfig);
         setRoleTracks(nextRoleTracks);
+        setLoadError("");
       })
-      .catch((error) => { if (!cancelled) reportLoadError(error); });
-    return () => { cancelled = true; };
-  }, [token]);
+      .catch((error) => {
+        if (cancelled) return;
+        setLoadError(cleanError(error));
+        reportLoadError(error);
+        controller.abort();
+      });
+    return () => { cancelled = true; controller.abort(); };
+  }, [token, loadAttempt]);
 
   function selectLevelRoleTrack(code: string) {
     const track = roleTracks.find((item) => item.code === code);
@@ -898,6 +907,17 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
         </button>
       </div>
 
+      {!levelConfig ? (
+        <div className="pt-5">
+          {loadError ? (
+            <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-[var(--danger)]">
+              <span>{loadError}</span>
+              <button className="button-secondary focus-ring" type="button" onClick={() => { setLoadError(""); setLoadAttempt((current) => current + 1); }}>{t("common.retry")}</button>
+            </div>
+          ) : <p role="status" className="text-sm text-[var(--muted)]">{t("common.loading")}</p>}
+        </div>
+      ) : null}
+
       <section className="grid gap-4 border-b border-[var(--line)] py-5 md:grid-cols-2">
         <div className="md:col-span-2">
           <h3 className="font-black">{t("admin.permissionSettings.accountDefaults")}</h3>
@@ -906,6 +926,7 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
         <PermissionRoleSelect
           label={t("admin.permissionSettings.registeredRole")}
           value={defaults.registeredRole}
+          disabled={!levelConfig || saving}
           onChange={(registeredRole) => setDefaults((current) => ({ ...current, registeredRole }))}
         >
           {roleOptions(catalog.roles)}
@@ -913,6 +934,7 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
         <PermissionRoleSelect
           label={t("admin.permissionSettings.bannedRole")}
           value={defaults.bannedRole}
+          disabled={!levelConfig || saving}
           onChange={(bannedRole) => setDefaults((current) => ({ ...current, bannedRole }))}
         >
           {roleOptions(catalog.roles)}
@@ -928,7 +950,7 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
           {t("admin.community.roleTrack")}
           <select
             className="field mt-2"
-            disabled={!levelConfig}
+            disabled={!levelConfig || saving}
             value={levelConfig?.roleTrackCode ?? ""}
             onChange={(event) => selectLevelRoleTrack(event.target.value)}
           >
@@ -940,7 +962,7 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
             ))}
           </select>
         </label>
-        {roleTracks.length === 0 ? (
+        {levelConfig && roleTracks.length === 0 ? (
           <p className="text-sm font-bold text-[var(--warning)]">{t("admin.permissionSettings.noRoleTracks")}</p>
         ) : null}
       </section>
@@ -948,9 +970,9 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
   );
 }
 
-function PermissionRoleSelect({ label, value, onChange, children }: { label: string; value: string; onChange: (value: string) => void; children: ReactNode }) {
+function PermissionRoleSelect({ label, value, disabled, onChange, children }: { label: string; value: string; disabled: boolean; onChange: (value: string) => void; children: ReactNode }) {
   const { t } = useI18n();
-  return <label className="text-sm font-semibold">{label}<select className="field mt-2" value={value} onChange={(event) => onChange(event.target.value)}><option value="">{t("admin.permissionSettings.noAutomaticRole")}</option>{children}</select></label>;
+  return <label className="text-sm font-semibold">{label}<select className="field mt-2" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}><option value="">{t("admin.permissionSettings.noAutomaticRole")}</option>{children}</select></label>;
 }
 
 function RoleTracksPanel({

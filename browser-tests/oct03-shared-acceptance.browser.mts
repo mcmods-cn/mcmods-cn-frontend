@@ -183,6 +183,142 @@ test("OCT03 FS021 limited reviewer, sticker and AI roles bootstrap without forbi
 
 const role = { code: "fixture_role", name: "Synthetic role", description: "", weight: 0, parents: [], permissions: [], permissionEntries: [], translations: {} };
 const task = { publicId: "task001", code: "original_task", name: "Synthetic task", description: "Synthetic description", icon: "", translations: { "en-US": { name: "Synthetic task", description: "Synthetic description" } }, refreshPeriod: "daily", condition: { action: "view", metric: "count", target: 1 }, rewards: { experience: 1, currencies: {} }, status: "active" };
+test("OCT03 FS003 permission settings wait for every initial snapshot before accepting edits", { timeout: 40_000 }, async () => {
+  for (const heldPath of ["/api/v1/admin/permission-defaults", "/api/v1/admin/levels/config", "/api/v1/admin/role-tracks"]) {
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const counts = new Map<string, number>();
+    const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+    const browser = await fixture.page(async ({ path, method, body }) => {
+      if (method === "PUT" && path.startsWith("/api/v1/admin/")) {
+        writes.push({ path, body: JSON.parse(body) as Record<string, unknown> });
+        return { status: 503, error: "Synthetic permission save rejected" };
+      }
+      counts.set(path, (counts.get(path) ?? 0) + 1);
+      if (path === heldPath) { started.resolve(); await release.promise; }
+      if (path === "/api/v1/admin/permissions") return { data: { roles: [role, { ...role, code: "fixture_banned", name: "Synthetic banned role" }], permissions: [] } };
+      if (path === "/api/v1/admin/permission-defaults") return { data: { registeredRole: "", bannedRole: "" } };
+      if (path === "/api/v1/admin/levels/config") return { data: { roleTrackCode: "", levelThresholds: [] } };
+      if (path === "/api/v1/admin/role-tracks") return { data: [{ code: "fixture_track", name: "Synthetic track", description: "", roles: [] }] };
+    });
+    try {
+      const { page } = browser;
+      await panel(page, "permission-settings", "permission");
+      await started.promise;
+      const selects = page.locator("select");
+      assert.equal(await selects.count(), 3);
+      for (let index = 0; index < 3; index++) assert.equal(await selects.nth(index).isDisabled(), true, `${heldPath}: no role field may accept edits before the complete snapshot`);
+      assert.equal(await page.getByRole("button", { name: "Save", exact: true }).isDisabled(), true);
+      assert.deepEqual(writes, []);
+      release.resolve();
+      await selects.nth(0).selectOption("fixture_role");
+      await selects.nth(1).selectOption("fixture_banned");
+      await selects.nth(2).selectOption("fixture_track");
+      await changeLanguage(page, "zh-CN");
+      assert.deepEqual(await selects.evaluateAll(nodes => nodes.map(node => (node as HTMLSelectElement).value)), ["fixture_role", "fixture_banned", "fixture_track"]);
+      await changeLanguage(page, "en-US");
+      assert.deepEqual(await selects.evaluateAll(nodes => nodes.map(node => (node as HTMLSelectElement).value)), ["fixture_role", "fixture_banned", "fixture_track"]);
+      for (const path of ["/api/v1/admin/permission-defaults", "/api/v1/admin/levels/config", "/api/v1/admin/role-tracks"]) assert.equal(counts.get(path), 1, "UI locale switches must not refetch the editable snapshot");
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await page.getByRole("alertdialog").filter({ hasText: "Synthetic permission save rejected" }).waitFor();
+      await closeNotice(page);
+      assert.deepEqual(await selects.evaluateAll(nodes => nodes.map(node => (node as HTMLSelectElement).value)), ["fixture_role", "fixture_banned", "fixture_track"]);
+      assert.deepEqual(writes, [{ path: "/api/v1/admin/levels/config", body: { roleTrackCode: "fixture_track", levelThresholds: [] } }], "a failed first write must retain role defaults and preserve the existing save order");
+    } finally { release.resolve(); await browser.close(); }
+  }
+});
+
+test("OCT03 FS003 failed permission initialization remains read-only until an explicit successful retry", { timeout: 25_000 }, async () => {
+  let failRead = true;
+  const counts = new Map<string, number>();
+  const initialReads = new Set<string>();
+  const initialStarted = Promise.withResolvers<void>();
+  const retryStarted = Promise.withResolvers<void>();
+  const retryRelease = Promise.withResolvers<void>();
+  let writes = 0;
+  const browser = await fixture.page(async ({ path, method }) => {
+    if (method === "PUT" && path.startsWith("/api/v1/admin/")) { writes++; return { data: {} }; }
+    counts.set(path, (counts.get(path) ?? 0) + 1);
+    if (failRead && ["/api/v1/admin/permission-defaults", "/api/v1/admin/levels/config", "/api/v1/admin/role-tracks"].includes(path)) {
+      initialReads.add(path);
+      if (initialReads.size === 3) initialStarted.resolve();
+    }
+    if (path === "/api/v1/admin/permissions") return { data: { roles: [role], permissions: [] } };
+    if (path === "/api/v1/admin/permission-defaults") return { data: { registeredRole: "fixture_role", bannedRole: "" } };
+    if (path === "/api/v1/admin/levels/config") {
+      if (failRead) { await initialStarted.promise; return { status: 503, error: "Synthetic permission initial read rejected" }; }
+      retryStarted.resolve(); await retryRelease.promise;
+      return { data: { roleTrackCode: "fixture_track", levelThresholds: [] } };
+    }
+    if (path === "/api/v1/admin/role-tracks") return { data: [{ code: "fixture_track", name: "Synthetic track", description: "", roles: [] }] };
+  });
+  try {
+    const { page } = browser;
+    await panel(page, "permission-settings", "permission");
+    await page.getByRole("alertdialog").filter({ hasText: "Synthetic permission initial read rejected" }).waitFor();
+    await closeNotice(page);
+    const selects = page.locator("select");
+    for (let index = 0; index < 3; index++) assert.equal(await selects.nth(index).isDisabled(), true, "failed initialization must not expose empty editable defaults");
+    assert.equal(await page.getByRole("button", { name: "Save", exact: true }).isDisabled(), true);
+    await changeLanguage(page, "zh-CN");
+    assert.equal(counts.get("/api/v1/admin/levels/config"), 1);
+    failRead = false;
+    await page.getByRole("button", { name: "重试", exact: true }).click();
+    await retryStarted.promise;
+    for (let index = 0; index < 3; index++) assert.equal(await selects.nth(index).isDisabled(), true, "the retry also needs its entire configuration before allowing edits");
+    assert.equal(await page.getByRole("button", { name: "保存", exact: true }).isDisabled(), true);
+    retryRelease.resolve();
+    await page.waitForFunction(() => [...document.querySelectorAll("select")].every(node => !node.disabled));
+    assert.deepEqual(await selects.evaluateAll(nodes => nodes.map(node => (node as HTMLSelectElement).value)), ["fixture_role", "", "fixture_track"]);
+    for (const path of ["/api/v1/admin/permission-defaults", "/api/v1/admin/levels/config", "/api/v1/admin/role-tracks"]) assert.equal(counts.get(path), 2);
+    assert.equal(writes, 0, "read retries must not write permission or level policy");
+  } finally { initialStarted.resolve(); retryRelease.resolve(); await browser.close(); }
+});
+
+test("OCT03 FS003 a late permission snapshot cannot unlock or overwrite the next actor's form", { timeout: 30_000 }, async () => {
+  let identity = "actor001";
+  let writes = 0;
+  const firstStarted = Promise.withResolvers<void>();
+  const firstRelease = Promise.withResolvers<void>();
+  const firstFinished = Promise.withResolvers<void>();
+  const secondStarted = Promise.withResolvers<void>();
+  const secondRelease = Promise.withResolvers<void>();
+  const browser = await fixture.page(async ({ path, method }) => {
+    if (path === "/api/v1/auth/me") return { data: actor(identity) };
+    if (method === "PUT" && path.startsWith("/api/v1/admin/")) { writes++; return { data: {} }; }
+    const requestedActor = identity;
+    if (path === "/api/v1/admin/permissions") return { data: { roles: [role, { ...role, code: "fixture_b", name: "Synthetic B role" }], permissions: [] } };
+    if (path === "/api/v1/admin/permission-defaults") return { data: { registeredRole: requestedActor === "actor001" ? "fixture_role" : "fixture_b", bannedRole: "" } };
+    if (path === "/api/v1/admin/levels/config") {
+      if (requestedActor === "actor001") { firstStarted.resolve(); await firstRelease.promise; firstFinished.resolve(); }
+      else { secondStarted.resolve(); await secondRelease.promise; }
+      return { data: { roleTrackCode: "fixture_track", levelThresholds: [] } };
+    }
+    if (path === "/api/v1/admin/role-tracks") return { data: [{ code: "fixture_track", name: "Synthetic track", description: "", roles: [] }] };
+  });
+  try {
+    const { page } = browser;
+    await panel(page, "permission-settings", "permission");
+    await firstStarted.promise;
+    identity = "actor002";
+    await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:actor002" })));
+    await secondStarted.promise;
+    firstRelease.resolve(); await firstFinished.promise;
+    await page.getByText(/Actor actor002/).last().waitFor();
+    const selects = page.locator("select");
+    for (let index = 0; index < 3; index++) assert.equal(await selects.nth(index).isDisabled(), true, "an old actor's late response cannot open the next actor's form");
+    assert.equal(await page.getByRole("button", { name: "Save", exact: true }).isDisabled(), true);
+    assert.equal(await selects.nth(0).inputValue(), "");
+    secondRelease.resolve();
+    await page.waitForFunction(() => {
+      const field = document.querySelector("select");
+      return field instanceof HTMLSelectElement && !field.disabled && field.value === "fixture_b";
+    });
+    assert.deepEqual(await selects.evaluateAll(nodes => nodes.map(node => (node as HTMLSelectElement).value)), ["fixture_b", "", "fixture_track"]);
+    assert.equal(writes, 0);
+  } finally { firstRelease.resolve(); secondRelease.resolve(); await browser.close(); }
+});
+
 test("OCT03 FS024 economy, task, permission-default and role-track drafts survive two UI language switches", { timeout: 60_000 }, async () => {
   for (const kind of ["economy", "task", "defaults", "track"] as const) {
     const counts = new Map<string, number>();
