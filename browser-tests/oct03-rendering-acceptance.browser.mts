@@ -299,8 +299,12 @@ async function snapshot(page: Page) { return page.evaluate(() => structuredClone
 async function frames(page: Page, count = 3) {
   await page.evaluate(async count => { for (let i = 0; i < count; i++) await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); }, count);
 }
-async function waitDraw(page: Page, context: number, instances: number, afterSequence = 0) {
-  await page.waitForFunction(({ context, instances, afterSequence }) => window.oct03RenderObservation.contexts[context]?.draws.some(draw => draw.instances === instances && draw.sequence > afterSequence), { context, instances, afterSequence }, { timeout: 60_000 });
+async function waitDraw(page: Page, context: number, instances: number, afterSequence = 0, options: { requireTexture?: boolean } = {}) {
+  await page.waitForFunction(({ context, instances, afterSequence, requireTexture }) => {
+    const record = window.oct03RenderObservation.contexts[context];
+    return record?.draws.some(draw => draw.instances === instances && draw.sequence > afterSequence)
+      && (!requireTexture || record.liveTextures > 5);
+  }, { context, instances, afterSequence, requireTexture: options.requireTexture }, { timeout: 60_000 });
 }
 function assertFlatFacePassCount(record: GLObservation, instances: number, expectedPasses: number, afterSequence = 0) {
   const draws = record.draws.filter(draw => draw.instances === instances && draw.sequence > afterSequence && draw.frame > 0);
@@ -369,8 +373,9 @@ test("PERF069 real production renderer submits 600k instances, slices layers and
         // native draw gate within the case's original overall 120-second budget.
         await browser.page.goto(`${fixture.origin}/blueprints/oct03-render-large`, { waitUntil: "commit" });
         recordStage("production-600k-admission-and-layers", "document navigation committed", started);
-        await waitDraw(browser.page, 0, 600000);
-        await browser.page.waitForFunction(() => window.oct03RenderObservation.contexts[0].liveTextures > 5);
+        // Texture upload can share the large native frame's scheduling delay.
+        // Keep both readiness conditions inside the original 60-second gate.
+        await waitDraw(browser.page, 0, 600000, 0, { requireTexture: true });
         await frames(browser.page);
         recordStage("production-600k-admission-and-layers", "native 600k instance draw complete", started);
         const builtMs = performance.now() - started;
