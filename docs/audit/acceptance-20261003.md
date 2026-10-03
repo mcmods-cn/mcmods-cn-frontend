@@ -49,11 +49,12 @@ NEXT_PUBLIC_YGGDRASIL_API_ROOT=https://api.example.test/api/yggdrasil/ npm run b
 npm run test:browser
 ```
 
-最终346项单元通过，check通过（32.991/7.293秒）；R12 production build通过（20.978秒），
-构建ID `E675K3FL_H3dwsGZxnolN`，业务/验收提交 `c6410b7`。
-最终R6整次170PASS、0FAIL、0CANCEL、0SKIP，457.981秒，运行中源码和构建指纹无漂移。
-整次之后仅独立live测试增加真实CSP断言并更名Response变量，未改production runtime；
-新增check/unit及精确当前live测试另外通过。第一次类型检查的变量遮蔽失败保留。
+R003/R004后346项单元再次通过（7.890秒），check再次通过（33.805秒）；R12 production build通过
+（20.978秒），构建ID `E675K3FL_H3dwsGZxnolN`，运行提交 `c6410b7`，测试修复 `d24052a4`/`6702d04`。
+最终R8整次170PASS、0FAIL、0CANCEL、0SKIP，448.599秒，运行中源码和构建指纹无漂移。
+R6整次170通过记录保留；之后独立live测试加真实CSP断言、R003修正纹理就绪，
+未改production runtime。构建后的renderer README文档单独复查；精确当前live测试
+另外通过。第一次类型检查的变量遮蔽失败保留。
 
 FS003 修复前的 production 构建 ID 为 `ACokhErJZ9doR-SXy-iro`，业务与验收提交为 `7f52569`。
 首轮完整浏览器 129 项有 124 PASS、4 FAIL、1 timeout CANCELLED，原失败保留；
@@ -75,8 +76,9 @@ OCT03-A-004（后端工具）修复全新副本漏components/proxy问题；旧60
 
 冻结R9的原生进程诊断定位600k的15.479秒内部ReadPixels/Finish等待与软件GPU工作，
 GPU进程累计57.01CPU秒，是软件进程CPU而非实体GPU耗时。OCT03-DB-002只优化
-实际确认不透明的独立平面，层上下文保持两遍。最终R12完整170项中的All恢复9.738秒，
-相关长任务9.536秒；全用例最大13.491秒含初始工作。单独样本不作加速百分比结论，
+实际确认不透明的独立平面，层上下文保持两遍。R12产物在R6完整170项中的All
+恢复9.738秒、相关长任务9.536秒；R7 All11.185秒、相关长任务11.001秒，
+全用例最大12.380秒含初始工作。单独样本不作加速百分比结论，
 大规模响应仍需改进，实体GPU、同步CPU立即取消和长期内存未验证。
 
 ## 环境兼容、依赖与发布
@@ -111,3 +113,43 @@ OCT03-R-001用确定性同形隐藏副本验证旧选择器RED，新visible stri
 该阶段R9/168通过记录保留；本次另修改两个renderer文件并重建R12，完整170项及
 全新610输入live通过。之前b46d533质量/容器四项通过、npm-audit两项仍失败；
 新c6410b7及后续文档HEAD的CI单独核查，pending不记PASS。
+
+
+## 最终 CI 纹理就绪修复与复验
+
+`21c3a72` 的一项远端 quality 实际为169PASS/1FAIL；失败是新增纹理等待
+继承默认5秒，而600k软件渲染的长任务会阻塞页面检查。失败诊断已经有6个
+真实纹理及后续单遍绘制，完整日志通过已授权GitHub连接器取得。
+OCT03-R-003在 `d24052a4` 把真实纹理与原生draw同时纳入原有60秒门；
+保留120秒整例预算和全部绘制、切层、卸载、错误与资源释放断言。
+受控迟到6秒PNG的旧测试确实5秒超时，新测试通过；最初私有runner导入sharp
+路径错误单列为启动失败，没有当作回归RED。
+
+最终同次R7完整浏览器170PASS/0FAIL/0CANCEL/0SKIP，450.308秒，
+exit0、文件漂移0、R12构建ID不变；包含全部9个原生渲染用例。
+check及346unit再次exit0。此轮只修改测试同步，未修改production runtime，
+无需重建相同产物；原R6通过、远端169/1失败和定向对照均保留。
+本次All恢复11.185秒，不能用独立样本宣称生产性能提高；响应仍需改进。
+真实610输入前后端旅程和Go1213输入与已完成门仍逐字节一致。
+远端新代码及最终文档/台账HEAD的CI在PR与交付时单独核查，pending不记PASS。
+
+
+## 社区翻译测试就绪与最终复验
+
+`d24052a4`的一轮quality为169PASS/1CANCEL，另一轮PASS；全部9项原生渲染
+均PASS，取消项是原社区翻译30秒整例超时。CI没有阶段/请求trace，不能
+断言自然超时的具体时序。受控迟到偏好复现旧first按钮实际为Report、翻译POST0，
+旧测试继续等待不存在的中文轮询。OCT03-R-004在 `6702d042` 精确选择翻译按钮，
+初始偏好受控挂起后再释放；偏好按场景显式变更，不依赖请求序号。
+新回归保留30秒预算、中文/法文目标序列及拒绝迟到中文标题，增加实际请求
+ERR_ABORTED、迟到provider返回及法语标题保持检查。原networkidle并非业务完成信号；
+中间5秒等待失败及旧CI取消记录保留，不靠重跑选择绿色结果。
+
+最新R8同次完整浏览器170PASS/0FAIL/0CANCEL/0SKIP，448.599秒，
+exit0、文件及构建ID漂移0；仍使用未变的R12产物，全部9个原生用例通过。
+最终check/unit 33.805/7.890秒、exit0，346unit/0SKIP。
+本次All恢复9.169秒，样本波动不用于生产加速结论。R6/R7通过及两次CI
+失败分别保留；runtime609、Go1213及fresh-live610实际输入保持，README差异
+属于已复查文档。新代码与最终文档HEAD的CI另核，不将pending记为PASS。
+
+代码提交 `6702d04` 的两项quality及两项container已经PASS；npm-audit两项上游公告FAIL。后续文档HEAD另查询，未完成不记PASS。
