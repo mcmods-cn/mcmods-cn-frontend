@@ -245,7 +245,22 @@ test("OCT02-FP-064: server search disables an old cursor until the new scope has
     await page.goto(`${fixture.origin}/servers`);
     const more = page.getByRole("button", { name: "Load more servers", exact: true });
     await more.waitFor();
-    await page.locator("#server-search").fill("new scope");
+    // Next streaming briefly retains hidden SSR staging nodes with the same ID.
+    // Recreate that observed DOM shape without changing the live search field.
+    await page.evaluate(() => {
+      const input = Array.from(document.querySelectorAll<HTMLInputElement>("#server-search"))
+        .find(element => element.getClientRects().length > 0);
+      if (!input) throw new Error("The live search field must exist");
+      const staged = document.createElement("div");
+      staged.hidden = true;
+      staged.dataset.cursorTestStaging = "";
+      staged.append(input.cloneNode());
+      document.body.append(staged);
+    });
+    const search = page.locator("#server-search:visible");
+    assert.equal(await search.count(), 1, "exactly one visible search field must be interactive");
+    await search.fill("new scope");
+    await page.locator("[data-cursor-test-staging]").evaluate(element => element.remove());
     await page.getByRole("button", { name: "Search", exact: true }).click();
     await started.promise;
     assert.equal(await more.isDisabled(), true);
