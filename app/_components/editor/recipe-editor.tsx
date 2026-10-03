@@ -105,7 +105,7 @@ export function RecipeEditor({
   onDeleted?: (result: CatalogEditResult) => void;
   onCancel?: () => void;
 }) {
-  const { locale: uiLocale } = useI18n();
+  const { locale: uiLocale, t } = useI18n();
   const [contentDefaultLocale] = useState<Locale>(() => editableLocale(initialValue?.defaultLocale, defaultLocale ?? uiLocale));
   const [draft, setDraft] = useState<RecipeRecord>(() => initialRecipe(initialValue));
   const [versions, setVersions] = useState<LocalizationVersion<RecipeLocalizedFields>[]>(() => initialRecipeLocalizations(initialValue, contentDefaultLocale));
@@ -124,6 +124,7 @@ export function RecipeEditor({
   const [loadingTemplates, setLoadingTemplates] = useState(Boolean(initialValue?.recipeTypePublicId && !initialTemplates.some((item) => item.recipeTypePublicId === initialValue.recipeTypePublicId)));
   const [loadingTemplateDetail, setLoadingTemplateDetail] = useState(Boolean(initialValue?.templatePublicId && !initialTemplates.some((item) => item.publicId === initialValue.templatePublicId && (item.detailLoaded || item.slots.length > 0))));
   const [saving, setSaving] = useState(false);
+  const mutationInFlight = useRef(false);
   const [deleting, setDeleting] = useState(false);
   const [pendingReview, setPendingReview] = useState(initialValue?.reviewStatus === "pending");
   const [failure, setFailure] = useState("");
@@ -139,7 +140,7 @@ export function RecipeEditor({
   const selectedSlot = selectedTemplate?.slots.find((slot) => slot.slotKey === effectiveSelectedSlotKey);
   const selectedBinding = selectedSlot ? draft.bindings[selectedSlot.slotKey] : undefined;
   const currentVersion = versions.find((version) => version.locale === activeLocale) ?? versions[0];
-  const validation = validateRecipe(draft, selectedTemplate, versions, contentDefaultLocale, labels);
+  const validation = validateRecipe(draft, selectedTemplate, versions, contentDefaultLocale, labels, t("catalogEditor.applicableVersionRequired"));
 
   useEffect(() => {
     if (providedRecipeTypes) return;
@@ -279,7 +280,8 @@ export function RecipeEditor({
   }
 
   async function submit() {
-    if (saving || validation.length || !selectedTemplate) return;
+    if (mutationInFlight.current || saving || deleting || validation.length || !selectedTemplate) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setFailure("");
     setMessage("");
@@ -299,12 +301,14 @@ export function RecipeEditor({
     } catch (reason) {
       setFailure(reason instanceof Error ? reason.message : labels.saveFailed);
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   }
 
   async function removeRecipe() {
-    if (!draft.publicId || deleting || !window.confirm(labels.deleteConfirm)) return;
+    if (!draft.publicId || mutationInFlight.current || saving || deleting || !window.confirm(labels.deleteConfirm)) return;
+    mutationInFlight.current = true;
     setDeleting(true);
     setFailure("");
     setMessage("");
@@ -316,13 +320,14 @@ export function RecipeEditor({
     } catch (reason) {
       setFailure(reason instanceof Error ? reason.message : labels.deleteFailed);
     } finally {
+      mutationInFlight.current = false;
       setDeleting(false);
     }
   }
 
   const pickerValue = selectedBinding?.candidates.map((candidate) => candidate.resource).filter((resource) => resource.publicId) ?? [];
 
-  return <div className="grid gap-5">
+  return <fieldset disabled={saving || deleting} className="grid min-w-0 gap-5">
     <ContentLanguageSwitcher labels={{ title: labels.localization }} value={activeLocale} versions={versions} onChange={selectLocale} />
     <section className="surface grid gap-4 rounded-lg border border-[var(--line)] p-4">
       <h2 className="text-lg font-black">{labels.localization}</h2>
@@ -338,11 +343,11 @@ export function RecipeEditor({
       </div>
       <label className="grid gap-2 text-sm font-bold">{labels.sourceVersion}<select className="field" disabled={loadingSourceVersions} value={draft.sourceVersionPublicId ?? ""} onChange={(event) => setDraft((current) => ({ ...current, sourceVersionPublicId: event.target.value || undefined }))}><option value="">{loadingSourceVersions ? labels.loadingSourceVersions : labels.noSourceVersion}</option>{sourceVersionGroups(sourceVersions).map((group) => <optgroup key={group.key} label={group.label}>{group.items.map((item) => <option key={item.publicId} value={item.publicId}>{sourceVersionOptionLabel(item)}</option>)}</optgroup>)}</select><small className="text-[var(--muted)]">{!loadingSourceVersions && !sourceVersions.length ? labels.noSourceVersions : labels.sourceVersionHint}</small></label>
       <label className="grid gap-2 text-sm font-bold">
-        <span>适用 Minecraft 版本</span>
+        <span>{t("catalogEditor.applicableVersions")}</span>
         <MinecraftVersionPicker values={draft.applicableVersionIds} onChange={(applicableVersionIds) => setDraft((current) => ({ ...current, applicableVersionIds }))} />
-        <small className="text-[var(--muted)]">保存时会展开为明确版本；以后新增同分类版本不会自动加入。</small>
+        <small className="text-[var(--muted)]">{t("catalogEditor.applicableVersionsHint")}</small>
       </label>
-      {draft.applicableVersionIds.length > 1 ? <p className="rounded-lg border border-amber-500/50 bg-amber-50 p-3 text-sm font-bold text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">此合成表同时绑定多个版本，修改合成内容将影响这些版本。</p> : null}
+      {draft.applicableVersionIds.length > 1 ? <p className="rounded-lg border border-amber-500/50 bg-amber-50 p-3 text-sm font-bold text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">{t("catalogEditor.multipleVersionsWarning")}</p> : null}
       <label className="grid gap-2 text-sm font-bold">{labels.canonicalSourceId}<input className="field font-mono" required value={draft.canonicalSourceId} onChange={(event) => setDraft((current) => ({ ...current, canonicalSourceId: event.target.value }))} /></label>
     </section>
 
@@ -373,8 +378,8 @@ export function RecipeEditor({
       initialKind="minecraft.item"
       labels={{
         ...labels.resourcePicker,
-        notFound: labels.resourcePicker.notFound ?? "没有我寻找的物品？",
-        manualPrompt: labels.resourcePicker.manualPrompt ?? "请在这里填写物品 ID",
+        notFound: labels.resourcePicker.notFound ?? t("catalogEditor.resourceNotFound"),
+        manualPrompt: labels.resourcePicker.manualPrompt ?? t("catalogEditor.manualResourcePrompt"),
         manualPlaceholder: labels.resourcePicker.manualPlaceholder ?? "namespace:item_id",
         insert: labels.resourcePicker.insert ?? labels.chooseResources,
       }}
@@ -387,7 +392,7 @@ export function RecipeEditor({
       onClose={() => setPickerOpen(false)}
       onConfirm={(resources) => setResources(selectedSlot, resources)}
     /> : null}
-  </div>;
+  </fieldset>;
 }
 
 function RecipeCanvasSlot({ slot, binding, canvas, selected, labels, onSelect }: { slot: RecipeTemplateSlot; binding?: RecipeBinding; canvas: RecipeTemplateRecord; selected: boolean; labels: RecipeEditorLabels; onSelect: () => void }) {
@@ -501,13 +506,14 @@ function validateRecipe(
   versions: LocalizationVersion<RecipeLocalizedFields>[],
   defaultLocale: Locale,
   labels: RecipeEditorLabels,
+  versionRequired: string,
 ) {
   const errors: string[] = [];
   const defaultName = versions.find((version) => version.locale === defaultLocale)?.fields.name.trim();
   if (!defaultName) errors.push(`${labels.localizedName}: ${labels.required}`);
   if (!draft.recipeTypePublicId) errors.push(`${labels.recipeType}: ${labels.required}`);
   if (!draft.templatePublicId || !template) errors.push(`${labels.template}: ${labels.required}`);
-  if (!draft.applicableVersionIds.length) errors.push("至少选择一个适用 Minecraft 版本。");
+  if (!draft.applicableVersionIds.length) errors.push(versionRequired);
   if (!draft.canonicalSourceId.trim()) errors.push(`${labels.canonicalSourceId}: ${labels.required}`);
   if (!template) return [...new Set(errors)];
   const outputCandidates = template.slots

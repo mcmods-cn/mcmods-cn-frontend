@@ -13,6 +13,11 @@ const pageSize = 36;
 const skinSortFields: CatalogSortField[] = ["published", "updated", "heat", "views", "downloads", "name"];
 
 export function SkinLibrary() {
+  const { token, user } = useAuthSnapshot();
+  return <SkinLibraryContent key={`${user?.id || "guest"}:${token}`} />;
+}
+
+function SkinLibraryContent() {
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [query, setQuery] = useState("");
@@ -25,6 +30,7 @@ export function SkinLibrary() {
   const [records, setRecords] = useState<SkinListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     if (!ready) return;
@@ -36,7 +42,7 @@ export function SkinLibrary() {
       .catch((reason: unknown) => { if (!cancelled) setError(reason instanceof Error ? reason.message : t("skins.loadFailed")); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [cursorHistory, kind, model, ready, sort, sortDirection, submittedQuery, t, token]);
+  }, [cursorHistory, kind, loadAttempt, model, ready, sort, sortDirection, submittedQuery, t, token]);
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -56,20 +62,22 @@ export function SkinLibrary() {
         kicker={t("skins.kicker")}
         title={t("skins.title")}
       >
-          <form className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_150px_150px_minmax(280px,auto)_auto]" onSubmit={search}>
-            <input className="field h-12" value={query} placeholder={t("skins.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
-            <select className="field h-12" value={kind} onChange={(event) => { setKind(event.target.value as "" | SkinKind); setCursorHistory([""]); }}>
+          <form onSubmit={search}>
+            <fieldset className="grid min-w-0 gap-2 lg:grid-cols-[minmax(240px,1fr)_150px_150px_minmax(280px,auto)_auto]" disabled={!ready}>
+            <input aria-label={t("skins.searchPlaceholder")} className="field h-12" type="search" value={query} placeholder={t("skins.searchPlaceholder")} onChange={(event) => setQuery(event.target.value)} />
+            <select aria-label={t("skins.kind")} className="field h-12" value={kind} onChange={(event) => { setKind(event.target.value as "" | SkinKind); setCursorHistory([""]); }}>
               <option value="">{t("skins.allKinds")}</option>
               <option value="skin">{t("skins.kindSkin")}</option>
               <option value="cape">{t("skins.kindCape")}</option>
             </select>
-            <select className="field h-12" disabled={kind === "cape"} value={model} onChange={(event) => { setModel(event.target.value as "" | SkinModel); setCursorHistory([""]); }}>
+            <select aria-label={t("skins.model")} className="field h-12" disabled={kind === "cape"} value={model} onChange={(event) => { setModel(event.target.value as "" | SkinModel); setCursorHistory([""]); }}>
               <option value="">{t("skins.allModels")}</option>
               <option value="default">{t("skins.modelDefault")}</option>
               <option value="slim">{t("skins.modelSlim")}</option>
             </select>
             <CatalogSortControl className="min-h-12 lg:flex-nowrap" direction={sortDirection} field={sort} fields={skinSortFields} onDirectionChange={(value) => { setSortDirection(value); setCursorHistory([""]); }} onFieldChange={(value) => { setSort(value); setCursorHistory([""]); }} />
             <button className="button-primary focus-ring h-12 px-6" type="submit">{t("home.searchAction")}</button>
+            </fieldset>
           </form>
       </CatalogHero>
 
@@ -78,7 +86,7 @@ export function SkinLibrary() {
           <span>{t("skins.cursorResults", { start, end })}</span>
           <button className="font-bold text-[var(--accent)] hover:underline" type="button" onClick={() => { setCursorHistory([""]); setSubmittedQuery(""); setQuery(""); setKind(""); setModel(""); setSort("published"); setSortDirection("desc"); }}>{t("skins.resetFilters")}</button>
         </div>
-        {error ? <p className="surface rounded-lg border border-[var(--red)]/40 bg-[var(--red)]/10 p-4 text-sm font-bold text-[var(--red)]">{error}</p> : null}
+        {error ? <div className="surface rounded-lg border border-[var(--red)]/40 bg-[var(--red)]/10 p-4 text-sm font-bold text-[var(--red)]"><p role="alert">{error}</p><button className="button-secondary focus-ring mt-2" type="button" onClick={() => setLoadAttempt((value) => value + 1)}>{t("common.retry")}</button></div> : null}
         {loading ? <p className="py-20 text-center font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
         {!loading && !error && records?.items.length === 0 ? <p className="surface rounded-lg p-12 text-center text-[var(--muted)]">{t("skins.empty")}</p> : null}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -106,7 +114,7 @@ function SkinCard({ texture, locale }: { texture: SkinTexture; locale: string })
         <span className="absolute left-3 top-3 rounded-md bg-black/70 px-2 py-1 text-xs font-black text-white backdrop-blur">
           {texture.kind === "cape" ? t("skins.kindCape") : texture.model === "slim" ? t("skins.modelSlim") : t("skins.modelDefault")}
         </span>
-        {texture.inWardrobe ? <span className="absolute right-3 top-3 rounded-md bg-[var(--accent)] px-2 py-1 text-xs font-black text-white">{t("skins.inWardrobe")}</span> : null}
+        {texture.inWardrobe ? <span className="absolute right-3 top-3 rounded-md bg-[var(--accent)] px-2 py-1 text-xs font-black text-[var(--on-accent)]">{t("skins.inWardrobe")}</span> : null}
       </Link>
       <div className="flex flex-1 flex-col p-4">
         <h2 className="truncate text-lg font-black"><Link className="hover:text-[var(--accent)]" href={`/skins/${texture.publicId}`}>{texture.name}</Link></h2>

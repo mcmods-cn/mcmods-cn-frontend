@@ -118,7 +118,7 @@ export function BlueprintViewer({
         <ViewerButton active={fullscreen} onClick={() => void toggleFullscreen()}>{fullscreen ? t("blueprints.exitFullscreen") : t("blueprints.fullscreen")}</ViewerButton>
         {fullscreen ? <ViewerButton active={firstPerson} onClick={() => setFirstPerson((value) => !value)}>{t("blueprints.firstPerson")}</ViewerButton> : null}
         <ViewerButton active={cullFaces} onClick={() => setCullFaces((value) => !value)}>{t("blueprints.faceCulling")}</ViewerButton>
-        {detailHref ? <Link className="focus-ring rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-black text-white" href={detailHref}>{t("markdown.references.openBlueprint")}</Link> : null}
+        {detailHref ? <Link className="focus-ring rounded-md bg-[var(--accent)] px-3 py-2 text-sm font-black text-[var(--on-accent)]" href={detailHref}>{t("markdown.references.openBlueprint")}</Link> : null}
         {renderStats?.cullableFaceInstances ? <span className="hidden rounded-md bg-black/65 px-3 py-2 text-xs font-bold text-white backdrop-blur lg:inline">{t("blueprints.faceCullingStats", { culled: renderStats.culledFaceInstances.toLocaleString(), total: renderStats.cullableFaceInstances.toLocaleString(), percent: culledPercent })}</span> : null}
       </div>
       <LayerControl activeLayer={activeLayer} topLayer={topLayer} showAbove={showAbove} showBelow={showBelow} onLayerChange={setActiveLayer} onShowAbove={setShowAbove} onShowBelow={setShowBelow} />

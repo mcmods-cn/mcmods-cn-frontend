@@ -27,6 +27,7 @@ export type GlobalTag = {
   canonicalId: string;
   name?: string;
   memberCount: number;
+  locale?: string;
   previews: GlobalResource[];
 };
 
@@ -93,13 +94,13 @@ export function catalogQueryLocales(locale: string) {
   return { locale: primary, secondaryLocale: secondary };
 }
 
-export function loadGlobalTags(query: URLSearchParams, token = "") {
+export function loadGlobalTags(query: URLSearchParams, token = "", signal?: AbortSignal) {
   return apiRequest<{
-    items: Array<{ publicId: string; registry: string; canonicalId: string; memberCount: number; name?: string; previews?: Array<Record<string, unknown>> }>;
+    items: Array<{ publicId: string; registry: string; canonicalId: string; memberCount: number; name?: string; locale?: string; previews?: Array<Record<string, unknown>> }>;
     total?: number;
     limit: number;
     offset: number;
-  }>(`/api/v1/tags?${query}`, {}, token).then((page): PageResult<GlobalTag> => ({
+  }>(`/api/v1/tags?${query}`, { signal }, token).then((page): PageResult<GlobalTag> => ({
     ...page,
     total: page.total ?? page.offset + page.items.length,
     items: page.items.map((tag) => ({
@@ -107,6 +108,7 @@ export function loadGlobalTags(query: URLSearchParams, token = "") {
       registry: tag.registry,
       canonicalId: tag.canonicalId,
       name: tag.name,
+      locale: tag.locale,
       memberCount: tag.memberCount,
       previews: (tag.previews ?? []).map(normalizeGlobalResource).filter((item) => item.publicId && item.id),
     })),
@@ -133,8 +135,8 @@ function normalizeGlobalResource(value: Record<string, unknown>): GlobalResource
   };
 }
 
-export function loadGlobalRecipeTypes(query: URLSearchParams, token = "") {
-  return apiRequest<PageResult<GlobalRecipeType>>(`/api/v1/recipe-types?${query}`, {}, token);
+export function loadGlobalRecipeTypes(query: URLSearchParams, token = "", signal?: AbortSignal) {
+  return apiRequest<PageResult<GlobalRecipeType>>(`/api/v1/recipe-types?${query}`, { signal }, token);
 }
 
 export function loadGlobalRecipeTypeCatalog(publicId: string, query: URLSearchParams, token = "") {

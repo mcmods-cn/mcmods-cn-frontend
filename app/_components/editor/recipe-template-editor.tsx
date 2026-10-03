@@ -86,7 +86,7 @@ export function RecipeTemplateEditor({
   onSaved?: (result: CatalogEditResult, value: RecipeTemplateRecord) => void;
   onDeleted?: (result: CatalogEditResult) => void;
 }) {
-  const { locale: uiLocale } = useI18n();
+  const { locale: uiLocale, t } = useI18n();
   const [contentDefaultLocale] = useState<Locale>(() => editableLocale(initialValue?.defaultLocale, defaultLocale ?? uiLocale));
   const [draft, setDraft] = useState<RecipeTemplateRecord>(() => initialTemplate(recipeTypePublicId, initialValue));
   const [versions, setVersions] = useState<LocalizationVersion<RecipeLocalizedFields>[]>(() => initialLocalizations(initialValue, contentDefaultLocale));
@@ -99,6 +99,8 @@ export function RecipeTemplateEditor({
   const [uploading, setUploading] = useState(false);
   const [backgroundPreview, setBackgroundPreview] = useState("");
   const [saving, setSaving] = useState(false);
+  const mutationInFlight = useRef(false);
+  const uploadInFlight = useRef(false);
   const [deleting, setDeleting] = useState(false);
   const [pendingReview, setPendingReview] = useState(initialValue?.reviewStatus === "pending");
   const [message, setMessage] = useState("");
@@ -141,8 +143,12 @@ export function RecipeTemplateEditor({
   }
 
   function addSlotAt(event: React.PointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || event.target !== event.currentTarget) return;
-    const point = logicalPoint(event.clientX, event.clientY, canvasRef.current, draft.canvas.width, draft.canvas.height);
+    if (saving || deleting || event.button !== 0 || event.target !== event.currentTarget) return;
+    addSlot(logicalPoint(event.clientX, event.clientY, canvasRef.current, draft.canvas.width, draft.canvas.height));
+  }
+
+  function addSlot(point = { x: draft.canvas.width / 2, y: draft.canvas.height / 2 }) {
+    if (saving || deleting) return;
     const size = Math.max(4, Math.min(18, draft.canvas.width, draft.canvas.height));
     const ordinal = draft.slots.length;
     const outputCount = draft.slots.filter((slot) => slot.role === "output").length;
@@ -159,7 +165,7 @@ export function RecipeTemplateEditor({
   }
 
   function beginPointer(event: React.PointerEvent, index: number, mode: "move" | "resize") {
-    if (event.button !== 0) return;
+    if (saving || deleting || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
     const slot = draft.slots[index];
@@ -171,7 +177,7 @@ export function RecipeTemplateEditor({
   function movePointer(event: React.PointerEvent<HTMLDivElement>) {
     const operation = pointer.current;
     const canvas = canvasRef.current;
-    if (!operation || operation.pointerId !== event.pointerId || !canvas) return;
+    if (saving || deleting || !operation || operation.pointerId !== event.pointerId || !canvas) return;
     event.preventDefault();
     const bounds = canvas.getBoundingClientRect();
     const dx = (event.clientX - operation.startX) * draft.canvas.width / Math.max(1, bounds.width);
@@ -214,7 +220,8 @@ export function RecipeTemplateEditor({
   }
 
   async function uploadBackground(file?: File) {
-    if (!file) return;
+    if (!file || mutationInFlight.current || uploadInFlight.current) return;
+    uploadInFlight.current = true;
     const preview = URL.createObjectURL(file);
     setBackgroundPreview(preview);
     setUploading(true);
@@ -231,6 +238,7 @@ export function RecipeTemplateEditor({
       setBackgroundPreview("");
       setFailure(reason instanceof Error ? reason.message : labels.uploadFailed);
     } finally {
+      uploadInFlight.current = false;
       setUploading(false);
     }
   }
@@ -241,7 +249,8 @@ export function RecipeTemplateEditor({
   }
 
   async function submit() {
-    if (saving || validation.length) return;
+    if (mutationInFlight.current || uploadInFlight.current || saving || deleting || validation.length) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setFailure("");
     setMessage("");
@@ -260,12 +269,14 @@ export function RecipeTemplateEditor({
     } catch (reason) {
       setFailure(reason instanceof Error ? reason.message : labels.saveFailed);
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   }
 
   async function removeTemplate() {
-    if (!draft.publicId || deleting || !window.confirm(labels.deleteConfirm)) return;
+    if (!draft.publicId || mutationInFlight.current || uploadInFlight.current || saving || deleting || !window.confirm(labels.deleteConfirm)) return;
+    mutationInFlight.current = true;
     setDeleting(true);
     setFailure("");
     setMessage("");
@@ -277,6 +288,7 @@ export function RecipeTemplateEditor({
     } catch (reason) {
       setFailure(reason instanceof Error ? reason.message : labels.deleteFailed);
     } finally {
+      mutationInFlight.current = false;
       setDeleting(false);
     }
   }
@@ -284,7 +296,7 @@ export function RecipeTemplateEditor({
   const background = backgroundPreview || safeImageURL(draft.backgroundUrl);
   const activeSlot = draft.slots[selectedSlot];
 
-  return <div className="grid gap-5">
+  return <fieldset disabled={saving || deleting || uploading} className="grid min-w-0 gap-5">
     <ContentLanguageSwitcher labels={{ title: labels.localization }} value={activeLocale} versions={versions} onChange={selectLocale} />
 
     <section className="surface grid gap-4 rounded-lg border border-[var(--line)] p-4">
@@ -319,6 +331,7 @@ export function RecipeTemplateEditor({
         <div><h2 className="text-lg font-black">{labels.slotPalette}</h2><p className="mt-1 text-sm text-[var(--muted)]">{labels.addSlotHint}</p></div>
         <div className="flex flex-wrap gap-2">{(["input", "output", "catalyst"] as const).map((role) => <button aria-pressed={newSlotRole === role} className={`focus-ring rounded-md border px-3 py-2 text-sm font-black ${newSlotRole === role ? roleButtonClass(role) : "border-[var(--line)] bg-[var(--panel-subtle)]"}`} key={role} type="button" onClick={() => setNewSlotRole(role)}>{roleLabel(role, labels)}</button>)}</div>
       </div>
+      <button className="button-secondary focus-ring mt-3" type="button" onClick={() => addSlot()}>{t("common.add")} · {roleLabel(newSlotRole, labels)}</button>
       <div className="mt-4 overflow-auto rounded-lg border border-[var(--line)] bg-[#c6c6c6] p-4">
         <div
           aria-label={labels.canvas}
@@ -375,7 +388,7 @@ export function RecipeTemplateEditor({
     {failure ? <p className="rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]" role="alert">{failure}</p> : null}
     {message ? <p className="rounded-lg border border-[var(--line)] p-3 text-sm font-bold" role="status">{message}</p> : null}
     <div className="flex flex-wrap justify-end gap-2">{draft.publicId ? <button className="button-secondary focus-ring text-[var(--red)]" disabled={saving || deleting || pendingReview} type="button" onClick={() => void removeTemplate()}>{deleting ? labels.deleting : labels.delete}</button> : null}<button className="button-primary focus-ring" disabled={saving || deleting || uploading || pendingReview || validation.length > 0} type="button" onClick={() => void submit()}>{saving ? labels.saving : labels.save}</button></div>
-  </div>;
+  </fieldset>;
 }
 
 type PointerOperation = {

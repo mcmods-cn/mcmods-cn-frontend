@@ -48,7 +48,17 @@ export type ChangelogSummary = {
 export type ChangelogCollection = {
   target: ChangelogTarget;
   categories: ChangelogCategory[];
+  categoriesHasMore?: boolean;
+  categoriesNextCursor?: string;
   items: ChangelogSummary[];
+  limit: number;
+  hasMore: boolean;
+  nextCursor: string;
+};
+
+export type ChangelogCategoryPage = {
+  target: ChangelogTarget;
+  categories: ChangelogCategory[];
   limit: number;
   hasMore: boolean;
   nextCursor: string;
@@ -71,8 +81,14 @@ export function loadProjectChangelogs(targetType: ChangelogTargetType, targetId:
   return apiRequest<ChangelogCollection>(`/api/v1/changelogs?${query}`, { cache: "no-store", signal }, token || undefined);
 }
 
-export function loadProjectChangelog(id: string, token = "") {
-  return apiRequest<{ target: ChangelogTarget; item: ChangelogItem }>(`/api/v1/changelogs/${encodeURIComponent(id)}`, { cache: "no-store" }, token || undefined);
+export function loadProjectChangelogCategories(targetType: ChangelogTargetType, targetId: string, locale: string, token = "", signal?: AbortSignal, cursor = "") {
+  const query = new URLSearchParams({ targetType, targetId, locale });
+  if (cursor) query.set("cursor", cursor);
+  return apiRequest<ChangelogCategoryPage>(`/api/v1/changelogs/categories?${query}`, { cache: "no-store", signal }, token || undefined);
+}
+
+export function loadProjectChangelog(id: string, token = "", signal?: AbortSignal) {
+  return apiRequest<{ target: ChangelogTarget; item: ChangelogItem }>(`/api/v1/changelogs/${encodeURIComponent(id)}`, { cache: "no-store", signal }, token || undefined);
 }
 
 export function saveProjectChangelog(draft: ChangelogDraft, token: string, target?: { type: ChangelogTargetType; id: string }, id = "") {

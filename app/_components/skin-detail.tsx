@@ -31,6 +31,11 @@ const SkinViewerCanvas = dynamic(
 );
 
 export function SkinDetail({ publicId }: { publicId: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <SkinDetailContent key={`${user?.id || "guest"}:${publicId}:${token}`} publicId={publicId} />;
+}
+
+function SkinDetailContent({ publicId }: { publicId: string }) {
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const router = useRouter();
@@ -43,11 +48,13 @@ export function SkinDetail({ publicId }: { publicId: string }) {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [profileError, setProfileError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     if (!ready) return;
     let cancelled = false;
-    queueMicrotask(() => { if (!cancelled) { setLoading(true); setError(""); } });
+    queueMicrotask(() => { if (!cancelled) { setLoading(true); setError(""); setProfileError(""); } });
     Promise.allSettled([
       loadSkin(publicId, token || undefined).then(async (baseTexture) => {
         const content = baseTexture.canEdit && token
@@ -68,19 +75,19 @@ export function SkinDetail({ publicId }: { publicId: string }) {
       }
       if (profileResult.status === "fulfilled") {
         setProfiles(profileResult.value);
-        setSelectedProfile((value) => value || profileResult.value[0]?.publicId || "");
-      }
+        setSelectedProfile((value) => profileResult.value.some((profile) => profile.publicId === value) ? value : profileResult.value[0]?.publicId || "");
+      } else setProfileError(errorMessage(profileResult.reason, t("skins.profileLoadFailed")));
     }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [locale, publicId, ready, t, token]);
+  }, [loadAttempt, locale, publicId, ready, t, token]);
 
   async function toggleWardrobe() {
-    if (!token || !texture) return;
+    if (!token || !texture || busy) return;
     setBusy("wardrobe");
     try {
       if (texture.inWardrobe) await removeFromWardrobe(texture.publicId, token);
       else await addToWardrobe(texture.publicId, token);
-      setTexture({ ...texture, inWardrobe: !texture.inWardrobe });
+      setTexture((current) => current ? { ...current, inWardrobe: !texture.inWardrobe } : current);
       notifySite(t(texture.inWardrobe ? "skins.wardrobeRemoved" : "skins.wardrobeAdded"), texture.name, "success");
     } catch (reason) {
       notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
@@ -90,7 +97,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
   }
 
   async function applyTexture() {
-    if (!token || !texture || !selectedProfile) return;
+    if (!token || !texture || !selectedProfile || busy) return;
     setBusy("apply");
     try {
       const updated = await updatePlayerTextures(
@@ -108,7 +115,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
   }
 
   async function removeTexture() {
-    if (!token || !texture || !window.confirm(t("skins.deleteConfirm", { name: texture.name }))) return;
+    if (!token || !texture || busy || !window.confirm(t("skins.deleteConfirm", { name: texture.name }))) return;
     setBusy("delete");
     try {
       await deleteSkin(texture.publicId, token);
@@ -120,7 +127,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
   }
 
   if (loading) return <StatePanel text={t("common.loading")} />;
-  if (!texture) return <StatePanel text={error || t("skins.notFound")} />;
+  if (!texture) return <StatePanel text={error || t("skins.notFound")} action={error ? <button className="button-secondary focus-ring mt-4" type="button" onClick={() => setLoadAttempt((value) => value + 1)}>{t("common.retry")}</button> : undefined} />;
 
   const textureURL = skinTextureURL(texture);
   const ownerName = texture.owner?.username || t("skins.anonymous");
@@ -131,6 +138,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <article className="mx-auto max-w-7xl px-4 py-7">
+        {error || profileError ? <div className="mb-4"><p role="alert" className="text-sm text-[var(--red)]">{error || profileError}</p><button className="button-secondary focus-ring mt-2" type="button" onClick={() => setLoadAttempt((value) => value + 1)}>{t("common.retry")}</button></div> : null}
         <Link className="text-sm font-black text-[var(--accent)] hover:underline" href="/skins">← {t("skins.backLibrary")}</Link>
         <div className="mt-5 grid gap-7 lg:grid-cols-[minmax(0,1fr)_400px]">
           <div className="space-y-5">
@@ -143,8 +151,8 @@ export function SkinDetail({ publicId }: { publicId: string }) {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2 border-t border-[var(--line)] p-3">
-                <button className={`focus-ring rounded-md px-3 py-2 text-sm font-bold ${!view3D ? "bg-[var(--accent)] text-white" : "bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setView3D(false)}>{t("skins.preview2D")}</button>
-                <button className={`focus-ring rounded-md px-3 py-2 text-sm font-bold ${view3D ? "bg-[var(--accent)] text-white" : "bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setView3D(true)}>{t("skins.preview3D")}</button>
+                <button className={`focus-ring rounded-md px-3 py-2 text-sm font-bold ${!view3D ? "bg-[var(--accent)] text-[var(--on-accent)]" : "bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setView3D(false)}>{t("skins.preview2D")}</button>
+                <button className={`focus-ring rounded-md px-3 py-2 text-sm font-bold ${view3D ? "bg-[var(--accent)] text-[var(--on-accent)]" : "bg-[var(--panel-subtle)]"}`} type="button" onClick={() => setView3D(true)}>{t("skins.preview3D")}</button>
                 {view3D ? <label className="ml-auto flex items-center gap-2 text-sm font-bold"><input checked={outerLayer} type="checkbox" onChange={(event) => setOuterLayer(event.target.checked)} />{t("skins.outerLayer")}</label> : null}
                 {view3D ? <label className="flex items-center gap-2 text-sm font-bold"><input checked={autoRotate} type="checkbox" onChange={(event) => setAutoRotate(event.target.checked)} />{t("skins.autoRotate")}</label> : null}
               </div>
@@ -175,7 +183,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
               </dl>
               <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                 <a className="button-primary focus-ring text-center" download href={textureURL} target="_blank" rel="noopener noreferrer">{t("skins.download")}</a>
-                {token ? <button className="button-secondary focus-ring" disabled={busy === "wardrobe"} type="button" onClick={() => void toggleWardrobe()}>{texture.inWardrobe ? t("skins.removeWardrobe") : t("skins.addWardrobe")}</button> : <Link className="button-secondary focus-ring text-center" href={`/login?next=/skins/${texture.publicId}`}>{t("skins.loginToUse")}</Link>}
+                {token ? <button className="button-secondary focus-ring" disabled={Boolean(busy)} type="button" onClick={() => void toggleWardrobe()}>{texture.inWardrobe ? t("skins.removeWardrobe") : t("skins.addWardrobe")}</button> : <Link className="button-secondary focus-ring text-center" href={`/login?next=/skins/${texture.publicId}`}>{t("skins.loginToUse")}</Link>}
                 <UnifiedReportButton targetAuthor={ownerName} targetId={texture.publicId} targetSummary={texture.name} targetType="skin" />
                 {texture.reviewStatus === "approved" ? <ProjectEditorApplicationButton canEdit={texture.canEdit} projectId={texture.publicId} projectName={texture.name} projectType="skin" returnPath={`/skins/${texture.publicId}`} /> : null}
               </div>
@@ -185,17 +193,17 @@ export function SkinDetail({ publicId }: { publicId: string }) {
               <section className="surface rounded-lg p-5">
                 <h2 className="font-black">{t("skins.applyToProfile")}</h2>
                 <p className="mt-1 text-sm text-[var(--muted)]">{t("skins.selectProfileHint")}</p>
-                <select className="field mt-4" value={selectedProfile} onChange={(event) => setSelectedProfile(event.target.value)}>
+                <select aria-label={t("skins.applyToProfile")} className="field mt-4" disabled={Boolean(busy)} value={selectedProfile} onChange={(event) => setSelectedProfile(event.target.value)}>
                   {profiles.map((profile) => <option key={profile.publicId} value={profile.publicId}>{profile.name}</option>)}
                 </select>
-                <button className="button-primary focus-ring mt-3 w-full" disabled={!selectedProfile || busy === "apply" || (!texture.canUse && !texture.inWardrobe)} type="button" onClick={() => void applyTexture()}>{busy === "apply" ? t("skins.saving") : t("skins.apply")}</button>
+                <button className="button-primary focus-ring mt-3 w-full" disabled={!selectedProfile || Boolean(busy) || (!texture.canUse && !texture.inWardrobe)} type="button" onClick={() => void applyTexture()}>{busy === "apply" ? t("skins.saving") : t("skins.apply")}</button>
               </section>
             ) : null}
 
             {texture.canEdit ? (
               <section className="surface rounded-lg p-5">
                 <div className="flex items-center justify-between gap-3"><h2 className="font-black">{t("skins.manageTexture")}</h2><Link className="text-sm font-bold text-[var(--accent)]" href={`/skins/${texture.publicId}/edit`} target="_blank" rel="noopener noreferrer">{t("common.edit")} ↗</Link></div>
-                <button className="mt-4 text-sm font-bold text-[var(--red)] hover:underline" disabled={busy === "delete"} type="button" onClick={() => void removeTexture()}>{t("skins.deleteTexture")}</button>
+                <button className="mt-4 text-sm font-bold text-[var(--red)] hover:underline" disabled={Boolean(busy)} type="button" onClick={() => void removeTexture()}>{t("skins.deleteTexture")}</button>
               </section>
             ) : null}
           </aside>
@@ -217,8 +225,8 @@ function DetailLine({ label, value }: { label: string; value: React.ReactNode })
   return <div className="flex items-start justify-between gap-4"><dt className="text-[var(--muted)]">{label}</dt><dd className="text-right font-bold">{value}</dd></div>;
 }
 
-function StatePanel({ text }: { text: string }) {
-  return <main className="grid min-h-[65vh] place-items-center px-4"><div className="surface w-full max-w-lg rounded-lg p-8 text-center font-bold text-[var(--muted)]">{text}</div></main>;
+function StatePanel({ text, action }: { text: string; action?: React.ReactNode }) {
+  return <main className="grid min-h-[65vh] place-items-center px-4"><div className="surface w-full max-w-lg rounded-lg p-8 text-center font-bold text-[var(--muted)]"><p>{text}</p>{action}</div></main>;
 }
 
 function formatDate(value: string, locale: string) {

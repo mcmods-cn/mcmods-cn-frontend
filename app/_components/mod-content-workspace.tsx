@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useId, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
@@ -62,12 +62,16 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const saveVersionInFlight = useRef(false);
+  const sectionMutationInFlight = useRef(false);
+  const createdCustomTemplate = useRef<{ fingerprint: string; result: ModContentMutationResult } | undefined>(undefined);
   const [activeImportSource, setActiveImportSource] = useState<ImportSource | null>(null);
   const [message, setMessage] = useState("");
+  const activeImportRef = useRef<ImportSource | null>(null);
   const importBusy = activeImportSource !== null;
-  const updateImportBusy = useCallback((source: ImportSource, active: boolean) => {
-    setActiveImportSource((current) => active ? source : current === source ? null : current);
-    if (!active || !selectedVersionId) return;
+  const updateImportBusy = useCallback((source: ImportSource, active: boolean, hasOperation = active) => {
+    activeImportRef.current = active ? source : activeImportRef.current === source ? null : activeImportRef.current;
+    setActiveImportSource(activeImportRef.current);
+    if (!active || !hasOperation || !selectedVersionId) return;
     setAddingVersion(false);
     setEditingVersion(false);
     setImportSource(source);
@@ -116,8 +120,8 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
     [sections, selectedVersionId],
   );
 
-  function selectVersion(publicId: string) {
-    if (importBusy) return;
+  function selectVersion(publicId: string, persisted = false) {
+    if (activeImportRef.current !== null || busy && !persisted) return;
     setSelectedVersionId(publicId);
     setAddingVersion(false);
     setEditingVersion(false);
@@ -128,7 +132,7 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
   }
 
   function startNewVersion() {
-    if (importBusy) return;
+    if (activeImportRef.current !== null || busy) return;
     setAddingVersion(true);
     setEditingVersion(false);
     setVersionDraft(emptyVersion());
@@ -139,7 +143,7 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
   }
 
   function startVersionEdit() {
-    if (!selectedVersion || importBusy) return;
+    if (!selectedVersion || activeImportRef.current !== null || busy) return;
     setAddingVersion(false);
     setEditingVersion(true);
     setImportSource("");
@@ -149,8 +153,8 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
   }
 
   function selectWorkspaceMode(source: ImportSource) {
-    if (!selectedVersion) return;
-    if (importBusy && source !== activeImportSource) return;
+    if (!selectedVersion || busy) return;
+    if (activeImportRef.current !== null && source !== activeImportRef.current) return;
     setAddingVersion(false);
     setEditingVersion(false);
     setImportSource(source);
@@ -161,7 +165,7 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
   }
 
   async function saveVersion() {
-    if (saveVersionInFlight.current) return;
+    if (saveVersionInFlight.current || sectionMutationInFlight.current || activeImportRef.current !== null) return;
     saveVersionInFlight.current = true;
     setBusy(true);
     setMessage("");
@@ -171,14 +175,14 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
         ? await updateModContentVersion(siteId, selectedVersion.publicId, { ...payload, baseRevisionId: selectedVersion.publishedRevisionId }, token)
         : await createModContentVersion(siteId, payload, token);
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
-      const nextVersions = await reload();
-      if (result.reviewStatus === "approved") {
-        const next = nextVersions.find((item) => item.publicId === result.publicId);
-        if (next) selectVersion(next.publicId);
-      }
       setAddingVersion(false);
       setEditingVersion(false);
       setVersionDraft(emptyVersion());
+      const nextVersions = await reload();
+      if (result.reviewStatus === "approved") {
+        const next = nextVersions.find((item) => item.publicId === result.publicId);
+        if (next) selectVersion(next.publicId, true);
+      }
     } catch (reason) {
       setMessage(errorText(reason));
     } finally {
@@ -187,62 +191,83 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
     }
   }
 
-  async function createSection(template: ModContentTemplate, displayMode: "compact" | "large") {
+  async function persistSection(template: ModContentTemplate, displayMode: "compact" | "large") {
     if (!selectedVersion) return;
+    const result = await createModContentSection(siteId, {
+      versionPublicId: selectedVersion.publicId,
+      templatePublicId: template.publicId,
+      parentPublicId: "",
+      defaultLocale: locale,
+      displayMode,
+      ordinal: currentSections.length,
+      localizations: [],
+      resources: [],
+      reason: t("modContent.versionEditor.addTypeReason"),
+    }, token);
+    // The section has already persisted. A subsequent reload failure must not
+    // keep the creation form open and invite a duplicate section.
+    createdCustomTemplate.current = undefined;
+    setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
+    setTypeDialogOpen(false);
+    await reload();
+  }
+
+  async function createSection(template: ModContentTemplate, displayMode: "compact" | "large") {
+    if (!selectedVersion || sectionMutationInFlight.current) return;
+    sectionMutationInFlight.current = true;
     setBusy(true);
     setMessage("");
     try {
-      const result = await createModContentSection(siteId, {
-        versionPublicId: selectedVersion.publicId,
-        templatePublicId: template.publicId,
-        parentPublicId: "",
-        defaultLocale: locale,
-        displayMode,
-        ordinal: currentSections.length,
-        localizations: [],
-        resources: [],
-        reason: t("modContent.versionEditor.addTypeReason"),
-      }, token);
-      setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
-      setTypeDialogOpen(false);
-      await reload();
+      await persistSection(template, displayMode);
     } catch (reason) {
       setMessage(errorText(reason));
     } finally {
+      sectionMutationInFlight.current = false;
       setBusy(false);
     }
   }
 
   async function createCustomSection(input: { displayMode: "compact" | "large"; defaultLocale: string; localizations: ModContentLocalization[] }) {
+    if (!selectedVersion || sectionMutationInFlight.current) return;
+    sectionMutationInFlight.current = true;
     setBusy(true);
     setMessage("");
+    const fingerprint = JSON.stringify([selectedVersion.publicId, input]);
     try {
       const typeNames = Object.fromEntries(input.localizations
         .filter((item) => item.name.trim())
         .map((item) => [item.locale, item.name.trim()]));
-      const templateResult = await createModContentTemplate(siteId, {
-        code: `custom_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`,
-        defaultLocale: input.defaultLocale,
-        defaultDisplayMode: input.displayMode,
-        definition: {
-          resourceKinds: ["import.document"],
-          entryTypes: [{ code: "default", kindCodes: ["import.document"], names: typeNames, groups: [] }],
-        },
-        localizations: input.localizations.filter((item) => item.name.trim()),
-        reason: t("modContent.versionEditor.addCustomTypeReason"),
-      }, token);
+      const templateResult = createdCustomTemplate.current?.fingerprint === fingerprint
+        ? createdCustomTemplate.current.result
+        : await createModContentTemplate(siteId, {
+          code: `custom_${crypto.randomUUID().replaceAll("-", "").slice(0, 24)}`,
+          defaultLocale: input.defaultLocale,
+          defaultDisplayMode: input.displayMode,
+          definition: {
+            resourceKinds: ["import.document"],
+            entryTypes: [{ code: "default", kindCodes: ["import.document"], names: typeNames, groups: [] }],
+          },
+          localizations: input.localizations.filter((item) => item.name.trim()),
+          reason: t("modContent.versionEditor.addCustomTypeReason"),
+        }, token);
+      createdCustomTemplate.current = { fingerprint, result: templateResult };
       if (templateResult.reviewStatus === "pending") {
         setMessage(t("modContent.versionEditor.customTemplatePending"));
         setTypeDialogOpen(false);
         await reload();
         return;
       }
-      const template = (await loadModContentTemplates(siteId, token)).find((item) => item.publicId === templateResult.publicId);
+      const availableTemplates = await loadModContentTemplates(siteId, token);
+      setTemplates(availableTemplates);
+      const template = availableTemplates.find((item) => item.publicId === templateResult.publicId);
       if (!template) throw new Error(t("modContent.versionEditor.templateUnavailable"));
-      await createSection(template, input.displayMode);
+      await persistSection(template, input.displayMode);
     } catch (reason) {
-      setMessage(errorText(reason));
+      setMessage(createdCustomTemplate.current?.fingerprint === fingerprint
+        ? `${t("modContent.versionEditor.customTemplateSavedRetry")} ${errorText(reason)}`
+        : errorText(reason));
     } finally {
+      sectionMutationInFlight.current = false;
       setBusy(false);
     }
   }
@@ -254,14 +279,14 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
       <div className="mt-4 grid min-w-0 gap-2">
         {versions.map((version) => {
           const fullCompatibility = `${version.minecraftVersions.join(", ")} · ${version.loaders.join(", ")}`;
-          return <button className={`focus-ring min-w-0 max-w-full overflow-hidden rounded-lg border p-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${version.publicId === selectedVersionId && !addingVersion ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"}`} disabled={importBusy} key={version.publicId} title={fullCompatibility} type="button" onClick={() => selectVersion(version.publicId)}>
+          return <button className={`focus-ring min-w-0 max-w-full overflow-hidden rounded-lg border p-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${version.publicId === selectedVersionId && !addingVersion ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"}`} disabled={importBusy || busy} key={version.publicId} title={fullCompatibility} type="button" onClick={() => selectVersion(version.publicId)}>
             <strong className="block min-w-0 truncate">{version.label}</strong>
             <small className="mt-1 block min-w-0 truncate text-[var(--muted)]">{summarizeMinecraftVersions(version.minecraftVersions, 2)} · {summarizeList(version.loaders, 1)}</small>
             {version.status !== "active" ? <span className="mt-2 inline-block rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--warning)]">{version.status}</span> : null}
           </button>;
         })}
       </div>
-      <button aria-label={t("modContent.entry.addVersion")} className={`focus-ring mt-3 grid h-11 w-full place-items-center rounded-lg border border-dashed text-2xl font-black disabled:cursor-not-allowed disabled:opacity-60 ${addingVersion ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)]"}`} disabled={importBusy} type="button" onClick={startNewVersion}>+</button>
+      <button aria-label={t("modContent.entry.addVersion")} className={`focus-ring mt-3 grid h-11 w-full place-items-center rounded-lg border border-dashed text-2xl font-black disabled:cursor-not-allowed disabled:opacity-60 ${addingVersion ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--line)] text-[var(--muted)] hover:border-[var(--accent)]"}`} disabled={importBusy || busy} type="button" onClick={startNewVersion}>+</button>
     </aside>
     <div className="min-w-0 p-5 lg:p-7">
       {message ? <p className="mb-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm font-bold">{message}</p> : null}
@@ -269,27 +294,29 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5">
           <div className="min-w-0"><h2 className="text-2xl font-black">{selectedVersion.label}</h2><p className="mt-2 max-w-full break-words text-sm text-[var(--muted)] [overflow-wrap:anywhere]">{selectedVersion.minecraftVersions.join(", ")} · {selectedVersion.loaders.join(", ")}{selectedVersion.modVersion ? ` · ${selectedVersion.modVersion}` : ""}</p></div>
           <div className="flex flex-wrap gap-2">
-            <button className={workspaceModeButton(editingVersion)} style={workspaceModeStyle(editingVersion)} disabled={importBusy} type="button" onClick={startVersionEdit}>{t("modContent.versionEditor.editVersion")}</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "")} style={workspaceModeStyle(!editingVersion && importSource === "")} disabled={selectedVersion.status !== "active" || importBusy} type="button" onClick={() => selectWorkspaceMode("")}>{t("modContent.versionEditor.manualAdd")}</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "exporter")} style={workspaceModeStyle(!editingVersion && importSource === "exporter")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "exporter"} type="button" onClick={() => selectWorkspaceMode("exporter")}>mcmods_exporter</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "icon")} style={workspaceModeStyle(!editingVersion && importSource === "icon")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "icon"} type="button" onClick={() => selectWorkspaceMode("icon")}>IconExporter</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "iconrenderer")} style={workspaceModeStyle(!editingVersion && importSource === "iconrenderer")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "iconrenderer"} type="button" onClick={() => selectWorkspaceMode("iconrenderer")}>IconRenderer</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "letmeseesee")} style={workspaceModeStyle(!editingVersion && importSource === "letmeseesee")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "letmeseesee"} type="button" onClick={() => selectWorkspaceMode("letmeseesee")}>LetMeSeeSee (YourCode)</button>
-            <button className={workspaceModeButton(!editingVersion && importSource === "irr")} style={workspaceModeStyle(!editingVersion && importSource === "irr")} disabled={selectedVersion.status !== "active" || importBusy && activeImportSource !== "irr"} type="button" onClick={() => selectWorkspaceMode("irr")}>IRR</button>
+            <button className={workspaceModeButton(editingVersion)} style={workspaceModeStyle(editingVersion)} disabled={importBusy || busy} type="button" onClick={startVersionEdit}>{t("modContent.versionEditor.editVersion")}</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "")} style={workspaceModeStyle(!editingVersion && importSource === "")} disabled={selectedVersion.status !== "active" || importBusy || busy} type="button" onClick={() => selectWorkspaceMode("")}>{t("modContent.versionEditor.manualAdd")}</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "exporter")} style={workspaceModeStyle(!editingVersion && importSource === "exporter")} disabled={busy || selectedVersion.status !== "active" || importBusy && activeImportSource !== "exporter"} type="button" onClick={() => selectWorkspaceMode("exporter")}>mcmods_exporter</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "icon")} style={workspaceModeStyle(!editingVersion && importSource === "icon")} disabled={busy || selectedVersion.status !== "active" || importBusy && activeImportSource !== "icon"} type="button" onClick={() => selectWorkspaceMode("icon")}>IconExporter</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "iconrenderer")} style={workspaceModeStyle(!editingVersion && importSource === "iconrenderer")} disabled={busy || selectedVersion.status !== "active" || importBusy && activeImportSource !== "iconrenderer"} type="button" onClick={() => selectWorkspaceMode("iconrenderer")}>IconRenderer</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "letmeseesee")} style={workspaceModeStyle(!editingVersion && importSource === "letmeseesee")} disabled={busy || selectedVersion.status !== "active" || importBusy && activeImportSource !== "letmeseesee"} type="button" onClick={() => selectWorkspaceMode("letmeseesee")}>LetMeSeeSee (YourCode)</button>
+            <button className={workspaceModeButton(!editingVersion && importSource === "irr")} style={workspaceModeStyle(!editingVersion && importSource === "irr")} disabled={busy || selectedVersion.status !== "active" || importBusy && activeImportSource !== "irr"} type="button" onClick={() => selectWorkspaceMode("irr")}>IRR</button>
           </div>
         </header>
         {importBusy ? <p className="mt-4 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("modContent.catalogImport.continuesInBackground", { importer: importSourceLabel(activeImportSource) })}</p> : null}
         <div hidden={!editingVersion}><VersionForm busy={busy || importBusy} compatibilities={compatibilities} draft={versionDraft} editing minecraftConfig={minecraftConfig} usingGlobalCompatibility={usingGlobalCompatibility} onCancel={() => setEditingVersion(false)} onChange={setVersionDraft} onSave={() => void saveVersion()} /></div>
-        <div className="mt-6" hidden={editingVersion || importSource !== ""}><div className="mb-4"><h3 className="text-lg font-black">{t("modContent.versionEditor.contentTypes")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.contentTypesHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{currentSections.map((section) => <ContentTypeCard busy={busy} key={section.publicId} locale={locale} section={section} siteId={siteId} templates={templates} token={token} onDelete={() => void archiveSection(section)} onDisplayModeChange={(displayMode) => void changeSectionDisplayMode(section, displayMode)} onTemplateSaved={async (result) => { setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); await reload(); }} />)}<AddContentPageCard disabled={selectedVersion.status !== "active" || importBusy} onClick={() => setTypeDialogOpen(true)} /></div></div>
-        <div hidden={editingVersion || importSource !== "exporter"}><ExporterImportPanel blocked={importBusy && activeImportSource !== "exporter"} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} subjectId={subjectId} token={token} version={selectedVersion} /></div>
-        <div hidden={editingVersion || importSource !== "icon"}><IconExportPanel blocked={importBusy && activeImportSource !== "icon"} onBusyChange={updateImportBusy} siteId={siteId} token={token} version={selectedVersion} /></div>
-        {(["iconrenderer", "letmeseesee", "irr"] as CatalogImportSource[]).map((source) => <div hidden={editingVersion || importSource !== source} key={source}><EmbeddedIconImportPanel blocked={importBusy && activeImportSource !== source} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} source={source} token={token} version={selectedVersion} /></div>)}
+        <div className="mt-6" hidden={editingVersion || importSource !== ""}><div className="mb-4"><h3 className="text-lg font-black">{t("modContent.versionEditor.contentTypes")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.contentTypesHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{currentSections.map((section) => <ContentTypeCard busy={busy} key={section.publicId} locale={locale} section={section} siteId={siteId} templates={templates} token={token} onDelete={() => void archiveSection(section)} onDisplayModeChange={(displayMode) => void changeSectionDisplayMode(section, displayMode)} onTemplateSaved={async (result) => { setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); await reload(); }} />)}<AddContentPageCard disabled={selectedVersion.status !== "active" || importBusy || busy} onClick={() => setTypeDialogOpen(true)} /></div></div>
+        <div hidden={editingVersion || importSource !== "exporter"}><ExporterImportPanel key={selectedVersion.publicId} blocked={importBusy && activeImportSource !== "exporter"} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} subjectId={subjectId} token={token} version={selectedVersion} /></div>
+        <div hidden={editingVersion || importSource !== "icon"}><IconExportPanel key={selectedVersion.publicId} blocked={importBusy && activeImportSource !== "icon"} onBusyChange={updateImportBusy} siteId={siteId} token={token} version={selectedVersion} /></div>
+        {(["iconrenderer", "letmeseesee", "irr"] as CatalogImportSource[]).map((source) => <div hidden={editingVersion || importSource !== source} key={`${source}:${selectedVersion.publicId}`}><EmbeddedIconImportPanel blocked={importBusy && activeImportSource !== source} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} source={source} token={token} version={selectedVersion} /></div>)}
       </>}
     </div>
-    {typeDialogOpen && selectedVersion ? <AddContentTypeDialog busy={busy} locale={locale} templates={templates} onClose={() => setTypeDialogOpen(false)} onPreset={(template, displayMode) => void createSection(template, displayMode)} onCustom={(input) => void createCustomSection(input)} /> : null}
+    {typeDialogOpen && selectedVersion ? <AddContentTypeDialog busy={busy} message={message} locale={locale} templates={templates} onClose={() => { if (!busy && !sectionMutationInFlight.current) setTypeDialogOpen(false); }} onPreset={(template, displayMode) => void createSection(template, displayMode)} onCustom={(input) => void createCustomSection(input)} /> : null}
   </section>;
 
   async function archiveSection(section: ModContentSection) {
+    if (busy || sectionMutationInFlight.current || saveVersionInFlight.current || activeImportRef.current !== null || !window.confirm(t("common.delete"))) return;
+    sectionMutationInFlight.current = true;
     setBusy(true);
     setMessage("");
     try {
@@ -299,12 +326,14 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
     } catch (reason) {
       setMessage(errorText(reason));
     } finally {
+      sectionMutationInFlight.current = false;
       setBusy(false);
     }
   }
 
   async function changeSectionDisplayMode(section: ModContentSection, displayMode: "compact" | "large") {
-    if (busy || section.templateCode === "advancement" || section.displayMode === displayMode) return;
+    if (busy || sectionMutationInFlight.current || saveVersionInFlight.current || activeImportRef.current !== null || section.templateCode === "advancement" || section.displayMode === displayMode) return;
+    sectionMutationInFlight.current = true;
     setBusy(true);
     setMessage("");
     try {
@@ -321,6 +350,7 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
     } catch (reason) {
       setMessage(errorText(reason));
     } finally {
+      sectionMutationInFlight.current = false;
       setBusy(false);
     }
   }
@@ -341,7 +371,7 @@ function VersionForm({ draft, editing, busy, compatibilities, minecraftConfig, u
   const allLoaders = uniqueValues([...compatibilities.map((item) => item.loader), ...draft.loaders]);
   const availableVersions = new Set(allVersions.filter((version) => !draft.loaders.length || draft.loaders.every((loader) => loaderVersions.get(loader)?.has(version))));
   const availableLoaders = new Set(allLoaders.filter((loader) => !draft.minecraftVersions.length || draft.minecraftVersions.every((version) => loaderVersions.get(loader)?.has(version))));
-  return <section className="mx-auto max-w-2xl"><h2 className="text-2xl font-black">{t(editing ? "modContent.versionEditor.editVersion" : "modContent.versionEditor.newVersion")}</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionEditor.newVersionHint")}</p><div className="mt-6 grid gap-5">{compatibilities.length ? <><fieldset className="min-w-0"><legend className="mb-2 text-sm font-bold">{t("modContent.minecraftVersions")}</legend><MinecraftVersionPicker className="w-full" config={minecraftConfig} optionCodes={[...availableVersions]} values={draft.minecraftVersions} onChange={(minecraftVersions) => onChange({ ...draft, minecraftVersions })} /></fieldset><ChoiceGrid label={t("modContent.loaders")} options={allLoaders} selected={draft.loaders} available={availableLoaders} onToggle={(loader) => onChange({ ...draft, loaders: toggleValue(draft.loaders, loader) })} /><p className="-mt-2 text-xs leading-5 text-[var(--muted)]">{t(usingGlobalCompatibility ? "modContent.versionEditor.globalCompatibilityHint" : "modContent.versionEditor.compatibilityHint")}</p></> : <p className="rounded-lg border border-[var(--warning)] bg-[var(--warning-soft)] p-4 text-sm font-bold text-[var(--warning)]">{t("modContent.versionEditor.noCompatibility")}</p>}<input className="field" placeholder={t("modContent.modVersion")} value={draft.modVersion} onChange={(event) => onChange({ ...draft, modVersion: event.target.value })} /><input className="field" placeholder={t("modContent.reason")} value={draft.reason} onChange={(event) => onChange({ ...draft, reason: event.target.value })} /><div className="flex gap-2"><button className="button-primary focus-ring flex-1" disabled={busy || !draft.minecraftVersions.length || !draft.loaders.length} type="button" onClick={onSave}>{t(editing ? "common.save" : "modContent.addVersion")}</button>{onCancel ? <button className="button-secondary focus-ring" type="button" onClick={onCancel}>{t("common.cancel")}</button> : null}</div></div></section>;
+  return <section className="mx-auto max-w-2xl"><h2 className="text-2xl font-black">{t(editing ? "modContent.versionEditor.editVersion" : "modContent.versionEditor.newVersion")}</h2><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionEditor.newVersionHint")}</p><fieldset disabled={busy} className="mt-6 grid gap-5">{compatibilities.length ? <><fieldset className="min-w-0"><legend className="mb-2 text-sm font-bold">{t("modContent.minecraftVersions")}</legend><MinecraftVersionPicker className="w-full" config={minecraftConfig} optionCodes={[...availableVersions]} values={draft.minecraftVersions} onChange={(minecraftVersions) => onChange({ ...draft, minecraftVersions })} /></fieldset><ChoiceGrid label={t("modContent.loaders")} options={allLoaders} selected={draft.loaders} available={availableLoaders} onToggle={(loader) => onChange({ ...draft, loaders: toggleValue(draft.loaders, loader) })} /><p className="-mt-2 text-xs leading-5 text-[var(--muted)]">{t(usingGlobalCompatibility ? "modContent.versionEditor.globalCompatibilityHint" : "modContent.versionEditor.compatibilityHint")}</p></> : <p className="rounded-lg border border-[var(--warning)] bg-[var(--warning-soft)] p-4 text-sm font-bold text-[var(--warning)]">{t("modContent.versionEditor.noCompatibility")}</p>}<input className="field" placeholder={t("modContent.modVersion")} value={draft.modVersion} onChange={(event) => onChange({ ...draft, modVersion: event.target.value })} /><input className="field" placeholder={t("modContent.reason")} value={draft.reason} onChange={(event) => onChange({ ...draft, reason: event.target.value })} /><div className="flex gap-2"><button className="button-primary focus-ring flex-1" disabled={busy || !draft.minecraftVersions.length || !draft.loaders.length} type="button" onClick={onSave}>{t(editing ? "common.save" : "modContent.addVersion")}</button>{onCancel ? <button className="button-secondary focus-ring" type="button" onClick={onCancel}>{t("common.cancel")}</button> : null}</div></fieldset></section>;
 }
 
 function ChoiceGrid({ label, options, selected, available, onToggle }: { label: string; options: string[]; selected: string[]; available: Set<string>; onToggle: (value: string) => void }) {
@@ -364,8 +394,15 @@ function AddContentPageCard({ disabled, onClick }: { disabled: boolean; onClick:
   return <button className="focus-ring grid min-h-60 place-items-center rounded-xl border border-dashed border-[var(--line)] bg-[var(--panel-subtle)] p-6 text-center transition hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50" disabled={disabled} type="button" onClick={onClick}><span><span aria-hidden="true" className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-current text-2xl font-black">+</span><strong className="mt-4 block text-lg">{t("modContent.versionEditor.addPage")}</strong><small className="mt-2 block leading-5 text-[var(--muted)]">{t("modContent.versionEditor.addPageHint")}</small></span></button>;
 }
 
-function AddContentTypeDialog({ templates, locale, busy, onClose, onPreset, onCustom }: { templates: ModContentTemplate[]; locale: string; busy: boolean; onClose: () => void; onPreset: (template: ModContentTemplate, mode: "compact" | "large") => void; onCustom: (input: { displayMode: "compact" | "large"; defaultLocale: string; localizations: ModContentLocalization[] }) => void }) {
+function AddContentTypeDialog({ templates, locale, busy, message, onClose, onPreset, onCustom }: { templates: ModContentTemplate[]; locale: string; busy: boolean; message: string; onClose: () => void; onPreset: (template: ModContentTemplate, mode: "compact" | "large") => void; onCustom: (input: { displayMode: "compact" | "large"; defaultLocale: string; localizations: ModContentLocalization[] }) => void }) {
   const { t } = useI18n();
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const node = dialog.current;
+    node?.showModal();
+    return () => node?.close();
+  }, []);
   const builtin = templates.filter((item) => item.builtin);
   const [selected, setSelected] = useState<ModContentTemplate>();
   const [custom, setCustom] = useState(false);
@@ -389,12 +426,13 @@ function AddContentTypeDialog({ templates, locale, busy, onClose, onPreset, onCu
     setDisplayMode(template.defaultDisplayMode);
   }
 
-  return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-4" role="presentation" onMouseDown={onClose}>
-    <section aria-modal="true" className="surface max-h-[86vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-[var(--line)] p-5 shadow-2xl" role="dialog" onMouseDown={(event) => event.stopPropagation()}>
+  return <dialog ref={dialog} aria-labelledby={titleId} className="surface fixed inset-0 m-auto max-h-[86vh] w-[calc(100%_-_2rem)] max-w-2xl overflow-y-auto rounded-xl border border-[var(--line)] p-5 shadow-2xl backdrop:bg-black/55" onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }} onClick={(event) => { if (event.target === event.currentTarget && !busy) onClose(); }}>
+    <fieldset disabled={busy}>
       <header className="flex items-start justify-between gap-3">
-        <div><h2 className="text-xl font-black">{t("modContent.versionEditor.addType")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.addTypeHint")}</p></div>
+        <div><h2 id={titleId} className="text-xl font-black">{t("modContent.versionEditor.addType")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.addTypeHint")}</p></div>
         <button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button>
       </header>
+      {message ? <p role="alert" className="mt-4 text-sm font-bold text-[var(--red)]">{message}</p> : null}
       <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3">
         {builtin.map((template) => <button className={`focus-ring min-h-20 rounded-lg border p-3 text-left font-bold ${selected?.publicId === template.publicId && !custom ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"}`} key={template.publicId} type="button" onClick={() => chooseTemplate(template)}>{t(`modContent.templates.${template.code}`)}</button>)}
         <button className={`focus-ring min-h-20 rounded-lg border p-3 text-left font-bold ${custom ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"}`} type="button" onClick={() => { setCustom(true); setSelected(undefined); }}>{t("modContent.versionEditor.customType")}</button>
@@ -416,18 +454,19 @@ function AddContentTypeDialog({ templates, locale, busy, onClose, onPreset, onCu
         </div> : null}
         <button className="button-primary focus-ring" disabled={busy || custom && !localizations.some((item) => item.locale === defaultLocale && item.name.trim())} type="button" onClick={() => custom ? onCustom({ displayMode, defaultLocale, localizations }) : selected && onPreset(selected, selected.code === "advancement" ? selected.defaultDisplayMode : displayMode)}>{t("modContent.versionEditor.confirmAdd")}</button>
       </div> : null}
-    </section>
-  </div>;
+    </fieldset>
+  </dialog>;
 }
 
-function ExporterImportPanel({ siteId, subjectId, token, version, blocked, onImported, onBusyChange }: { siteId: string; subjectId: string; token: string; version: ModContentVersion; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
-  const notifyBusy = useCallback((active: boolean) => onBusyChange("exporter", active), [onBusyChange]);
+function ExporterImportPanel({ siteId, subjectId, token, version, blocked, onImported, onBusyChange }: { siteId: string; subjectId: string; token: string; version: ModContentVersion; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean, hasOperation?: boolean) => void }) {
+  const notifyBusy = useCallback((active: boolean, hasOperation?: boolean) => onBusyChange("exporter", active, hasOperation), [onBusyChange]);
   return <ModExportImportModal disabled={blocked || version.status !== "active"} inline onBusyChange={notifyBusy} onImported={async () => { await onImported(); }} siteId={siteId} subjectId={subjectId} targetVersionId={version.publicId} targetVersionLabel={version.label} token={token} />;
 }
 
 function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; blocked: boolean; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const [message, setMessage] = useState("");
   const [overwrite, setOverwrite] = useState(false);
   const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
@@ -436,8 +475,10 @@ function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { si
     return () => onBusyChange("icon", false);
   }, [busy, onBusyChange]);
   async function uploadFile(file?: File) {
-    if (!file) return;
+    if (!file || inFlight.current || blocked || version.status !== "active") return;
     if (!file.name.toLowerCase().endsWith(".zip")) { setMessage(t("modContent.iconImport.zipOnly")); return; }
+    inFlight.current = true;
+    onBusyChange("icon", true);
     setBusy(true); setMessage(""); setUpload({ phase: "hashing", percent: 0 });
     try {
       const uploaded = await uploadUserFileToOSS(
@@ -450,10 +491,11 @@ function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { si
     } catch (reason) {
       setMessage(errorText(reason));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
-  return <section className="mt-6"><h3 className="text-lg font-black">{t("modContent.iconImport.title")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.iconImport.description")}</p><ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} /><FileDropZone
+  return <section className="mt-6"><h3 className="text-lg font-black">{t("modContent.iconImport.title")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.iconImport.description")}</p><ImportOverwriteChoice checked={overwrite} disabled={busy || blocked} onChange={setOverwrite} /><FileDropZone
     accept=".zip,application/zip"
     className="mt-5 min-h-56 p-8"
     disabled={busy || blocked || version.status !== "active"}
@@ -466,6 +508,8 @@ function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { si
 function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onImported, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; source: CatalogImportSource; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
+  const active = useRef(true);
   const [overwrite, setOverwrite] = useState(false);
   const [message, setMessage] = useState("");
   const [job, setJob] = useState<ModExportJob | null>(null);
@@ -477,17 +521,22 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
     ? "modContent.catalogImport.iconRendererHint"
     : source === "irr" ? "modContent.catalogImport.irrHint" : "modContent.catalogImport.hint";
 
-  useEffect(() => () => polling.current?.abort(), []);
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; polling.current?.abort(); };
+  }, []);
   useEffect(() => {
     onBusyChange(source, busy);
     return () => onBusyChange(source, false);
   }, [busy, onBusyChange, source]);
 
   async function monitor(initialJob: ModExportJob) {
+    if (!active.current) return;
     setJob(initialJob);
     polling.current?.abort();
     polling.current = new AbortController();
-    const completed = await waitForCatalogImportJob(siteId, initialJob.id, token, setJob, polling.current.signal);
+    const completed = await waitForCatalogImportJob(siteId, initialJob.id, token, value => { if (active.current) setJob(value); }, polling.current.signal);
+    if (!active.current) return;
     if (completed.status === "confirmation_required") {
       setMessage("");
       return;
@@ -500,11 +549,13 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
 
   async function uploadFile(files?: FileList | File[]) {
     const selectedFiles = Array.from(files || []);
-    if (!selectedFiles.length) return;
+    if (!selectedFiles.length || inFlight.current || blocked || version.status !== "active") return;
     if (selectedFiles.some((file) => !file.name.toLowerCase().endsWith(".json"))) {
       setMessage(t("modContent.catalogImport.jsonOnly"));
       return;
     }
+    inFlight.current = true;
+    onBusyChange(source, true);
     setBusy(true); setMessage(""); setJob(null); setUpload(null);
     try {
       const file = supportsMultipleFiles
@@ -518,36 +569,45 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setMessage(errorText(reason));
     } finally {
-      setBusy(false);
+      inFlight.current = false;
+      if (active.current) setBusy(false);
     }
   }
 
   async function retry() {
-    if (!job) return;
+    if (!job || inFlight.current || blocked) return;
+    inFlight.current = true;
+    onBusyChange(source, true);
     setBusy(true); setMessage("");
     try {
       await monitor(await retryCatalogImportJob(siteId, job.id, token));
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setMessage(errorText(reason));
     } finally {
-      setBusy(false);
+      inFlight.current = false;
+      if (active.current) setBusy(false);
     }
   }
 
   async function confirmMODIDMismatch() {
-    if (!job?.modidConfirmationRequired) return;
+    if (!job?.modidConfirmationRequired || inFlight.current || blocked) return;
+    inFlight.current = true;
+    onBusyChange(source, true);
     setBusy(true); setMessage("");
     try {
       await monitor(await confirmModExportMODIDMismatch(siteId, job, token));
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setMessage(errorText(reason));
     } finally {
-      setBusy(false);
+      inFlight.current = false;
+      if (active.current) setBusy(false);
     }
   }
 
   async function cancelMODIDMismatch() {
-    if (!job) return;
+    if (!job || inFlight.current || blocked) return;
+    inFlight.current = true;
+    onBusyChange(source, true);
     setBusy(true); setMessage("");
     try {
       await cancelModExportJob(siteId, job.id, token);
@@ -556,7 +616,8 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
     } catch (reason) {
       setMessage(errorText(reason));
     } finally {
-      setBusy(false);
+      inFlight.current = false;
+      if (active.current) setBusy(false);
     }
   }
 
@@ -565,7 +626,7 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
   return <section className="mt-6">
     <h3 className="text-lg font-black">{t("modContent.catalogImport.title", { importer: importerName })}</h3>
     <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.catalogImport.description", { importer: importerName, version: version.label })}</p>
-    <ImportOverwriteChoice checked={overwrite} onChange={setOverwrite} />
+    <ImportOverwriteChoice checked={overwrite} disabled={busy || blocked} onChange={setOverwrite} />
     <FileDropZone
       accept=".json,application/json,application/x-ndjson"
       className="mt-5 min-h-56 p-8"
@@ -580,9 +641,9 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
   </section>;
 }
 
-function ImportOverwriteChoice({ checked, onChange }: { checked: boolean; onChange: (value: boolean) => void }) {
+function ImportOverwriteChoice({ checked, onChange, disabled = false }: { checked: boolean; disabled?: boolean; onChange: (value: boolean) => void }) {
   const { t } = useI18n();
-  return <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><input className="mt-1 h-4 w-4 accent-[var(--accent)]" type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong className="block">{t("mods.exportImport.overwriteExisting")}</strong><small className="mt-1 block leading-5 text-[var(--muted)]">{t("mods.exportImport.overwriteExistingHint")}</small></span></label>;
+  return <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><input className="mt-1 h-4 w-4 accent-[var(--accent)]" type="checkbox" disabled={disabled} checked={checked} onChange={(event) => onChange(event.target.checked)} /><span><strong className="block">{t("mods.exportImport.overwriteExisting")}</strong><small className="mt-1 block leading-5 text-[var(--muted)]">{t("mods.exportImport.overwriteExistingHint")}</small></span></label>;
 }
 
 function UploadProgressDetails({ progress }: { progress: ModExportUploadProgress }) {
@@ -644,7 +705,7 @@ async function combineCatalogFiles(
     if (raw.startsWith("[")) {
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) throw new Error(t("modContent.catalogImport.notArray", { file: file.name }));
-      entries.push(...parsed);
+      for (const entry of parsed) entries.push(entry);
       continue;
     }
     for (const [index, line] of raw.split(/\r?\n/).entries()) {

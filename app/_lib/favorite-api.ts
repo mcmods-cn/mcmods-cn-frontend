@@ -1,4 +1,4 @@
-import { API_BASE_URL, ApiError, apiRequest, backendFetch } from "./api";
+import { API_BASE_URL, ApiError, apiRequest, backendFetch, isBearerAccessToken } from "./api";
 
 export type FavoriteCollection = {
   id: string;
@@ -198,7 +198,7 @@ export function favoriteModpackExportDownloadURL(taskId: string) {
 export async function downloadFavoriteModpackExport(token: string, taskId: string, fallbackName: string) {
   const response = await backendFetch(favoriteModpackExportDownloadURL(taskId), {
     credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    headers: isBearerAccessToken(token) ? { Authorization: `Bearer ${token}` } : undefined,
   });
   if (!response.ok) {
     const envelope = await response.json().catch(() => ({})) as { error?: string; code?: string };

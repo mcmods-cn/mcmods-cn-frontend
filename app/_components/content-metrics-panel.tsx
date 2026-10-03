@@ -2,13 +2,20 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { ContentMetricActor, ContentMetricReference, ContentMetrics, getContentMetrics, recordContentMetricView } from "../_lib/content-metrics-api";
 import { useI18n } from "../_lib/i18n-provider";
 
+const recordedViews = new Set<string>();
+
 export function ContentMetricsPanel({ publicId, pageKey = "detail" }: { publicId: string; pageKey?: string }) {
-  const { locale } = useI18n();
+  const { token, user } = useAuthSnapshot();
+  return <ContentMetricsPanelContent key={`${user?.id || "guest"}:${publicId}:${pageKey}:${token}`} publicId={publicId} pageKey={pageKey} />;
+}
+
+function ContentMetricsPanelContent({ publicId, pageKey }: { publicId: string; pageKey: string }) {
+  const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [metrics, setMetrics] = useState<ContentMetrics>();
 
@@ -17,8 +24,13 @@ export function ContentMetricsPanel({ publicId, pageKey = "detail" }: { publicId
     let cancelled = false;
     const day = new Date().toISOString().slice(0, 10);
     const viewKey = `mcmods-content-view:${publicId}:${pageKey}:${day}`;
-    const shouldRecord = window.sessionStorage.getItem(viewKey) !== "1";
-    if (shouldRecord) window.sessionStorage.setItem(viewKey, "1");
+    let shouldRecord = !recordedViews.has(viewKey);
+    try { shouldRecord = shouldRecord && window.sessionStorage.getItem(viewKey) !== "1"; } catch { /* Browser storage may be denied. */ }
+    if (shouldRecord) {
+      if (recordedViews.size >= 512) recordedViews.delete(recordedViews.values().next().value!);
+      recordedViews.add(viewKey);
+      try { window.sessionStorage.setItem(viewKey, "1"); } catch { /* Retain in-tab deduplication. */ }
+    }
     void (async () => {
       if (shouldRecord) await recordContentMetricView(publicId, pageKey, token).catch(() => undefined);
       const value = await getContentMetrics(publicId, locale, token).catch(() => undefined);
@@ -27,7 +39,8 @@ export function ContentMetricsPanel({ publicId, pageKey = "detail" }: { publicId
     return () => { cancelled = true; };
   }, [locale, pageKey, publicId, ready, token]);
 
-  const labels = useMemo(() => metricLabels(locale), [locale]);
+  const labels = metricLabels(t);
+  const formatMetricNumber = (value: number) => formatNumber(value, locale);
   if (!metrics) return null;
   const references = [
     [labels.tutorials, metrics.tutorials],
@@ -39,11 +52,11 @@ export function ContentMetricsPanel({ publicId, pageKey = "detail" }: { publicId
   return <section className="mt-8 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-4 sm:p-6">
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div><h2 className="text-xl font-black">{labels.title}</h2><p className="mt-1 text-xs text-[var(--muted)]">{labels.updated} {formatDate(metrics.statisticsAsOf, locale)}</p></div>
-      {typeof metrics.heatScore === "number" ? <MetricValue label={labels.heat} value={formatNumber(metrics.heatScore)} accent /> : null}
+      {typeof metrics.heatScore === "number" ? <MetricValue label={labels.heat} value={formatMetricNumber(metrics.heatScore)} accent /> : null}
     </div>
     <dl className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <MetricValue label={labels.totalViews} value={formatNumber(metrics.totalViews)} hint={metrics.includesChildren && metrics.childViews ? `${labels.direct} ${formatNumber(metrics.directViews)} · ${labels.children} ${formatNumber(metrics.childViews)}` : undefined} />
-      <MetricValue label={labels.edits} value={formatNumber(metrics.editCount)} />
+      <MetricValue label={labels.totalViews} value={formatMetricNumber(metrics.totalViews)} hint={metrics.includesChildren && metrics.childViews ? `${labels.direct} ${formatMetricNumber(metrics.directViews)} · ${labels.children} ${formatMetricNumber(metrics.childViews)}` : undefined} />
+      <MetricValue label={labels.edits} value={formatMetricNumber(metrics.editCount)} />
       <MetricValue label={labels.created} value={formatDate(metrics.createdAt, locale)} />
       <MetricValue label={labels.lastEdited} value={metrics.lastEditedAt ? formatDate(metrics.lastEditedAt, locale) : labels.notEdited} />
     </dl>
@@ -77,21 +90,31 @@ function formatDate(value: string, locale: string) {
   return Number.isNaN(date.getTime()) ? "—" : new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
+function formatNumber(value: number, locale: string) {
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
 }
 
-function metricLabels(locale: string) {
-  if (locale.toLowerCase().startsWith("zh")) return {
-    title: "资料统计", updated: "统计截至", heat: "项目热度", totalViews: "总浏览量", direct: "本页", children: "子资料",
-    edits: "编辑次数", created: "创建时间", lastEdited: "最后编辑时间", notEdited: "暂无已通过的编辑",
-    recentEditors: "最近参与编辑的人", noEditors: "暂时没有编辑记录。",
-    projectEditors: "本站项目权限", verifiedDeveloper: "已认证开发者", editor: "本站编辑员", developers: "项目作者与团队", tutorials: "相关教程", issues: "相关 BUG / 特性", questions: "相关问题", news: "相关新闻",
-  };
+function metricLabels(t: (key: string) => string) {
   return {
-    title: "Content statistics", updated: "Statistics as of", heat: "Project heat", totalViews: "Total views", direct: "Direct", children: "Child content",
-    edits: "Edits", created: "Created", lastEdited: "Last edited", notEdited: "No approved edits yet",
-    recentEditors: "Recent editors", noEditors: "No edit history yet.",
-    projectEditors: "Site project access", verifiedDeveloper: "Verified developer", editor: "Site editor", developers: "Project authors and teams", tutorials: "Tutorials", issues: "Bugs / features", questions: "Questions", news: "News",
+    title: t("contentMetrics.title"),
+    updated: t("contentMetrics.updated"),
+    heat: t("contentMetrics.heat"),
+    totalViews: t("contentMetrics.totalViews"),
+    direct: t("contentMetrics.direct"),
+    children: t("contentMetrics.children"),
+    edits: t("contentMetrics.edits"),
+    created: t("contentMetrics.created"),
+    lastEdited: t("contentMetrics.lastEdited"),
+    notEdited: t("contentMetrics.notEdited"),
+    recentEditors: t("contentMetrics.recentEditors"),
+    noEditors: t("contentMetrics.noEditors"),
+    projectEditors: t("contentMetrics.projectEditors"),
+    verifiedDeveloper: t("contentMetrics.verifiedDeveloper"),
+    editor: t("contentMetrics.editor"),
+    developers: t("contentMetrics.developers"),
+    tutorials: t("contentMetrics.tutorials"),
+    issues: t("contentMetrics.issues"),
+    questions: t("contentMetrics.questions"),
+    news: t("contentMetrics.news"),
   };
 }

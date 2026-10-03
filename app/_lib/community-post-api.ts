@@ -133,8 +133,8 @@ export function loadCommunityPostCategories(kind: CommunityPostKind, signal?: Ab
   return apiRequest<{ kind: CommunityPostKind; items: string[] }>(`/api/v1/community/post-categories?kind=${encodeURIComponent(kind)}`, { cache: "no-store", signal });
 }
 
-export async function loadCommunityPost(id: string, token = "") {
-  const post = await apiRequest<CommunityPostResponse>(`/api/v1/community/posts/${encodeURIComponent(id)}`, { cache: "no-store" }, token || undefined);
+export async function loadCommunityPost(id: string, token = "", signal?: AbortSignal) {
+  const post = await apiRequest<CommunityPostResponse>(`/api/v1/community/posts/${encodeURIComponent(id)}`, { cache: "no-store", signal }, token || undefined);
   return normalizeCommunityPost(post);
 }
 
@@ -145,10 +145,11 @@ export function saveCommunityPost(draft: CommunityPostDraft, token: string, id =
   }, token);
 }
 
-export function requestCommunityPostTranslation(id: string, targetLocale: string, token: string) {
+export function requestCommunityPostTranslation(id: string, targetLocale: string, token: string, signal?: AbortSignal) {
   return apiRequest<{ cached?: boolean; taskId?: string; status?: string; translation?: { title: string; bodyMarkdown: string } }>(`/api/v1/community/posts/${encodeURIComponent(id)}/translations`, {
     method: "POST",
     body: JSON.stringify({ targetLocale }),
+    signal,
   }, token);
 }
 

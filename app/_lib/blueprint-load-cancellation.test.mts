@@ -100,7 +100,7 @@ test("viewer and renderer source contracts propagate and dispose abort signals",
   assert.match(canvas, /load: \(signal\?: AbortSignal\)/);
   assert.match(canvas, /const controller = new AbortController\(\)/);
   assert.match(canvas, /source\.load\(controller\.signal\)/);
-  assert.match(canvas, /renderer\.load\(bytes, source\.name, controller\.signal\)/);
+  assert.match(canvas, /activeRenderer\.load\(bytes, source\.name, controller\.signal\)/);
   assert.match(canvas, /controller\.abort\(\)/);
   assert.match(viewer, /load: async \(signal\?: AbortSignal\)/);
   assert.match(viewer, /signal,/);

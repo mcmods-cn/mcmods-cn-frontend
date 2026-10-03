@@ -42,7 +42,7 @@ export function CatalogMinecraftVersionFilter({
         {(["any", "all"] as const).map((mode) => (
           <button
             aria-pressed={versionMode === mode}
-            className={`focus-ring min-w-0 whitespace-nowrap rounded-md px-2 py-1.5 text-sm font-bold ${versionMode === mode ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`}
+            className={`focus-ring min-w-0 whitespace-nowrap rounded-md px-2 py-1.5 text-sm font-bold ${versionMode === mode ? "bg-[var(--accent)] text-[var(--on-accent)]" : "text-[var(--muted)]"}`}
             key={mode}
             type="button"
             onClick={() => onVersionModeChange(mode)}

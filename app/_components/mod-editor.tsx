@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 import { API_BASE_URL, apiRequest, ApiError } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
@@ -36,6 +36,7 @@ import type { Locale } from "../_lib/i18n-provider";
 import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
 import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
+import { waitForPolledJob } from "../_lib/job-polling.mts";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { CreatorPicker } from "./creator-picker";
 import { ToolsPlayground } from "./tools-playground";
@@ -92,6 +93,11 @@ const emptyDraft = (): ModDraft => ({
 });
 
 export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: { siteId?: string; importMethod?: string; importURL?: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <ModEditorForm key={`${user?.id || "guest"}:${token || "guest"}:${siteId || "new"}:${importMethod}:${importURL}`} siteId={siteId} importMethod={importMethod} importURL={importURL} />;
+}
+
+function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; importMethod: string; importURL: string }) {
   const router = useRouter();
   const { t, locale } = useI18n();
   const { ready, token } = useAuthSnapshot();
@@ -103,6 +109,11 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   const [message, setMessage] = useState("");
   const [importProgress, setImportProgress] = useState(0);
   const importAttemptRef = useRef("");
+  const loadedEditorKey = useRef("");
+  const [recordLoaded, setRecordLoaded] = useState(!siteId);
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [markdownUploading, setMarkdownUploading] = useState(false);
+  const submitInFlight = useRef(false);
   const [changeReason, setChangeReason] = useState("");
   const [minecraftConfig, setMinecraftConfig] = useState<MinecraftVersionConfig>(() => fallbackMinecraftConfig());
   const [selectedLocale, setSelectedLocale] = useState<Locale>(locale);
@@ -111,6 +122,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   const [iconCropFile, setIconCropFile] = useState<File>();
   const [iconUploading, setIconUploading] = useState(false);
   const [iconPreviewUrl, setIconPreviewUrl] = useState("");
+  const importLocaleSnapshot = useEffectEvent(() => ({ locale, t }));
 
   const localized = modLocalization(draft, selectedLocale);
   const localizationVersions = draft.localizations.map((item) => ({
@@ -124,7 +136,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     draftKey: `mod:${siteId || "new"}`,
     projectKey: `mod:${siteId || "new"}`,
     editUrl: siteId ? `/mods/${encodeURIComponent(siteId)}/edit` : "/mods/new",
-    enabled: ready && Boolean(token) && !loading,
+    enabled: ready && Boolean(token) && !loading && recordLoaded,
     kind: "mod",
     title: draft.primaryName.trim() || t(siteId ? "mods.submission.editTitle" : "mods.submission.manualTitle"),
     token,
@@ -145,12 +157,16 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
   }, []);
 
   useEffect(() => {
-    if (!ready || !siteId) return;
+    if (!ready || !siteId || !token) return;
+    const editorKey = `${siteId}:${token}`;
+    if (loadedEditorKey.current === editorKey) return;
     let cancelled = false;
     apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}/editor`, {}, token)
       .then((record) => {
         if (!cancelled) {
           const importedDraft = draftFromSource(record);
+          loadedEditorKey.current = editorKey;
+          setRecordLoaded(true);
           setDraft(importedDraft);
           setIconPreviewUrl(record.iconUrl ? `${API_BASE_URL}/api/v1/mods/${encodeURIComponent(record.siteId)}/icon` : "");
           setSelectedLocale((importedDraft.defaultLocale || locale) as Locale);
@@ -165,14 +181,15 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [locale, ready, siteId, t, token]);
+  }, [loadAttempt, locale, ready, siteId, t, token]);
 
   useEffect(() => {
     const provider = importMethod === "modrinth" || importMethod === "curseforge" || importMethod === "github" ? importMethod : "";
     const attemptKey = `${provider}:${importURL}`;
     if (!ready || !token || siteId || !provider || !importURL || importAttemptRef.current === attemptKey) return;
+    const { locale: importLocale, t: importTranslation } = importLocaleSnapshot();
     let cancelled = false;
-    let timer = 0;
+    const controller = new AbortController();
     const startTimer = window.setTimeout(() => {
       if (cancelled) return;
       importAttemptRef.current = attemptKey;
@@ -183,25 +200,27 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         try {
           let job = await apiRequest<BackendModImportJob>(
             "/api/v1/mod-imports",
-            { method: "POST", body: JSON.stringify({ provider, url: importURL }) },
+            { method: "POST", body: JSON.stringify({ provider, url: importURL }), signal: controller.signal },
             token,
           );
-          while (!cancelled && (job.status === "queued" || job.status === "running")) {
+          if (job.status === "queued" || job.status === "running") {
             setImportProgress(job.progress);
-            await new Promise<void>((resolve) => { timer = window.setTimeout(resolve, 900); });
-            if (cancelled) return;
-            job = await apiRequest<BackendModImportJob>(`/api/v1/mod-imports/${encodeURIComponent(job.id)}`, {}, token);
+            const jobId = job.id;
+            job = await waitForPolledJob(
+              (signal) => apiRequest<BackendModImportJob>(`/api/v1/mod-imports/${encodeURIComponent(jobId)}`, { signal }, token),
+              new Set(["completed", "failed"]), (next) => setImportProgress(next.progress), controller.signal, undefined, 900,
+            );
           }
           if (cancelled) return;
           if (job.status !== "completed" || !job.result) {
-            throw new Error(job.error || t("mods.submission.importFailed"));
+            throw new Error(job.error || importTranslation("mods.submission.importFailed"));
           }
           const importedDraft = draftFromSource(job.result);
           setDraft(importedDraft);
-          setSelectedLocale((importedDraft.defaultLocale || locale) as Locale);
+          setSelectedLocale((importedDraft.defaultLocale || importLocale) as Locale);
           setImportProgress(100);
         } catch (error) {
-          if (!cancelled) setMessage(error instanceof Error ? error.message : t("mods.submission.importFailed"));
+          if (!cancelled) setMessage(error instanceof Error ? error.message : importTranslation("mods.submission.importFailed"));
         } finally {
           if (!cancelled) setLoading(false);
         }
@@ -210,16 +229,18 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     return () => {
       cancelled = true;
       window.clearTimeout(startTimer);
-      if (timer) window.clearTimeout(timer);
+      controller.abort();
     };
-  }, [importMethod, importURL, locale, ready, siteId, t, token]);
+  }, [importMethod, importURL, ready, siteId, token]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (submitInFlight.current || submitting || !recordLoaded || iconUploading || galleryUploading || markdownUploading) return;
     if (!token) {
       setMessage(t("mods.submission.loginRequired"));
       return;
     }
+    submitInFlight.current = true;
     setSubmitting(true);
     setMessage("");
     const snapshot = payloadFromDraft(draft);
@@ -235,7 +256,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           projectTitle: snapshot.primaryName,
           targetUrl: `/mods/${snapshot.siteId}`,
           changeRequestId: revision.changeRequestId,
-        }).catch(() => undefined);
+        }).catch(() => { window.alert(t("drafts.completionFailed")); });
         router.push(`/mods/${revision.status === "approved" ? snapshot.siteId : siteId}/history`);
       } else {
         const created = await apiRequest<BackendModRecord>("/api/v1/mods", { method: "POST", body: JSON.stringify(snapshot) }, token);
@@ -244,12 +265,13 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
           projectTitle: created.primaryName,
           targetUrl: `/mods/${created.siteId}`,
           changeRequestId: created.changeRequestId,
-        }).catch(() => undefined);
+        }).catch(() => { window.alert(t("drafts.completionFailed")); });
         router.push(`/mods/${created.siteId}`);
       }
     } catch (error) {
       setMessage(error instanceof ApiError ? error.message : t("mods.submission.createFailed"));
     } finally {
+      submitInFlight.current = false;
       setSubmitting(false);
     }
   }
@@ -308,15 +330,16 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
     }
   }
 
-  if (!ready || loading) {
+  if (!ready || (Boolean(token) && loading)) {
     const importing = loading && importMethod !== "manual";
     return <PageFeedback title={importing ? t("mods.submission.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
   }
   if (!token) return <LoginRequiredState nextPath={siteId ? `/mods/${siteId}/edit` : "/mods/new"} description={t("mods.submission.loginRequired")} />;
+  if (!recordLoaded) return <PageFeedback title={message || t("common.loadFailed")} tone="danger" action={<button className="button-secondary focus-ring" type="button" onClick={() => { setLoading(true); setMessage(""); setLoadAttempt((attempt) => attempt + 1); }}>{t("common.retry")}</button>} />;
 
   const editor = (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}>
+      <form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}><fieldset disabled={submitting} className="min-w-0">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5">
           <div>
             <Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={siteId ? `/mods/${siteId}` : "/mods"}>{t("mods.detail.back")}</Link>
@@ -324,7 +347,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
             <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.submission.reviewNotice")}</p>
             {importMethod !== "manual" ? <p className="mt-2 text-sm font-bold text-[var(--accent)]">{t("mods.submission.importPrepared", { source: importMethod, url: importURL })}</p> : null}
           </div>
-          <div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
+          <div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={submitting || iconUploading || galleryUploading || markdownUploading} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
         </header>
 
         <div className="mb-6 grid gap-3 lg:grid-cols-[1fr_260px]">
@@ -442,7 +465,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.body")} description={t("mods.submission.sections.bodyHint")}>
-          <ToolsPlayground embedded documentId={`mod:${siteId || "draft"}:${selectedLocale}:content`} editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} editorDescription={t("mods.submission.sections.bodyHint")} value={localized.contentMarkdown} onChange={(contentMarkdown) => setDraft((current) => updateModLocalization(current, selectedLocale, { contentMarkdown }))} />
+          <ToolsPlayground embedded onBusyChange={setMarkdownUploading} documentId={`mod:${siteId || "draft"}:${selectedLocale}:content`} editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} editorDescription={t("mods.submission.sections.bodyHint")} value={localized.contentMarkdown} onChange={(contentMarkdown) => setDraft((current) => updateModLocalization(current, selectedLocale, { contentMarkdown }))} />
         </FormSection>
 
         <FormSection title={t("mods.submission.sections.gallery")} description={t("mods.submission.sections.galleryHint")}>
@@ -466,7 +489,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
 
         {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24 resize-y" maxLength={500} value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
         {message ? <p className="mb-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{message}</p> : null}
-        <div className="flex justify-end"><button className="button-primary focus-ring px-6" disabled={submitting} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
+        <div className="flex justify-end"><button className="button-primary focus-ring px-6" disabled={submitting || iconUploading || galleryUploading || markdownUploading} type="submit">{submitting ? t("mods.submission.actions.submitting") : t(siteId ? "mods.submission.actions.submitRevision" : "mods.submission.actions.submit")}</button></div>
         <SquareImageCropDialog
           file={iconCropFile}
           minimumSize={128}
@@ -477,7 +500,7 @@ export function ModEditor({ siteId, importMethod = "manual", importURL = "" }: {
             void uploadModIcon(output);
           }}
         />
-      </form>
+      </fieldset></form>
     </main>
   );
   return siteId && uniqueId

@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
+import { hasSameI18nPlaceholders } from "../_lib/i18n-message.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { AdminUserBalance, AdminUserDetails, EmptyState, InlineMessage, PanelShell, PermissionCatalog, User, aiTranslationTaskTypes, cleanError, formatDateTime, notifyAdminNotice, runAITranslationTask } from "./admin-console-shared";
 
@@ -18,6 +19,7 @@ function UsersPanelV2({
 }) {
   const { t } = useI18n();
   const [creating, setCreating] = useState(false);
+  const createPending = useRef(false);
   const [message, setMessage] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<User[] | null>(null);
@@ -62,9 +64,12 @@ function UsersPanelV2({
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (createPending.current) return;
+    createPending.current = true;
     setCreating(true);
     setMessage("");
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const roles = String(form.get("roles") ?? "")
       .split(",")
       .map((role) => role.trim())
@@ -78,12 +83,15 @@ function UsersPanelV2({
     };
     try {
       await apiRequest<User>("/api/v1/admin/users", { method: "POST", body: JSON.stringify(payload) }, token);
-      await refreshUsers();
-      event.currentTarget.reset();
+      formElement.reset();
       setMessage(t("admin.userCreated"));
+      try { await refreshUsers(); } catch (error) {
+        setMessage(`${t("admin.userCreated")} ${cleanError(error)}`);
+      }
     } catch (error) {
       setMessage(cleanError(error));
     } finally {
+      createPending.current = false;
       setCreating(false);
     }
   }
@@ -545,17 +553,22 @@ function NotificationTemplatePanel({ token }: { token: string }) {
   const [templates, setTemplates] = useState<NotificationTemplateDefinition[]>([]);
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
   const [targetLocale, setTargetLocale] = useState<Locale>(locale === "zh-CN" ? "en-US" : locale);
-  const [loading, setLoading] = useState(true);
+  const [loadedToken, setLoadedToken] = useState<string>();
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const savePending = useRef(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     apiRequest<{ templates: NotificationTemplateDefinition[] }>("/api/v1/admin/config/notifications", {}, token)
-      .then((result) => { if (!cancelled) setTemplates(result.templates ?? []); })
-      .catch((error) => { if (!cancelled) notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .then((result) => {
+        if (!Array.isArray(result.templates)) throw new Error("Invalid notification templates response");
+        if (!cancelled) { setTemplates(result.templates); setLoadedToken(token); setLoadError(""); }
+      })
+      .catch((error) => { if (!cancelled) setLoadError(cleanError(error)); });
     return () => { cancelled = true; };
-  }, [t, token]);
+  }, [loadAttempt, token]);
 
   function updateTemplate(index: number, language: string, field: keyof NotificationTemplateTranslation, value: string) {
     setTemplates((current) => current.map((template, templateIndex) => {
@@ -566,6 +579,8 @@ function NotificationTemplatePanel({ token }: { token: string }) {
   }
 
   async function save() {
+    if (loadedToken !== token || savePending.current) return;
+    savePending.current = true;
     setSaving(true);
     try {
       const result = await apiRequest<{ templates: NotificationTemplateDefinition[] }>(
@@ -578,11 +593,12 @@ function NotificationTemplatePanel({ token }: { token: string }) {
     } catch (error) {
       notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
     } finally {
+      savePending.current = false;
       setSaving(false);
     }
   }
 
-  if (loading) return <section className="surface rounded-lg p-5 font-bold text-[var(--muted)]">{t("common.loading")}</section>;
+  if (loadedToken !== token) return <section className="surface rounded-lg p-5" role="status"><p>{loadError || t("common.loading")}</p>{loadError ? <button className="button-secondary focus-ring mt-3" type="button" onClick={() => { setLoadError(""); setLoadAttempt((value) => value + 1); }}>{t("common.retry")}</button> : null}</section>;
 
   return <section className="space-y-4">
     <header className="flex flex-wrap items-end justify-between gap-4">
@@ -653,13 +669,14 @@ function ReviewSettingsPanel({ token }: { token: string }) {
   const { t } = useI18n();
   const [settings, setSettings] = useState<ReviewSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const reportLoadError = useEffectEvent((error: unknown) => notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"));
   useEffect(() => {
     let cancelled = false;
     apiRequest<ReviewSettings>("/api/v1/admin/config/reviews", {}, token)
       .then((result) => { if (!cancelled) setSettings(result); })
-      .catch((error) => { if (!cancelled) notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger"); });
+      .catch((error) => { if (!cancelled) reportLoadError(error); });
     return () => { cancelled = true; };
-  }, [t, token]);
+  }, [token]);
   async function save() {
     if (!settings) return;
     setSaving(true);
@@ -725,7 +742,8 @@ function TranslationManagerPanel({ token }: { token: string }) {
     getBaseTranslation,
     getOwnTranslation,
     setTranslation,
-    setTranslations,
+    getTranslationEditVersion,
+    setTranslationsIfUnchanged,
     resetTranslation,
   } = useI18n();
   const [sourceLocale, setSourceLocale] = useState<Locale>("zh-CN");
@@ -733,6 +751,8 @@ function TranslationManagerPanel({ token }: { token: string }) {
   const [query, setQuery] = useState("");
   const [missingOnly, setMissingOnly] = useState(false);
   const [aiCompleting, setAICompleting] = useState(false);
+  const completionGeneration = useRef(0);
+  useEffect(() => () => { completionGeneration.current += 1; }, [token]);
 
   const visibleKeys = translationKeys.filter((key) => {
     if (isResourceDataPageTranslationKey(key)) return false;
@@ -763,6 +783,9 @@ function TranslationManagerPanel({ token }: { token: string }) {
       notifyAdminNotice(t("admin.ai.noMissingTranslations"));
       return;
     }
+    const requestedGeneration = completionGeneration.current;
+    const editVersion = getTranslationEditVersion();
+    const sourceTexts = new Map(candidates.map((key) => [key, getTranslation(sourceLocale, key)]));
     setAICompleting(true);
     try {
       const result = await runAITranslationTask(token, aiTranslationTaskTypes.i18n, {
@@ -770,15 +793,18 @@ function TranslationManagerPanel({ token }: { token: string }) {
         targetLocale,
         items: candidates.map((key) => ({ key, text: getTranslation(sourceLocale, key) })),
       });
+      if (requestedGeneration !== completionGeneration.current) return;
       const translations: Record<string, string> = {};
       for (const item of result.items ?? []) {
         const value = item.text?.trim() ?? "";
-        if (candidates.includes(item.key) && value) translations[item.key] = value;
+        const source = sourceTexts.get(item.key);
+        if (source && value && hasSameI18nPlaceholders(source, value)) translations[item.key] = value;
       }
-      setTranslations(targetLocale, translations);
-      notifyAdminNotice(t("admin.ai.translationCompleted", { count: Object.keys(translations).length }));
+      if (setTranslationsIfUnchanged(editVersion, targetLocale, translations)) {
+        notifyAdminNotice(t("admin.ai.translationCompleted", { count: Object.keys(translations).length }));
+      } else notifyAdminNotice(t("admin.ai.protectedEdits"));
     } catch (error) {
-      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
+      if (requestedGeneration === completionGeneration.current) notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
     } finally {
       setAICompleting(false);
     }
@@ -866,11 +892,11 @@ function TranslationManagerPanel({ token }: { token: string }) {
                   <td className="whitespace-pre-wrap break-words border-b border-[var(--line)] px-4 py-4 align-top leading-6">{getTranslation(sourceLocale, key)}</td>
                   <td className="border-b border-[var(--line)] px-4 py-4 align-top">
                     <textarea
-                      key={`${targetLocale}:${key}:${target}`}
+                      key={`${targetLocale}:${key}`}
                       className="field min-h-24 resize-y leading-6"
-                      defaultValue={target}
+                      value={target}
                       placeholder={target ? "" : t("admin.missingTranslation")}
-                      onBlur={(event) => saveTranslation(key, event.currentTarget.value)}
+                      onChange={(event) => saveTranslation(key, event.currentTarget.value)}
                     />
                     {edited ? <span className="mt-1 block text-xs text-[var(--accent)]">{t("admin.editedLocally")}</span> : null}
                   </td>

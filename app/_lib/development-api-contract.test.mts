@@ -9,6 +9,7 @@ test("catalog sorting accepts only canonical field and direction parameters", ()
     assert.equal(normalizeCatalogSortField(legacy, "updated"), "updated");
   }
   assert.equal(normalizeCatalogSortField("published", "updated"), "published");
+  assert.equal(normalizeCatalogSortField("  published ", "updated"), "published");
   assert.equal(normalizeCatalogSortDirection(undefined, "desc", "published"), "desc");
   assert.equal(normalizeCatalogSortDirection(undefined, "desc", "name"), "asc");
   assert.equal(normalizeCatalogSortDirection("desc", "asc", "name"), "desc");

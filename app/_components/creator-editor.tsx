@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
@@ -28,39 +28,48 @@ import { ReviewLockGate } from "./review-edit-lock";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 export function CreatorEditorPage({ initialKind, publicId = "" }: { initialKind: CreatorKind; publicId?: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <CreatorEditorPageContent key={`${user?.id || "guest"}:${initialKind}:${publicId}:${token}`} initialKind={initialKind} publicId={publicId} />;
+}
+
+function CreatorEditorPageContent({ initialKind, publicId }: { initialKind: CreatorKind; publicId: string }) {
   const { t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [detail, setDetail] = useState<CreatorDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const initialized = useRef(false);
 
-  const load = useCallback(async () => {
-    if (!token) return;
+  const load = useCallback(async (signal?: AbortSignal) => {
+    if (!token || initialized.current) return;
     setLoading(true);
     setError("");
     try {
       const creatorDetail = publicId
-        ? await apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(publicId)}`, {}, token)
+        ? await apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(publicId)}`, { signal }, token)
         : null;
+      if (signal?.aborted) return;
       if (creatorDetail && creatorDetail.creator.kind !== initialKind) throw new Error(t("creators.kindMismatch"));
       if (creatorDetail && !creatorDetail.canEditProfile) throw new Error(t("creators.editDenied"));
       setDetail(creatorDetail);
+      initialized.current = true;
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t("creators.loadFailed"));
+      if (!signal?.aborted) setError(loadError instanceof Error ? loadError.message : t("creators.loadFailed"));
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [initialKind, publicId, t, token]);
 
   useEffect(() => {
     if (!ready || !token) return;
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => void load(controller.signal), 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [load, ready, token]);
 
   if (!ready || (token && loading)) return <PageFeedback title={t("common.loading")} />;
   if (!token) return <LoginRequiredState nextPath={publicId ? `${creatorBaseHref(initialKind)}/${publicId}/edit` : initialKind === "team" ? "/teams/new" : "/authors/new"} description={t("creators.editLoginRequired")} />;
-  if (error || (publicId && !detail)) return <PageFeedback title={error || t("creators.notFound")} tone="danger" />;
+  if (error || (publicId && !detail)) return <PageFeedback title={error || t("creators.notFound")} tone="danger" action={<button className="button-secondary focus-ring" type="button" onClick={() => void load()}>{t("common.retry")}</button>} />;
 
   const editor = <CreatorEditorForm detail={detail} initialKind={initialKind} token={token} />;
   return publicId
@@ -88,6 +97,9 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
   const [importedAvatarPreviewUrl, setImportedAvatarPreviewUrl] = useState("");
   const [importedMemberPreviews, setImportedMemberPreviews] = useState<CreatorImportResult["members"]>([]);
   const [saving, setSaving] = useState(false);
+  const [markdownUploading, setMarkdownUploading] = useState(false);
+  const mutationInFlight = useRef(false);
+  const busy = saving || importing || uploadingAvatar || markdownUploading;
 
   const autoDraft = useAutoDraft({
     token,
@@ -146,6 +158,8 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
   }), [avatarFileId, avatarUrl, defaultLocale, kind, links, localizations, name]);
 
   async function uploadAvatar(file: File) {
+    if (mutationInFlight.current || busy) return;
+    mutationInFlight.current = true;
     setUploadingAvatar(true);
     try {
       const uploaded = await uploadUserFileToOSS(file, token, `creator_avatar:${kind}:${detail?.creator.publicId || "new"}`);
@@ -155,12 +169,14 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
     } catch (uploadError) {
       notifySite(uploadError instanceof Error ? uploadError.message : t("creators.avatarUploadFailed"), t("creators.avatar"), "danger");
     } finally {
+      mutationInFlight.current = false;
       setUploadingAvatar(false);
     }
   }
 
   async function importCreatorProfile() {
-    if (!importUrl.trim()) return;
+    if (!importUrl.trim() || busy || mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setImporting(true);
     try {
       const imported = await apiRequest<CreatorImportResult>("/api/v1/creator-imports", {
@@ -175,13 +191,15 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
     } catch (importError) {
       notifySite(importError instanceof Error ? importError.message : t("creators.importFailed"), t("creators.importProfile"), "danger");
     } finally {
+      mutationInFlight.current = false;
       setImporting(false);
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!snapshot.name) return;
+    if (!snapshot.name || busy || mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setSaving(true);
     try {
       const profilePayload = creatorProfilePayload(snapshot);
@@ -190,24 +208,31 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
         : await apiRequest<{ publicId: string; reviewStatus: "pending" | "approved"; changeRequestId: string }>("/api/v1/creators", { method: "POST", body: JSON.stringify(profilePayload) }, token);
       const publicId = editing ? detail!.creator.publicId : "publicId" in result ? result.publicId : "";
       const targetUrl = `${creatorBaseHref(kind)}/${publicId}`;
-      await autoDraft.completeDraft({
-        projectKey: `creator:${publicId}`,
-        projectTitle: snapshot.name,
-        targetUrl,
-        changeRequestId: result.changeRequestId,
-      });
-      notifySite(result.reviewStatus === "pending" ? t(editing ? "creators.editSubmitted" : "creators.createSubmitted") : t(editing ? "creators.editSaved" : "creators.createSaved"), t("creators.title"), "success");
+      let draftCompletionFailed = false;
+      try {
+        await autoDraft.completeDraft({
+          projectKey: `creator:${publicId}`,
+          projectTitle: snapshot.name,
+          targetUrl,
+          changeRequestId: result.changeRequestId,
+        });
+      } catch {
+        draftCompletionFailed = true;
+      }
+      notifySite(draftCompletionFailed ? t("drafts.completionFailed") : result.reviewStatus === "pending" ? t(editing ? "creators.editSubmitted" : "creators.createSubmitted") : t(editing ? "creators.editSaved" : "creators.createSaved"), t("creators.title"), draftCompletionFailed ? "info" : "success");
       router.push(targetUrl);
     } catch (saveError) {
       notifySite(saveError instanceof Error ? saveError.message : t(editing ? "creators.editFailed" : "creators.createFailed"), t("creators.title"), "danger");
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   }
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <form className="mx-auto max-w-7xl px-4 py-7" onSubmit={submit}>
+      <form className="mx-auto max-w-7xl px-4 py-7" aria-busy={busy} onSubmit={submit}>
+        <fieldset className="min-w-0" disabled={busy}>
         <Link className="focus-ring inline-flex rounded-sm text-sm font-bold text-[var(--accent)] hover:underline" href={returnHref}>← {t(editing ? "creators.backToDetail" : "creators.backToList")}</Link>
         <header className="mt-4 flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5">
           <div>
@@ -217,7 +242,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
           <div className="flex gap-2">
             <DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} />
             <Link className="button-secondary focus-ring" href={returnHref}>{t("common.cancel")}</Link>
-            <button className="button-primary focus-ring" disabled={saving || !name.trim()} type="submit">{saving ? t("common.loading") : t(editing ? "common.save" : "common.create")}</button>
+            <button className="button-primary focus-ring" disabled={busy || !name.trim()} type="submit">{saving ? t("common.loading") : t(editing ? "common.save" : "common.create")}</button>
           </div>
         </header>
 
@@ -237,7 +262,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
                 void importCreatorProfile();
               }}
             />
-            <button className="button-secondary focus-ring" disabled={importing || !importUrl.trim()} type="button" onClick={() => void importCreatorProfile()}>
+            <button className="button-secondary focus-ring" disabled={busy || !importUrl.trim()} type="button" onClick={() => void importCreatorProfile()}>
               {importing ? t("common.loading") : t("creators.importAction")}
             </button>
           </div>
@@ -272,7 +297,8 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
             </section>
             <LinkEditor links={links} onChange={setLinks} />
         </div>
-        <section className="mt-6"><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("creators.introduction")} ({selectedLocale})</h2><span className="text-xs text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded documentId={`creator:${detail?.creator.publicId || `new:${initialKind}`}:${selectedLocale}:content`} editorTitle={`${t("creators.introduction")} (${selectedLocale})`} value={localized.contentMarkdown} onChange={(contentMarkdown) => setLocalizations((current) => updateCreatorLocalization(current, selectedLocale, { contentMarkdown }))} /></section>
+        <section className="mt-6"><div className="mb-2 flex items-center justify-between gap-3"><h2 className="font-black">{t("creators.introduction")} ({selectedLocale})</h2><span className="text-xs text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded documentId={`creator:${detail?.creator.publicId || `new:${initialKind}`}:${selectedLocale}:content`} editorTitle={`${t("creators.introduction")} (${selectedLocale})`} value={localized.contentMarkdown} onBusyChange={setMarkdownUploading} onChange={(contentMarkdown) => setLocalizations((current) => updateCreatorLocalization(current, selectedLocale, { contentMarkdown }))} /></section>
+        </fieldset>
       </form>
       <SquareImageCropDialog file={avatarCropFile} minimumSize={1} outputSizes={[256]} onCancel={() => setAvatarCropFile(undefined)} onConfirm={(output) => { const file = output.files.get(256); setAvatarCropFile(undefined); if (file) void uploadAvatar(file); }} />
     </main>

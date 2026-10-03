@@ -4,7 +4,7 @@ import { apiErrorMessage } from "../_lib/api-error.mts";
 /* eslint-disable @next/next/no-img-element */
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
@@ -20,6 +20,8 @@ import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upl
 import { notifySite } from "../_lib/site-notice";
 import { CommentSection } from "./comment-section";
 import { FileDropZone } from "./file-drop-zone";
+import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
+import { OSSUploadBatchStatus } from "./oss-upload-batch-status";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { ReviewAwareEditAction } from "./review-edit-lock";
 
@@ -27,39 +29,52 @@ const claimMaximumFiles = 5;
 const claimMaximumBytes = 10 << 20;
 
 export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <CreatorDetailContent key={`${user?.id || "guest"}:${token}:${kind}:${publicId}`} kind={kind} publicId={publicId} />;
+}
+
+function CreatorDetailContent({ kind, publicId }: { kind: CreatorKind; publicId: string }) {
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const [record, setRecord] = useState<CreatorDetailRecord | null>(null);
   const [roles, setRoles] = useState<CreatorRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [claimOpen, setClaimOpen] = useState(false);
+  const translation = useRef(t);
+  useEffect(() => { translation.current = t; }, [t]);
+  const loadController = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
     setLoading(true);
     try {
       const [detail, roleResult] = await Promise.all([
-        apiRequest<CreatorDetailRecord>(`/api/v1/creators/${encodeURIComponent(publicId)}`, {}, token || undefined),
-        apiRequest<{ items: CreatorRole[] }>("/api/v1/creator-roles", {}, token || undefined),
+        apiRequest<CreatorDetailRecord>(`/api/v1/creators/${encodeURIComponent(publicId)}`, { signal: controller.signal }, token || undefined),
+        apiRequest<{ items: CreatorRole[] }>("/api/v1/creator-roles", { signal: controller.signal }, token || undefined),
       ]);
-      if (detail.creator.kind !== kind) throw new Error(t("creators.kindMismatch"));
+      if (controller.signal.aborted) return;
+      if (detail.creator.kind !== kind) throw new Error(translation.current("creators.kindMismatch"));
       setRecord(detail);
       setRoles(roleResult.items);
     } catch (error) {
+      if (controller.signal.aborted) return;
       setRecord(null);
-      notifySite(apiErrorMessage(error, t, t("creators.loadFailed")), t("creators.title"), "danger");
+      notifySite(apiErrorMessage(error, translation.current, translation.current("creators.loadFailed")), translation.current("creators.title"), "danger");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [kind, publicId, t, token]);
+  }, [kind, publicId, token]);
 
   useEffect(() => {
     if (!ready) return;
     const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); loadController.current?.abort(); };
   }, [load, ready]);
 
   if (loading) return <CreatorPageState text={t("common.loading")} />;
-  if (!record) return <CreatorPageState text={t("creators.notFound")} />;
+  if (!record) return <CreatorPageState text={t("creators.notFound")} action={<button className="button-secondary focus-ring" type="button" onClick={() => void load()}>{t("common.retry")}</button>} />;
 
   const localized = creatorDisplayLocalization(record, locale);
   const creator = record.creator;
@@ -109,7 +124,7 @@ export function CreatorDetail({ kind, publicId }: { kind: CreatorKind; publicId:
         </aside>
       </div>
       <div className="mx-auto max-w-7xl px-4 pb-8"><CommentSection targetKey={publicId} targetType="creator" /></div>
-      {claimOpen && token && creator.kind === "author" ? <ClaimCreatorDialog creator={creator} token={token} onClose={() => setClaimOpen(false)} onSubmitted={(status) => { setClaimOpen(false); notifySite(status === "approved" ? t("creators.claimApproved") : t("creators.claimSubmitted"), t("creators.claim"), "success"); void load(); }} /> : null}
+      {claimOpen && token && creator.kind === "author" ? <ClaimCreatorDialog key={`${user?.id}:${token}:${creator.publicId}`} creator={creator} token={token} onClose={() => setClaimOpen(false)} onSubmitted={(status) => { setClaimOpen(false); notifySite(status === "approved" ? t("creators.claimApproved") : t("creators.claimSubmitted"), t("creators.claim"), "success"); void load(); }} /> : null}
     </main>
   );
 }
@@ -118,47 +133,91 @@ function ClaimCreatorDialog({ creator, token, onClose, onSubmitted }: { creator:
   const { t } = useI18n();
   const [proofMarkdown, setProofMarkdown] = useState("");
   const [proofFiles, setProofFiles] = useState<OSSFileRecord[]>([]);
+  const proofFilesRef = useRef(proofFiles);
+  const operationInFlight = useRef(false);
+  const submitted = useRef(false);
+  const [submittedSuccessfully, setSubmittedSuccessfully] = useState(false);
+  const mounted = useRef(true);
+  const [uploadTasks, setUploadTasks] = useState<OSSUploadBatchTask<File, OSSFileRecord>[]>([]);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const totalBytes = useMemo(() => proofFiles.reduce((sum, file) => sum + Math.max(file.sizeBytes, file.sourceSizeBytes ?? 0), 0), [proofFiles]);
+
+  function closeDialog() {
+    if (!operationInFlight.current) onClose();
+  }
+
+  function removeProofFile(id: string) {
+    if (operationInFlight.current || submitted.current) return;
+    proofFilesRef.current = proofFilesRef.current.filter((item) => item.id !== id);
+    setProofFiles(proofFilesRef.current);
+  }
 
   async function uploadProofFiles(files: File[]) {
-    if (!files.length) return;
-    if (proofFiles.length + files.length > claimMaximumFiles) {
+    if (!files.length || operationInFlight.current || submitted.current) return;
+    if (proofFilesRef.current.length + files.length > claimMaximumFiles) {
       notifySite(t("creators.claimFileCount", { count: claimMaximumFiles }), t("creators.claim"), "danger");
       return;
     }
+    const totalBytes = proofFilesRef.current.reduce((sum, file) => sum + Math.max(file.sizeBytes, file.sourceSizeBytes ?? 0), 0);
     if (totalBytes + files.reduce((sum, file) => sum + file.size, 0) > claimMaximumBytes) {
       notifySite(t("creators.claimFileSize", { size: formatBytes(claimMaximumBytes) }), t("creators.claim"), "danger");
       return;
     }
+    const tasks = createOSSUploadBatchTasks<File, OSSFileRecord>(files, {
+      capacity: Math.max(0, claimMaximumFiles - proofFilesRef.current.length),
+      capacityError: t("creators.claimFileCount", { count: claimMaximumFiles }),
+      identity: () => crypto.randomUUID(),
+      validate: () => "",
+    });
+    await processFiles(tasks);
+  }
+
+  async function processFiles(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string) {
+    if (operationInFlight.current || submitted.current) return;
+    operationInFlight.current = true;
     setUploading(true);
     try {
-      for (const file of files) {
-        const uploaded = await uploadUserFileToOSS(file, token, "creator-claim");
-        setProofFiles((current) => current.some((item) => item.id === uploaded.id) ? current : [...current, uploaded]);
-      }
+      await processOSSUploadBatch(tasks, {
+        upload: (file) => {
+          if (!mounted.current) throw new DOMException("The application dialog was closed", "AbortError");
+          return uploadUserFileToOSS(file, token, "creator-claim");
+        },
+        shouldProcess: retryKey ? (task) => task.key === retryKey : undefined,
+        onChange: (next) => { if (mounted.current) setUploadTasks(next); },
+        onUploaded: (_, record) => {
+          if (!mounted.current || proofFilesRef.current.some((item) => item.id === record.id)) return;
+          proofFilesRef.current = [...proofFilesRef.current, record];
+          setProofFiles(proofFilesRef.current);
+        },
+      });
     } catch (error) {
-      notifySite(apiErrorMessage(error, t, t("creators.claimUploadFailed")), t("creators.claim"), "danger");
+      if (mounted.current) notifySite(apiErrorMessage(error, t, t("creators.claimUploadFailed")), t("creators.claim"), "danger");
     } finally {
-      setUploading(false);
+      operationInFlight.current = false;
+      if (mounted.current) setUploading(false);
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (operationInFlight.current || submitted.current) return;
+    operationInFlight.current = true;
     setSubmitting(true);
     try {
-      const result = await apiRequest<{ status: "pending" | "approved" }>(`/api/v1/creators/${encodeURIComponent(creator.publicId)}/claims`, { method: "POST", body: JSON.stringify({ proofMarkdown, proofFileIds: proofFiles.map((file) => file.id) }) }, token);
-      onSubmitted(result.status);
+      const result = await apiRequest<{ status: "pending" | "approved" }>(`/api/v1/creators/${encodeURIComponent(creator.publicId)}/claims`, { method: "POST", body: JSON.stringify({ proofMarkdown, proofFileIds: proofFilesRef.current.map((file) => file.id) }) }, token);
+      submitted.current = true;
+      if (mounted.current) setSubmittedSuccessfully(true);
+      if (mounted.current) onSubmitted(result.status);
     } catch (error) {
-      notifySite(apiErrorMessage(error, t, t("creators.claimFailed")), t("creators.claim"), "danger");
+      if (mounted.current) notifySite(apiErrorMessage(error, t, t("creators.claimFailed")), t("creators.claim"), "danger");
     } finally {
-      setSubmitting(false);
+      operationInFlight.current = false;
+      if (mounted.current) setSubmitting(false);
     }
   }
 
-  return <div className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4" role="presentation" onMouseDown={onClose}><form className="surface max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg p-5" onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-black">{t("creators.claimTitle", { name: creator.name })}</h2><button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.close")}</button></div><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("creators.claimDescription")}</p><textarea className="field mt-4 min-h-44 resize-y" placeholder={t("creators.claimProof")} value={proofMarkdown} onChange={(event) => setProofMarkdown(event.target.value)} /><section className="mt-5 rounded-lg border border-[var(--line)] p-4"><h3 className="font-black">{t("creators.claimAttachments")}</h3><FileDropZone accept="" className="mt-3 min-h-28 p-4" disabled={uploading || proofFiles.length >= claimMaximumFiles} hint={t("creators.claimAttachmentsHint", { count: claimMaximumFiles, size: formatBytes(claimMaximumBytes) })} multiple title={uploading ? t("common.loading") : t("creators.uploadClaimAttachments")} onFiles={(files) => void uploadProofFiles(files)} /><ul className="mt-3 grid gap-2">{proofFiles.map((file) => <li className="flex items-center justify-between gap-3 rounded-md bg-[var(--panel-subtle)] p-3" key={file.id}><span className="min-w-0 truncate text-sm font-bold">{file.originalName}</span><span className="flex shrink-0 items-center gap-3 text-xs text-[var(--muted)]">{formatBytes(Math.max(file.sizeBytes, file.sourceSizeBytes ?? 0))}<button className="font-bold text-[var(--red)]" type="button" onClick={() => setProofFiles((current) => current.filter((item) => item.id !== file.id))}>{t("common.delete")}</button></span></li>)}</ul></section><div className="mt-5 flex justify-end"><button className="button-primary focus-ring" disabled={submitting || uploading} type="submit">{submitting ? t("common.loading") : t("creators.submitClaim")}</button></div></form></div>;
+  return <div className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4" role="presentation" onMouseDown={closeDialog}><form className="surface max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg p-5" role="dialog" aria-modal="true" aria-label={t("creators.claimTitle", { name: creator.name })} onSubmit={submit} onMouseDown={(event) => event.stopPropagation()}><div className="flex items-center justify-between gap-3"><h2 className="text-xl font-black">{t("creators.claimTitle", { name: creator.name })}</h2><button className="button-secondary focus-ring" type="button" disabled={uploading || submitting} onClick={closeDialog}>{t("common.close")}</button></div><fieldset className="min-w-0" disabled={uploading || submitting || submittedSuccessfully}><p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("creators.claimDescription")}</p><textarea className="field mt-4 min-h-44 resize-y" placeholder={t("creators.claimProof")} value={proofMarkdown} onChange={(event) => setProofMarkdown(event.target.value)} /><section className="mt-5 rounded-lg border border-[var(--line)] p-4"><h3 className="font-black">{t("creators.claimAttachments")}</h3><FileDropZone accept="" className="mt-3 min-h-28 p-4" disabled={uploading || submitting || submittedSuccessfully || proofFiles.length >= claimMaximumFiles} hint={t("creators.claimAttachmentsHint", { count: claimMaximumFiles, size: formatBytes(claimMaximumBytes) })} multiple title={uploading ? t("common.loading") : t("creators.uploadClaimAttachments")} onFiles={(files) => void uploadProofFiles(files)} /><OSSUploadBatchStatus busy={uploading || submitting || submittedSuccessfully} tasks={uploadTasks} onRetry={(key) => void processFiles(uploadTasks, key)} /><ul className="mt-3 grid gap-2">{proofFiles.map((file) => <li className="flex items-center justify-between gap-3 rounded-md bg-[var(--panel-subtle)] p-3" key={file.id}><span className="min-w-0 truncate text-sm font-bold">{file.originalName}</span><span className="flex shrink-0 items-center gap-3 text-xs text-[var(--muted)]">{formatBytes(Math.max(file.sizeBytes, file.sourceSizeBytes ?? 0))}<button className="font-bold text-[var(--red)]" type="button" onClick={() => removeProofFile(file.id)}>{t("common.delete")}</button></span></li>)}</ul></section><div className="mt-5 flex justify-end"><button className="button-primary focus-ring" disabled={submitting || uploading} type="submit">{submitting ? t("common.loading") : t("creators.submitClaim")}</button></div></fieldset></form></div>;
 }
 
 function DetailSection({ title, children }: { title: string; children: React.ReactNode }) {
@@ -169,8 +228,8 @@ function EmptyLine({ children }: { children: React.ReactNode }) {
   return <p className="mt-3 text-sm leading-6 text-[var(--muted)]">{children}</p>;
 }
 
-function CreatorPageState({ text }: { text: string }) {
-  return <main className="grid min-h-[65vh] place-items-center bg-[var(--background)] px-4"><p className="surface w-full max-w-lg rounded-lg p-6 text-center text-sm text-[var(--muted)]">{text}</p></main>;
+function CreatorPageState({ text, action }: { text: string; action?: React.ReactNode }) {
+  return <main className="grid min-h-[65vh] place-items-center bg-[var(--background)] px-4"><div className="surface w-full max-w-lg rounded-lg p-6 text-center text-sm text-[var(--muted)]"><p>{text}</p>{action ? <div className="mt-3">{action}</div> : null}</div></main>;
 }
 
 function CreatorAvatar({ creator, size = "normal" }: { creator: Pick<CreatorSummary, "avatarUrl" | "name">; size?: "normal" | "large" }) {

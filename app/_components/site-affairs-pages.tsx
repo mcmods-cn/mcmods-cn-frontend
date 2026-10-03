@@ -21,6 +21,11 @@ import { CommentSection } from "./comment-section";
 import { MarkdownRenderer } from "./markdown-renderer";
 
 export function AboutSitePage() {
+  const { locale } = useI18n();
+  return <AboutSitePageContent key={locale} />;
+}
+
+function AboutSitePageContent() {
   const { locale, t } = useI18n();
   const [page, setPage] = useState<SiteAffairsPage>();
   const [error, setError] = useState("");
@@ -90,6 +95,11 @@ export function SiteChangelogListPage() {
 }
 
 export function SiteChangelogDetailPage({ id }: { id: string }) {
+  const { locale } = useI18n();
+  return <SiteChangelogDetailContent key={`${id}:${locale}`} id={id} />;
+}
+
+function SiteChangelogDetailContent({ id }: { id: string }) {
   const { locale, t } = useI18n();
   const [item, setItem] = useState<SiteChangelog>();
   const [error, setError] = useState("");
@@ -136,6 +146,10 @@ export function BlackroomListPage() {
 }
 
 export function BlackroomDetailPage({ id }: { id: string }) {
+  return <BlackroomDetailContent key={id} id={id} />;
+}
+
+function BlackroomDetailContent({ id }: { id: string }) {
   const { locale, t } = useI18n();
   const [item, setItem] = useState<BlackroomRecord>();
   const [error, setError] = useState("");

@@ -1,5 +1,6 @@
 "use client";
 
+import { readBrowserStorage, writeBrowserStorage } from "./browser-storage.mts";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { type CatalogSortDirection, normalizeCatalogSortDirection } from "./catalog-sort";
@@ -122,7 +123,7 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
   const changePreference = useCallback((next: Partial<CatalogPreferences<TSort>>) => {
     const value = { ...preferences, ...next };
     setPreferences(value);
-    window.localStorage.setItem(options.preferenceStorageKey, JSON.stringify(value));
+    writeBrowserStorage(options.preferenceStorageKey, JSON.stringify(value));
     replaceParams({
       ...(next.view ? { view: next.view } : {}),
       ...(next.pageSize ? { size: next.pageSize } : {}),
@@ -136,7 +137,7 @@ export function useCatalogControls<TSort extends string>(options: CatalogControl
       const next = new Set(current);
       if (open) next.add(group);
       else next.delete(group);
-      window.localStorage.setItem(options.expandedStorageKey, JSON.stringify([...next]));
+      writeBrowserStorage(options.expandedStorageKey, JSON.stringify([...next]));
       return next;
     });
   }, [options.expandedStorageKey]);
@@ -178,7 +179,7 @@ function readCatalogPreferences<TSort extends string>(
   defaultSortDirection: CatalogSortDirection,
 ): CatalogPreferences<TSort> {
   try {
-    const value = JSON.parse(window.localStorage.getItem(storageKey) ?? "{}") as Partial<CatalogPreferences<TSort>>;
+    const value = JSON.parse(readBrowserStorage(storageKey) ?? "{}") as Partial<CatalogPreferences<TSort>>;
     const sort = value.sort && sortOptions.includes(value.sort) ? value.sort : defaultSort;
     return {
       view: value.view === "grid" ? "grid" : "list",
@@ -193,7 +194,7 @@ function readCatalogPreferences<TSort extends string>(
 
 export function readStoredStringSet(key: string, fallback: string[] = []) {
   try {
-    const stored = window.localStorage.getItem(key);
+    const stored = readBrowserStorage(key);
     if (stored === null) return new Set(fallback);
     const value = JSON.parse(stored) as unknown;
     return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : fallback);

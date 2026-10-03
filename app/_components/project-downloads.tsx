@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuthSnapshot } from "../_lib/auth";
 import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes } from "../_lib/oss-upload";
@@ -31,7 +32,13 @@ const projectFilePageLimit = 20;
 
 type ProjectFilesData = Omit<ProjectFilesResponse, "source" | "limit" | "hasMore" | "nextCursor">;
 
-export function ProjectDownloads({
+export function ProjectDownloads(props: ProjectDownloadsProps) {
+  const { locale } = useI18n();
+  const { user } = useAuthSnapshot();
+  return <ProjectDownloadsSession key={`${user?.id || "guest"}:${props.token || "guest"}:${locale}:${props.projectType}:${props.projectId}`} {...props} />;
+}
+
+function ProjectDownloadsSession({
   projectType,
   projectId,
   projectName,
@@ -247,10 +254,12 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
   const [channel, setChannel] = useState<ProjectReleaseChannel>("release");
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const uploadInFlight = useRef(false);
   const [message, setMessage] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (uploadInFlight.current) return;
     if (!file || !acceptedExtensions.some((extension) => file.name.toLowerCase().endsWith(extension))) {
       setMessage(t("mods.detail.downloads.unsupportedFileFormat", { formats: acceptedFormats }));
       return;
@@ -261,6 +270,7 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
       setMessage(t("mods.detail.downloads.metadataRequired"));
       return;
     }
+    uploadInFlight.current = true;
     setUploading(true);
     setMessage("");
     setProgress(0);
@@ -284,6 +294,7 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("mods.detail.downloads.uploadFailed"));
     } finally {
+      uploadInFlight.current = false;
       setUploading(false);
     }
   }
@@ -292,15 +303,15 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
     <summary className="cursor-pointer px-5 py-4 font-black">{t("mods.detail.downloads.uploadTitle")}</summary>
     <form className="border-t border-[var(--line)] p-5" onSubmit={submit}>
       <p className="text-sm leading-6 text-[var(--muted)]">{t("mods.detail.downloads.uploadDescription", { project: projectName })}</p>
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+      <fieldset className="mt-5 grid gap-4 sm:grid-cols-2" disabled={uploading}>
         <label className="text-sm font-black sm:col-span-2">{t("mods.detail.downloads.projectFile", { formats: acceptedFormats })}<input className="field mt-2" type="file" accept={acceptedFileTypes} required onChange={(event) => { const next = event.target.files?.[0]; setFile(next); if (next && !displayName) setDisplayName(next.name.replace(/\.(?:jar|mrpack|zip)$/i, "")); }} /></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.displayName")}<input className="field mt-2" maxLength={200} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.versionName")}<input className="field mt-2" maxLength={120} required value={versionName} placeholder="1.0.0" onChange={(event) => setVersionName(event.target.value)} /></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.gameVersions")}<input className="field mt-2" required value={gameVersions} list={`project-file-versions-${projectId}`} placeholder="1.21.1, 1.20.1" onChange={(event) => setGameVersions(event.target.value)} /><datalist id={`project-file-versions-${projectId}`}>{versions.map((item) => <option key={item} value={item} />)}</datalist></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.loaders")}<input className="field mt-2" required={fileRule.requiresLoader} value={loaderValues} list={`project-file-loaders-${projectId}`} placeholder={fileRule.requiresLoader ? "NeoForge, Forge" : t("mods.detail.notProvided")} onChange={(event) => setLoaderValues(event.target.value)} /><datalist id={`project-file-loaders-${projectId}`}>{loaders.map((item) => <option key={item} value={item} />)}</datalist></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.releaseChannel")}<select className="field mt-2" value={channel} onChange={(event) => setChannel(event.target.value as ProjectReleaseChannel)}>{(["release", "beta", "alpha"] as const).map((item) => <option key={item} value={item}>{t(`mods.detail.downloads.channels.${item}`)}</option>)}</select></label>
-      </div>
-      {uploading ? <div className="mt-5"><div className="flex justify-between text-sm font-bold"><span>{t("mods.detail.downloads.uploading")}</span><span>{progress}%</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div></div> : null}
+      </fieldset>
+      {uploading ?  <div className="mt-5"><div className="flex justify-between text-sm font-bold"><span>{t("mods.detail.downloads.uploading")}</span><span>{progress}%</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div></div> : null}
       {message ? <p className="mt-4 text-sm font-bold">{message}</p> : null}
       <div className="mt-5 flex justify-end"><button className="button-primary focus-ring" disabled={uploading} type="submit">{uploading ? t("mods.detail.downloads.uploading") : t("mods.detail.downloads.upload")}</button></div>
     </form>

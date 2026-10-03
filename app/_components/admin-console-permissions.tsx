@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
+import { hasSameI18nPlaceholders } from "../_lib/i18n-message.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { EmptyState, InlineMessage, LocalizedTextPairEditor, Permission, PermissionCatalog, Role, RolePermissionEntry, User, UserPermissionDetails, UserPermissionEntry, aiTranslationTaskTypes, buildNewPermissionPayload, cleanError, cloneRole, editableLocalizedText, localizedText, normalizeLocalizedTexts, notifyAdminNotice, parsePermissionInput, permissionInfoForCode, permissionModule, permissionSuggestions, permissionTemplateCode, runAITranslationTask, setLocalizedText, splitCodes, withFallbackLocalizedText } from "./admin-console-shared";
 
@@ -29,9 +30,13 @@ function PermissionGroupEditor({
   const [selectedModule, setSelectedModule] = useState("all");
   const [selectedPermissionIndexes, setSelectedPermissionIndexes] = useState<number[]>([]);
   const [message, setMessage] = useState("");
+  const selectionVersion = useRef(0);
+  const savePending = useRef(false);
+  const [saving, setSaving] = useState(false);
   const currentDraft = draft ?? (selectedRole ? cloneRole(selectedRole) : null);
 
   function selectRole(role: Role) {
+    selectionVersion.current += 1;
     setSelectedCode(role.code);
     setDraft(cloneRole(role));
     setSelectedPermissionIndexes([]);
@@ -39,6 +44,7 @@ function PermissionGroupEditor({
   }
 
   function startCreateRole() {
+    selectionVersion.current += 1;
     setSelectedCode("");
     setDraft({ code: "", name: "", description: "", translations: {}, weight: 0, parents: [], permissions: [], permissionEntries: [] });
     setSelectedPermissionIndexes([]);
@@ -112,6 +118,10 @@ function PermissionGroupEditor({
       permissionEntries: currentDraft.permissionEntries,
     };
     const creating = selectedCode === "";
+    if (savePending.current) return;
+    savePending.current = true;
+    const requestedSelectionVersion = selectionVersion.current;
+    setSaving(true);
     try {
       const saved = await apiRequest<Role>(
         creating ? "/api/v1/admin/roles" : `/api/v1/admin/roles/${encodeURIComponent(currentDraft.code)}`,
@@ -119,11 +129,15 @@ function PermissionGroupEditor({
         token,
       );
       await refreshCatalog();
+      if (requestedSelectionVersion !== selectionVersion.current) return;
       setSelectedCode(saved.code);
       setDraft(cloneRole(saved));
       setMessage(t("admin.roleSaved"));
     } catch (error) {
-      setMessage(cleanError(error));
+      if (requestedSelectionVersion === selectionVersion.current) setMessage(cleanError(error));
+    } finally {
+      savePending.current = false;
+      setSaving(false);
     }
   }
 
@@ -250,10 +264,9 @@ function PermissionGroupEditor({
           </button>
         </div>
         <div className="max-h-[calc(100vh-14rem)] overflow-y-auto">
-          {catalog.roles.map((role) => (
-            (() => {
-              const roleText = localizedText(role, locale);
-              return (
+          {catalog.roles.map((role) => {
+            const roleText = localizedText(role, locale);
+            return (
             <button
               key={role.code}
               className={`grid w-full grid-cols-[1fr_auto] gap-3 border-b border-[var(--line)] px-4 py-3 text-left ${
@@ -268,14 +281,14 @@ function PermissionGroupEditor({
               </span>
               <span className="text-sm font-bold text-[var(--muted)]">{role.weight}</span>
             </button>
-              );
-            })()
-          ))}
+            );
+          })}
         </div>
       </section>
 
       <section className="grid gap-4">
         <form className="surface overflow-hidden rounded-lg p-4" onSubmit={saveRole}>
+            <fieldset disabled={saving} className="contents">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="grid gap-3 lg:grid-cols-[auto_minmax(220px,360px)_auto] lg:items-center">
@@ -339,7 +352,8 @@ function PermissionGroupEditor({
             </label>
             {message ? <InlineMessage text={message} /> : null}
           </div>
-        </form>
+        </fieldset>
+          </form>
 
         <section className="surface rounded-lg">
           <div className="border-b border-[var(--line)] px-4 py-3">
@@ -361,7 +375,7 @@ function PermissionGroupEditor({
             <div className="grid h-fit gap-2">
               <button
                 className={`focus-ring rounded-md border border-[var(--line)] px-3 py-2 text-left text-sm font-semibold ${
-                  selectedModule === "all" ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"
+                  selectedModule === "all" ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"
                 }`}
                 type="button"
                 onClick={() => setSelectedModule("all")}
@@ -372,7 +386,7 @@ function PermissionGroupEditor({
                 <button
                   key={module}
                   className={`focus-ring rounded-md border border-[var(--line)] px-3 py-2 text-left text-sm font-semibold ${
-                    selectedModule === module ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"
+                    selectedModule === module ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"
                   }`}
                   type="button"
                   onClick={() => setSelectedModule(module)}
@@ -579,7 +593,7 @@ function UserPermissionNodeEditor({
         <div className="grid h-fit gap-2">
           <button
             className={`focus-ring rounded-md border border-[var(--line)] px-3 py-2 text-left text-sm font-semibold ${
-              selectedModule === "all" ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"
+              selectedModule === "all" ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"
             }`}
             type="button"
             onClick={() => onModuleChange("all")}
@@ -590,7 +604,7 @@ function UserPermissionNodeEditor({
             <button
               key={module}
               className={`focus-ring rounded-md border border-[var(--line)] px-3 py-2 text-left text-sm font-semibold ${
-                selectedModule === module ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"
+                selectedModule === module ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"
               }`}
               type="button"
               onClick={() => onModuleChange(module)}
@@ -850,7 +864,7 @@ function PermissionBulkAdder({
 
       <div className="grid gap-3 md:grid-cols-[160px_180px_1fr_1fr_auto]">
         <div className="grid grid-cols-2 gap-2">
-          <button className={`focus-ring rounded-md px-3 py-2 font-mono font-bold ${allow ? "bg-[var(--accent)] text-white" : "button-secondary"}`} type="button" onClick={() => onAllowChange(true)}>
+          <button className={`focus-ring rounded-md px-3 py-2 font-mono font-bold ${allow ? "bg-[var(--accent)] text-[var(--on-accent)]" : "button-secondary"}`} type="button" onClick={() => onAllowChange(true)}>
             true
           </button>
           <button className={`focus-ring rounded-md px-3 py-2 font-mono font-bold ${!allow ? "bg-[var(--red)] text-white" : "button-secondary"}`} type="button" onClick={() => onAllowChange(false)}>
@@ -890,6 +904,8 @@ function PermissionCatalogEditor({
   const [saving, setSaving] = useState(false);
   const [aiCompleting, setAICompleting] = useState(false);
   const [message, setMessage] = useState("");
+  const editVersion = useRef(0);
+  useEffect(() => () => { editVersion.current += 1; }, [token]);
 
   const visible = draft.filter((permission) => {
     const keyword = query.trim().toLowerCase();
@@ -902,6 +918,7 @@ function PermissionCatalogEditor({
   });
 
   function updatePermissionDraft(code: string, patch: Partial<Permission>) {
+    editVersion.current += 1;
     setDraft((current) => current.map((permission) => (permission.code === code ? { ...permission, ...patch } : permission)));
   }
 
@@ -945,12 +962,14 @@ function PermissionCatalogEditor({
     }
     const candidates = visible.filter((permission) => {
       const target = editableLocalizedText(permission, targetLocale);
-      return target.name.trim() === "" || target.description.trim() === "";
+      const source = editableLocalizedText(permission, sourceLocale);
+      return (target.name.trim() === "" && source.name.trim() !== "") || (target.description.trim() === "" && source.description.trim() !== "");
     }).slice(0, 100);
     if (candidates.length === 0) {
       notifyAdminNotice(t("admin.ai.noMissingTranslations"));
       return;
     }
+    const requestedEditVersion = editVersion.current;
     setAICompleting(true);
     try {
       const result = await runAITranslationTask(token, aiTranslationTaskTypes.permission, {
@@ -958,14 +977,21 @@ function PermissionCatalogEditor({
         targetLocale,
         items: candidates.map((permission) => ({ key: permission.code, ...editableLocalizedText(permission, sourceLocale) })),
       });
+      if (requestedEditVersion !== editVersion.current) {
+        notifyAdminNotice(t("admin.ai.protectedEdits"));
+        return;
+      }
       const translated = new Map((result.items ?? []).map((item) => [item.key, item]));
       let completed = 0;
       const nextDraft = draft.map((permission) => {
         const item = translated.get(permission.code);
         if (!item) return permission;
         const target = editableLocalizedText(permission, targetLocale);
-        const name = target.name || item.name?.trim() || "";
-        const description = target.description || item.description?.trim() || "";
+        const source = editableLocalizedText(permission, sourceLocale);
+        const suggestedName = item.name?.trim() || "";
+        const suggestedDescription = item.description?.trim() || "";
+        const name = target.name || (source.name.trim() && hasSameI18nPlaceholders(source.name, suggestedName) ? suggestedName : "");
+        const description = target.description || (source.description.trim() && hasSameI18nPlaceholders(source.description, suggestedDescription) ? suggestedDescription : "");
         if (name === target.name && description === target.description) return permission;
         completed += 1;
         return {
@@ -1082,6 +1108,12 @@ function UserRolePanel({
   const { locale, t } = useI18n();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const selectedUser = users.find((user) => user.id === selectedUserId) ?? users[0] ?? null;
+  const userId = selectedUser?.id;
+  const identity = `${token}:${userId ?? ""}`;
+  const [loadedIdentity, setLoadedIdentity] = useState<string>();
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const selectionVersion = useRef(0);
+  const savePending = useRef(false);
   const [details, setDetails] = useState<UserPermissionDetails | null>(null);
   const [draft, setDraft] = useState<UserPermissionEntry[]>([]);
   const [bulkPermissionInput, setBulkPermissionInput] = useState("");
@@ -1094,16 +1126,18 @@ function UserRolePanel({
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    if (!token || !selectedUser) return;
+    if (!token || !userId) return;
     let cancelled = false;
     async function loadUserPermissions() {
       try {
         const data = await apiRequest<UserPermissionDetails>(
-          `/api/v1/admin/users/${selectedUser.id}/permissions`,
+          `/api/v1/admin/users/${userId}/permissions`,
           {},
           token,
         );
         if (!cancelled) {
+          setLoadedIdentity(identity);
+          setMessage("");
           setDetails(data);
           setDraft([
             ...data.roleBindings.filter((binding) => binding.editable).map((binding) => ({
@@ -1130,14 +1164,16 @@ function UserRolePanel({
     return () => {
       cancelled = true;
     };
-  }, [selectedUser, token]);
+  }, [identity, loadAttempt, userId, token]);
 
   async function saveUserPermissions() {
-    if (!selectedUser) return;
+    if (!selectedUser || loadedIdentity !== identity || savePending.current) return;
     if (!token) {
       setMessage(t("admin.permissionLoginRequired"));
       return;
     }
+    savePending.current = true;
+    const requestedSelectionVersion = selectionVersion.current;
     setSaving(true);
     setMessage("");
     try {
@@ -1147,10 +1183,11 @@ function UserRolePanel({
         token,
       );
       await refreshUsers();
-      setMessage(t("admin.userPermissionsSaved"));
+      if (requestedSelectionVersion === selectionVersion.current) setMessage(t("admin.userPermissionsSaved"));
     } catch (error) {
-      setMessage(cleanError(error));
+      if (requestedSelectionVersion === selectionVersion.current) setMessage(cleanError(error));
     } finally {
+      savePending.current = false;
       setSaving(false);
     }
   }
@@ -1233,6 +1270,7 @@ function UserRolePanel({
               }`}
               type="button"
               onClick={() => {
+                selectionVersion.current += 1;
                 setSelectedUserId(user.id);
                 setDetails(null);
                 setDraft([]);
@@ -1264,11 +1302,13 @@ function UserRolePanel({
               <p className="mt-2 text-sm text-[var(--muted)]">{t("admin.noRoleAssigned")}</p>
             )}
           </div>
-          <button className="button-primary focus-ring" disabled={!selectedUser || saving} type="button" onClick={saveUserPermissions}>
+          <button className="button-primary focus-ring" disabled={!selectedUser || loadedIdentity !== identity || saving} type="button" onClick={saveUserPermissions}>
             {saving ? t("admin.saving") : t("admin.saveUserPermissions")}
           </button>
         </div>
         {message ? <div className="px-4"><InlineMessage text={message} /></div> : null}
+        {loadedIdentity !== identity && selectedUser ? <div className="p-4" role="status"><p>{message || t("common.loading")}</p>{message ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => { setMessage(""); setLoadAttempt((value) => value + 1); }}>{t("common.retry")}</button> : null}</div> : null}
+        <fieldset disabled={loadedIdentity !== identity || saving} className="contents">
       {users.length === 0 ? (
         <EmptyState text={t("admin.noUsers")} />
       ) : (
@@ -1303,6 +1343,7 @@ function UserRolePanel({
             </section>
           ) : null}
           <UserPermissionNodeEditor
+            key={`${identity}:${loadAttempt}`}
             entries={draft}
             catalog={catalog}
             selectedModule={selectedModule}
@@ -1344,6 +1385,7 @@ function UserRolePanel({
           ) : null}
         </>
       )}
+        </fieldset>
       </section>
     </div>
   );

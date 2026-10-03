@@ -10,6 +10,7 @@ import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { canAccessAdmin, canAccessReviewQueue, clearAuth, type AuthUser, useAuthSnapshot } from "../_lib/auth";
 import { isBackendUnavailable, reportBackendAvailability } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
+import { readBrowserStorage, writeBrowserStorage } from "../_lib/browser-storage.mts";
 import { realtimeQueryCoordinator, realtimeQueryKeys } from "../_lib/realtime-query-cache.mts";
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
@@ -132,7 +133,7 @@ function SitePresence() {
 
   useEffect(() => {
     let cancelled = false;
-    let visitorId = window.localStorage.getItem(presenceStorageKey) ?? "";
+    let visitorId = readBrowserStorage(presenceStorageKey) ?? "";
     const touch = () => {
       if (cancelled || document.visibilityState !== "visible") return;
       void apiRequest<{ online: boolean; visitorId?: string }>(
@@ -140,9 +141,9 @@ function SitePresence() {
         { method: "POST", body: JSON.stringify({ visitorId }) },
         token,
       ).then((response) => {
-        if (response.visitorId) {
+        if (!cancelled && response.visitorId) {
           visitorId = response.visitorId;
-          window.localStorage.setItem(presenceStorageKey, visitorId);
+          writeBrowserStorage(presenceStorageKey, visitorId);
         }
       }).catch(() => undefined);
     };
@@ -240,6 +241,19 @@ function BackendStatusBanner() {
 function SiteNoticeDialog() {
   const { t } = useI18n();
   const [notice, setNotice] = useState<SiteNotice | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const messageId = useId();
+  useEffect(() => {
+    if (!notice) return;
+    const node = dialog.current;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!node?.open) node?.showModal();
+    return () => {
+      node?.close();
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [notice]);
 
   useEffect(() => {
     const receive = (event: Event) => {
@@ -253,13 +267,11 @@ function SiteNoticeDialog() {
   if (!notice) return null;
   const danger = notice.tone === "danger";
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/45 p-4" role="presentation" onMouseDown={() => setNotice(null)}>
-      <section className="surface w-full max-w-lg rounded-lg border border-[var(--line)] p-6 shadow-2xl" role="alertdialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
-        <h2 className={`text-xl font-black ${danger ? "text-[var(--red)]" : ""}`}>{notice.title || t("common.notice")}</h2>
-        <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--muted)]">{notice.message}</p>
+    <dialog ref={dialog} role="alertdialog" aria-labelledby={titleId} aria-describedby={messageId} className="surface fixed inset-0 m-auto w-[calc(100%_-_2rem)] max-w-lg rounded-lg border border-[var(--line)] p-6 shadow-2xl backdrop:bg-black/45" onKeyDown={(event) => { if (event.key === "Tab") { event.preventDefault(); event.currentTarget.querySelector<HTMLButtonElement>("button")?.focus(); } }} onCancel={() => setNotice(null)} onClick={(event) => { if (event.target === event.currentTarget) setNotice(null); }}>
+        <h2 id={titleId} className={`text-xl font-black ${danger ? "text-[var(--red)]" : ""}`}>{notice.title || t("common.notice")}</h2>
+        <p id={messageId} className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[var(--muted)]">{notice.message}</p>
         <div className="mt-6 flex justify-end"><button className="button-primary focus-ring" type="button" onClick={() => setNotice(null)}>{t("common.close")}</button></div>
-      </section>
-    </div>
+    </dialog>
   );
 }
 
@@ -270,7 +282,9 @@ function SiteHeader() {
   const { token, user } = useAuthSnapshot();
   const brand = useSiteBrand();
   const router = useRouter();
-  const [unread, setUnread] = useState(0);
+  const unreadScope = `${user?.id || "guest"}:${token || "guest"}`;
+  const [unreadSnapshot, setUnreadSnapshot] = useState({ scope: "", total: 0 });
+  const unread = unreadSnapshot.scope === unreadScope ? unreadSnapshot.total : 0;
   const navigationRef = useRef<HTMLElement>(null);
   const navigationScrollTimerRef = useRef<number | null>(null);
   const [navigationEdges, setNavigationEdges] = useState({ left: true, right: false });
@@ -287,7 +301,7 @@ function SiteHeader() {
         { maxAgeMs: force ? 0 : 1_000 },
       )
         .then((result) => {
-          if (!cancelled) setUnread(result.total);
+          if (!cancelled) setUnreadSnapshot({ scope: unreadScope, total: result.total });
         })
         .catch(() => undefined);
     };
@@ -299,7 +313,7 @@ function SiteHeader() {
       window.clearInterval(timer);
       unsubscribe();
     };
-  }, [token, user]);
+  }, [token, unreadScope, user]);
 
   useEffect(() => {
     const navigation = navigationRef.current;
@@ -355,7 +369,7 @@ function SiteHeader() {
       <BackendStatusBanner />
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
         <Link className="flex shrink-0 items-center gap-3" href="/" aria-label={t("common.home")}>
-          {brand.logoUrl ? <img alt="" className="h-10 w-10 rounded-lg object-contain" src={brand.logoUrl} /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-black text-white">M</span>}
+          {brand.logoUrl ? <img alt="" className="h-10 w-10 rounded-lg object-contain" src={brand.logoUrl} /> : <span className="grid h-10 w-10 place-items-center rounded-lg bg-[var(--accent)] font-black text-[var(--on-accent)]">M</span>}
           <span className="hidden text-lg font-black tracking-normal sm:block">{brand.siteName}</span>
         </Link>
 
@@ -384,6 +398,20 @@ function SiteHeader() {
         />
 
         <div className="flex shrink-0 items-center gap-2">
+          <details className="relative lg:hidden">
+            <summary className="button-secondary focus-ring cursor-pointer list-none px-2 py-2" aria-label={t("user.settings")}>
+              <span aria-hidden="true">⋯</span>
+            </summary>
+            <div className="absolute right-0 top-full z-50 mt-2 grid w-56 gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 shadow-xl">
+              <label className="grid gap-2 text-sm font-semibold">
+                {t("common.language")}
+                <select className="field" value={locale} onChange={(event) => setLocale(event.target.value as Locale)}>
+                  {supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}
+                </select>
+              </label>
+              <button className="button-secondary focus-ring" type="button" onClick={toggleTheme}>{t("common.toggleTheme")}</button>
+            </div>
+          </details>
           <select
             aria-label={t("common.language")}
             className="hidden rounded-lg border border-[var(--line)] bg-[var(--panel)] px-2 py-2 text-sm font-semibold outline-none lg:block"
@@ -405,7 +433,8 @@ function SiteHeader() {
                 <Link
                   className="focus-ring grid h-10 w-10 place-items-center overflow-hidden rounded-full border border-[var(--line)] bg-[var(--panel-subtle)] text-sm font-black text-[var(--accent)]"
                   href={`/user/${user.id}`}
-                    title={user.username}
+                  aria-label={user.username}
+                  title={user.username}
                 >
                   {user.avatarUrl ? (
                     <img alt="" className="h-full w-full object-cover" src={user.avatarUrl} />
@@ -513,6 +542,9 @@ function HeaderNavMenu({ item }: { item: HeaderNavItem }) {
   const { t } = useI18n();
   const menuId = useId();
   const triggerRef = useRef<HTMLAnchorElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const focusAfterOpen = useRef<"first" | "last" | undefined>(undefined);
+  const ignoreTriggerFocus = useRef(false);
   const closeTimerRef = useRef<number | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
 
@@ -534,7 +566,19 @@ function HeaderNavMenu({ item }: { item: HeaderNavItem }) {
     });
   }
 
+  function focusMenuItem(edge: "first" | "last") {
+    const items = menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+    if (!items?.length) { focusAfterOpen.current = edge; openMenu(); return; }
+    items[edge === "first" ? 0 : items.length - 1].focus();
+  }
+
+  function returnToTrigger() {
+    ignoreTriggerFocus.current = true;
+    triggerRef.current?.focus();
+  }
+
   function closeMenu() {
+    focusAfterOpen.current = undefined;
     cancelClose();
     setPosition(null);
   }
@@ -549,6 +593,12 @@ function HeaderNavMenu({ item }: { item: HeaderNavItem }) {
 
   useEffect(() => {
     if (!position) return;
+    if (focusAfterOpen.current) {
+      const edge = focusAfterOpen.current;
+      focusAfterOpen.current = undefined;
+      const items = menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]');
+      items?.[edge === "first" ? 0 : items.length - 1]?.focus();
+    }
     const closeForViewportChange = () => setPosition(null);
     window.addEventListener("resize", closeForViewportChange);
     window.addEventListener("scroll", closeForViewportChange, true);
@@ -564,7 +614,7 @@ function HeaderNavMenu({ item }: { item: HeaderNavItem }) {
 
   return (
     <>
-      <span className="shrink-0" onBlur={scheduleClose} onFocus={openMenu} onMouseEnter={openMenu} onMouseLeave={scheduleClose}>
+      <span className="shrink-0" onBlur={scheduleClose} onFocus={() => { if (ignoreTriggerFocus.current) ignoreTriggerFocus.current = false; else openMenu(); }} onMouseEnter={openMenu} onMouseLeave={scheduleClose}>
         <Link
           ref={triggerRef}
           aria-controls={menuId}
@@ -573,6 +623,15 @@ function HeaderNavMenu({ item }: { item: HeaderNavItem }) {
           className="block whitespace-nowrap rounded-md px-3 py-2 text-sm font-bold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]"
           href={item.href}
           onClick={closeMenu}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Tab" && !event.shiftKey && position) {
+              event.preventDefault();
+              focusMenuItem(event.key === "ArrowUp" ? "last" : "first");
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              closeMenu();
+            }
+          }}
         >
           {t(item.labelKey)}
         </Link>
@@ -580,26 +639,36 @@ function HeaderNavMenu({ item }: { item: HeaderNavItem }) {
       {position ? createPortal(
         <div
           id={menuId}
+          ref={menuRef}
           className="fixed z-[90] w-52 pt-2"
           role="menu"
           style={{ left: position.left, top: position.top }}
           onBlur={scheduleClose}
           onFocus={cancelClose}
           onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            closeMenu();
-            triggerRef.current?.focus();
+            if (event.key === "Escape" || event.key === "Tab") {
+              if (event.key === "Escape" || event.shiftKey) event.preventDefault();
+              closeMenu();
+              returnToTrigger();
+              return;
+            }
+            if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const items = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || [])];
+            const current = items.indexOf(document.activeElement as HTMLElement);
+            const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+            items[next]?.focus();
           }}
           onMouseEnter={cancelClose}
           onMouseLeave={scheduleClose}
         >
           <div className="grid gap-1 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-2 shadow-2xl">
-            <Link className="rounded-md px-3 py-2 text-sm font-bold hover:bg-[var(--panel-subtle)]" href={item.href} role="menuitem" onClick={closeMenu}>
+            <Link className="rounded-md px-3 py-2 text-sm font-bold hover:bg-[var(--panel-subtle)]" href={item.href} role="menuitem" tabIndex={-1} onClick={closeMenu}>
               {t(item.labelKey)}
             </Link>
             {item.children?.map((child) => (
               child.external ? <a key={child.href} className="rounded-md px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]" href={child.href} rel="noopener noreferrer external" role="menuitem" target="_blank" onClick={closeMenu}>{t(child.labelKey)} ↗</a>
-                : <Link key={child.href} className="rounded-md px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]" href={child.href} role="menuitem" onClick={closeMenu}>{t(child.labelKey)}</Link>
+                : <Link key={child.href} className="rounded-md px-3 py-2 text-sm font-semibold text-[var(--muted)] hover:bg-[var(--panel-subtle)] hover:text-[var(--foreground)]" href={child.href} role="menuitem" tabIndex={-1} onClick={closeMenu}>{t(child.labelKey)}</Link>
             ))}
           </div>
         </div>,

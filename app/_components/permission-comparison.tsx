@@ -16,6 +16,11 @@ type ComparisonResult = { left: ComparisonSubject; right: ComparisonSubject; row
 type DifferenceFilter = "all" | "different" | "left-only" | "right-only" | "same";
 
 export function PermissionComparison() {
+  const { token, user } = useAuthSnapshot();
+  return <PermissionComparisonContent key={`${user?.id || "guest"}:${token}`} />;
+}
+
+function PermissionComparisonContent() {
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [options, setOptions] = useState<ComparisonOption[]>([]);
@@ -35,7 +40,7 @@ export function PermissionComparison() {
         if (cancelled) return;
         setOptions(items);
         const firstRole = items.find((item) => item.kind === "role");
-        if (firstRole) setRight(optionValue(firstRole));
+        setRight((current) => items.some((item) => optionValue(item) === current) ? current : firstRole ? optionValue(firstRole) : "");
       })
       .catch((error) => {
         if (!cancelled) setMessage(error instanceof Error ? error.message : t("permissions.compare.loadFailed"));
@@ -48,6 +53,8 @@ export function PermissionComparison() {
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       setLoading(true);
+      setResult(null);
+      setMessage("");
       try {
         const next = await apiRequest<ComparisonResult>(
           "/api/v1/permissions/compare",
@@ -101,7 +108,7 @@ export function PermissionComparison() {
           <SubjectSelector label={t("permissions.compare.rightSubject")} options={options} value={right} onChange={setRight} />
         </section>
 
-        {message ? <p className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-100">{message}</p> : null}
+        {message ? <p role="alert" className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-100">{message}</p> : null}
 
         {result ? (
           <section className="surface mt-4 overflow-hidden">
@@ -113,7 +120,7 @@ export function PermissionComparison() {
               <span className="text-sm font-semibold text-[var(--muted)]">{loading ? t("common.loading") : t("permissions.compare.visibleCount", { count: visibleRows.length })}</span>
             </header>
             <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] p-4">
-              <input className="field min-w-56 flex-1" type="search" placeholder={t("permissions.compare.searchPlaceholder")} value={search} onChange={(event) => setSearch(event.target.value)} />
+              <input aria-label={t("permissions.compare.searchPlaceholder")} className="field min-w-56 flex-1" type="search" placeholder={t("permissions.compare.searchPlaceholder")} value={search} onChange={(event) => setSearch(event.target.value)} />
               <div className="flex flex-wrap gap-1" role="group" aria-label={t("permissions.compare.filter")}> 
                 {(["all", "different", "left-only", "right-only", "same"] as DifferenceFilter[]).map((item) => (
                   <button key={item} className={filter === item ? "button-primary focus-ring" : "button-secondary focus-ring"} type="button" onClick={() => setFilter(item)}>{t(`permissions.compare.filters.${item}`)}</button>

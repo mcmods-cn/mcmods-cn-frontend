@@ -1,4 +1,5 @@
 import { reportBackendAvailability } from "./backend-status";
+import { readBrowserStorage, writeBrowserStorage } from "./browser-storage.mts";
 import { ApiError } from "./api-error.mts";
 export { ApiError } from "./api-error.mts";
 
@@ -35,6 +36,9 @@ export async function apiRequest<T>(
     credentials: options.credentials ?? "include",
     headers,
   });
+
+  // DELETE endpoints intentionally return an empty 204 response.
+  if (response.status === 204) return undefined as T;
 
   const envelope = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!response.ok) {
@@ -112,10 +116,10 @@ function isMutation(method?: string) {
 
 function browserClientID() {
   const storageKey = "mcmods-client-id";
-  const existing = window.localStorage.getItem(storageKey);
+  const existing = readBrowserStorage(storageKey);
   if (existing) return existing;
   const value = globalThis.crypto?.randomUUID?.() ?? `client-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  window.localStorage.setItem(storageKey, value);
+  writeBrowserStorage(storageKey, value);
   return value;
 }
 

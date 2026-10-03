@@ -1,12 +1,13 @@
 "use client";
 
-import { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { ChangeEvent, ClipboardEvent, DragEvent, FormEvent, RefObject, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import Image from "next/image";
 import { createPortal } from "react-dom";
 import { ApiError, apiRequest } from "../_lib/api";
+import { readBrowserStorage, writeBrowserStorage } from "../_lib/browser-storage.mts";
 import { useAuthSnapshot } from "../_lib/auth";
 import { DRAWIO_ORIGIN, parseDrawioMessage, type DrawioEditorMessage } from "../_lib/drawio";
-import { useI18n } from "../_lib/i18n-provider";
+import { type Locale, useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig, MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
 import {
   applyMarkdownDraftSaveResult,
@@ -69,17 +70,17 @@ const defaultDrawioXml =
   '<mxfile host="embed.diagrams.net"><diagram id="mcmods-markdown-diagram" name="Page 1"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0"><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel></diagram></mxfile>';
 const iconPresets = {
   adaptive: [
-    { labelKey: "tools.playground.iconHealth", preview: ["health-full", "health-half"], template: "[icon:health={{value}},点]" },
-    { labelKey: "tools.playground.iconHealthEx", preview: ["health-full-ex", "health-half-ex"], template: "[icon:health-ex={{value}},点]" },
-    { labelKey: "tools.playground.iconHunger", preview: ["food-full-hunger-level", "food-half-hunger-level"], template: "[icon:hunger-level={{value}},点]" },
-    { labelKey: "tools.playground.iconSaturation", preview: ["food-empty-saturation-level-100", "food-empty-saturation-level-50"], template: "[icon:saturation-level={{value}},点]" },
-    { labelKey: "tools.playground.iconArmor", preview: ["armor-full", "armor-half"], template: "[icon:armor={{value}},点]" },
-    { labelKey: "tools.playground.iconToughness", preview: ["toughness-full", "toughness-half"], template: "[icon:toughness={{value}},点]" },
-    { labelKey: "tools.playground.iconToughnessDiamond", preview: ["toughness-diamond-full", "toughness-diamond-half"], template: "[icon:toughness-diamond={{value}},点]" },
-    { labelKey: "tools.playground.iconRegeneration", preview: ["health-full-buff-regeneration", "health-half-buff-regeneration"], template: "[icon:health-buff-regeneration={{value}},点]" },
-    { labelKey: "tools.playground.iconPoison", preview: ["health-full-buff-poison", "health-half-buff-poison"], template: "[icon:health-buff-poison={{value}},点]" },
-    { labelKey: "tools.playground.iconWither", preview: ["health-full-buff-wither", "health-half-buff-wither"], template: "[icon:health-buff-wither={{value}},点]" },
-    { labelKey: "tools.playground.iconJockey", preview: ["health-full-jockey", "health-half-jockey"], template: "[icon:health-jockey={{value}},点]" },
+    { labelKey: "tools.playground.iconHealth", preview: ["health-full", "health-half"], template: "[icon:health={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconHealthEx", preview: ["health-full-ex", "health-half-ex"], template: "[icon:health-ex={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconHunger", preview: ["food-full-hunger-level", "food-half-hunger-level"], template: "[icon:hunger-level={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconSaturation", preview: ["food-empty-saturation-level-100", "food-empty-saturation-level-50"], template: "[icon:saturation-level={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconArmor", preview: ["armor-full", "armor-half"], template: "[icon:armor={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconToughness", preview: ["toughness-full", "toughness-half"], template: "[icon:toughness={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconToughnessDiamond", preview: ["toughness-diamond-full", "toughness-diamond-half"], template: "[icon:toughness-diamond={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconRegeneration", preview: ["health-full-buff-regeneration", "health-half-buff-regeneration"], template: "[icon:health-buff-regeneration={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconPoison", preview: ["health-full-buff-poison", "health-half-buff-poison"], template: "[icon:health-buff-poison={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconWither", preview: ["health-full-buff-wither", "health-half-buff-wither"], template: "[icon:health-buff-wither={{value}},{{unit}}]" },
+    { labelKey: "tools.playground.iconJockey", preview: ["health-full-jockey", "health-half-jockey"], template: "[icon:health-jockey={{value}},{{unit}}]" },
   ],
   single: [
     { labelKey: "tools.playground.iconOxygenFull", preview: ["oxygen-full"], template: "[icon:oxygen-full]" },
@@ -98,9 +99,14 @@ const mediaPresets: MediaPreset[] = [
   { fields: ["geogebra"], id: "geogebra", labelKey: "tools.playground.mediaGeogebra", template: "[GeoGebra:{{geogebra}}]" },
 ];
 
-export function ToolsPlayground({ documentId, embedded = false, editorDescription, editorTitle, onBusyChange, onChange, uploadSource = "playground", value }: ToolsPlaygroundProps = {}) {
-  const { t } = useI18n();
-  const { token } = useAuthSnapshot();
+export function ToolsPlayground(props: ToolsPlaygroundProps = {}) {
+  const { token, user } = useAuthSnapshot();
+  return <ToolsPlaygroundSession key={`${user?.id || "guest"}:${token || "guest"}:${props.embedded ? props.documentId : "standalone"}`} {...props} />;
+}
+
+function ToolsPlaygroundSession({ documentId, embedded = false, editorDescription, editorTitle, onBusyChange, onChange, uploadSource = "playground", value }: ToolsPlaygroundProps = {}) {
+  const { locale, t } = useI18n();
+  const { token, ready: authReady } = useAuthSnapshot();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const blueprintInputRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
@@ -109,6 +115,14 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
   const onChangeRef = useRef(onChange);
   const onBusyChangeRef = useRef(onBusyChange);
   const uploadingRef = useRef(false);
+  const sessionActive = useRef(true);
+  useEffect(() => {
+    sessionActive.current = true;
+    return () => {
+      sessionActive.current = false;
+      if (uploadingRef.current) onBusyChangeRef.current?.(false);
+    };
+  }, []);
   const draftSaveSessionIDRef = useRef("");
   const draftSaveCoordinatorRef = useRef(createMarkdownDraftSaveCoordinator(0));
   const draftSaveAbortRef = useRef<AbortController | null>(null);
@@ -131,6 +145,9 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [cursorPosition, setCursorPosition] = useState(0);
   const activeDrawioFence = findDrawioFence(markdown, cursorPosition, cursorPosition);
+  const showDraftLoadError = useEffectEvent((error: unknown) => {
+    setEditorMessage(cleanPlaygroundError(error, t("tools.playground.operationFailed")));
+  });
 
   const replaceMarkdownState = useCallback((nextMarkdown: string) => {
     markdownRef.current = nextMarkdown;
@@ -138,12 +155,13 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
   }, []);
 
   const commitMarkdown = useCallback((nextValue: string | ((current: string) => string)) => {
+    if (!sessionActive.current || !draftLoaded) return;
     const nextMarkdown = typeof nextValue === "function" ? nextValue(markdownRef.current) : nextValue;
     markdownRef.current = nextMarkdown;
     if (embedded) controlledSessionRef.current = editMarkdownEditorSession(controlledSessionRef.current, nextMarkdown);
     setMarkdown(nextMarkdown);
     if (embedded) onChangeRef.current?.(nextMarkdown);
-  }, [embedded]);
+  }, [draftLoaded, embedded]);
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -200,7 +218,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
   }, []);
 
   useEffect(() => {
-    if (embedded) return;
+    if (embedded || !authReady) return;
     let cancelled = false;
     const loadController = new AbortController();
     draftSaveAbortRef.current?.abort();
@@ -217,7 +235,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
       }
     });
     if (!token) {
-      const localDraft = window.localStorage.getItem("mcmods-markdown-playground-draft");
+      const localDraft = readBrowserStorage("mcmods-markdown-playground-draft");
       queueMicrotask(() => {
         if (cancelled) return;
         if (localDraft !== null) {
@@ -245,7 +263,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
       })
       .catch((error) => {
         if (!cancelled && !isRequestAbort(error)) {
-          setEditorMessage(cleanPlaygroundError(error, t("tools.playground.operationFailed")));
+          showDraftLoadError(error);
           setDraftLoadFailed(true);
           setDraftLoaded(false);
         }
@@ -255,16 +273,16 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
       loadController.abort();
       draftSaveAbortRef.current?.abort();
     };
-  }, [draftLoadRetry, embedded, replaceMarkdownState, t, token]);
+  }, [authReady, draftLoadRetry, embedded, replaceMarkdownState, token]);
 
   const saveDraft = useCallback(async () => {
     if (embedded) return;
     if (!draftLoaded) return;
     const requestedMarkdown = markdownRef.current;
     if (!token) {
-      window.localStorage.setItem("mcmods-markdown-playground-draft", requestedMarkdown);
+      const persisted = writeBrowserStorage("mcmods-markdown-playground-draft", requestedMarkdown);
       lastPersistedMarkdownRef.current = requestedMarkdown;
-      setEditorMessage(t("tools.playground.savedLocal"));
+      setEditorMessage(t(persisted ? "tools.playground.savedLocal" : "tools.playground.savedTemporary"));
       return;
     }
     const issued = issueMarkdownDraftSave(draftSaveCoordinatorRef.current, draftSaveSessionIDRef.current, requestedMarkdown);
@@ -357,7 +375,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
     const activeSession = drawioSession;
 
     function receiveMessage(event: MessageEvent<unknown>) {
-      if (event.origin !== DRAWIO_ORIGIN) return;
+      if (event.origin !== DRAWIO_ORIGIN || event.source !== drawioFrameRef.current?.contentWindow) return;
       const message = parseDrawioMessage<DrawioEditorMessage>(event.data);
       if (!message) return;
       if (message.event === "init") {
@@ -521,7 +539,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
     const selected = markdown.slice(start, end).trim();
     const selectedValue = /^-?\d+(?:\.\d+)?$/.test(selected) ? selected : "";
     const value = selectedValue || "3";
-    const snippet = template.replace("{{value}}", value);
+    const snippet = template.replace("{{value}}", value).replace("{{unit}}", t("tools.playground.pointsUnit"));
     const nextMarkdown = markdown.slice(0, start) + snippet + markdown.slice(end);
     const valueStartInSnippet = snippet.indexOf(value);
     if (template.includes("{{value}}") && !selectedValue && valueStartInSnippet >= 0) {
@@ -552,7 +570,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
   }
 
   async function uploadFiles(files: File[]) {
-    if (files.length === 0 || uploadingRef.current) return;
+    if (!draftLoaded || files.length === 0 || uploadingRef.current) return;
     if (!token) {
       setEditorMessage(t("tools.playground.loginBeforeUpload"));
       return;
@@ -565,9 +583,11 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
     let failed = 0;
     try {
       for (const [index, file] of files.entries()) {
+        if (!sessionActive.current) return;
         const marker = placeholders[index];
         try {
           const record = await uploadUserFileToOSS(file, token, uploadSource);
+          if (!sessionActive.current) return;
           if (isBlueprintFile(file)) {
             const publicId = record.blueprintId || record.blueprint?.id;
             if (!publicId) throw new Error(t("tools.playground.blueprintMissingId"));
@@ -577,15 +597,19 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
             replaceMarkdownSnippet(marker, markdownForUploadedFile(file, `/api/v1/oss/files/${encodeURIComponent(record.id)}/content`));
           }
         } catch (error) {
+          if (!sessionActive.current) return;
           failed += 1;
           replaceMarkdownSnippet(marker, `<!-- Upload failed "${safeUploadCommentName(file.name)}": ${cleanPlaygroundError(error, t("tools.playground.operationFailed"))} -->`);
         }
       }
     } finally {
       uploadingRef.current = false;
-      setUploading(false);
-      onBusyChangeRef.current?.(false);
+      if (sessionActive.current) {
+        setUploading(false);
+        onBusyChangeRef.current?.(false);
+      }
     }
+    if (!sessionActive.current) return;
     setEditorMessage(failed > 0 ? t("tools.playground.uploadFailedCount", { count: failed }) : t("tools.playground.uploadInserted"));
   }
 
@@ -629,7 +653,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
         <button
           key={mode}
           className={`focus-ring rounded-md px-4 py-2 text-sm font-bold ${
-            viewMode === mode ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"
+            viewMode === mode ? "bg-[var(--accent)] text-[var(--on-accent)]" : "text-[var(--muted)]"
           }`}
           type="button"
           onClick={() => setViewMode(mode)}
@@ -658,7 +682,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
               <>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("tools.playground.description")}</p>
                 <p className="mt-1 text-xs font-semibold text-[var(--muted)]">{t("tools.playground.uploadHint")}</p>
-                {savedAt ? <p className="mt-1 text-xs text-[var(--muted)]">{t("tools.playground.lastSavedAt", { time: new Date(savedAt).toLocaleString() })}</p> : null}
+                {savedAt ? <p className="mt-1 text-xs text-[var(--muted)]">{t("tools.playground.lastSavedAt", { time: new Date(savedAt).toLocaleString(locale) })}</p> : null}
               </>
             ) : null}
           </div>
@@ -701,6 +725,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
                 {t("tools.playground.charCount", { count: markdown.length })}
               </span>
             </div>
+            <fieldset className="flex min-h-0 min-w-0 flex-1 flex-col border-0 p-0" disabled={!draftLoaded}>
             <MarkdownToolbar
               message={editorMessage}
               onCommand={applyCommand}
@@ -736,6 +761,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
             ) : null}
             <textarea
               ref={textareaRef}
+              aria-label={editorTitle || t("tools.playground.editorTitle")}
               className="min-h-0 flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-6 outline-none"
               spellCheck={false}
               value={markdown}
@@ -747,6 +773,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
               onDrop={handleDrop}
               onPaste={handlePaste}
             />
+            </fieldset>
           </section>
 
           <section
@@ -765,7 +792,7 @@ export function ToolsPlayground({ documentId, embedded = false, editorDescriptio
       {drawioSession?.open ? (
         <DrawioModal
           frameRef={drawioFrameRef}
-          src={drawioEditorUrl()}
+          src={drawioEditorUrl(locale)}
           title={t("tools.playground.drawioModalTitle")}
         />
       ) : null}
@@ -831,19 +858,19 @@ function MarkdownToolbar({
     { command: "orderedList", label: "1.", title: t("tools.playground.toolbarOrderedList") },
     { command: "inlineCode", label: "<>", title: t("tools.playground.toolbarInlineCode") },
     { command: "codeBlock", label: "{ }", title: t("tools.playground.toolbarCodeBlock") },
-    { command: "table", label: "Table", title: t("tools.playground.toolbarTable") },
+    { command: "table", label: t("tools.playground.toolbarTable"), title: t("tools.playground.toolbarTable") },
     { command: "divider", label: "---", title: t("tools.playground.toolbarDivider") },
   ];
 
   return (
-    <div className="border-b border-[var(--line)] bg-[var(--accent)] text-white">
+    <div className="border-b border-[var(--line)] bg-[var(--accent)] text-[var(--on-accent)]">
       <div className="flex flex-wrap items-center gap-px">
         {buttons.slice(0, 3).map((button) => (
           <ToolbarButton key={button.command} label={button.label} title={button.title} onClick={() => onCommand(button.command)} />
         ))}
         <select
           aria-label={t("tools.playground.toolbarHeading")}
-          className="h-11 border-0 bg-[rgba(255,255,255,0.12)] px-3 text-sm font-bold text-white outline-none"
+          className="h-11 border-0 bg-[var(--accent)] px-3 text-sm font-bold text-[var(--on-accent)] outline-none"
           defaultValue=""
           title={t("tools.playground.toolbarHeading")}
           onChange={onHeading}
@@ -864,7 +891,7 @@ function MarkdownToolbar({
         <MediaSyntaxSelect onInsertMedia={onInsertMedia} />
         <ToolbarButton label="IO" title={t("tools.playground.toolbarDrawio")} onClick={onInsertDrawio} />
         <ToolbarButton label="BL" title={t("tools.playground.toolbarBlueprint")} onClick={onUploadBlueprint} />
-        {message ? <span className="px-3 text-xs font-semibold text-white/85">{message}</span> : null}
+        {message ? <span className="px-3 text-xs font-semibold text-[var(--on-accent)]" role="status">{message}</span> : null}
       </div>
     </div>
   );
@@ -875,7 +902,7 @@ function MediaSyntaxSelect({ onInsertMedia }: { onInsertMedia: (preset: MediaPre
   return (
     <select
       aria-label={t("tools.playground.toolbarMedia")}
-      className="h-11 border-0 bg-[rgba(255,255,255,0.12)] px-3 text-sm font-bold text-white outline-none"
+      className="h-11 border-0 bg-[var(--accent)] px-3 text-sm font-bold text-[var(--on-accent)] outline-none"
       defaultValue=""
       title={t("tools.playground.toolbarMedia")}
       onChange={(event) => {
@@ -916,7 +943,7 @@ function IconSyntaxSelect({ onInsertIcon }: { onInsertIcon: (template: string) =
   return (
     <details ref={detailsRef} className="relative">
       <summary
-        className="flex h-11 cursor-pointer list-none items-center bg-[rgba(255,255,255,0.12)] px-3 text-sm font-bold text-white hover:bg-[rgba(255,255,255,0.18)]"
+        className="flex h-11 cursor-pointer list-none items-center bg-[var(--accent)] px-3 text-sm font-bold text-[var(--on-accent)] hover:bg-[var(--accent-strong)]"
         title={t("tools.playground.toolbarIcon")}
       >
         {t("tools.playground.iconMenu")}
@@ -964,7 +991,8 @@ function IconPresetGroup({
 function ToolbarButton({ label, title, onClick }: { label: string; title: string; onClick: () => void }) {
   return (
     <button
-      className="h-11 min-w-11 px-3 text-sm font-black hover:bg-[rgba(255,255,255,0.12)]"
+      className="h-11 min-w-11 px-3 text-sm font-black hover:bg-[var(--accent-strong)]"
+      aria-label={title}
       title={title}
       type="button"
       onMouseDown={(event) => event.preventDefault()}
@@ -1087,7 +1115,9 @@ function currentLine(value: string, index: number) {
   return value.slice(start, end === -1 ? value.length : end);
 }
 
-function drawioEditorUrl() {
+function drawioEditorUrl(locale: Locale) {
+  // Closed mapping verified against draw.io Init.js mxLanguageMap.
+  const languages: Record<Locale, string> = { "zh-CN": "zh", "zh-TW": "zh-tw", "en-US": "en", "de-DE": "de", "fr-FR": "fr", "es-ES": "es", "ja-JP": "ja", "ru-RU": "ru" };
   const params = new URLSearchParams({
     embed: "1",
     proto: "json",
@@ -1096,7 +1126,7 @@ function drawioEditorUrl() {
     saveAndExit: "1",
     noExitBtn: "0",
     ui: "atlas",
-    lang: "zh",
+    lang: languages[locale],
   });
   return `${DRAWIO_ORIGIN}/?${params.toString()}`;
 }

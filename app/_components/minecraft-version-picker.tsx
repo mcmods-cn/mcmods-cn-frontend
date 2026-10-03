@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { MinecraftVersionConfig } from "../_lib/mod-api";
 import { getCachedMinecraftVersionConfig, loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
@@ -51,18 +52,19 @@ export function MinecraftVersionPicker({
   const [showAprilFools, setShowAprilFools] = useState(false);
   const [search, setSearch] = useState("");
   const [pendingValues, setPendingValues] = useState<string[]>([]);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     if (!open) return;
+    const dialog = dialogRef.current;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialog?.showModal();
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", handleKeyDown);
     return () => {
+      if (dialog?.open) dialog.close();
       document.body.style.overflow = previousOverflow;
-      document.removeEventListener("keydown", handleKeyDown);
+      previousFocus?.focus();
     };
   }, [open]);
 
@@ -135,21 +137,35 @@ export function MinecraftVersionPicker({
     setOpen(false);
   }
 
-  const compressedValues = compressMinecraftVersionSelection(values, selectableGroups);
+  function keepFocusInDialog(event: KeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== "Tab") return;
+    const controls = [...event.currentTarget.querySelectorAll<HTMLElement>(
+      "button, input, select, textarea, a[href], [tabindex]",
+    )].filter((control) => control.tabIndex >= 0 && !control.matches(":disabled") && control.getClientRects().length > 0);
+    const first = controls[0];
+    const last = controls.at(-1);
+    if (!first || !last) return;
+    if (event.shiftKey ? document.activeElement === first : document.activeElement === last) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    }
+  }
+
+  const compressedValues = compressMinecraftVersionSelection(values, selectableGroups, t);
   const fullSummary = values.length ? compressedValues.map((item) => item.label).join(" / ") : t(emptyLabelKey);
   const summary = values.length ? summarizeMinecraftVersions(compressedValues.map((item) => item.label)) : fullSummary;
   const selectedValues = multiple ? pendingValues : values;
-  const compressedSelected = compressMinecraftVersionSelection(selectedValues, selectableGroups);
+  const compressedSelected = compressMinecraftVersionSelection(selectedValues, selectableGroups, t);
 
   return (
     <>
-      <button className={`field focus-ring flex min-h-11 min-w-0 max-w-full items-center justify-between gap-3 overflow-hidden text-left ${className}`} disabled={disabled} title={fullSummary} type="button" onClick={openPicker}>
+      <button aria-expanded={open} aria-haspopup="dialog" className={`field focus-ring flex min-h-11 min-w-0 max-w-full items-center justify-between gap-3 overflow-hidden text-left ${className}`} disabled={disabled} title={fullSummary} type="button" onClick={openPicker}>
         <span className="min-w-0 flex-1 truncate">{summary}</span>
         <span aria-hidden="true" className="shrink-0 text-[var(--muted)]">...</span>
       </button>
       {open && typeof document !== "undefined" ? createPortal(
-        <div className="fixed inset-0 z-[100] isolate grid place-items-center overflow-hidden bg-black/50 p-3 sm:p-6" role="presentation" onMouseDown={() => setOpen(false)}>
-          <section className="surface flex max-h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-[var(--line)] shadow-2xl" role="dialog" aria-modal="true" aria-label={t("minecraftVersionPicker.title")} onMouseDown={(event) => event.stopPropagation()}>
+        <dialog ref={dialogRef} aria-label={t("minecraftVersionPicker.title")} className="fixed inset-0 z-[100] m-0 grid h-dvh max-h-none w-screen max-w-none place-items-center overflow-hidden border-0 bg-black/50 p-3 text-[var(--foreground)] sm:p-6" onCancel={(event) => { event.preventDefault(); setOpen(false); }} onKeyDown={keepFocusInDialog} onMouseDown={() => setOpen(false)}>
+          <section className="surface flex max-h-[90dvh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-[var(--line)] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
             <header className="border-b border-[var(--line)] p-4 sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <div>
@@ -159,9 +175,9 @@ export function MinecraftVersionPicker({
                 <button className="button-secondary focus-ring" type="button" onClick={() => setOpen(false)}>{t("common.close")}</button>
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
-                <input className="field" value={search} placeholder={t("minecraftVersionPicker.search")} onChange={(event) => setSearch(event.target.value)} />
-                <button className={`button-secondary focus-ring ${showSnapshots ? "border-[var(--accent)] text-[var(--accent)]" : ""}`} type="button" onClick={() => setShowSnapshots((current) => !current)}>{t("minecraftVersionPicker.showSnapshots")}</button>
-                <button className={`button-secondary focus-ring ${showAprilFools ? "border-[var(--accent)] text-[var(--accent)]" : ""}`} type="button" onClick={() => setShowAprilFools((current) => !current)}>{t("minecraftVersionPicker.showAprilFools")}</button>
+                <input aria-label={t("minecraftVersionPicker.search")} className="field" value={search} placeholder={t("minecraftVersionPicker.search")} onChange={(event) => setSearch(event.target.value)} />
+                <button aria-pressed={showSnapshots} className={`button-secondary focus-ring ${showSnapshots ? "border-[var(--accent)] text-[var(--accent)]" : ""}`} type="button" onClick={() => setShowSnapshots((current) => !current)}>{t("minecraftVersionPicker.showSnapshots")}</button>
+                <button aria-pressed={showAprilFools} className={`button-secondary focus-ring ${showAprilFools ? "border-[var(--accent)] text-[var(--accent)]" : ""}`} type="button" onClick={() => setShowAprilFools((current) => !current)}>{t("minecraftVersionPicker.showAprilFools")}</button>
               </div>
               {multiple && selectedValues.length ? <div className="mt-3 flex max-h-28 flex-wrap gap-2 overflow-y-auto overscroll-contain pr-1">{compressedSelected.map((item) => <button key={`${item.group}:${item.label}`} className="rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-2.5 py-1 text-sm font-bold" type="button" onClick={() => item.codes.length > 1 ? chooseGroup(item.codes) : choose(item.codes[0])}>{item.label} x</button>)}</div> : null}
             </header>
@@ -192,7 +208,7 @@ export function MinecraftVersionPicker({
             </div>
             {multiple ? <footer className="flex items-center justify-between gap-3 border-t border-[var(--line)] p-4"><span className="text-sm font-bold text-[var(--muted)]">{t("minecraftVersionPicker.selected", { count: selectedValues.length })}</span><button className="button-primary focus-ring" type="button" onClick={confirmSelection}>{t("common.confirm")}</button></footer> : null}
           </section>
-        </div>,
+        </dialog>,
         document.body,
       ) : null}
     </>
@@ -213,6 +229,7 @@ export type CompressedMinecraftVersionSelection = {
 export function compressMinecraftVersionSelection(
   values: readonly string[],
   groups: readonly (readonly [string, readonly { code: string }[]])[],
+  t: (key: string, params?: Record<string, string | number>) => string,
 ): CompressedMinecraftVersionSelection[] {
   const selected = new Set(values);
   const consumed = new Set<string>();
@@ -221,7 +238,7 @@ export function compressMinecraftVersionSelection(
     const codes = versions.map((version) => version.code);
     if (codes.length > 1 && codes.every((code) => selected.has(code))) {
       codes.forEach((code) => consumed.add(code));
-      result.push({ group, label: publicVersionGroupLabel(group), codes });
+      result.push({ group, label: group.startsWith("release:") ? `${group.slice("release:".length)}.X` : groupLabel(group, t), codes });
     }
   }
   for (const value of values) {
@@ -287,18 +304,4 @@ function groupLabel(group: string, t: (key: string, params?: Record<string, stri
   if (group === "other") return t("minecraftVersionPicker.otherGroup");
   if (group.startsWith("snapshot:")) return t("minecraftVersionPicker.snapshotYearGroup", { year: group.slice("snapshot:".length) });
   return t("minecraftVersionPicker.releaseGroup", { version: group.slice("release:".length) });
-}
-
-function publicVersionGroupLabel(group: string) {
-  if (group.startsWith("release:")) return `${group.slice("release:".length)}.X`;
-  if (group.startsWith("snapshot:")) return `${group.slice("snapshot:".length)} 快照`;
-  const labels: Record<string, string> = {
-    april_fools: "愚人节版本",
-    pre_release: "预发布版",
-    release_candidate: "候选发布版",
-    legacy: "旧版",
-    snapshot: "快照版",
-    other: "其他版本",
-  };
-  return labels[group] ?? group;
 }

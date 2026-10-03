@@ -240,7 +240,7 @@ export function AdminContentAttributePanel({ token }: { token: string }) {
         <div className="max-h-[70vh] overflow-y-auto p-2">
           {loading ? <p className="p-3 text-sm text-[var(--muted)]">{t("common.loading")}</p> : <div className="grid gap-1">
             {items.map((item) => <button
-              className={`focus-ring rounded-lg px-3 py-2 text-left text-sm ${selectedTemplateId === item.templatePublicId ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"}`}
+              className={`focus-ring rounded-lg px-3 py-2 text-left text-sm ${selectedTemplateId === item.templatePublicId ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"}`}
               key={item.templatePublicId}
               type="button"
               onClick={() => selectTemplate(item)}
@@ -296,7 +296,7 @@ export function AdminContentAttributePanel({ token }: { token: string }) {
 
         <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5">
           <h3 className="font-black">{t("admin.resourceAttributes.attributeTypes")}</h3>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-2">{entryTypes.map((entryType) => <button className={`focus-ring shrink-0 rounded-lg px-3 py-2 font-bold ${selectedTypeCode === entryType.code ? "bg-[var(--accent)] text-white" : "bg-[var(--panel-subtle)]"} ${entryType.enabled === false ? "opacity-55" : ""}`} key={entryType.code} type="button" onClick={() => setSelectedTypeCode(entryType.code)}>{localizedValue(entryType.names, locale) || entryType.code}{entryType.enabled === false ? ` · ${t("admin.resourceAttributes.disabled")}` : ""}</button>)}</div>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-2">{entryTypes.map((entryType) => <button className={`focus-ring shrink-0 rounded-lg px-3 py-2 font-bold ${selectedTypeCode === entryType.code ? "bg-[var(--accent)] text-[var(--on-accent)]" : "bg-[var(--panel-subtle)]"} ${entryType.enabled === false ? "opacity-55" : ""}`} key={entryType.code} type="button" onClick={() => setSelectedTypeCode(entryType.code)}>{localizedValue(entryType.names, locale) || entryType.code}{entryType.enabled === false ? ` · ${t("admin.resourceAttributes.disabled")}` : ""}</button>)}</div>
           <div className="mt-4 grid gap-3 border-t border-[var(--line)] pt-4 md:grid-cols-[minmax(0,220px)_minmax(0,1fr)_auto]">
             <input className="field font-mono" maxLength={64} placeholder={t("admin.resourceAttributes.typeId")} value={newTypeCode} onChange={(event) => setNewTypeCode(event.target.value)} />
             <input className="field" maxLength={160} placeholder={t("admin.resourceAttributes.typeName")} value={newTypeName} onChange={(event) => setNewTypeName(event.target.value)} />

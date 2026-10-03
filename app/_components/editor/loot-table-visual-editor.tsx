@@ -407,18 +407,20 @@ function LootNumberProviderEditor({
       {mode === "uniform" ? <div className="grid grid-cols-2 gap-2"><input aria-label={t("resourceEditor.lootEditor.minimum")} className="field" inputMode="decimal" type="number" value={finiteNumber(provider.min, 0)} onChange={(event) => onChange({ ...provider, type: "minecraft:uniform", min: finiteNumber(event.target.value, 0) })} /><input aria-label={t("resourceEditor.lootEditor.maximum")} className="field" inputMode="decimal" type="number" value={finiteNumber(provider.max, 1)} onChange={(event) => onChange({ ...provider, type: "minecraft:uniform", max: finiteNumber(event.target.value, 0) })} /></div> : null}
       {mode === "binomial" ? <div className="grid grid-cols-2 gap-2"><input aria-label={t("resourceEditor.lootEditor.trials")} className="field" inputMode="numeric" type="number" value={finiteNumber(provider.n, 1)} onChange={(event) => onChange({ ...provider, type: "minecraft:binomial", n: finiteNumber(event.target.value, 0) })} /><input aria-label={t("resourceEditor.lootEditor.probability")} className="field" inputMode="decimal" max={1} min={0} step="any" type="number" value={finiteNumber(provider.p, 0.5)} onChange={(event) => onChange({ ...provider, type: "minecraft:binomial", p: finiteNumber(event.target.value, 0) })} /></div> : null}
     </div>
-    {mode === "advanced" ? <AdvancedJSONEditor editorID={editorID} value={value} onChange={onChange} onValidityChange={onValidityChange} /> : null}
+    {mode === "advanced" ? <AdvancedJSONEditor editorID={editorID} value={value} recordOnly={false} onChange={onChange} onValidityChange={onValidityChange} /> : null}
   </div>;
 }
 
 function AdvancedJSONEditor({
   editorID,
   value,
+  recordOnly = true,
   onChange,
   onValidityChange,
 }: {
   editorID: string;
   value: unknown;
+  recordOnly?: boolean;
   onChange: (value: unknown) => void;
   onValidityChange: (editorID: string, valid: boolean) => void;
 }) {
@@ -428,8 +430,12 @@ function AdvancedJSONEditor({
   const [invalid, setInvalid] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    if (document.activeElement !== inputRef.current) setDraft(external);
-  }, [external]);
+    if (document.activeElement !== inputRef.current) {
+      setDraft(external);
+      setInvalid(false);
+      onValidityChange(editorID, true);
+    }
+  }, [editorID, external, onValidityChange]);
   useEffect(() => () => onValidityChange(editorID, true), [editorID, onValidityChange]);
   return <div className="mt-3">
     <textarea ref={inputRef} aria-invalid={invalid} className="field min-h-40 font-mono text-xs" value={draft} onChange={(event) => {
@@ -437,6 +443,8 @@ function AdvancedJSONEditor({
       setDraft(next);
       try {
         const parsed: unknown = JSON.parse(next);
+        const isRecord = parsed !== null && typeof parsed === "object" && !Array.isArray(parsed);
+        if (!isRecord && (recordOnly || typeof parsed !== "number" || !Number.isFinite(parsed))) throw new Error("Invalid loot JSON value");
         setInvalid(false);
         onValidityChange(editorID, true);
         onChange(parsed);

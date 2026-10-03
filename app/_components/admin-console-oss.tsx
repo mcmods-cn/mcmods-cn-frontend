@@ -56,6 +56,10 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
   const { t } = useI18n();
   const [draft, setDraft] = useState({ ...normalizeOSSConfigForUI(initialConfig), accessKeySecret: "", securityToken: "" });
   const [message, setMessage] = useState("");
+  const [loadedToken, setLoadedToken] = useState<string>();
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const savePending = useRef(false);
   const uploadEndpointPreview = previewEndpoint(draft.endpoint, "https://oss-cn-beijing.aliyuncs.com");
   const publicEndpointPreview = previewEndpoint(draft.publicEndpoint, "https://oss.mcmods.cn");
   const objectPrefix = (draft.prefix || "mcmods").replace(/^\/+|\/+$/g, "");
@@ -64,7 +68,11 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
     let cancelled = false;
     apiRequest<OSSConfig>("/api/v1/admin/config/oss", {}, token)
       .then((config) => {
-        if (!cancelled) setDraft({ ...normalizeOSSConfigForUI(config), accessKeySecret: "", securityToken: "" });
+        if (!cancelled) {
+          setDraft({ ...normalizeOSSConfigForUI(config), accessKeySecret: "", securityToken: "" });
+          setLoadedToken(token);
+          setMessage("");
+        }
       })
       .catch((error) => {
         if (!cancelled) setMessage(cleanError(error));
@@ -72,9 +80,12 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [loadAttempt, token]);
 
   async function save() {
+    if (loadedToken !== token || savePending.current) return;
+    savePending.current = true;
+    setSaving(true);
     setMessage("");
     try {
       const payload = {
@@ -101,6 +112,9 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
       setMessage(t("admin.oss.configSaved"));
     } catch (error) {
       setMessage(cleanError(error));
+    } finally {
+      savePending.current = false;
+      setSaving(false);
     }
   }
 
@@ -127,7 +141,7 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
               {t("admin.oss.configIntro")}
             </p>
           </div>
-          <button className="button-primary focus-ring" type="button" onClick={save}>
+          <button className="button-primary focus-ring" disabled={loadedToken !== token || saving} type="button" onClick={save}>
             {t("admin.oss.saveConfig")}
           </button>
         </div>
@@ -152,6 +166,8 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
         </div>
       </div>
 
+      {loadedToken !== token ? <div role="status" className="surface rounded-lg p-4"><p>{message || t("common.loading")}</p>{message ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => { setMessage(""); setLoadAttempt((value) => value + 1); }}>{t("common.retry")}</button> : null}</div> : null}
+      <fieldset disabled={loadedToken !== token || saving} className="contents">
       <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         <div className="surface rounded-lg p-5">
           <div className="mb-4">
@@ -310,6 +326,7 @@ function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; 
         </div>
       </div>
 
+      </fieldset>
       {message ? <InlineMessage text={message} /> : null}
     </section>
   );
@@ -620,55 +637,48 @@ function RuntimeLogsPanel({ token, title }: { token: string; title: string }) {
   const [limit, setLimit] = useState(300);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [followTail, setFollowTail] = useState(true);
-  const [lastId, setLastId] = useState(0);
+  const [refreshAttempt, setRefreshAttempt] = useState(0);
   const outputRef = useRef<HTMLDivElement>(null);
 
-  const request = useCallback(async (afterId = 0) => {
+  const request = useCallback(async (afterId: number, signal: AbortSignal) => {
     const params = new URLSearchParams({ limit: String(limit) });
     if (afterId > 0) params.set("afterId", String(afterId));
     if (query.trim()) params.set("q", query.trim());
     if (from) params.set("from", from);
     if (to) params.set("to", to);
     if (level) params.set("level", level);
-    return apiRequest<RuntimeLogResponse>(`/api/v1/admin/runtime-logs?${params.toString()}`, {}, token);
+    return apiRequest<RuntimeLogResponse>(`/api/v1/admin/runtime-logs?${params.toString()}`, { signal }, token);
   }, [from, level, limit, query, to, token]);
 
-  const replaceEntries = useCallback(async () => {
-    try {
-      const result = await request();
-      setEntries(result.items);
-      setLastId(result.lastId);
-      setMessage("");
-    } catch (error) {
-      setMessage(cleanError(error));
-    }
-  }, [request]);
-
-  const appendEntries = useCallback(async () => {
-    try {
-      const result = await request(lastId);
-      if (result.resetNeeded) {
-        setEntries(result.items);
-      } else if (result.items.length) {
-        setEntries((current) => [...current, ...result.items].slice(-limit));
+  useEffect(() => {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    let cursor = 0;
+    let first = true;
+    async function poll() {
+      try {
+        const result = await request(cursor, controller.signal);
+        if (controller.signal.aborted) return;
+        if (first || result.resetNeeded) setEntries(result.items);
+        else if (result.items.length) setEntries((current) => {
+          const rows = new Map(current.map((entry) => [entry.id, entry]));
+          for (const entry of result.items) rows.set(entry.id, entry);
+          return [...rows.values()].slice(-limit);
+        });
+        cursor = result.lastId;
+        first = false;
+        setMessage("");
+      } catch (error) {
+        if (!controller.signal.aborted) setMessage(cleanError(error));
+      } finally {
+        // Schedule only after completion; slow requests cannot overlap or
+        // replay the same cursor. Cleanup fences results from previous filters.
+        if (autoRefresh && !controller.signal.aborted) timer = setTimeout(() => void poll(), 2500);
       }
-      setLastId(result.lastId);
-      setMessage("");
-    } catch (error) {
-      setMessage(cleanError(error));
     }
-  }, [lastId, limit, request]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void replaceEntries(), 300);
-    return () => window.clearTimeout(timer);
-  }, [replaceEntries]);
-
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const timer = window.setInterval(() => void appendEntries(), 2500);
-    return () => window.clearInterval(timer);
-  }, [appendEntries, autoRefresh]);
+    timer = setTimeout(() => void poll(), 300);
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [autoRefresh, limit, refreshAttempt, request]);
 
   useEffect(() => {
     if (!followTail || !outputRef.current) return;
@@ -693,7 +703,7 @@ function RuntimeLogsPanel({ token, title }: { token: string; title: string }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <button className="button-secondary focus-ring" type="button" onClick={() => void copyVisibleLogs()}>{t("admin.runtimeLogs.copy")}</button>
-          <button className="button-primary focus-ring" type="button" onClick={() => void replaceEntries()}>{t("admin.runtimeLogs.refresh")}</button>
+          <button className="button-primary focus-ring" type="button" onClick={() => setRefreshAttempt((value) => value + 1)}>{t("admin.runtimeLogs.refresh")}</button>
         </div>
       </div>
 

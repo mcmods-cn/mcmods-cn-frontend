@@ -23,6 +23,9 @@ import { loadResolvedContent } from "../_lib/editor-api";
 import { loadGlobalRecipe } from "../_lib/global-catalog-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
+import { transformMarkdownOutsideCode } from "../_lib/markdown-code-boundaries.mts";
+import { extractMarkdownToc } from "../_lib/markdown-toc.mts";
+import { decodeMarkdownMarker, escapeMarkdownMarkerLiterals, restoreMarkdownMarkerLiterals } from "../_lib/markdown-markers.mts";
 import { minecraftLocale } from "../_lib/mod-export-api";
 import { loadRecipe, loadRecipeTemplate } from "../_lib/recipe-editor-api";
 import { replaceMarkdownTextNodes, replaceStickerTokensInTree } from "../_lib/sticker-markdown.mts";
@@ -38,12 +41,6 @@ type MarkdownRendererProps = {
   emptyText: string;
   referencePath?: readonly string[];
   commentFloorLinks?: boolean;
-};
-
-type TocItem = {
-  depth: number;
-  id: string;
-  text: string;
 };
 
 type HastNode = Element | Text | { type: string };
@@ -95,7 +92,7 @@ type MdastParent = {
 };
 
 const visitTree = visit as unknown as (
-  tree: Root,
+  tree: Root | Element,
   test: "element" | "text",
   visitor: (node: Element | Text, index?: number, parent?: Parent) => void,
 ) => void;
@@ -130,16 +127,17 @@ export function MarkdownRenderer({ markdown, config, emptyText, referencePath = 
   const normalized = normalizeMarkdownConfig(config);
   const source = normalized.expandTabs ? markdown.replaceAll("\t", " ".repeat(normalized.tabSize)) : markdown;
   const abbreviations = normalized.abbreviations ? extractAbbreviations(source) : new Map<string, string>();
-  const tocItems = normalized.toc ? extractToc(source, normalized) : [];
+  const preparedSource = protectCustomSyntax(stripAbbreviationDefinitions(source));
   const remarkPlugins = [
     () => remarkStickerTokens(stickers),
     commentFloorLinks ? () => remarkCommentFloorLinks() : null,
     normalized.enhancedTables || normalized.taskLists || normalized.footnotes ? remarkGfm : null,
     normalized.collapsibleBlocks ? remarkDirective : null,
-    normalized.collapsibleBlocks ? () => remarkDetailsDirective() : null,
+    normalized.collapsibleBlocks ? () => remarkDetailsDirective(t("tools.playground.detailsTitle")) : null,
     normalized.emoji ? remarkEmoji : null,
     normalized.katex ? remarkMath : null,
   ].filter(Boolean) as PluggableList;
+  const tocItems = normalized.toc ? extractMarkdownToc(preparedSource, remarkPlugins, normalized.tocMinDepth, normalized.tocMaxDepth) : [];
   const rehypePlugins = [
     normalized.katex ? [rehypeKatex, { output: "mathml" }] : null,
     normalized.codeHighlight ? rehypeHighlight : null,
@@ -197,7 +195,7 @@ export function MarkdownRenderer({ markdown, config, emptyText, referencePath = 
           </ol>
         </nav>
       ) : null}
-      <MarkdownBody markdown={protectCustomSyntax(stripAbbreviationDefinitions(source))} referencePath={referencePath} rehypePlugins={rehypePlugins} remarkPlugins={remarkPlugins} />
+      <MarkdownBody markdown={preparedSource} referencePath={referencePath} rehypePlugins={rehypePlugins} remarkPlugins={remarkPlugins} />
     </div>
   );
 }
@@ -244,6 +242,9 @@ function MarkdownBody({
   remarkPlugins: PluggableList;
   referencePath: readonly string[];
 }) {
+  const { user, token } = useAuthSnapshot();
+  const { t } = useI18n();
+  const actorKey = `${user?.id || "guest"}:${token || "guest"}`;
   return (
     <ReactMarkdown
       components={{
@@ -285,9 +286,9 @@ function MarkdownBody({
           const classes = String(className ?? "");
           const referenceId = reactNodeToText(children).trim().toLowerCase();
           if (classes.includes("markdown-geogebra-embed")) return <GeoGebraZoomEmbed>{children}</GeoGebraZoomEmbed>;
-          if (classes.includes("markdown-blueprint-reference")) return <MarkdownBlueprintReference publicId={referenceId} />;
-          if (classes.includes("markdown-intro-reference")) return <MarkdownIntroReference publicId={referenceId} referencePath={referencePath} />;
-          if (classes.includes("markdown-recipe-reference")) return <MarkdownRecipeReference publicId={referenceId} />;
+          if (classes.includes("markdown-blueprint-reference")) return <MarkdownBlueprintReference key={`${actorKey}:${referenceId}`} publicId={referenceId} />;
+          if (classes.includes("markdown-intro-reference")) return <MarkdownIntroReference key={`${actorKey}:${referenceId}`} publicId={referenceId} referencePath={referencePath} />;
+          if (classes.includes("markdown-recipe-reference")) return <MarkdownRecipeReference key={`${actorKey}:${referenceId}`} publicId={referenceId} />;
           return <span className={className}>{children}</span>;
         },
         code: ({ node, className, children }) => {
@@ -308,7 +309,7 @@ function MarkdownBody({
           const isMcIcon = safeSrc.startsWith("/mc-icons/") || String(className ?? "").includes("mc-icon-image");
           const isSticker = String(className ?? "").includes("markdown-sticker");
           if (isSticker) {
-            return isSafeHref(safeSrc) ? <img alt={typeof alt === "string" ? alt : ""} className="markdown-sticker" loading="lazy" src={renderedSrc} title={typeof alt === "string" ? alt : ""} /> : <span>[表情不可用]</span>;
+            return isSafeHref(safeSrc) ? <img alt={typeof alt === "string" ? alt : ""} className="markdown-sticker" loading="lazy" src={renderedSrc} title={typeof alt === "string" ? alt : ""} /> : <span>{t("tools.playground.stickerUnavailable")}</span>;
           }
           if (isMcIcon) {
             return isSafeHref(safeSrc) ? (
@@ -518,10 +519,14 @@ function GeoGebraZoomEmbed({ children }: { children: ReactNode }) {
   const [expanded, setExpanded] = useState(false);
   const [expandedViewport, setExpandedViewport] = useState({ height: 900, width: 1600 });
   const src = findIframeSource(children);
+  const expandedDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     if (!expanded) return;
     const previousOverflow = document.body.style.overflow;
+    const previousFocus = document.activeElement;
+    const node = expandedDialog.current;
+    node?.showModal();
     const updateViewport = () => setExpandedViewport(geoGebraViewport());
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setExpanded(false);
@@ -532,6 +537,8 @@ function GeoGebraZoomEmbed({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", closeOnEscape);
     return () => {
       document.body.style.overflow = previousOverflow;
+      node?.close();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
       window.removeEventListener("resize", updateViewport);
       window.removeEventListener("keydown", closeOnEscape);
     };
@@ -544,7 +551,7 @@ function GeoGebraZoomEmbed({ children }: { children: ReactNode }) {
         {src ? <button className="button-secondary focus-ring geogebra-expand-button" title={t("tools.playground.expandGeoGebra")} type="button" onClick={() => { setExpandedViewport(geoGebraViewport()); setExpanded(true); }}><IconFont name="expand" fallback={t("tools.playground.expandGeoGebra")} /></button> : null}
       </span>
       {expanded && src ? createPortal(
-        <div className="fixed inset-0 z-[100] grid place-items-center bg-black/70 p-3 sm:p-6" role="dialog" aria-modal="true" aria-label={t("tools.playground.geogebraExpanded")} onMouseDown={() => setExpanded(false)}>
+        <dialog ref={expandedDialog} className="fixed inset-0 m-auto max-h-[96dvh] w-[calc(100%_-_2rem)] max-w-none bg-transparent p-0 backdrop:bg-black/70" aria-label={t("tools.playground.geogebraExpanded")} onCancel={() => setExpanded(false)} onMouseDown={(event) => { if (event.target === event.currentTarget) setExpanded(false); }}>
           <section className="flex h-[min(92vh,1200px)] w-full flex-col overflow-hidden rounded-lg bg-[var(--panel)] shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
             <header className="flex items-center justify-between border-b border-[var(--line)] px-4 py-3"><h2 className="font-bold">{t("tools.playground.geogebraExpanded")}</h2><button className="button-secondary focus-ring" type="button" onClick={() => setExpanded(false)}>{t("common.close")}</button></header>
             <iframe
@@ -556,7 +563,7 @@ function GeoGebraZoomEmbed({ children }: { children: ReactNode }) {
               sandbox="allow-scripts allow-same-origin allow-forms allow-presentation"
             />
           </section>
-        </div>,
+        </dialog>,
         document.body,
       ) : null}
     </>
@@ -622,11 +629,15 @@ function drawioExportToImageSrc(data: string) {
 function CopyableCodeBlock({ children, code, language, sourcePosition }: { children: ReactNode; code: string; language: string; sourcePosition: ReturnType<typeof sourceLineAttributes> }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState("");
 
   async function copyCode() {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1200);
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopyError("");
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch { setCopyError(t("common.copyFailed")); }
   }
 
   return (
@@ -637,6 +648,7 @@ function CopyableCodeBlock({ children, code, language, sourcePosition }: { child
           {copied ? t("tools.playground.codeCopied") : t("tools.playground.copyCode")}
         </button>
       </figcaption>
+      {copyError ? <p role="alert" className="px-3 text-sm text-[var(--red)]">{copyError}</p> : null}
       <pre>
         <code className={`language-${language}`}>{children}</code>
       </pre>
@@ -655,11 +667,11 @@ function reactNodeToText(node: ReactNode): string {
   return "";
 }
 
-function remarkDetailsDirective() {
+function remarkDetailsDirective(defaultTitle: string) {
   return (tree: MdastNode) => {
     visitMarkdownTree(tree, "containerDirective", (node) => {
       if (node.name !== "details") return;
-      const title = node.label || "Details";
+      const title = node.label || defaultTitle;
       node.data = { ...(node.data ?? {}), hName: "details", hProperties: { className: ["markdown-details"] } };
       node.children = [
         {
@@ -676,11 +688,17 @@ function remarkDetailsDirective() {
 function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: Map<string, string>, isMainlandChina: boolean) {
   return (tree: Root) => {
     const slugger = new GithubSlugger();
+    const protectedText = new WeakSet<Text>();
 
     visitTree(tree, "element", (node) => {
       if (node.type !== "element") return;
+      if (["a", "code", "pre", "annotation", "script", "style"].includes(node.tagName)) {
+        visitTree(node, "text", child => {
+          if (child.type === "text") protectedText.add(child);
+        });
+      }
       if (/^h[1-6]$/.test(node.tagName)) {
-        node.properties = { ...node.properties, id: slugger.slug(textContent(node)) };
+        node.properties = { ...node.properties, id: slugger.slug(restoreMarkdownMarkerLiterals(textContent(node))) };
       }
       if (config.imageSize && node.tagName === "img") {
         applyImageSize(node);
@@ -695,6 +713,7 @@ function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: M
 
     visitTree(tree, "text", (node, index, parent) => {
       if (node.type !== "text") return;
+      if (protectedText.has(node)) return;
       if (!parent || typeof index !== "number") return;
       if (["a", "code", "pre", "annotation", "script", "style"].includes(parent.tagName ?? "")) return;
       const replacements = splitTextNode(node.value, config, abbreviations, isMainlandChina);
@@ -706,6 +725,11 @@ function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: M
           (parent as Element).properties = { ...properties, className: ["markdown-reference-line"] };
         }
       }
+    });
+    // A user-provided marker becomes ordinary text only after markers created
+    // by protectCustomSyntax have been interpreted.
+    visitTree(tree, "text", (node) => {
+      if (node.type === "text") node.value = restoreMarkdownMarkerLiterals(node.value);
     });
   };
 }
@@ -734,20 +758,27 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
   let match: RegExpExecArray | null;
   while ((match = matcher.exec(value))) {
     if (match.index > lastIndex) nodes.push({ type: "text", value: value.slice(lastIndex, match.index) });
+    const protectedPayload = match[1] || match[2] || match[3] || match[4] || match[13] || match[14] || match[15];
+    const decoded = protectedPayload ? decodeMarkdownMarker(protectedPayload) : undefined;
+    if (protectedPayload && decoded === undefined) {
+      nodes.push({ type: "text", value: match[0] });
+      lastIndex = matcher.lastIndex;
+      continue;
+    }
     if (match[1]) {
-      const token = decodeURIComponent(match[1]);
+      const token = decoded!;
       const icon = parseIconSyntax(token);
       nodes.push(icon ? createIconNode(icon.name, icon.value, icon.unit) : { type: "text", value: token });
     } else if (match[2]) {
-      const token = decodeURIComponent(match[2]);
+      const token = decoded!;
       const video = createVideoEmbedNode(token, isMainlandChina);
       nodes.push(video ?? { type: "text", value: `[vedio:${token}]` });
     } else if (match[3]) {
-      const token = decodeURIComponent(match[3]);
+      const token = decoded!;
       const geogebra = createGeoGebraEmbedNode(token);
       nodes.push(geogebra ?? { type: "text", value: `[GeoGebra:${token}]` });
     } else if (match[4]) {
-      const token = decodeURIComponent(match[4]);
+      const token = decoded!;
       nodes.push(createTimeNode(token) ?? { type: "text", value: token });
     } else if (match[5]) nodes.push(createIconNode(match[5], match[6], match[7]));
     else if (match[8]) {
@@ -765,9 +796,9 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
         properties: { title: abbreviations.get(match[12]) ?? "" },
         children: [{ type: "text", value: match[12] }],
       });
-    } else if (match[13]) nodes.push(createMarkdownReferenceNode("blueprint", decodeURIComponent(match[13])));
-    else if (match[14]) nodes.push(createMarkdownReferenceNode("intro", decodeURIComponent(match[14])));
-    else if (match[15]) nodes.push(createMarkdownReferenceNode("recipe", decodeURIComponent(match[15])));
+    } else if (match[13]) nodes.push(createMarkdownReferenceNode("blueprint", decoded!));
+    else if (match[14]) nodes.push(createMarkdownReferenceNode("intro", decoded!));
+    else if (match[15]) nodes.push(createMarkdownReferenceNode("recipe", decoded!));
     lastIndex = matcher.lastIndex;
   }
   if (lastIndex < value.length) nodes.push({ type: "text", value: value.slice(lastIndex) });
@@ -775,14 +806,14 @@ function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviati
 }
 
 function protectCustomSyntax(markdown: string) {
-  return markdown
+  return transformMarkdownOutsideCode(escapeMarkdownMarkerLiterals(markdown), (text) => text
     .replace(iconSyntaxPattern, (token) => `${iconMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
     .replace(videoSyntaxPattern, (_token, payload: string) => `${videoMarkerStart}${encodeURIComponent(payload)}${customMarkerEnd}`)
     .replace(geogebraSyntaxPattern, (_token, payload: string) => `${geogebraMarkerStart}${encodeURIComponent(payload)}${customMarkerEnd}`)
     .replace(timeSyntaxPattern, (token) => `${timeMarkerStart}${encodeURIComponent(token)}${customMarkerEnd}`)
     .replace(blueprintSyntaxPattern, (_token, publicId: string) => `${blueprintMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`)
     .replace(introSyntaxPattern, (_token, publicId: string) => `${introMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`)
-    .replace(recipeSyntaxPattern, (_token, publicId: string) => `${recipeMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`);
+    .replace(recipeSyntaxPattern, (_token, publicId: string) => `${recipeMarkerStart}${encodeURIComponent(publicId.toLowerCase())}${customMarkerEnd}`));
 }
 
 function createMarkdownReferenceNode(kind: "blueprint" | "intro" | "recipe", publicId: string): Element {
@@ -826,12 +857,13 @@ function createTimeNode(token: string): Element | null {
 }
 
 function LocalizedMarkdownTime({ fallback, instant }: { fallback: string; instant: string }) {
+  const { locale } = useI18n();
   const text = useSyncExternalStore(
     () => () => undefined,
     () => {
     const date = new Date(instant);
       if (Number.isNaN(date.getTime())) return fallback;
-      return new Intl.DateTimeFormat(undefined, {
+      return new Intl.DateTimeFormat(locale, {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -1084,30 +1116,21 @@ function normalizeIconName(name: string) {
 
 function extractAbbreviations(markdown: string) {
   const map = new Map<string, string>();
-  for (const line of markdown.split("\n")) {
-    const match = line.match(/^\*\[([^\]]+)]:\s+(.+)$/);
-    if (match) map.set(match[1], match[2]);
-  }
+  transformMarkdownOutsideCode(markdown, text => {
+    for (const line of text.split("\n")) {
+      const match = line.match(/^\*\[([^\]]+)]:\s+(.+)$/);
+      if (match) map.set(match[1], match[2]);
+    }
+    return text;
+  });
   return map;
 }
 
 function stripAbbreviationDefinitions(markdown: string) {
-  return markdown
-    .split("\n")
-    .filter((line) => !/^\*\[([^\]]+)]:\s+(.+)$/.test(line))
-    .join("\n");
+  return transformMarkdownOutsideCode(markdown, text => text.split("\n")
+    .filter(line => !/^\*\[([^\]]+)]:\s+(.+)$/.test(line)).join("\n"));
 }
 
-function extractToc(markdown: string, config: MarkdownRendererConfig): TocItem[] {
-  const slugger = new GithubSlugger();
-  return markdown
-    .split("\n")
-    .map((line) => line.match(/^(#{1,6})\s+(.+)$/))
-    .filter((match): match is RegExpMatchArray => Boolean(match))
-    .map((match) => ({ depth: match[1].length, text: match[2].replace(/[*_`~^]/g, "") }))
-    .filter((item) => item.depth >= config.tocMinDepth && item.depth <= config.tocMaxDepth)
-    .map((item) => ({ ...item, id: slugger.slug(item.text) }));
-}
 
 function applyImageSize(node: Element) {
   const alt = String(node.properties?.alt ?? "");
@@ -1145,7 +1168,7 @@ function applyPlantUML(node: Element, server: string) {
       tagName: "img",
       properties: {
         alt: "PlantUML",
-        src: `${server}/svg/${plantumlEncoder.encode(textContent(code))}`,
+        src: `${server}/svg/${plantumlEncoder.encode(restoreMarkdownMarkerLiterals(textContent(code)))}`,
       },
       children: [],
     },

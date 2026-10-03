@@ -9,13 +9,15 @@ import { modRevisionHistoryPagePath, toggleModRevisionSelection } from "../_lib/
 import { useI18n } from "../_lib/i18n-provider";
 
 export function ModHistory({ siteId }: { siteId: string }) {
-  return <ModHistoryPage key={siteId} siteId={siteId} />;
+  const { token, user } = useAuthSnapshot();
+  return <ModHistoryPage key={`${user?.id || "guest"}:${token}:${siteId}`} siteId={siteId} />;
 }
 
 function ModHistoryPage({ siteId }: { siteId: string }) {
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [page, setPage] = useState<BackendModRevisionList | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [selected, setSelected] = useState<BackendModRevision[]>([]);
   const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
   const [message, setMessage] = useState("");
@@ -42,7 +44,7 @@ function ModHistoryPage({ siteId }: { siteId: string }) {
       cancelled = true;
       controller.abort();
     };
-  }, [currentCursor, ready, siteId, t, token]);
+  }, [attempt, currentCursor, ready, siteId, t, token]);
 
   function toggle(item: BackendModRevision) {
     setSelected((current) => toggleModRevisionSelection(current, item));
@@ -66,7 +68,8 @@ function ModHistoryPage({ siteId }: { siteId: string }) {
             ) : <button className="button-primary" disabled type="button">{t("mods.history.selectTwo")}</button>}
           </div>
         </header>
-        {message ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 text-[var(--red)]">{message}</p> : null}
+        {message ? <p role="alert" className="mt-5 rounded-lg border border-[var(--red)] p-3 text-[var(--red)]">{message}</p> : null}
+        {message ? <button className="button-secondary focus-ring mt-3" type="button" onClick={() => { setMessage(""); setAttempt(value => value + 1); }}>{t("common.retry")}</button> : null}
         {!page && !message ? <p className="mt-5 text-sm text-[var(--muted)]">{t("common.loading")}</p> : null}
         <div className="mt-6 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]">
           <div className="min-w-[900px]">
@@ -97,7 +100,13 @@ function ModHistoryPage({ siteId }: { siteId: string }) {
   );
 }
 
-export function ModRevisionCompare({ siteId, before, after }: { siteId: string; before: string; after: string }) {
+export function ModRevisionCompare(props: { siteId: string; before: string; after: string }) {
+  const { token, user } = useAuthSnapshot();
+  const { locale } = useI18n();
+  return <ModRevisionCompareSession key={`${user?.id || "guest"}:${token || "guest"}:${locale}:${props.siteId}:${props.before}:${props.after}`} {...props} />;
+}
+
+function ModRevisionCompareSession({ siteId, before, after }: { siteId: string; before: string; after: string }) {
   const { t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [comparison, setComparison] = useState<BackendModRevisionComparison | null>(null);

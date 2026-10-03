@@ -15,11 +15,17 @@ const SkinViewerCanvas = dynamic(
 );
 
 export function PlayerProfileDetail({ publicId }: { publicId: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <PlayerProfileDetailContent key={`${user?.id || "guest"}:${publicId}:${token}`} publicId={publicId} />;
+}
+
+function PlayerProfileDetailContent({ publicId }: { publicId: string }) {
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const [profile, setProfile] = useState<PlayerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   useEffect(() => {
     if (!ready) return;
@@ -30,16 +36,17 @@ export function PlayerProfileDetail({ publicId }: { publicId: string }) {
       .catch((reason: unknown) => { if (!cancelled) setError(reason instanceof Error ? reason.message : t("skins.profileLoadFailed")); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [publicId, ready, t, token]);
+  }, [loadAttempt, publicId, ready, t, token]);
 
   if (loading) return <ProfileState text={t("common.loading")} />;
-  if (!profile) return <ProfileState text={error || t("skins.notFound")} />;
+  if (!profile) return <ProfileState text={error || t("skins.notFound")} action={error ? <button className="button-secondary focus-ring mt-4" type="button" onClick={() => setLoadAttempt((value) => value + 1)}>{t("common.retry")}</button> : undefined} />;
   const ownerName = profile.owner?.username || t("skins.anonymous");
   const own = Boolean(user && profile.owner?.id === user.id);
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <article className="mx-auto max-w-6xl px-4 py-8">
+        {error ? <div className="mb-4"><p role="alert" className="text-sm text-[var(--red)]">{error}</p><button className="button-secondary focus-ring mt-2" type="button" onClick={() => setLoadAttempt((value) => value + 1)}>{t("common.retry")}</button></div> : null}
         <div className="flex flex-wrap items-center justify-between gap-3"><Link className="text-sm font-black text-[var(--accent)]" href="/skins">← {t("skins.title")}</Link>{own ? <Link className="button-secondary focus-ring" href="/user?section=players">{t("skins.manageProfiles")}</Link> : null}</div>
         <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <section className="surface overflow-hidden rounded-lg bg-[var(--panel-subtle)]">
@@ -77,8 +84,8 @@ function InfoLine({ label, value }: { label: string; value: React.ReactNode }) {
   return <div className="grid gap-1"><dt className="text-[var(--muted)]">{label}</dt><dd className="font-bold">{value}</dd></div>;
 }
 
-function ProfileState({ text }: { text: string }) {
-  return <main className="grid min-h-[65vh] place-items-center px-4"><div className="surface w-full max-w-lg rounded-lg p-8 text-center font-bold text-[var(--muted)]">{text}</div></main>;
+function ProfileState({ text, action }: { text: string; action?: React.ReactNode }) {
+  return <main className="grid min-h-[65vh] place-items-center px-4"><div className="surface w-full max-w-lg rounded-lg p-8 text-center font-bold text-[var(--muted)]"><p>{text}</p>{action}</div></main>;
 }
 
 function formatDate(value: string, locale: string) {

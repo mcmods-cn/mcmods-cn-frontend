@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { CreatorDetail, CreatorKind, CreatorRole } from "../_lib/community-api";
@@ -14,6 +14,11 @@ import { LoginRequiredState, PageFeedback } from "./page-feedback";
 const authorCreatorKinds: CreatorKind[] = ["author"];
 
 export function CreatorMemberManager({ publicId }: { publicId: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <CreatorMemberManagerContent key={`${user?.id || "guest"}:${publicId}:${token}`} publicId={publicId} />;
+}
+
+function CreatorMemberManagerContent({ publicId }: { publicId: string }) {
   const { t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [detail, setDetail] = useState<CreatorDetail | null>(null);
@@ -24,16 +29,19 @@ export function CreatorMemberManager({ publicId }: { publicId: string }) {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const initialized = useRef(false);
+  const mutationInFlight = useRef(false);
 
-  const load = useCallback(async () => {
-    if (!token) return;
+  const load = useCallback(async (force = false, signal?: AbortSignal) => {
+    if (!token || (!force && initialized.current)) return;
     setLoading(true);
     setError("");
     try {
       const [loadedDetail, roleResult] = await Promise.all([
-        apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(publicId)}`, {}, token),
-        apiRequest<{ items: CreatorRole[] }>("/api/v1/creator-roles", {}, token),
+        apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(publicId)}`, { signal }, token),
+        apiRequest<{ items: CreatorRole[] }>("/api/v1/creator-roles", { signal }, token),
       ]);
+      if (signal?.aborted) return;
       const detail = loadedDetail;
       if (detail.creator.kind !== "team" || !detail.canManageMembers) {
         throw new Error(t("creators.membersDenied"));
@@ -49,22 +57,25 @@ export function CreatorMemberManager({ publicId }: { publicId: string }) {
         role: member.role.name,
         title: member.title,
       })));
+      initialized.current = true;
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : t("creators.loadFailed"));
+      if (!signal?.aborted) setError(loadError instanceof Error ? loadError.message : t("creators.loadFailed"));
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, [publicId, t, token]);
 
   useEffect(() => {
     if (!ready || !token) return;
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => void load(false, controller.signal), 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [load, ready, token]);
 
   async function saveMembers(event: FormEvent) {
     event.preventDefault();
-    if (!detail || members.some((member) => !member.creatorId || !member.roleId)) return;
+    if (!token || mutationInFlight.current || saving || creatingRole || !detail || members.some((member) => !member.creatorId || !member.roleId)) return;
+    mutationInFlight.current = true;
     setSaving(true);
     try {
       await apiRequest(`/api/v1/creators/${encodeURIComponent(publicId)}/members`, {
@@ -78,16 +89,18 @@ export function CreatorMemberManager({ publicId }: { publicId: string }) {
         }),
       }, token!);
       notifySite(t("creators.membersSaved"), t("creators.members"), "success");
-      await load();
+      await load(true);
     } catch (saveError) {
       notifySite(saveError instanceof Error ? saveError.message : t("creators.membersSaveFailed"), t("creators.members"), "danger");
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   }
 
   async function createRole() {
-    if (!detail?.canCreateRoles || !customRole.trim()) return;
+    if (!token || mutationInFlight.current || saving || creatingRole || !detail?.canCreateRoles || !customRole.trim()) return;
+    mutationInFlight.current = true;
     setCreatingRole(true);
     try {
       const result = await apiRequest<{ id: string; code: string; name: string }>("/api/v1/creator-roles", {
@@ -99,6 +112,7 @@ export function CreatorMemberManager({ publicId }: { publicId: string }) {
     } catch (roleError) {
       notifySite(roleError instanceof Error ? roleError.message : t("creators.roleCreateFailed"), t("creators.members"), "danger");
     } finally {
+      mutationInFlight.current = false;
       setCreatingRole(false);
     }
   }
@@ -106,7 +120,7 @@ export function CreatorMemberManager({ publicId }: { publicId: string }) {
   const nextPath = `/teams/${encodeURIComponent(publicId)}/members`;
   if (!ready || (token && loading)) return <PageFeedback title={t("common.loading")} />;
   if (!token) return <LoginRequiredState nextPath={nextPath} description={t("creators.editLoginRequired")} />;
-  if (error || !detail) return <PageFeedback title={error || t("creators.notFound")} tone="danger" action={<Link className="button-secondary focus-ring" href={`/teams/${encodeURIComponent(publicId)}`}>{t("creators.backToDetail")}</Link>} />;
+  if (error || !detail) return <PageFeedback title={error || t("creators.notFound")} tone="danger" action={<div className="flex gap-2"><button className="button-secondary focus-ring" type="button" onClick={() => void load(true)}>{t("common.retry")}</button><Link className="button-secondary focus-ring" href={`/teams/${encodeURIComponent(publicId)}`}>{t("creators.backToDetail")}</Link></div>} />;
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]">
@@ -117,20 +131,20 @@ export function CreatorMemberManager({ publicId }: { publicId: string }) {
             <h1 className="text-3xl font-black">{t("creators.manageMembersTitle", { name: detail.creator.name })}</h1>
             <p className="mt-2 text-sm leading-6 text-[var(--muted)]">{t("creators.memberManagementDescription")}</p>
           </div>
-          <button className="button-primary focus-ring" disabled={saving || members.some((member) => !member.creatorId || !member.roleId)} type="submit">{saving ? t("common.loading") : t("creators.saveMembers")}</button>
+          <button className="button-primary focus-ring" disabled={saving || creatingRole || members.some((member) => !member.creatorId || !member.roleId)} type="submit">{saving ? t("common.loading") : t("creators.saveMembers")}</button>
         </header>
 
         <section className="mt-6 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4">
           <h2 className="font-black">{t("creators.members")}</h2>
-          <div className="mt-3"><CreatorPicker allowTitle allowedKinds={authorCreatorKinds} initialRoles={roles} value={members} onChange={setMembers} /></div>
+          <fieldset className="mt-3" disabled={saving || creatingRole}><CreatorPicker allowTitle allowedKinds={authorCreatorKinds} initialRoles={roles} value={members} onChange={setMembers} /></fieldset>
         </section>
 
         {detail.canCreateRoles ? (
           <section className="mt-6 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4">
             <h2 className="font-black">{t("creators.customRole")}</h2>
             <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-              <input className="field" maxLength={160} value={customRole} onChange={(event) => setCustomRole(event.target.value)} />
-              <button className="button-secondary focus-ring" disabled={creatingRole || !customRole.trim()} type="button" onClick={() => void createRole()}>{creatingRole ? t("common.loading") : t("common.create")}</button>
+              <input aria-label={t("creators.customRole")} className="field" disabled={creatingRole || saving} maxLength={160} value={customRole} onChange={(event) => setCustomRole(event.target.value)} />
+              <button className="button-secondary focus-ring" disabled={creatingRole || saving || !customRole.trim()} type="button" onClick={() => void createRole()}>{creatingRole ? t("common.loading") : t("common.create")}</button>
             </div>
           </section>
         ) : null}

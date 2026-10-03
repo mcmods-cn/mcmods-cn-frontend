@@ -15,7 +15,8 @@ export type CatalogSortDirection = "asc" | "desc";
 export const coreCatalogSortFields = ["published", "updated", "heat", "views"] as const satisfies readonly CatalogSortField[];
 
 export function normalizeCatalogSortField(value: string | null | undefined, fallback: CatalogSortField): CatalogSortField {
-  switch (value?.trim()) {
+  const normalized = value?.trim();
+  switch (normalized) {
     case "published":
     case "updated":
     case "heat":
@@ -26,7 +27,7 @@ export function normalizeCatalogSortField(value: string | null | undefined, fall
     case "rating":
     case "comments":
     case "name":
-      return value as CatalogSortField;
+      return normalized;
     default:
       return fallback;
   }

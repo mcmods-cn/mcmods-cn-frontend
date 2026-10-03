@@ -10,13 +10,21 @@ import { MarkdownRenderer } from "./markdown-renderer";
 import { PageFeedback } from "./page-feedback";
 
 export function ProjectChangelogEntry({ id }: { id: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <ProjectChangelogEntryContent key={`${user?.id || "guest"}:${token || "guest"}:${id}`} id={id} />;
+}
+
+function ProjectChangelogEntryContent({ id }: { id: string }) {
   const { ready, token } = useAuthSnapshot();
   const { locale, t } = useI18n();
   const [value, setValue] = useState<{ target: ChangelogTarget; item: ChangelogItem }>();
   const [message, setMessage] = useState("");
   useEffect(() => {
     if (!ready) return;
-    loadProjectChangelog(id, token).then(setValue).catch((error) => setMessage(error instanceof Error ? error.message : t("changelog.loadFailed")));
+    let cancelled = false;
+    loadProjectChangelog(id, token).then((result) => { if (!cancelled) { setValue(result); setMessage(""); } })
+      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("changelog.loadFailed")); });
+    return () => { cancelled = true; };
   }, [id, ready, t, token]);
   if (!value) return <PageFeedback description={message || undefined} tone={message ? "danger" : "default"} title={message ? t("changelog.loadFailed") : t("common.loading")} />;
   const { item, target } = value;

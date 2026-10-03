@@ -100,7 +100,7 @@ export function ProjectSubmissionModal({ open, projectType, onClose }: { open: b
                 return <button key={item} className="focus-ring min-h-32 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-left enabled:hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-55" disabled={unavailable} type="button" onClick={() => choose(item)}>
                   <span className="flex items-center justify-between gap-3">
                     <strong className="text-lg">{index + 1}. {t(`mods.submission.methods.${item}.title`)}</strong>
-                    {recommended ? <span className="rounded bg-[var(--accent)] px-2 py-1 text-xs font-bold text-white">{t("mods.submission.recommended")}</span> : null}
+                    {recommended ? <span className="rounded bg-[var(--accent)] px-2 py-1 text-xs font-bold text-[var(--on-accent)]">{t("mods.submission.recommended")}</span> : null}
                     {item === "github" ? <span className="rounded border border-[var(--warning)] px-2 py-1 text-xs font-bold text-[var(--warning)]">{t("mods.submission.notRecommended")}</span> : null}
                     {unavailable ? <span className="text-xs font-bold text-[var(--red)]">{t("mods.submission.unavailable")}</span> : null}
                   </span>

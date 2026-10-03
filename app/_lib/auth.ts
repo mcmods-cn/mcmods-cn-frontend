@@ -1,5 +1,6 @@
 "use client";
 
+import { writeBrowserStorage } from "./browser-storage.mts";
 import { useEffect, useState } from "react";
 import { API_BASE_URL, backendFetch, isBearerAccessToken, rememberAuthorizationVersion } from "./api";
 
@@ -40,19 +41,77 @@ const authSyncKey = "mcmods-auth-sync";
 let activeToken = "";
 let activeUser: AuthUser | null = null;
 let bootstrapRequest: Promise<AuthUser | null> | null = null;
+let authGeneration = 0;
+let authReady = false;
+const authSubscribers = new Set<(snapshot: AuthSnapshot) => void>();
+let authEventsInstalled = false;
+
+function publishAuthSnapshot() {
+  const snapshot = { ready: authReady, token: activeToken, user: activeUser };
+  for (const subscriber of authSubscribers) subscriber(snapshot);
+}
+
+function expireAuthSnapshot() {
+  authGeneration += 1;
+  activeToken = "";
+  activeUser = null;
+  bootstrapRequest = null;
+  authReady = true;
+  rememberAuthorizationVersion();
+  publishAuthSnapshot();
+}
+
+function synchronizeAuthTabs(event: StorageEvent) {
+  if (event.key !== authSyncKey) return;
+  if (event.newValue?.startsWith("logout:")) {
+    expireAuthSnapshot();
+  } else if (event.newValue?.startsWith("login:")) {
+    // Invalidate once for the whole module, rather than once for every hook.
+    expireAuthSnapshot();
+    authReady = false;
+    publishAuthSnapshot();
+    void bootstrapAuth();
+  }
+}
+
+function refreshAuthPermissions() {
+  void bootstrapAuth(true);
+}
+
+function subscribeAuthSnapshot(subscriber: (snapshot: AuthSnapshot) => void) {
+  authSubscribers.add(subscriber);
+  if (!authEventsInstalled) {
+    authEventsInstalled = true;
+    // One listener set belongs to the browser module for its window lifetime.
+    // Hook subscriptions are removed independently on component unmount.
+    window.addEventListener("storage", synchronizeAuthTabs);
+    window.addEventListener("mcmods-auth-change", publishAuthSnapshot);
+    window.addEventListener("mcmods-auth-expired", expireAuthSnapshot);
+    window.addEventListener("mcmods-permissions-changed", refreshAuthPermissions);
+  }
+  subscriber({ ready: authReady, token: activeToken, user: activeUser });
+  if (!authReady) void bootstrapAuth();
+  return () => { authSubscribers.delete(subscriber); };
+}
 
 export function saveAuth(result: AuthResult) {
+  authGeneration += 1;
+  bootstrapRequest = null;
   activeToken = result.token || cookieSessionToken;
   activeUser = normalizeAuthUser(result.user);
+  authReady = true;
   rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
   broadcastAuthChange("login");
   window.dispatchEvent(new Event("mcmods-auth-change"));
 }
 
 export function clearAuth() {
+  if (authReady && !activeToken && !activeUser) return;
+  authGeneration += 1;
   const logoutToken = activeToken;
   activeToken = "";
   activeUser = null;
+  authReady = true;
   rememberAuthorizationVersion();
   bootstrapRequest = null;
   broadcastAuthChange("logout");
@@ -70,54 +129,7 @@ export function clearAuth() {
 export function useAuthSnapshot(): AuthSnapshot {
   const [snapshot, setSnapshot] = useState<AuthSnapshot>({ ready: false, token: "", user: null });
 
-  useEffect(() => {
-    let cancelled = false;
-    const publish = (ready = true) => {
-      if (!cancelled) setSnapshot({ ready, token: activeToken, user: activeUser });
-    };
-    const refresh = () => {
-      if (activeUser) {
-        publish();
-        return;
-      }
-      publish(false);
-      void bootstrapAuth().then(() => publish());
-    };
-    const expire = () => {
-      activeToken = "";
-      activeUser = null;
-      bootstrapRequest = null;
-      rememberAuthorizationVersion();
-      publish();
-    };
-    const refreshPermissions = () => {
-      void bootstrapAuth(true).then(() => publish());
-    };
-    const syncAcrossTabs = (event: StorageEvent) => {
-      if (event.key !== authSyncKey) return;
-      if (event.newValue?.startsWith("logout:")) {
-        expire();
-        return;
-      }
-      activeToken = "";
-      activeUser = null;
-      bootstrapRequest = null;
-      refresh();
-    };
-
-    refresh();
-    window.addEventListener("storage", syncAcrossTabs);
-    window.addEventListener("mcmods-auth-change", refresh);
-    window.addEventListener("mcmods-auth-expired", expire);
-    window.addEventListener("mcmods-permissions-changed", refreshPermissions);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("storage", syncAcrossTabs);
-      window.removeEventListener("mcmods-auth-change", refresh);
-      window.removeEventListener("mcmods-auth-expired", expire);
-      window.removeEventListener("mcmods-permissions-changed", refreshPermissions);
-    };
-  }, []);
+  useEffect(() => subscribeAuthSnapshot(setSnapshot), []);
 
   useEffect(() => {
     const expiresAt = tokenExpiresAt(snapshot.token);
@@ -179,14 +191,22 @@ function permissionSpecificity(rule: string, required: string) {
 async function bootstrapAuth(force = false) {
   if (activeUser && !force) return activeUser;
   if (bootstrapRequest) return bootstrapRequest;
-  bootstrapRequest = backendFetch(`${API_BASE_URL}/api/v1/auth/me`, {
+  const generation = authGeneration;
+  const request = backendFetch(`${API_BASE_URL}/api/v1/auth/me`, {
     credentials: "include",
     headers: { Accept: "application/json" },
   })
     .then(async (response) => {
-      if (!response.ok) return null;
+      if (!response.ok) {
+        if (response.status === 401 && generation === authGeneration) {
+          activeToken = "";
+          activeUser = null;
+          rememberAuthorizationVersion();
+        }
+        return null;
+      }
       const envelope = (await response.json()) as { data?: AuthUser };
-      if (!envelope.data) return null;
+      if (!envelope.data || generation !== authGeneration) return null;
       activeToken = cookieSessionToken;
       activeUser = normalizeAuthUser(envelope.data);
       rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
@@ -194,9 +214,14 @@ async function bootstrapAuth(force = false) {
     })
     .catch(() => null)
     .finally(() => {
-      bootstrapRequest = null;
+      if (bootstrapRequest === request) bootstrapRequest = null;
+      if (generation === authGeneration) {
+        authReady = true;
+        publishAuthSnapshot();
+      }
     });
-  return bootstrapRequest;
+  bootstrapRequest = request;
+  return request;
 }
 
 function normalizeAuthUser(user: AuthUser): AuthUser {
@@ -211,7 +236,7 @@ function normalizeAuthUser(user: AuthUser): AuthUser {
 
 function broadcastAuthChange(kind: "login" | "logout") {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(authSyncKey, `${kind}:${Date.now()}:${Math.random()}`);
+  writeBrowserStorage(authSyncKey, `${kind}:${Date.now()}:${Math.random()}`);
 }
 
 function tokenExpiresAt(token: string): number | null {

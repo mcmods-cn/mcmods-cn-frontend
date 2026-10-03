@@ -195,7 +195,7 @@ function OpenMinecraftLanguagePickerDialog({
               type="button"
               onClick={() => toggle(language.code)}
             >
-              <span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center border text-xs font-black ${multiple ? "rounded" : "rounded-full"} ${active ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)]"}`}>{active ? "✓" : ""}</span>
+              <span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center border text-xs font-black ${multiple ? "rounded" : "rounded-full"} ${active ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]" : "border-[var(--line)]"}`}>{active ? "✓" : ""}</span>
               <span className="min-w-0 font-bold">{language.label}</span>
             </button>;
           })}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { hasPermission, useAuthSnapshot } from "../../_lib/auth";
 import { loadContentLanguageSettings } from "../../_lib/content-language-api";
 import {
@@ -12,7 +12,13 @@ import type { LocalizedContentFields, LocalizationVersion, ResolvedContentDocume
 import { useI18n } from "../../_lib/i18n-provider";
 import { LocalizationStatusBadge } from "./localization-status-badge";
 
-export function ContentTranslationControl({
+export function ContentTranslationControl(props: Parameters<typeof ContentTranslationSession>[0]) {
+  const { locale } = useI18n();
+  const { token, user } = useAuthSnapshot();
+  return <ContentTranslationSession key={`${user?.id || "guest"}:${token || "guest"}:${locale}:${props.publicId}`} {...props} />;
+}
+
+function ContentTranslationSession({
   publicId,
   compact = false,
   onResolved,
@@ -28,6 +34,9 @@ export function ContentTranslationControl({
   const [pendingTaskId, setPendingTaskId] = useState<string>();
   const [requesting, setRequesting] = useState(false);
   const [pollAttempt, setPollAttempt] = useState(0);
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const pollDeadline = useRef<number | undefined>(undefined);
+  const requestInFlight = useRef(false);
   const [error, setError] = useState("");
   const primaryLocale = token && languageSettings?.token === token ? languageSettings.primaryLocale : locale;
   const secondaryLocale = token && languageSettings?.token === token ? languageSettings.secondaryLocale : "";
@@ -51,6 +60,7 @@ export function ContentTranslationControl({
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     const next = await loadResolvedContent(publicId, primaryLocale, secondaryLocale, token, signal);
+    if (signal?.aborted) return next;
     setDocument(next);
     setPendingTaskId(translationInProgress(next.translation.status) ? next.translation.taskId : undefined);
     setError("");
@@ -60,11 +70,12 @@ export function ContentTranslationControl({
   useEffect(() => {
     const controller = new AbortController();
     loadResolvedContent(publicId, primaryLocale, secondaryLocale, token, controller.signal).then((next) => {
+      if (controller.signal.aborted) return;
       setDocument(next);
       setPendingTaskId(translationInProgress(next.translation.status) ? next.translation.taskId : undefined);
       setError("");
     }).catch((reason: unknown) => {
-      if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
+      if (!controller.signal.aborted && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
     });
     return () => controller.abort();
   }, [primaryLocale, publicId, secondaryLocale, token]);
@@ -79,12 +90,19 @@ export function ContentTranslationControl({
   // treated as runnable work or polled forever.
   const shouldPoll = translationInProgress(activeStatus) || Boolean(pendingTaskId);
   useEffect(() => {
-    if (!shouldPoll) return;
+    if (!shouldPoll || pollTimedOut) return;
+    pollDeadline.current ??= Date.now() + 90_000;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
+      if (Date.now() >= (pollDeadline.current ?? 0)) {
+        setPollTimedOut(true);
+        setError(t("contentTranslation.pollTimedOut"));
+        return;
+      }
       try {
         if (pendingTaskId && token) {
           const task = await loadContentTranslationTask(pendingTaskId, token, controller.signal);
+          if (controller.signal.aborted) return;
           if (task.status === "failed") {
             setPendingTaskId(undefined);
             setError(task.error || t("contentTranslation.failed"));
@@ -101,18 +119,37 @@ export function ContentTranslationControl({
           setPendingTaskId(undefined);
         }
         const next = await refresh(controller.signal);
+        if (controller.signal.aborted) return;
         if (translationInProgress(next.translation.status)) {
           setPollAttempt((current) => current + 1);
         }
       } catch (reason) {
-        if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
+        if (!controller.signal.aborted && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
       }
     }, 1800);
     return () => { window.clearTimeout(timer); controller.abort(); };
-  }, [pendingTaskId, pollAttempt, refresh, shouldPoll, t, token]);
+  }, [pendingTaskId, pollAttempt, pollTimedOut, refresh, shouldPoll, t, token]);
+
+  async function refreshStatus() {
+    if (requesting || requestInFlight.current) return;
+    requestInFlight.current = true;
+    setRequesting(true);
+    try {
+      await refresh();
+      pollDeadline.current = Date.now() + 90_000;
+      setPollTimedOut(false);
+      setPollAttempt((current) => current + 1);
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      requestInFlight.current = false;
+      setRequesting(false);
+    }
+  }
 
   async function translate() {
-    if (!document || !token || !user) return;
+    if (!document || !token || !user || requesting || requestInFlight.current || !hasPermission(user, "content.translate")) return;
+    requestInFlight.current = true;
     setRequesting(true);
     setError("");
     try {
@@ -126,11 +163,14 @@ export function ContentTranslationControl({
         },
         token,
       );
+      pollDeadline.current = Date.now() + 90_000;
+      setPollTimedOut(false);
       setPendingTaskId(result.taskId && translationInProgress(result.status) ? result.taskId : undefined);
       await refresh();
     } catch (reason) {
       setError(errorText(reason));
     } finally {
+      requestInFlight.current = false;
       setRequesting(false);
     }
   }
@@ -166,7 +206,7 @@ export function ContentTranslationControl({
       </button>
     </div> : null}
     {!requestedEditable && document ? <p className="mt-2 text-[11px] text-[var(--muted)]">{t("contentTranslation.readOnly", { locale: document.requestedLocale })}</p> : null}
-    {error ? <p className="mt-2 text-xs font-bold text-[var(--red)]" role="alert">{error}</p> : null}
+    {error ? <div className="mt-2 flex flex-wrap items-center gap-2"><p className="text-xs font-bold text-[var(--red)]" role="alert">{error}</p><button className="button-secondary focus-ring px-3 py-1.5 text-xs" type="button" disabled={requesting} onClick={() => void refreshStatus()}>{t("contentTranslation.refreshStatus")}</button></div> : null}
   </aside>;
 }
 

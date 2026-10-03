@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   createFavoriteModpackExport,
   downloadFavoriteModpackExport,
@@ -16,6 +16,7 @@ import {
 } from "../_lib/favorite-api";
 import { ApiError } from "../_lib/api";
 import { formatBytes } from "../_lib/oss-upload";
+import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 
@@ -26,7 +27,12 @@ type Props = {
   initialTaskId?: string;
 };
 
-export function FavoriteModpackExport({ token, collectionId, collectionName, initialTaskId = "" }: Props) {
+export function FavoriteModpackExport(props: Props) {
+  const { user } = useAuthSnapshot();
+  return <FavoriteModpackExportSession key={`${user?.id || "guest"}:${props.token}:${props.collectionId}`} {...props} />;
+}
+
+function FavoriteModpackExportSession({ token, collectionId, collectionName, initialTaskId = "" }: Props) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [activeCollectionId, setActiveCollectionId] = useState(collectionId);
@@ -42,6 +48,15 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const downloadedTask = useRef("");
+  const mutationInFlight = useRef(false);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    if (!open) return;
+    const node = dialog.current;
+    node?.showModal();
+    return () => node?.close();
+  }, [open]);
 
   useEffect(() => {
     if (!initialTaskId) return;
@@ -69,7 +84,8 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
   const selectedVersion = minecraftVersions[0] ?? "";
 
   async function inspect() {
-    if (!selectedVersion) return;
+    if (!selectedVersion || busy || mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     setDetail(null);
@@ -78,12 +94,14 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("favorites.modpackExport.preflightFailed"));
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
 
   async function createExport() {
-    if (!preview) return;
+    if (!preview || busy || mutationInFlight.current || preview.minecraftVersion !== selectedVersion || preview.loader !== loader) return;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -92,11 +110,14 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("favorites.modpackExport.createFailed"));
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
 
   async function showExportHistory() {
+    if (busy || mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     setDetail(null);
@@ -109,12 +130,14 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
 
   async function loadMoreHistory() {
-    if (!historyHasMore || !historyCursor) return;
+    if (!historyHasMore || !historyCursor || busy || mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -128,12 +151,15 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
 
   async function changeHistoryStatus(status: FavoriteModpackExportStatus) {
+    if (busy || mutationInFlight.current) return;
     setHistoryStatus(status);
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -147,11 +173,14 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
       setHistoryHasMore(false);
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
 
   async function openHistoryTask(task: FavoriteModpackExportTask) {
+    if (busy || mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -160,12 +189,15 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
 
   async function rebuildFromHistory(source: "current_collection" | "original_snapshot") {
+    if (busy || mutationInFlight.current) return;
     if (!detail) return;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -179,19 +211,23 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
 
+  const polledTaskID = detail?.task.id;
+  const polledTaskStatus = detail?.task.status;
   useEffect(() => {
-    const task = detail?.task;
-    if (!open || !task || !["pending", "processing"].includes(task.status)) return;
+    if (!open || !polledTaskID || !["pending", "processing"].includes(polledTaskStatus || "")) return;
     let cancelled = false;
     let timer = 0;
     const refresh = async () => {
       try {
-        const next = await loadFavoriteModpackExport(token, task.id);
+        const next = await loadFavoriteModpackExport(token, polledTaskID);
         if (!cancelled) setDetail(next);
+      } catch (reason) {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason));
       } finally {
         if (!cancelled) timer = window.setTimeout(refresh, 2500);
       }
@@ -201,7 +237,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [detail?.task, open, token]);
+  }, [polledTaskID, polledTaskStatus, open, token]);
 
   useEffect(() => {
     if (!detail?.downloadAvailable || detail.task.status !== "ready" || downloadedTask.current === detail.task.id) return;
@@ -227,22 +263,17 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
         {t("favorites.modpackExport.open")}
       </button>
       {open ? (
-        <div
-          className="fixed inset-0 z-[120] grid place-items-center bg-black/55 p-3"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.currentTarget === event.target) setOpen(false);
-          }}
+        <dialog
+          ref={dialog}
+          aria-labelledby={titleId}
+          className="surface fixed inset-0 m-auto max-h-[92vh] w-[calc(100%_-_1.5rem)] max-w-5xl overflow-y-auto rounded-xl p-4 backdrop:bg-black/55 md:p-6"
+          onCancel={(event) => { event.preventDefault(); if (!busy) setOpen(false); }}
+          onClick={(event) => { if (event.currentTarget === event.target && !busy) setOpen(false); }}
         >
-          <section
-            aria-labelledby="favorite-export-title"
-            aria-modal="true"
-            className="surface max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-xl p-4 md:p-6"
-            role="dialog"
-          >
+          <fieldset disabled={busy}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-black" id="favorite-export-title">{t("favorites.modpackExport.title")}</h2>
+                <h2 className="text-xl font-black" id={titleId}>{t("favorites.modpackExport.title")}</h2>
                 <p className="mt-1 text-sm text-[var(--muted)]">{collectionName}</p>
               </div>
               <div className="flex gap-2">
@@ -274,8 +305,7 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
                     className="field"
                     value={loader}
                     onChange={(event) => {
-                      setLoader(event.target.value as typeof loader);
-                      setPreview(null);
+                      setPreview(null); setLoader(event.target.value as typeof loader);
                     }}
                   >
                     <option value="neoforge">NeoForge</option>
@@ -319,8 +349,8 @@ export function FavoriteModpackExport({ token, collectionId, collectionName, ini
                 onRebuildOriginal={() => rebuildFromHistory("original_snapshot")}
               />
             ) : null}
-          </section>
-        </div>
+          </fieldset>
+        </dialog>
       ) : null}
     </>
   );
@@ -338,7 +368,7 @@ type ExportHistoryProps = {
 };
 
 function ExportHistory({ busy, hasMore, history, status, onBack, onLoadMore, onSelect, onStatusChange }: ExportHistoryProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const statuses: FavoriteModpackExportStatus[] = ["all", "pending", "processing", "ready", "failed", "expired", "cancelled"];
   return (
     <div className="mt-5 grid gap-3">
@@ -365,7 +395,7 @@ function ExportHistory({ busy, hasMore, history, status, onBack, onLoadMore, onS
         >
           <strong className="block">{task.packName} · {task.packVersion}</strong>
           <span className="mt-1 block text-sm text-[var(--muted)]">
-            Minecraft {task.minecraftVersion} · {task.loader} {task.loaderVersion} · {t(`favorites.modpackExport.status.${task.status}`)} · {new Date(task.createdAt).toLocaleString()}
+            Minecraft {task.minecraftVersion} · {task.loader} {task.loaderVersion} · {t(`favorites.modpackExport.status.${task.status}`)} · {new Date(task.createdAt).toLocaleString(locale)}
           </span>
         </button>
       ))}
@@ -428,13 +458,19 @@ function ExportResult({
   onRebuildCurrent: () => Promise<void>;
   onRebuildOriginal: () => Promise<void>;
 }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
+  const [copyError, setCopyError] = useState("");
   const groups = useMemo(() => ({
     exported: detail.items.filter((item) => item.resultType === "exported"),
     dependencies: detail.items.filter((item) => item.resultType === "auto_dependency"),
     skipped: detail.items.filter((item) => item.resultType === "skipped"),
     failed: detail.items.filter((item) => item.resultType === "failed"),
   }), [detail.items]);
+  async function copyFailed() {
+    setCopyError("");
+    try { await navigator.clipboard.writeText(groups.failed.map(item => item.sourceProjectName).join("\n")); }
+    catch { setCopyError(t("common.copyFailed")); }
+  }
   return (
     <div className="mt-6 grid gap-4">
       <div aria-live="polite" className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
@@ -455,7 +491,7 @@ function ExportResult({
       <div className="rounded-lg border border-[var(--line)] p-3 text-sm text-[var(--muted)]">
         <p><strong>{detail.task.packName}</strong> · {detail.task.packVersion}</p>
         <p>
-          {new Date(detail.task.createdAt).toLocaleString()} {detail.task.expiresAt ? `· ${t("favorites.modpackExport.expiresAt")} ${new Date(detail.task.expiresAt).toLocaleString()}` : ""}
+          {new Date(detail.task.createdAt).toLocaleString(locale)} {detail.task.expiresAt ? `· ${t("favorites.modpackExport.expiresAt")} ${new Date(detail.task.expiresAt).toLocaleString(locale)}` : ""}
         </p>
         {detail.task.resultSha256 ? <p className="break-all font-mono text-xs">SHA-256 {detail.task.resultSha256}</p> : null}
       </div>
@@ -463,12 +499,13 @@ function ExportResult({
       <ExportItemGroup items={groups.dependencies} title={t("favorites.modpackExport.autoDependencies")} />
       <ExportItemGroup items={groups.skipped} title={t("favorites.modpackExport.skippedItems")} />
       <ExportItemGroup items={groups.failed} title={t("favorites.modpackExport.failedItems")} />
+      {copyError ? <p role="alert" className="text-sm font-bold text-[var(--danger)]">{copyError}</p> : null}
       <div className="flex flex-wrap justify-end gap-2">
         {groups.failed.length ? (
           <button
             className="button-secondary focus-ring"
             type="button"
-            onClick={() => void navigator.clipboard.writeText(groups.failed.map((item) => item.sourceProjectName).join("\n"))}
+            onClick={() => void copyFailed()}
           >
             {t("favorites.modpackExport.copyFailed")}
           </button>

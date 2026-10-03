@@ -20,3 +20,13 @@ test("public short links expose retry and cancel obsolete navigation", async () 
   assert.match(source, /setAttempt\(\(current\) => current \+ 1\)/);
   assert.equal(source.includes("if (error instanceof ApiError) setFailed(true)"), false);
 });
+
+test("short links preserve local paths and reject executable or external destinations", async () => {
+  const { resolveSafeShortLinkTarget } = await import("./short-link-state.mts");
+  const origin = "https://mcmods.example";
+  assert.equal(resolveSafeShortLinkTarget("/projects/mod?q=forge#files", origin), "/projects/mod?q=forge#files");
+  assert.equal(resolveSafeShortLinkTarget(`${origin}/projects/mod`, origin), "/projects/mod");
+  for (const candidate of ["javascript:alert(1)", "data:text/html,hi", "//evil.example", "/\\evil.example", "/\n/evil.example", "https://evil.example", "https://user@mcmods.example", "///evil.example", "https://mcmods.example//evil.example", "/%2f%2fevil.example", "/%5cevil.example", " projects/mod", "projects/mod", ""]) {
+    assert.equal(resolveSafeShortLinkTarget(candidate, origin), undefined, candidate);
+  }
+});

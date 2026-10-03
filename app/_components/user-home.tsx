@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { saveAuth, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
@@ -61,6 +61,11 @@ type UserOverview = {
 };
 
 export function UserHome() {
+  const { token, user } = useAuthSnapshot();
+  return <UserHomeSession key={`${user?.id || "guest"}:${token || "guest"}`} />;
+}
+
+function UserHomeSession() {
   const { locale, t } = useI18n();
   const { token, user } = useAuthSnapshot();
   const router = useRouter();
@@ -69,6 +74,13 @@ export function UserHome() {
   const [quota, setQuota] = useState<FileQuota | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [initialErrors, setInitialErrors] = useState<string[]>([]);
+  const [initialLoadAttempt, setInitialLoadAttempt] = useState(0);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [notificationSettingsLoaded, setNotificationSettingsLoaded] = useState(false);
+  const profileInitialized = useRef(false);
+  const notificationInitialized = useRef(false);
+  const initialErrorText = useEffectEvent((reason: unknown) => reason instanceof Error ? reason.message : t("common.loadFailed"));
   const [emailNotifications, setEmailNotifications] = useState(false);
   const [projectUpdateNotifications, setProjectUpdateNotifications] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -91,11 +103,16 @@ export function UserHome() {
     ])
       .then(([notificationResult, profileResult, overviewResult]) => {
         if (cancelled) return;
-        if (notificationResult.status === "fulfilled") {
+        setInitialErrors([notificationResult, profileResult, overviewResult].flatMap((result) => result.status === "rejected" ? [initialErrorText(result.reason)] : []));
+        setInitialLoading(false);
+        if (notificationResult.status === "fulfilled" && !notificationInitialized.current) {
+          notificationInitialized.current = true;
+          setNotificationSettingsLoaded(true);
           setEmailNotifications(notificationResult.value.emailEnabled);
           setProjectUpdateNotifications(notificationResult.value.projectUpdatesEnabled);
         }
-        if (profileResult.status === "fulfilled") {
+        if (profileResult.status === "fulfilled" && !profileInitialized.current) {
+          profileInitialized.current = true;
           setProfile(profileResult.value);
           setUsername(profileResult.value.username);
           setSignature(profileResult.value.signature);
@@ -107,7 +124,7 @@ export function UserHome() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [initialLoadAttempt, token]);
 
   async function updateProfile(payload: Record<string, unknown>) {
     if (!token) return null;
@@ -117,10 +134,10 @@ export function UserHome() {
       token,
     );
     setProfile(nextProfile);
-    setUsername(nextProfile.username);
-    setSignature(nextProfile.signature);
-    setTimezone(nextProfile.timezone);
-    setCardSlots(nextProfile.publicCardStatSlots);
+    if ("username" in payload) setUsername((current) => current === payload.username ? nextProfile.username : current);
+    if ("signature" in payload) setSignature((current) => current === payload.signature ? nextProfile.signature : current);
+    if ("timezone" in payload) setTimezone((current) => current === payload.timezone ? nextProfile.timezone : current);
+    if ("publicCardStatSlots" in payload) setCardSlots((current) => current === payload.publicCardStatSlots ? nextProfile.publicCardStatSlots : current);
     invalidatePublicUserCard(nextProfile.publicId);
     if (user) {
       saveAuth({ token, user: { ...user, username: nextProfile.username, avatarUrl: nextProfile.avatarUrl, signature: nextProfile.signature } });
@@ -301,7 +318,7 @@ export function UserHome() {
   }
 
   async function updateEmailNotifications(enabled: boolean) {
-    if (!token) return;
+    if (!token || savingSettings || !notificationSettingsLoaded) return;
     setSavingSettings(true);
     try {
       const settings = await apiRequest<{ emailEnabled: boolean; projectUpdatesEnabled: boolean }>(
@@ -320,7 +337,7 @@ export function UserHome() {
   }
 
   async function updateProjectNotifications(enabled: boolean) {
-    if (!token) return;
+    if (!token || savingSettings || !notificationSettingsLoaded) return;
     setSavingSettings(true);
     try {
       const settings = await apiRequest<{ emailEnabled: boolean; projectUpdatesEnabled: boolean }>(
@@ -399,9 +416,10 @@ export function UserHome() {
               <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "players" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=players", { scroll: false })}>{t("skins.playerProfiles")}</button>
             </nav>
 
+            {message ? <p role="status" className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}</p> : null}
+            {initialErrors.length ? <div className="rounded-lg border border-[var(--red)] p-3"><p role="alert" className="text-sm text-[var(--red)]">{initialErrors.join(" · ")}</p><button className="button-secondary focus-ring mt-2" disabled={initialLoading} type="button" onClick={() => { setInitialLoading(true); setInitialLoadAttempt((attempt) => attempt + 1); }}>{t("common.retry")}</button></div> : null}
             {activeSection === "overview" && profile ? <UserProfileOverview token={token} userId={profile.publicId} /> : activeSection === "settings" ? <section className="surface rounded-lg p-4">
               <h2 className="text-lg font-bold">{t("user.settings")}</h2>
-              {message ? <p className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}</p> : null}
               {profile ? (
                 <div className="mt-3 grid gap-3">
                   <ContentLanguagePreferences token={token} />
@@ -500,7 +518,7 @@ export function UserHome() {
                 </span>
                 <input
                   checked={emailNotifications}
-                  disabled={savingSettings}
+                  disabled={savingSettings || !notificationSettingsLoaded}
                   type="checkbox"
                   onChange={(event) => void updateEmailNotifications(event.target.checked)}
                 />
@@ -510,7 +528,7 @@ export function UserHome() {
                   <span className="block font-semibold">{t("user.projectUpdateNotifications")}</span>
                   <span className="mt-1 block text-sm text-[var(--muted)]">{t("user.projectUpdateNotificationsDescription")}</span>
                 </span>
-                <input checked={projectUpdateNotifications} disabled={savingSettings} type="checkbox" onChange={(event) => void updateProjectNotifications(event.target.checked)} />
+                <input checked={projectUpdateNotifications} disabled={savingSettings || !notificationSettingsLoaded} type="checkbox" onChange={(event) => void updateProjectNotifications(event.target.checked)} />
               </label>
             </section> : activeSection === "statistics" ? <UserStatisticsPanel token={token} /> : activeSection === "drafts" ? <UserDraftsPanel token={token} /> : activeSection === "favorites" ? <FavoriteCollectionsPanel token={token} /> : activeSection === "project-follows" ? <ProjectFollowsPanel token={token} /> : null}
 
@@ -558,7 +576,7 @@ export function UserHome() {
                               </div>
                             ) : formatBytes(file.sizeBytes)}
                           </td>
-                          <td className="border-b border-[var(--line)] py-2">{file.createdAt ? new Date(file.createdAt).toLocaleString() : "-"}</td>
+                          <td className="border-b border-[var(--line)] py-2">{file.createdAt ? new Date(file.createdAt).toLocaleString(locale) : "-"}</td>
                           <td className="border-b border-[var(--line)] py-2">
                             <button className="button-secondary focus-ring" type="button" onClick={() => void downloadFile(file)}>
                               {t("user.download")}
@@ -611,9 +629,13 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
   const [name, setName] = useState("");
   const [newCollectionPublic, setNewCollectionPublic] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [savingCollection, setSavingCollection] = useState(false);
   const [message, setMessage] = useState("");
   const currentCollectionCursor = favoriteCollectionCursorHistory.at(-1) ?? "";
   const currentItemCursor = favoriteItemCursorHistory.at(-1) ?? "";
+  const showLoadError = useEffectEvent((error: unknown) => {
+    setMessage(error instanceof Error ? error.message : t("favorites.loadFailed"));
+  });
 
   const refreshCollections = useCallback(async () => {
     setLoading(true);
@@ -623,6 +645,7 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
       const next = await loadFavoriteCollections(token, currentCollectionCursor);
       setCollections(next.items);
       setCollectionPage(next);
+      setMessage("");
       setSelectedId((current) => current && next.items.some((item) => item.id === current) ? current : next.items[0]?.id ?? null);
       setFavoriteItemCursorHistory([]);
     } catch (error) {
@@ -646,17 +669,18 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
         if (cancelled) return;
         setCollections(next.items);
         setCollectionPage(next);
-        setSelectedId(next.items[0]?.id ?? null);
+        setSelectedId((current) => current && next.items.some((item) => item.id === current) ? current : next.items[0]?.id ?? null);
+        setMessage("");
         setFavoriteItemCursorHistory([]);
       })
       .catch((error) => {
-        if (!cancelled) setMessage(error instanceof Error ? error.message : t("favorites.loadFailed"));
+        if (!cancelled) showLoadError(error);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [currentCollectionCursor, t, token]);
+  }, [currentCollectionCursor, token]);
   useEffect(() => {
     if (!selectedId) {
       queueMicrotask(() => {
@@ -674,13 +698,15 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
     });
     loadFavoriteItems(token, selectedId, currentItemCursor)
       .then((result) => { if (!cancelled) { setItems(result.items); setItemPage(result); } })
-      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("favorites.loadFailed")); });
+      .catch((error) => { if (!cancelled) showLoadError(error); });
     return () => { cancelled = true; };
-  }, [currentItemCursor, selectedId, t, token]);
+  }, [currentItemCursor, selectedId, token]);
 
   async function createCollection() {
     const nextName = name.trim();
-    if (!nextName) return;
+    if (!nextName || savingCollection) return;
+    setSavingCollection(true);
+    setMessage("");
     try {
       await createFavoriteCollection(token, nextName, newCollectionPublic);
       await refreshCollections();
@@ -688,25 +714,36 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
       setNewCollectionPublic(false);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("favorites.createFailed"));
+    } finally {
+      setSavingCollection(false);
     }
   }
 
   async function removeCollection(collection: FavoriteCollection) {
-    if (collection.isDefault || !window.confirm(t("favorites.deleteConfirm", { name: collection.name }))) return;
+    if (savingCollection || collection.isDefault || !window.confirm(t("favorites.deleteConfirm", { name: collection.name }))) return;
+    setSavingCollection(true);
+    setMessage("");
     try {
       await deleteFavoriteCollection(token, collection.id);
       await refreshCollections();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("favorites.deleteFailed"));
+    } finally {
+      setSavingCollection(false);
     }
   }
 
   async function toggleCollectionVisibility(collection: FavoriteCollection) {
+    if (savingCollection) return;
+    setSavingCollection(true);
+    setMessage("");
     try {
       const updated = await updateFavoriteCollection(token, collection.id, { isPublic: !collection.isPublic });
       setCollections((current) => current.map((item) => item.id === updated.id ? updated : item));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("favorites.saveFailed"));
+    } finally {
+      setSavingCollection(false);
     }
   }
 
@@ -721,6 +758,8 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
           <input
             className="field min-w-48"
+            aria-label={t("favorites.newFolderName")}
+            disabled={savingCollection}
             placeholder={t("favorites.newFolderName")}
             value={name}
             onChange={(event) => setName(event.target.value)}
@@ -732,15 +771,15 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
             }}
           />
           <label className="flex items-center gap-2 whitespace-nowrap text-sm font-bold">
-            <input checked={newCollectionPublic} type="checkbox" onChange={(event) => setNewCollectionPublic(event.target.checked)} />
+            <input checked={newCollectionPublic} disabled={savingCollection} type="checkbox" onChange={(event) => setNewCollectionPublic(event.target.checked)} />
             {t("favorites.public")}
           </label>
-          <button className="button-primary focus-ring" disabled={!name.trim()} type="button" onClick={() => void createCollection()}>
+          <button className="button-primary focus-ring" disabled={savingCollection || loading || !name.trim()} type="button" onClick={() => void createCollection()}>
             {t("favorites.createFolder")}
           </button>
         </div>
       </div>
-      {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">{message}</p> : null}
+      {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm" role="status">{message}</p> : null}
       <div className="mt-5 grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
         <aside className="grid content-start gap-2">
           {loading ? <p className="p-3 font-bold text-[var(--muted)]">{t("common.loading")}</p> : collections.map((collection) => (
@@ -749,10 +788,10 @@ function FavoriteCollectionsPanel({ token }: { token: string }) {
                 <span className="block truncate font-bold">{collection.isDefault ? t("favorites.defaultFolder") : collection.name}</span>
                 <span className="text-xs text-[var(--muted)]">{collection.isPublic ? t("favorites.public") : t("favorites.private")}</span>
               </button>
-              <button className="focus-ring rounded p-2 text-xs font-bold text-[var(--accent)]" title={t("favorites.changeVisibility")} type="button" onClick={() => void toggleCollectionVisibility(collection)}>
+              <button className="focus-ring rounded p-2 text-xs font-bold text-[var(--accent)]" disabled={savingCollection} title={t("favorites.changeVisibility")} type="button" onClick={() => void toggleCollectionVisibility(collection)}>
                 {collection.isPublic ? t("favorites.makePrivate") : t("favorites.makePublic")}
               </button>
-              {!collection.isDefault ? <button className="focus-ring mr-2 rounded p-2 text-sm text-red-600" title={t("common.delete")} type="button" onClick={() => void removeCollection(collection)}>×</button> : null}
+              {!collection.isDefault ? <button className="focus-ring mr-2 rounded p-2 text-sm text-red-600" aria-label={t("common.delete")} disabled={savingCollection} title={t("common.delete")} type="button" onClick={() => void removeCollection(collection)}>×</button> : null}
             </div>
           ))}
           {collectionPage && (favoriteCollectionCursorHistory.length > 0 || collectionPage.hasMore) ? <div className="mt-2 flex items-center justify-between gap-2"><button className="button-secondary focus-ring" disabled={loading || favoriteCollectionCursorHistory.length === 0} type="button" onClick={() => setFavoriteCollectionCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-xs font-bold text-[var(--muted)]">{t("favorites.page", { page: favoriteCollectionCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={loading || !collectionPage.hasMore || !collectionPage.nextCursor} type="button" onClick={() => setFavoriteCollectionCursorHistory((history) => [...history, collectionPage.nextCursor])}>{t("common.next")}</button></div> : null}

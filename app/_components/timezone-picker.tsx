@@ -110,7 +110,7 @@ function OpenTimezonePickerDialog({
           {filteredOptions.map((option) => {
             const active = option.timezone === selected;
             return <button aria-pressed={active} className={`focus-ring flex min-h-16 items-center gap-3 rounded-lg border px-3 py-2 text-left ${active ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--line)] hover:border-[var(--accent)]"}`} key={option.timezone} type="button" onClick={() => setSelected(option.timezone)}>
-              <span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border text-xs font-black ${active ? "border-[var(--accent)] bg-[var(--accent)] text-white" : "border-[var(--line)]"}`}>{active ? "✓" : ""}</span>
+              <span aria-hidden="true" className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border text-xs font-black ${active ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]" : "border-[var(--line)]"}`}>{active ? "✓" : ""}</span>
               <span className="min-w-0">
                 <strong className="block truncate">{option.name}</strong>
                 <small className="mt-0.5 block truncate text-[var(--muted)]">{option.offset} · {option.timezone}</small>

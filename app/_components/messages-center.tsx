@@ -80,6 +80,11 @@ const emptyConversationPage = (): ConversationPage => ({ items: [], limit: 30, h
 const emptyDirectMessagePage = (): DirectMessagePage => ({ items: [], limit: 100, hasMore: false, nextCursor: "" });
 
 export function MessagesCenter() {
+  const { token, user } = useAuthSnapshot();
+  return <MessagesCenterSession key={`${user?.id || "guest"}:${token || "guest"}`} />;
+}
+
+function MessagesCenterSession() {
   const { t, locale } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const router = useRouter();
@@ -94,6 +99,8 @@ export function MessagesCenter() {
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [messageHistory, setMessageHistory] = useState<DirectMessagePage>(emptyDirectMessagePage);
   const [messageDraft, setMessageDraft] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const sendingMessageRef = useRef(false);
   const [translations, setTranslations] = useState<Record<string, Translation>>({});
   const [translatingID, setTranslatingID] = useState<string | null>(null);
   const [markingAllRead, setMarkingAllRead] = useState(false);
@@ -111,6 +118,10 @@ export function MessagesCenter() {
   const [loadingMoreNotifications, setLoadingMoreNotifications] = useState(false);
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+
+  const reportLoadError = useCallback((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+  }, [t]);
 
   const conversations = conversationPage.items;
   const selectedConversation = conversations.find((item) => item.id === selectedConversationID) ?? null;
@@ -326,22 +337,22 @@ export function MessagesCenter() {
     if (!token || !user) return;
     const unsubscribeNotifications = realtimeQueryCoordinator.subscribe(
       realtimeQueryKeys.notifications(user.id, kind),
-      () => { void loadNotifications(); },
+      () => { void loadNotifications().catch(reportLoadError); },
     );
     const unsubscribeConversations = realtimeQueryCoordinator.subscribe(
       realtimeQueryKeys.conversations(user.id),
-      () => { void loadConversations(); },
+      () => { void loadConversations().catch(reportLoadError); },
     );
     const unsubscribeUnread = realtimeQueryCoordinator.subscribe(
       realtimeQueryKeys.unreadSummary(user.id),
-      () => { void loadUnreadNotifications(); },
+      () => { void loadUnreadNotifications().catch(reportLoadError); },
     );
     return () => {
       unsubscribeNotifications();
       unsubscribeConversations();
       unsubscribeUnread();
     };
-  }, [kind, loadConversations, loadNotifications, loadUnreadNotifications, token, user]);
+  }, [kind, loadConversations, loadNotifications, loadUnreadNotifications, reportLoadError, token, user]);
 
   useEffect(() => {
     if (!token || !user || !targetUserID || targetUserID === user.id) return;
@@ -386,12 +397,12 @@ export function MessagesCenter() {
     }, 0);
     const refresh = () => {
       if (document.visibilityState !== "visible") return;
-      void loadMessages(selectedConversationID);
-      void loadConversations();
+      void loadMessages(selectedConversationID).catch(reportLoadError);
+      void loadConversations().catch(reportLoadError);
     };
     const timer = window.setInterval(refresh, 60_000);
     const presence = window.setInterval(() => {
-      if (document.visibilityState === "visible") void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token);
+      if (document.visibilityState === "visible") void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token).catch(reportLoadError);
     }, 20_000);
     const unsubscribeMessages = realtimeQueryCoordinator.subscribe(
       realtimeQueryKeys.messages(user.id, selectedConversationID),
@@ -406,7 +417,7 @@ export function MessagesCenter() {
         });
       },
     );
-    void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token);
+    void apiRequest(`/api/v1/messages/conversations/${selectedConversationID}/presence`, { method: "PUT" }, token).catch(reportLoadError);
     return () => {
       invalidateMessageRequests();
       window.clearTimeout(initialTimer);
@@ -414,7 +425,7 @@ export function MessagesCenter() {
       window.clearInterval(presence);
       unsubscribeMessages();
     };
-  }, [invalidateMessageRequests, loadConversations, loadMessages, selectedConversationID, t, token, user]);
+  }, [invalidateMessageRequests, loadConversations, loadMessages, reportLoadError, selectedConversationID, t, token, user]);
 
   async function markRead(item: NotificationItem) {
     if (!token || !user || item.read) return;
@@ -468,7 +479,7 @@ export function MessagesCenter() {
       if (!started.cached && started.taskId) {
         translation = await waitForTranslation(started.taskId, token);
       }
-      if (translation) setTranslations((current) => ({ ...current, [item.id]: translation! }));
+      if (translation) setTranslations((current) => ({ ...current, [`${locale}:${item.id}`]: translation! }));
     } catch (error) {
       translationFailed = true;
       setStatus(error instanceof Error ? error.message : t("messages.translationFailed"));
@@ -486,22 +497,28 @@ export function MessagesCenter() {
 
   async function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!token || !user || !selectedConversationID || !selectedConversation?.canMessage || !messageDraft.trim()) return;
+    if (sendingMessageRef.current || !token || !user || !selectedConversationID || !selectedConversation?.canMessage || !messageDraft.trim()) return;
     const conversationID = selectedConversationID;
+    const submittedBody = messageDraft;
+    sendingMessageRef.current = true;
+    setSendingMessage(true);
     try {
       const result = await apiRequest<{ message: DirectMessage }>(
         `/api/v1/messages/conversations/${conversationID}`,
-        { method: "POST", body: JSON.stringify({ body: messageDraft }) },
+        { method: "POST", body: JSON.stringify({ body: submittedBody }) },
         token,
       );
       if (selectedConversationIDRef.current !== conversationID) return;
-      setMessages((current) => [...current, result.message]);
+      setMessages((current) => current.some((item) => item.id === result.message.id) ? current : [...current, result.message]);
       lastMessageIDRef.current = result.message.id;
-      setMessageDraft("");
+      setMessageDraft((current) => current === submittedBody ? "" : current);
       realtimeQueryCoordinator.invalidate(realtimeQueryKeys.conversations(user.id));
       await loadConversations();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("messages.sendFailed"));
+    } finally {
+      sendingMessageRef.current = false;
+      setSendingMessage(false);
     }
   }
 
@@ -528,7 +545,7 @@ export function MessagesCenter() {
             <aside className="surface h-fit p-3">
               <nav className="grid gap-1">
                 {notificationKinds.map((item) => (
-                  <button key={item} className={`focus-ring rounded-md px-3 py-3 text-left text-sm font-bold ${kind === item ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => { notificationRequestVersionRef.current++; setNotifications(emptyNotificationPage()); setTranslations({}); setKind(item); }}>
+                  <button key={item} className={`focus-ring rounded-md px-3 py-3 text-left text-sm font-bold ${kind === item ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => { notificationRequestVersionRef.current++; setNotifications(emptyNotificationPage()); setTranslations({}); setKind(item); }}>
                     {t(`messages.kinds.${item}`)}
                   </button>
                 ))}
@@ -542,7 +559,7 @@ export function MessagesCenter() {
                 </button>
               </div>
               {notifications.items.map((item) => {
-                const translated = translations[item.id];
+                const translated = translations[`${locale}:${item.id}`];
                 const target = notificationTarget(item, t("messages.openRelatedContent"));
                 const title = translated?.title || item.title;
                 const body = translated?.body || item.body;
@@ -604,7 +621,7 @@ export function MessagesCenter() {
                   <button key={item.id} className={`focus-ring flex w-full items-start gap-3 border-b border-[var(--line)] p-4 text-left ${selectedConversationID === item.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => selectConversation(item.id)}>
                     <UserAvatar avatarUrl={item.avatarUrl} onlineStatus={item.onlineStatus} size={40} username={item.username} />
                     <span className="min-w-0 flex-1">
-<span className="flex items-center justify-between gap-2"><strong className="truncate">{item.username}</strong>{item.unreadCount > 0 ? <b className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-white">{item.unreadCount}</b> : null}</span>
+<span className="flex items-center justify-between gap-2"><strong className="truncate">{item.username}</strong>{item.unreadCount > 0 ? <b className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-xs text-[var(--on-accent)]">{item.unreadCount}</b> : null}</span>
                       <span className="mt-1 block truncate text-xs text-[var(--muted)]">{item.lastMessage || t("messages.noMessages")}</span>
                     </span>
                   </button>
@@ -625,7 +642,7 @@ export function MessagesCenter() {
                   {selectedConversation.canMessage ? (
                     <form className="flex gap-3 border-t border-[var(--line)] p-4" onSubmit={sendMessage}>
                       <textarea className="field min-h-16 flex-1 resize-none" maxLength={4000} value={messageDraft} placeholder={t("messages.messagePlaceholder")} onChange={(event) => setMessageDraft(event.target.value)} />
-                      <button className="button-primary focus-ring self-end" type="submit">{t("messages.send")}</button>
+                      <button className="button-primary focus-ring self-end" disabled={sendingMessage} type="submit">{t("messages.send")}</button>
                     </form>
                   ) : <p className="border-t border-[var(--line)] p-4 text-sm text-[var(--muted)]">{t("messages.blockedConversation")}</p>}
                 </>
@@ -681,15 +698,15 @@ function notificationDataText(data: Record<string, unknown>, key: string) {
 }
 
 function ModeButton({ active, children, onClick }: { active: boolean; children: React.ReactNode; onClick: () => void }) {
-  return <button className={`focus-ring rounded-md px-4 py-2 text-sm font-bold ${active ? "bg-[var(--accent)] text-white" : "text-[var(--muted)]"}`} type="button" onClick={onClick}>{children}</button>;
+  return <button className={`focus-ring rounded-md px-4 py-2 text-sm font-bold ${active ? "bg-[var(--accent)] text-[var(--on-accent)]" : "text-[var(--muted)]"}`} type="button" onClick={onClick}>{children}</button>;
 }
 
 function MessageBubble({ item, own }: { item: DirectMessage; own: boolean }) {
   return (
     <div className={`flex ${own ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[75%] rounded-lg px-4 py-3 text-sm leading-6 ${own ? "bg-[var(--accent)] text-white" : "border border-[var(--line)] bg-[var(--panel)]"}`}>
+      <div className={`max-w-[75%] rounded-lg px-4 py-3 text-sm leading-6 ${own ? "bg-[var(--accent)] text-[var(--on-accent)]" : "border border-[var(--line)] bg-[var(--panel)]"}`}>
         <p className="whitespace-pre-wrap break-words">{item.body}</p>
-        <time className={`mt-1 block text-right text-[11px] ${own ? "text-white/75" : "text-[var(--muted)]"}`}>{new Date(item.createdAt).toLocaleTimeString()}</time>
+        <time className={`mt-1 block text-right text-[11px] ${own ? "text-[var(--on-accent)]" : "text-[var(--muted)]"}`}>{new Date(item.createdAt).toLocaleTimeString()}</time>
       </div>
     </div>
   );

@@ -11,7 +11,8 @@
   --panel-subtle: #eef2f1;
   --line: #d9dfdc;
   --muted: #68756f;
-  --accent: #2f8d68;
+  --accent: #2b805f;
+  --on-accent: #ffffff;
   --accent-strong: #1e6f52;
   --accent-soft: #e4f3ec;
   --blue: #2d6ea3;
@@ -42,6 +43,7 @@
   --line: #2f3a36;
   --muted: #9ca8a2;
   --accent: #66bf94;
+  --on-accent: #101413;
   --accent-strong: #8fd8b2;
   --accent-soft: #1d382d;
   --blue: #79aee0;
@@ -122,7 +124,7 @@ a {
 .button-primary {
   border-radius: 8px;
   background: var(--accent);
-  color: white;
+  color: var(--on-accent);
   font-weight: 650;
   padding: 0.75rem 1rem;
   transition: background 160ms ease, transform 160ms ease;

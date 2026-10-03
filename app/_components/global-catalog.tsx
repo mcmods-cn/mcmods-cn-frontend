@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useEffectEvent, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { loadCatalogTagForEditing } from "../_lib/catalog-editor-api";
 import { resolveAvailableLocalization } from "../_lib/content-language";
@@ -41,32 +41,46 @@ import { useRotatingValue } from "./rotating-resource";
 const pageSize = 24;
 
 export function ModTagCatalog() {
+  const { token, user } = useAuthSnapshot();
+  const { locale } = useI18n();
+  const scope = `${user?.id || "guest"}:${token || "guest"}`;
 	const searchParams = useSearchParams();
 	const editor = searchParams.get("editor") || "";
 	const publicId = searchParams.get("publicId") || "";
 	if (editor === "create") return <CatalogTagEditor mode="create" />;
 	if (editor === "edit" && publicId) return <CatalogTagEditor mode="edit" publicId={publicId} />;
-	if (publicId) return <CanonicalTagDetail publicId={publicId} />;
-	return <ModTagList />;
+	if (publicId) return <CanonicalTagDetail key={`${scope}:${publicId}:${locale}`} publicId={publicId} />;
+  const canonicalId = searchParams.get("tagId") || "";
+  if (canonicalId) return <ResolveCanonicalCatalogRoute key={`${scope}:tag:${canonicalId}:${searchParams.get("registry") || "minecraft:item"}`} kind="tag" canonicalId={canonicalId} registry={searchParams.get("registry") || "minecraft:item"} />;
+	return <ModTagList key={`${scope}:${searchParams.get("q") || ""}`} />;
 }
 
 function ModTagList() {
   const { locale, t } = useI18n();
-  const { token, user } = useAuthSnapshot();
+  const { ready, token, user } = useAuthSnapshot();
   const router = useRouter();
   const searchParams = useSearchParams();
   const page = positivePage(searchParams.get("page"));
+  const queryString = searchParams.toString();
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [result, setResult] = useState<{ items: GlobalTag[]; total: number }>({ items: [], total: 0 });
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (!ready) return;
     let cancelled = false;
-    const params = new URLSearchParams({ q: searchParams.get("q") || "", limit: String(pageSize), offset: String((page - 1) * pageSize) });
-    loadGlobalTags(params, token).then((value) => { if (!cancelled) { setResult(value); setError(""); } })
+    const currentQuery = new URLSearchParams(queryString);
+    const params = new URLSearchParams({ q: currentQuery.get("q") || "", limit: String(pageSize), offset: String((page - 1) * pageSize) });
+    loadGlobalTags(params, token).then((value) => { if (!cancelled) { setResult(value); setError("");
+      const lastPage = Math.max(1, Math.ceil(value.total / pageSize));
+      if (page > lastPage) {
+        const next = new URLSearchParams(queryString);
+        if (lastPage === 1) next.delete("page"); else next.set("page", String(lastPage));
+        router.replace(`${location.pathname}${next.size ? `?${next}` : ""}`, { scroll: false });
+      } } })
       .catch((reason) => { if (!cancelled) setError(errorText(reason)); });
     return () => { cancelled = true; };
-  }, [page, searchParams, token]);
+  }, [page, queryString, ready, router, token]);
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -94,19 +108,90 @@ function TagCard({ tag, locale }: { tag: GlobalTag; locale: string }) {
 }
 
 export function RecipeTypeCatalog() {
+  const { token, user } = useAuthSnapshot();
+  const { locale } = useI18n();
+  const scope = `${user?.id || "guest"}:${token || "guest"}`;
 	const searchParams = useSearchParams();
 	const editor = searchParams.get("editor") || "";
 	const publicId = searchParams.get("publicId") || "";
 	const templatePublicId = searchParams.get("templatePublicId") || "";
 	const recipePublicId = searchParams.get("recipePublicId") || "";
-	if (editor === "template-create" && publicId) return <CatalogRecipeTemplateEditorRoute recipeTypePublicId={publicId} />;
-	if (editor === "template-edit" && publicId && templatePublicId) return <CatalogRecipeTemplateEditorRoute recipeTypePublicId={publicId} templatePublicId={templatePublicId} />;
-	if (editor === "recipe-create" && publicId) return <CatalogRecipeEditorRoute recipeTypePublicId={publicId} />;
-	if (editor === "recipe-edit" && publicId && recipePublicId) return <CatalogRecipeEditorRoute recipePublicId={recipePublicId} recipeTypePublicId={publicId} />;
+	if (editor === "template-create" && publicId) return <CatalogRecipeTemplateEditorRoute key={`${scope}:${publicId}:create`} recipeTypePublicId={publicId} />;
+	if (editor === "template-edit" && publicId && templatePublicId) return <CatalogRecipeTemplateEditorRoute key={`${scope}:${publicId}:${templatePublicId}`} recipeTypePublicId={publicId} templatePublicId={templatePublicId} />;
+	if (editor === "recipe-create" && publicId) return <CatalogRecipeEditorRoute key={`${scope}:${publicId}:create`} recipeTypePublicId={publicId} />;
+	if (editor === "recipe-edit" && publicId && recipePublicId) return <CatalogRecipeEditorRoute key={`${scope}:${publicId}:${recipePublicId}`} recipePublicId={recipePublicId} recipeTypePublicId={publicId} />;
+  if (editor === "recipe-edit" && recipePublicId) return <ResolveRecipeEditorRoute key={`${scope}:${recipePublicId}`} recipePublicId={recipePublicId} />;
 	if (editor === "create") return <CatalogRecipeTypeEditor mode="create" />;
 	if (editor === "edit" && publicId) return <CatalogRecipeTypeEditor mode="edit" publicId={publicId} />;
-	if (publicId) return <RecipeTypeDetail publicId={publicId} key={publicId} />;
-	return <RecipeTypeList />;
+	if (publicId) return <RecipeTypeDetail publicId={publicId} key={`${scope}:${publicId}:${locale}`} />;
+  const canonicalId = searchParams.get("id") || "";
+  if (canonicalId) return <ResolveCanonicalCatalogRoute key={`${scope}:recipe-type:${canonicalId}`} kind="recipe-type" canonicalId={canonicalId} />;
+	return <RecipeTypeList key={`${scope}:${searchParams.get("q") || ""}`} />;
+}
+
+// Exported data retains canonical Minecraft identifiers. Resolve them through
+// exact, visibility-filtered server queries before navigating to public IDs.
+function ResolveCanonicalCatalogRoute({ kind, canonicalId, registry = "" }: { kind: "tag" | "recipe-type"; canonicalId: string; registry?: string }) {
+  const { ready, token } = useAuthSnapshot();
+  const { t } = useI18n();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const query = searchParams.toString();
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const failedMessage = useEffectEvent(() => t("catalogEditor.loadFailed"));
+  useEffect(() => {
+    if (!ready) return;
+    const controller = new AbortController();
+    const exact = new URLSearchParams({ canonicalId, limit: "2", offset: "0" });
+    if (kind === "tag") exact.set("registry", registry);
+    const request = kind === "tag"
+      ? loadGlobalTags(exact, token, controller.signal)
+      : loadGlobalRecipeTypes(exact, token, controller.signal);
+    request.then(page => {
+      if (controller.signal.aborted) return;
+      const matches = page.items.filter(item => item.canonicalId === canonicalId && (kind !== "tag" || "registry" in item && item.registry === registry));
+      if (page.total !== 1 || matches.length !== 1 || !matches[0].publicId) throw new Error(failedMessage());
+      const next = new URLSearchParams(query);
+      next.set("publicId", matches[0].publicId);
+      next.delete(kind === "tag" ? "tagId" : "id");
+      if (kind === "tag") next.delete("registry");
+      next.delete("page");
+      router.replace(`${kind === "tag" ? "/mods-tag" : "/recipe-types"}?${next}`, { scroll: false });
+    }).catch(reason => { if (!controller.signal.aborted) setError(errorText(reason)); });
+    return () => controller.abort();
+  }, [attempt, canonicalId, kind, query, ready, registry, router, token]);
+  return <CatalogFrame active={kind === "tag" ? "tags" : "recipes"} description={canonicalId} title={t(kind === "tag" ? "globalCatalog.tags.title" : "globalCatalog.recipeTypes.title")}>
+    {error ? <><ErrorBox text={error} /><button className="button-secondary focus-ring mt-3" type="button" onClick={() => { setError(""); setAttempt(value => value + 1); }}>{t("common.retry")}</button></> : <Loading />}
+  </CatalogFrame>;
+}
+
+// Imported recipe cards identify the recipe itself. Resolve its authoritative
+// type ID instead of treating a Minecraft canonical identifier as a public ID.
+function ResolveRecipeEditorRoute({ recipePublicId }: { recipePublicId: string }) {
+  const { ready, token, user } = useAuthSnapshot();
+  const { t } = useI18n();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const query = searchParams.toString();
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!ready || !user || !token) return;
+    const controller = new AbortController();
+    loadRecipe(recipePublicId, token, controller.signal).then((recipe) => {
+      if (controller.signal.aborted) return;
+      if (!recipe?.recipeTypePublicId) throw new Error(t("catalogEditor.loadFailed"));
+      const next = new URLSearchParams(query);
+      next.set("publicId", recipe.recipeTypePublicId);
+      next.delete("id");
+      router.replace(`/recipe-types?${next}`, { scroll: false });
+    }).catch((reason) => { if (!controller.signal.aborted) setError(errorText(reason)); });
+    return () => controller.abort();
+  }, [attempt, query, ready, recipePublicId, router, t, token, user]);
+  return <CatalogFrame active="recipes" description={recipePublicId} title={t("catalogEditor.recipeEdit")}>
+    {!ready ? <Loading /> : !user ? <LoginRequiredState compact nextPath={`/recipe-types?${query}`} description={t("catalogEditor.loginRequired")} /> : error ? <><ErrorBox text={error} /><button className="button-secondary focus-ring mt-3" type="button" onClick={() => { setError(""); setAttempt((value) => value + 1); }}>{t("common.retry")}</button></> : <Loading />}
+  </CatalogFrame>;
 }
 
 function CanonicalTagDetail({ publicId }: { publicId: string }) {
@@ -140,19 +225,28 @@ function CanonicalTagDetail({ publicId }: { publicId: string }) {
 
 function RecipeTypeList() {
   const { locale, t } = useI18n();
-  const { token, user } = useAuthSnapshot();
+  const { ready, token, user } = useAuthSnapshot();
   const router = useRouter();
   const searchParams = useSearchParams();
   const page = positivePage(searchParams.get("page"));
+  const queryString = searchParams.toString();
   const [query, setQuery] = useState(searchParams.get("q") || "");
   const [result, setResult] = useState<{ items: GlobalRecipeType[]; total: number }>({ items: [], total: 0 });
   const [error, setError] = useState("");
   useEffect(() => {
+    if (!ready) return;
     let cancelled = false;
-    const params = new URLSearchParams({ q: searchParams.get("q") || "", limit: String(pageSize), offset: String((page - 1) * pageSize) });
-    loadGlobalRecipeTypes(params, token).then((value) => { if (!cancelled) { setResult(value); setError(""); } }).catch((reason) => { if (!cancelled) setError(errorText(reason)); });
+    const currentQuery = new URLSearchParams(queryString);
+    const params = new URLSearchParams({ q: currentQuery.get("q") || "", limit: String(pageSize), offset: String((page - 1) * pageSize) });
+    loadGlobalRecipeTypes(params, token).then((value) => { if (!cancelled) { setResult(value); setError("");
+      const lastPage = Math.max(1, Math.ceil(value.total / pageSize));
+      if (page > lastPage) {
+        const next = new URLSearchParams(queryString);
+        if (lastPage === 1) next.delete("page"); else next.set("page", String(lastPage));
+        router.replace(`${location.pathname}${next.size ? `?${next}` : ""}`, { scroll: false });
+      } } }).catch((reason) => { if (!cancelled) setError(errorText(reason)); });
     return () => { cancelled = true; };
-  }, [page, searchParams, token]);
+  }, [page, queryString, ready, router, token]);
   function search(event: FormEvent) { event.preventDefault(); const params = new URLSearchParams(); if (query.trim()) params.set("q", query.trim()); router.push(`/recipe-types${params.size ? `?${params}` : ""}`); }
   return <CatalogFrame active="recipes" description={t("globalCatalog.recipeTypes.description")} title={t("globalCatalog.recipeTypes.title")}>
     <div className="mt-5 flex flex-wrap items-center gap-3"><div className="min-w-0 flex-1"><CatalogToolbar compact query={query} placeholder={t("globalCatalog.recipeTypes.search")} onQuery={setQuery} onSubmit={search} /></div>{user ? <Link className="button-primary focus-ring" href="/recipe-types?editor=create">{t("catalogEditor.recipeTypeCreate")}</Link> : null}</div>
@@ -249,6 +343,7 @@ function useScopedRecipeEditorRecord<T extends { recipeTypePublicId: string }>(
   const [initialValue, setInitialValue] = useState<T>();
   const [loading, setLoading] = useState(Boolean(publicId));
   const [error, setError] = useState("");
+  const failureMessage = useEffectEvent(() => loadFailed);
   useEffect(() => {
     if (!publicId || !token) return;
     let cancelled = false;
@@ -257,14 +352,14 @@ function useScopedRecipeEditorRecord<T extends { recipeTypePublicId: string }>(
       if (cancelled) return;
       const valid = value?.recipeTypePublicId === recipeTypePublicId;
       setInitialValue(valid ? value : undefined);
-      setError(valid ? "" : loadFailed);
+      setError(valid ? "" : failureMessage());
     }).catch((reason: unknown) => {
       if (!cancelled && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
     }).finally(() => {
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [load, loadFailed, publicId, recipeTypePublicId, token]);
+  }, [load, publicId, recipeTypePublicId, token]);
   return { initialValue, loading, error };
 }
 
@@ -394,6 +489,7 @@ function RecipeTypeDetail({ publicId }: { publicId: string }) {
   const { locale, t } = useI18n();
   const { token, user } = useAuthSnapshot();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const page = positivePage(searchParams.get("page"));
   const [detail, setDetail] = useState<GlobalRecipeTypeCatalog>();
   const [templates, setTemplates] = useState<Awaited<ReturnType<typeof loadRecipeTemplates>>>([]);
@@ -403,9 +499,16 @@ function RecipeTypeDetail({ publicId }: { publicId: string }) {
   useEffect(() => {
     let cancelled = false;
     const params = new URLSearchParams({ ...catalogQueryLocales(locale), limit: String(pageSize), offset: String((page - 1) * pageSize) });
-    loadGlobalRecipeTypeCatalog(publicId, params, token).then((value) => { if (!cancelled) { setDetail(value); setError(""); } }).catch((reason) => { if (!cancelled) setError(errorText(reason)); });
+    loadGlobalRecipeTypeCatalog(publicId, params, token).then((value) => { if (!cancelled) { setDetail(value); setError("");
+      const lastPage = Math.max(1, Math.ceil(value.total / pageSize));
+      if (page > lastPage) {
+        const next = new URLSearchParams(searchParams.toString());
+        if (lastPage === 1) next.delete("page"); else next.set("page", String(lastPage));
+        router.replace(`/recipe-types?${next}`, { scroll: false });
+      }
+    } }).catch((reason) => { if (!cancelled) setError(errorText(reason)); });
     return () => { cancelled = true; };
-  }, [locale, page, publicId, token]);
+  }, [locale, page, publicId, router, searchParams, token]);
   const recipeTypePublicId = detail?.publicId || "";
   useEffect(() => {
     if (!recipeTypePublicId) return;
@@ -440,10 +543,10 @@ function RecipeTypeDetail({ publicId }: { publicId: string }) {
 
 function CatalogFrame({ active, title, description, children }: { active: "tags" | "recipes"; title: string; description: string; children: React.ReactNode }) {
   const { t } = useI18n();
-  return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><div className="mx-auto max-w-[1600px]"><header className="border-b border-[var(--line)] pb-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm font-bold text-[var(--accent)]">{t("globalCatalog.kicker")}</p><h1 className="mt-1 text-3xl font-black">{title}</h1><p className="mt-2 max-w-3xl text-[var(--muted)]">{description}</p></div><nav className="flex flex-wrap rounded-lg border border-[var(--line)] bg-[var(--panel)] p-1"><Link className={`rounded-md px-4 py-2 font-bold ${active === "tags" ? "bg-[var(--accent)] text-white" : ""}`} href="/mods-tag">{t("globalCatalog.tags.short")}</Link><Link className={`rounded-md px-4 py-2 font-bold ${active === "recipes" ? "bg-[var(--accent)] text-white" : ""}`} href="/recipe-types">{t("globalCatalog.recipeTypes.short")}</Link></nav></div></header>{children}</div></main>;
+  return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><div className="mx-auto max-w-[1600px]"><header className="border-b border-[var(--line)] pb-5"><div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm font-bold text-[var(--accent)]">{t("globalCatalog.kicker")}</p><h1 className="mt-1 text-3xl font-black">{title}</h1><p className="mt-2 max-w-3xl text-[var(--muted)]">{description}</p></div><nav className="flex flex-wrap rounded-lg border border-[var(--line)] bg-[var(--panel)] p-1"><Link className={`rounded-md px-4 py-2 font-bold ${active === "tags" ? "bg-[var(--accent)] text-[var(--on-accent)]" : ""}`} href="/mods-tag">{t("globalCatalog.tags.short")}</Link><Link className={`rounded-md px-4 py-2 font-bold ${active === "recipes" ? "bg-[var(--accent)] text-[var(--on-accent)]" : ""}`} href="/recipe-types">{t("globalCatalog.recipeTypes.short")}</Link></nav></div></header>{children}</div></main>;
 }
 
-function CatalogToolbar({ query, placeholder, onQuery, onSubmit, compact = false }: { query: string; placeholder: string; onQuery: (value: string) => void; onSubmit: (event: FormEvent) => void; compact?: boolean }) { const { t } = useI18n(); return <form className={`${compact ? "" : "mt-5"} flex gap-2`} onSubmit={onSubmit}><input className="field h-11 min-w-0 flex-1" type="search" placeholder={placeholder} value={query} onChange={(event) => onQuery(event.target.value)} /><button className="button-primary focus-ring" type="submit">{t("globalCatalog.searchAction")}</button></form>; }
+function CatalogToolbar({ query, placeholder, onQuery, onSubmit, compact = false }: { query: string; placeholder: string; onQuery: (value: string) => void; onSubmit: (event: FormEvent) => void; compact?: boolean }) { const { t } = useI18n(); return <form className={`${compact ? "" : "mt-5"} flex gap-2`} onSubmit={onSubmit}><input className="field h-11 min-w-0 flex-1" type="search" aria-label={placeholder} placeholder={placeholder} value={query} onChange={(event) => onQuery(event.target.value)} /><button className="button-primary focus-ring" type="submit">{t("globalCatalog.searchAction")}</button></form>; }
 function GlobalResourceLink({ resource, locale }: { resource: GlobalResource; locale: string }) {
   const { t } = useI18n();
   const versions = Array.isArray(resource.versions) ? resource.versions : [];
@@ -465,7 +568,7 @@ function GlobalResourceLink({ resource, locale }: { resource: GlobalResource; lo
       {linked}
       {versions.length > 1 ? <button aria-label={t("globalCatalog.nextVersion")} className="focus-ring grid h-8 w-7 shrink-0 place-items-center rounded hover:bg-[var(--panel-subtle)]" type="button" onClick={() => setVersionIndex((value) => (value + 1) % versions.length)}>›</button> : null}
     </div>
-    {versions.length ? <div className="mt-1 flex gap-1 overflow-x-auto px-2 pb-1">{versions.map((item, index) => <button className={`focus-ring shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${index === activeVersionIndex ? "bg-[var(--accent)] text-white" : item.hasDetail ? "bg-[var(--panel-subtle)] text-[var(--foreground)]" : "bg-[color-mix(in_srgb,var(--red)_10%,transparent)] text-[var(--red)]"}`} key={item.publicId} type="button" onClick={() => setVersionIndex(index)}>{item.label}</button>)}</div> : null}
+    {versions.length ? <div className="mt-1 flex gap-1 overflow-x-auto px-2 pb-1">{versions.map((item, index) => <button className={`focus-ring shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black ${index === activeVersionIndex ? "bg-[var(--accent)] text-[var(--on-accent)]" : item.hasDetail ? "bg-[var(--panel-subtle)] text-[var(--foreground)]" : "bg-[color-mix(in_srgb,var(--red)_10%,transparent)] text-[var(--red)]"}`} key={item.publicId} type="button" onClick={() => setVersionIndex(index)}>{item.label}</button>)}</div> : null}
   </article>;
 }
 function ResourceIcon({ resource, size }: { resource?: GlobalResource; size: number }) { const src = resource ? catalogDirectAssetURL(resource.iconUrl) || catalogAssetURL(resource.revisionId, resource.iconPath) : ""; return src ? <Image unoptimized alt="" className="shrink-0 object-contain [image-rendering:pixelated]" height={size} width={size} src={src} /> : <span className="grid shrink-0 place-items-center rounded-md bg-[var(--panel-subtle)] text-xs font-black text-[var(--muted)]" style={{ width: size, height: size }}>TAG</span>; }
@@ -475,7 +578,7 @@ function GlobalCatalogPagination({ base, page, total, query, queryMode = false }
 function resourceAtVersion(resource: GlobalResource, version: CatalogResourceVersion): GlobalResource { return { ...resource, registry: version.registry || resource.registry, names: Object.keys(version.names).length ? version.names : resource.names, revisionId: version.revisionId, modSiteId: version.modSiteId || resource.modSiteId, iconPath: version.iconPath, iconUrl: version.iconUrl, detailUrl: version.detailUrl, versions: resource.versions }; }
 function catalogRefToGlobalResource(resource: CatalogResourceRef): GlobalResource { return { publicId: resource.publicId, id: resource.id, registry: resource.registry, names: resource.names, revisionId: "", modSiteId: resource.source?.siteId || "", iconPath: "", iconUrl: resource.iconUrl, versions: resource.versions ?? [] }; }
 function catalystID(value: RecipeCatalyst) { return value.id; }
-function positivePage(value: string | null) { const parsed = Number.parseInt(value || "1", 10); return Number.isFinite(parsed) && parsed > 0 ? parsed : 1; }
+function positivePage(value: string | null) { const parsed = Number(value || "1"); return Number.isSafeInteger(parsed) && parsed > 0 && Number.isSafeInteger((parsed - 1) * pageSize) ? parsed : 1; }
 function errorText(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
 function emptyCatalogLocalization(locale: string) { return { locale, fields: { name: "", summary: "", contentMarkdown: "" }, provenance: "human" as const, reviewStatus: "approved" as const, editable: true }; }
 function ErrorBox({ text }: { text: string }) { return <p className="mt-4 rounded-lg border border-[var(--red)] bg-[color-mix(in_srgb,var(--red)_7%,transparent)] p-3 font-bold text-[var(--red)]">{text}</p>; }

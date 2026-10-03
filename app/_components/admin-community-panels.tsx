@@ -2,7 +2,7 @@
 
 import { apiErrorMessage } from "../_lib/api-error.mts";
 
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import {
   ActivityEvent,
@@ -466,7 +466,7 @@ export function EconomyConfigPanel({ token }: { token: string }) {
     }
   }, [t, token]);
 
-  useInitialLoad(load);
+  useInitialLoad(load, token);
 
   async function save() {
     if (!config) return;
@@ -704,7 +704,7 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
     }
   }, [t, token]);
 
-  useInitialLoad(load);
+  useInitialLoad(load, token);
 
   async function save() {
     setSaving(true);
@@ -844,7 +844,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
     }
   }, [t, token]);
 
-  useInitialLoad(load);
+  useInitialLoad(load, token);
 
   function selectItem(publicId: string) {
     const selected = items.find((item) => item.publicId === publicId);
@@ -1034,7 +1034,7 @@ export function LevelConfigPanel({ token }: { token: string }) {
     }
   }, [t, token]);
 
-  useInitialLoad(load);
+  useInitialLoad(load, token);
 
   const selectedTrack = tracks.find((track) => track.code === config?.roleTrackCode);
 
@@ -1140,7 +1140,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
     }
   }, [t, token]);
 
-  useInitialLoad(load);
+  useInitialLoad(load, token);
 
   async function save() {
     if (!taskRewardCurrencyCodesAreUnique(draft.rewards.currencies ?? {})) {
@@ -1510,7 +1510,7 @@ function SelectionList({
       {items.map((item) => (
         <button
           className={`focus-ring rounded-lg px-3 py-3 text-left ${
-            selectedId === item.id ? "bg-[var(--accent)] text-white" : "hover:bg-[var(--panel-subtle)]"
+            selectedId === item.id ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"
           }`}
           key={item.id}
           type="button"
@@ -1643,11 +1643,12 @@ function withLocalizedPersistenceFields<
   return { ...value, ...localizedPersistenceFields(value.translations, preferredLocale) };
 }
 
-function useInitialLoad(load: () => Promise<void>) {
+function useInitialLoad(load: () => Promise<void>, identity: unknown = load) {
+  const initialize = useEffectEvent(load);
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
+    const timer = window.setTimeout(() => void initialize(), 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [identity]);
 }
 
 function updateAt<T>(items: T[], index: number, value: T) {

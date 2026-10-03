@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../_lib/api";
+import { csvCell } from "../_lib/blueprint-csv.mts";
 import type { BlueprintDetailRecord, BlueprintMaterial } from "../_lib/blueprint-api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { loadFavoriteMembershipSummary } from "../_lib/favorite-api";
@@ -21,39 +22,70 @@ import { blueprintMaterialDetailsURL, BlueprintViewer } from "./blueprint-viewer
 import { UnifiedReportButton } from "./unified-report-dialog";
 import { ProjectFollowButton } from "./project-follow-button";
 import { ProjectEditorApplicationButton } from "./project-editor-application";
+import { PageFeedback } from "./page-feedback";
 
 export function BlueprintDetail({ publicId }: { publicId: string }) {
+  const { token, user } = useAuthSnapshot();
+  return <BlueprintDetailContent key={`${user?.id || "guest"}:${publicId}:${token}`} publicId={publicId} />;
+}
+
+function BlueprintDetailContent({ publicId }: { publicId: string }) {
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const [record, setRecord] = useState<BlueprintDetailRecord | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [materialsOpen, setMaterialsOpen] = useState(false);
   const [favoriteOpen, setFavoriteOpen] = useState(false);
   const [favorited, setFavorited] = useState(false);
   const coverUploadRef = useRef(false);
+  const loadGeneration = useRef(0);
+  const loadController = useRef<AbortController | null>(null);
+  const processing = Boolean(record && ["uploading", "queued", "processing"].includes(record.status));
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (polling = false) => {
+    if (polling && loadController.current) return;
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    const generation = ++loadGeneration.current;
     try {
       const params = new URLSearchParams({ locale: minecraftLocale(locale) });
-      const result = await apiRequest<BlueprintDetailRecord>(`/api/v1/blueprints/${encodeURIComponent(publicId)}?${params}`, {}, token);
+      const result = await apiRequest<BlueprintDetailRecord>(`/api/v1/blueprints/${encodeURIComponent(publicId)}?${params}`, { signal: controller.signal }, token);
+      if (controller.signal.aborted) return;
       const content = result.canEdit && token
         ? await loadOwnedResolvedContent("blueprints", publicId, locale, token, "en-US").catch(() => undefined)
         : await loadResolvedContent(publicId, locale, "en-US", token).catch(() => undefined);
       const fields = content?.localization?.fields;
+      if (controller.signal.aborted || generation !== loadGeneration.current) return;
       setRecord(fields ? { ...result, title: fields.name || result.title, description: fields.contentMarkdown || result.description } : result);
       setNotFound(false);
+      setLoadError("");
     } catch (error) {
+      if (controller.signal.aborted || generation !== loadGeneration.current) return;
       if (error instanceof ApiError && error.status === 404) setNotFound(true);
-      else notifySite(cleanError(error), t("blueprints.title"), "danger");
+      else setLoadError(cleanError(error));
+    } finally {
+      if (loadController.current === controller) loadController.current = null;
     }
-  }, [locale, publicId, t, token]);
+  }, [locale, publicId, token]);
 
-  useEffect(() => { if (ready) queueMicrotask(() => void load()); }, [load, ready]);
+  const cancelLoad = useCallback(() => {
+    loadGeneration.current++;
+    loadController.current?.abort();
+    loadController.current = null;
+  }, []);
   useEffect(() => {
-    if (!record || !["uploading", "queued", "processing"].includes(record.status)) return;
-    const timer = window.setInterval(() => void load(), 3000);
+    if (!ready) return;
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) void load(); });
+    return () => { cancelled = true; cancelLoad(); };
+  }, [cancelLoad, load, ready]);
+  useEffect(() => {
+    if (!processing) return;
+    const timer = window.setInterval(() => void load(true), 3000);
     return () => window.clearInterval(timer);
-  }, [load, record]);
+  }, [load, processing]);
   useEffect(() => {
     if (!token) return;
     let cancelled = false;
@@ -114,11 +146,12 @@ export function BlueprintDetail({ publicId }: { publicId: string }) {
   }
 
   if (notFound) return <main className="grid min-h-[65vh] place-items-center px-4 text-center"><div><h1 className="text-3xl font-black">{t("blueprints.notFound")}</h1><Link className="button-primary focus-ring mt-6 inline-flex" href="/blueprints">{t("blueprints.title")}</Link></div></main>;
+  if (!record && loadError) return <PageFeedback tone="danger" title={t("blueprints.loadFailed")} description={loadError} action={<button className="button-secondary focus-ring" type="button" onClick={() => void load()}>{t("common.retry")}</button>} />;
   if (!record) return <main className="grid min-h-[65vh] place-items-center text-[var(--muted)]">{t("common.loading")}</main>;
-  const processing = ["uploading", "queued", "processing"].includes(record.status);
   const visibleMaterials = record.materials.slice(0, 12);
 
   return <main className="min-h-screen overflow-x-hidden bg-[var(--background)] text-[var(--foreground)]">
+    {loadError ? <p role="alert" className="mx-auto max-w-7xl p-4 text-[var(--red)]">{loadError}<button className="button-secondary focus-ring ml-3" type="button" onClick={() => void load()}>{t("common.retry")}</button></p> : null}
 <header className="border-b border-[var(--line)] bg-[var(--panel)]"><div className="mx-auto max-w-7xl px-4 py-7"><div className="flex flex-wrap items-start justify-between gap-4"><div><Link className="text-sm font-bold text-[var(--accent)]" href="/blueprints">{t("blueprints.title")}</Link><h1 className="mt-2 text-3xl font-black">{record.title}</h1><div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]"><code>{record.id}</code><span>{record.sourceFormat.toUpperCase()}</span><span className="font-bold text-[var(--accent)]">{statusText(t, record.status)}</span></div></div><div className="flex flex-wrap gap-2">{token ? <button className="button-secondary focus-ring" aria-pressed={favorited} type="button" onClick={() => setFavoriteOpen(true)}>{t(favorited ? "mods.card.favorited" : "mods.card.favorite")}</button> : null}<UnifiedReportButton targetAuthor={record.uploader.username} targetId={publicId} targetSummary={record.title} targetType="blueprint" /><ProjectEditorApplicationButton canEdit={record.canEdit} projectId={publicId} projectName={record.title} projectType="blueprint" returnPath={`/blueprints/${publicId}`} />{record.canEdit ? <Link className="button-secondary focus-ring" href={`/blueprints/${publicId}/edit`} target="_blank" rel="noopener noreferrer">{t("blueprints.edit")} ↗</Link> : null}</div></div><dl className="mt-6 grid gap-4 sm:grid-cols-3"><Metric label={t("blueprints.dimensions")} value={record.size.join(" × ")} /><Metric label={t("blueprints.blocks")} value={record.blockCount.toLocaleString()} /><Metric label={t("blueprints.uploader")} value={record.uploader.username} /></dl><BlueprintRequiredMods mods={record.requiredMods} /></div></header>
     {processing ? <section className="mx-auto max-w-7xl px-4 py-8"><div className="surface rounded-lg border border-[var(--line)] p-6"><p className="font-bold">{t("blueprints.processing")}</p><div className="mt-4 h-1 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full w-2/5 animate-pulse bg-[var(--accent)]" /></div></div></section> : null}
     {record.status === "failed" ? <section className="mx-auto max-w-7xl px-4 py-8"><div className="rounded-lg border border-[var(--red)] p-6"><h2 className="text-xl font-black text-[var(--red)]">{t("blueprints.failed")}</h2><p className="mt-2 text-sm text-[var(--muted)]">{record.lastError}</p>{record.canEdit ? <button className="button-primary focus-ring mt-4" type="button" onClick={() => void retry()}>{t("blueprints.retry")}</button> : null}</div></section> : null}
@@ -152,5 +185,4 @@ function MaterialList({ items }: { items: BlueprintMaterial[] }) {
 function Metric({ label, value }: { label: string; value: string }) { return <div><dt className="text-sm text-[var(--muted)]">{label}</dt><dd className="mt-1 text-lg font-black">{value}</dd></div>; }
 function Badge({ children }: { children: React.ReactNode }) { return <span className="rounded bg-[var(--accent-soft)] px-2 py-1 text-[10px] font-black text-[var(--accent)]">{children}</span>; }
 function normalizeBlueprintFormat(value: string) { const normalized = value.toLowerCase().replace(/^\./, ""); return normalized === "schematic" ? "schem" : normalized; }
-function csvCell(value: string) { return `"${value.replaceAll('"', '""')}"`; }
 function cleanError(error: unknown) { return error instanceof Error ? error.message : String(error); }

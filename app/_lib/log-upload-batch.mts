@@ -26,6 +26,13 @@ export type LogUploadBatchOptions<TFile> = {
   upload: (file: TFile) => Promise<{ id: string }>;
   createShares: (fileIds: string[]) => Promise<{ items: LogShareCreationResult[] }>;
   onChange?: (tasks: LogUploadTask<TFile>[]) => void;
+  messages?: {
+    unsupportedFile: (name: string) => string;
+    missingUploadID: string;
+    missingResult: string;
+    failed: string;
+    invalidStatus: string;
+  };
 };
 
 const supportedLogExtensions = [".zip", ".log", ".txt"];
@@ -68,7 +75,7 @@ export async function processLogUploadBatch<TFile extends { name: string }>(
   for (let index = 0; index < current.length; index++) {
     const task = current[index];
     if (!isSupportedLogFile(task.name)) {
-      current[index] = { ...task, stage: "invalid", error: `${task.name}：不支持的文件类型`, share: undefined };
+      current[index] = { ...task, stage: "invalid", error: options.messages?.unsupportedFile(task.name) ?? `${task.name}：不支持的文件类型`, share: undefined };
     } else if (task.stage === "invalid") {
       current[index] = { ...task, stage: "pending", error: "" };
     }
@@ -83,7 +90,7 @@ export async function processLogUploadBatch<TFile extends { name: string }>(
     update(index, { stage: "uploading", error: "" });
     try {
       const uploaded = await options.upload(task.file);
-      if (!uploaded.id?.trim()) throw new Error("上传成功响应缺少文件 ID");
+      if (!uploaded.id?.trim()) throw new Error(options.messages?.missingUploadID ?? "上传成功响应缺少文件 ID");
       update(index, { stage: "uploaded", uploadedFileId: uploaded.id.trim(), error: "" });
     } catch (error) {
       update(index, { stage: "failed", error: errorText(error) });
@@ -115,15 +122,15 @@ export async function processLogUploadBatch<TFile extends { name: string }>(
   for (const { task, index } of candidates) {
     const item = byFileID.get(task.uploadedFileId);
     if (!item) {
-      current[index] = { ...current[index], stage: "failed", error: "日志创建响应缺少该文件的结果", share: undefined };
+      current[index] = { ...current[index], stage: "failed", error: options.messages?.missingResult ?? "日志创建响应缺少该文件的结果", share: undefined };
     } else if (item.error || item.status === "failed") {
-      current[index] = { ...current[index], stage: "failed", error: item.error || "日志处理失败", share: undefined };
+      current[index] = { ...current[index], stage: "failed", error: item.error || options.messages?.failed || "日志处理失败", share: undefined };
     } else if (item.status === "processing") {
       current[index] = { ...current[index], stage: "processing", error: "", share: item };
     } else if (item.publicCode && item.status === "ready") {
       current[index] = { ...current[index], stage: "ready", error: "", share: item };
     } else {
-      current[index] = { ...current[index], stage: "failed", error: "日志创建响应状态不正确", share: undefined };
+      current[index] = { ...current[index], stage: "failed", error: options.messages?.invalidStatus ?? "日志创建响应状态不正确", share: undefined };
     }
   }
   publish();

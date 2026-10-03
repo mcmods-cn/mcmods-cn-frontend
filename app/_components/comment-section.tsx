@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CSSProperties, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, Dispatch, FormEvent, SetStateAction, useLayoutEffect, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { API_BASE_URL, ApiError } from "../_lib/api";
 import { apiErrorMessage } from "../_lib/api-error.mts";
@@ -48,16 +48,25 @@ type CommentSectionProps = {
   onAcceptAnswer?: (commentId: string) => Promise<void>;
 };
 
-export function CommentSection({ targetType, targetKey, className = "", acceptedCommentId = "", canAcceptAnswer = false, onAcceptAnswer }: CommentSectionProps) {
+export function CommentSection(props: CommentSectionProps) {
+  const { token, user } = useAuthSnapshot();
+  return <CommentSectionSession key={`${user?.id || "guest"}:${token || "guest"}:${props.targetType}:${props.targetKey}`} {...props} />;
+}
+
+function CommentSectionSession({ targetType, targetKey, className = "", acceptedCommentId = "", canAcceptAnswer = false, onAcceptAnswer }: CommentSectionProps) {
   const { t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const [items, setItems] = useState<CommentItem[]>([]);
   const [total, setTotal] = useState(0);
   const [nextCursor, setNextCursor] = useState("");
   const [sort, setSort] = useState("latest");
+  const activeSort = useRef(sort);
+  useLayoutEffect(() => { activeSort.current = sort; }, [sort]);
   const [body, setBody] = useState("");
   const [replyTo, setReplyTo] = useState<CommentItem | null>(null);
   const [replyBody, setReplyBody] = useState("");
+  const activeReplyBody = useRef(replyBody);
+  useLayoutEffect(() => { activeReplyBody.current = replyBody; }, [replyBody]);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
@@ -102,9 +111,11 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
   }, [cooldown]);
 
   const load = useCallback(async (cursor = "", append = false) => {
+    const requestedSort = sort;
     setLoading(true);
     try {
       const result = await loadComments(targetType, targetKey, { sort, cursor }, token || undefined);
+      if (activeSort.current !== requestedSort) return;
       setItems((current) => append ? mergeComments(current, result.items) : result.items);
       setTotal(result.total);
       setNextCursor(result.nextCursor || "");
@@ -124,6 +135,7 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
   }, [load, ready]);
 
   async function submitComment(content: string, parentId?: string, challengeProof = "", idempotencyKey = globalThis.crypto?.randomUUID?.() || `comment-${Date.now()}-${Math.random()}`, attachmentFileIds: string[] = []) {
+    if (submitting) return;
     if (!token) {
       setMessage(t("mods.comments.loginRequired"));
       return;
@@ -146,12 +158,15 @@ export function CommentSection({ targetType, targetKey, className = "", accepted
         setItems((current) => appendPublishedComment(current, result));
         setTotal((current) => current + 1);
       }
-      setBody("");
-      setReplyBody("");
-      setReplyTo(null);
+      if (parentId) {
+        if (activeReplyBody.current === content) setReplyTo(null);
+        setReplyBody((current) => current === content ? "" : current);
+      } else {
+        setBody((current) => current === content ? "" : current);
+        setAttachments((current) => current.filter((item) => !attachmentFileIds.includes(item.id)));
+      }
       setChallenge(null);
       setHoneypot("");
-      setAttachments([]);
       void refreshFormToken(action);
     } catch (error) {
       if (error instanceof ApiError && error.code === "challenge_required") {
@@ -274,7 +289,7 @@ type CommentTreeProps = {
   replyTo: CommentItem | null;
   replyBody: string;
   submitting: boolean;
-  onItemsChange: (items: CommentItem[]) => void;
+  onItemsChange: Dispatch<SetStateAction<CommentItem[]>>;
   onMessage: (message: string) => void;
   onReply: (comment: CommentItem) => void;
   onReplyBodyChange: (body: string) => void;
@@ -296,6 +311,7 @@ function CommentTree(props: CommentTreeProps) {
   const [replyCursors, setReplyCursors] = useState<Record<string, string>>({});
   const [replyAttachments, setReplyAttachments] = useState<CommentEditorAttachment[]>([]);
   const [uploadingReplyAttachments, setUploadingReplyAttachments] = useState(false);
+  const mutationsInFlight = useRef(new Set<string>());
   const tree = useMemo(() => buildTree(props.items, props.sort), [props.items, props.sort]);
   const visible = useMemo(() => flattenTree(tree, collapsed), [collapsed, tree]);
 
@@ -333,16 +349,21 @@ function CommentTree(props: CommentTreeProps) {
       props.onMessage(t("mods.comments.loginRequired"));
       return;
     }
+    const mutationKey = `react:${comment.id}:${reaction}`;
+    if (mutationsInFlight.current.has(mutationKey)) return;
+    mutationsInFlight.current.add(mutationKey);
     const active = !comment.userReactions.includes(reaction);
     try {
       await setCommentReaction(comment.id, reaction, active, props.token);
-      props.onItemsChange(props.items.map((item) => item.id === comment.id ? {
+      props.onItemsChange((items) => items.map((item) => item.id === comment.id ? {
         ...item,
         reactions: { ...item.reactions, [reaction]: Math.max(0, (item.reactions[reaction] || 0) + (active ? 1 : -1)) },
-        userReactions: active ? [...item.userReactions, reaction] : item.userReactions.filter((value) => value !== reaction),
+        userReactions: active ? [...new Set([...item.userReactions, reaction])] : item.userReactions.filter((value) => value !== reaction),
       } : item));
     } catch (error) {
       props.onMessage(apiErrorMessage(error, t, t("mods.comments.reactionFailed")));
+    } finally {
+      mutationsInFlight.current.delete(mutationKey);
     }
   }
 
@@ -351,15 +372,20 @@ function CommentTree(props: CommentTreeProps) {
       props.onMessage(t("mods.comments.loginRequired"));
       return;
     }
+    const mutationKey = `watch:${comment.id}`;
+    if (mutationsInFlight.current.has(mutationKey)) return;
+    mutationsInFlight.current.add(mutationKey);
     const active = !comment.currentUserWatch?.active;
     try {
       const state = await setCommentWatch(comment.id, active, props.token);
-      props.onItemsChange(props.items.map((item) => item.id === comment.id
+      props.onItemsChange((items) => items.map((item) => item.id === comment.id
         ? { ...item, currentUserWatch: active ? state : { active: false, mutedForever: false, unreadCount: 0, watchedReplies: 0 } }
         : item));
       props.onMessage(t(active ? "mods.comments.watched" : "mods.comments.unwatched"));
     } catch (error) {
       props.onMessage(apiErrorMessage(error, t, t("mods.comments.watchFailed")));
+    } finally {
+      mutationsInFlight.current.delete(mutationKey);
     }
   }
 
@@ -369,13 +395,13 @@ function CommentTree(props: CommentTreeProps) {
     if (!nextBody?.trim() || nextBody.trim() === comment.body) return;
     try {
       const result = await updateComment(comment.id, nextBody.trim(), comment.updatedAt, props.token);
-      props.onItemsChange(props.items.map((item) => item.id === result.id ? result : item));
+      props.onItemsChange((items) => items.map((item) => item.id === result.id ? result : item));
     } catch (error) {
       const current = error instanceof ApiError && error.status === 409 && error.code === "COMMENT_EDIT_CONFLICT"
         ? parseCommentEditConflict(error.details)
         : undefined;
       if (current) {
-        props.onItemsChange(props.items.map((item) => item.id === comment.id ? {
+        props.onItemsChange((items) => items.map((item) => item.id === comment.id ? {
           ...item,
           body: current.body,
           updatedAt: current.updatedAt,
@@ -396,7 +422,7 @@ function CommentTree(props: CommentTreeProps) {
     if (!props.token || !window.confirm(t("mods.comments.deleteConfirm"))) return;
     try {
       await deleteComment(comment.id, props.token);
-      props.onItemsChange(props.items.map((item) => item.id === comment.id ? { ...item, body: "", deleted: true } : item));
+      props.onItemsChange((items) => items.map((item) => item.id === comment.id ? { ...item, body: "", deleted: true } : item));
     } catch (error) {
       props.onMessage(apiErrorMessage(error, t, t("mods.comments.deleteFailed")));
     }
@@ -406,7 +432,7 @@ function CommentTree(props: CommentTreeProps) {
     if (!props.token) return;
     try {
       const result = await setCommentPinned(comment.id, !comment.pinned, props.token);
-      props.onItemsChange(props.items.map((item) => item.id === result.id ? result : item));
+      props.onItemsChange((items) => items.map((item) => item.id === result.id ? result : item));
       props.onMessage(t(result.pinned ? "mods.comments.pinned" : "mods.comments.unpinned"));
     } catch (error) {
       props.onMessage(apiErrorMessage(error, t, t("mods.comments.pinFailed")));
@@ -417,7 +443,7 @@ function CommentTree(props: CommentTreeProps) {
     try {
       const result = await loadCommentReplies(comment.id, replyCursors[comment.id], props.token || undefined);
       setReplyCursors((current) => ({ ...current, [comment.id]: result.nextCursor || "" }));
-      props.onItemsChange(mergeComments(props.items, result.items).map((item) => item.id === comment.id ? { ...item, hasMoreReplies: Boolean(result.nextCursor) } : item));
+      props.onItemsChange((items) => mergeComments(items, result.items).map((item) => item.id === comment.id ? { ...item, hasMoreReplies: Boolean(result.nextCursor) } : item));
     } catch (error) {
       props.onMessage(apiErrorMessage(error, t, t("mods.comments.loadFailed")));
     }
@@ -425,8 +451,12 @@ function CommentTree(props: CommentTreeProps) {
 
   async function copyBranch(comment: CommentItem) {
     const url = `${window.location.origin}/comments/${comment.id}`;
-    await navigator.clipboard.writeText(url).catch(() => undefined);
-    props.onMessage(t("mods.comments.branchCopied"));
+    try {
+      await navigator.clipboard.writeText(url);
+      props.onMessage(t("mods.comments.branchCopied"));
+    } catch {
+      props.onMessage(t("common.copyFailed"));
+    }
   }
 
   if (props.loading && props.items.length === 0) {

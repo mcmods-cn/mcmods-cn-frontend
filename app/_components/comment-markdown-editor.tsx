@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, ReactNode, RefObject, useEffect, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, ReactNode, RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
@@ -55,6 +55,9 @@ export function CommentMarkdownEditor({
   const localInputRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = inputRef ?? localInputRef;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeAttachments = useRef(attachments);
+  const uploadInFlight = useRef(false);
+  useLayoutEffect(() => { activeAttachments.current = attachments; }, [attachments]);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [dragging, setDragging] = useState(false);
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
@@ -94,11 +97,12 @@ export function CommentMarkdownEditor({
   }
 
   async function uploadFiles(files: File[]) {
-    if (!token || files.length === 0) return;
+    if (!token || disabled || uploadInFlight.current || files.length === 0) return;
     const available = Math.max(0, maxCommentAttachments - attachments.length - uploads.filter((item) => !item.error).length);
     const accepted = files.slice(0, available);
     if (accepted.length !== files.length) onError(t("mods.comments.editor.attachmentLimit", { count: maxCommentAttachments }));
-    const nextAttachments = [...attachments];
+    uploadInFlight.current = true;
+    try {
     for (const file of accepted) {
       const key = `${file.name}-${file.size}-${file.lastModified}-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`;
       setUploads((current) => [...current, { key, name: file.name, sizeBytes: file.size, progress: 0 }]);
@@ -113,8 +117,9 @@ export function CommentMarkdownEditor({
           contentType: result.contentType || file.type || "application/octet-stream",
           sizeBytes: result.sourceSizeBytes || result.sizeBytes || file.size,
         };
-        if (!nextAttachments.some((item) => item.id === attachment.id)) nextAttachments.push(attachment);
-        onAttachmentsChange([...nextAttachments]);
+        const nextAttachments = activeAttachments.current.some((item) => item.id === attachment.id) ? activeAttachments.current : [...activeAttachments.current, attachment];
+        activeAttachments.current = nextAttachments;
+        onAttachmentsChange(nextAttachments);
         setUploads((current) => current.filter((item) => item.key !== key));
       } catch (error) {
         const message = error instanceof Error ? error.message : t("mods.comments.editor.uploadFailed");
@@ -122,6 +127,7 @@ export function CommentMarkdownEditor({
         onError(`${file.name}: ${message}`);
       }
     }
+    } finally { uploadInFlight.current = false; }
   }
 
   function chooseFiles(event: ChangeEvent<HTMLInputElement>) {
@@ -138,7 +144,7 @@ export function CommentMarkdownEditor({
   return (
     <div
       className={`overflow-visible rounded-lg border bg-[var(--panel-subtle)] transition ${dragging ? "border-[var(--accent)] ring-2 ring-[var(--accent-soft)]" : "border-[var(--line)]"}`}
-      onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+      onDragEnter={(event) => { event.preventDefault(); if (!disabled && !uploadInFlight.current) setDragging(true); }}
       onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
       onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
       onDrop={dropFiles}
@@ -164,7 +170,7 @@ export function CommentMarkdownEditor({
           <ToolbarButton label={t("mods.comments.editor.code")} disabled={disabled || mode === "preview"} onClick={() => wrapSelection("`", "`", t("mods.comments.editor.selectedText"))}>{"<>"}</ToolbarButton>
           <ToolbarButton label={t("mods.comments.editor.link")} disabled={disabled || mode === "preview"} onClick={() => wrapSelection("[", "](https://)", t("mods.comments.editor.linkText"))}>↗</ToolbarButton>
           <ToolbarButton label={t("mods.comments.editor.attachFile")} disabled={disabled || uploading} onClick={() => fileInputRef.current?.click()}>＋</ToolbarButton>
-          <input className="sr-only" multiple ref={fileInputRef} type="file" onChange={chooseFiles} />
+          <input className="sr-only" disabled={disabled || uploading} multiple ref={fileInputRef} type="file" onChange={chooseFiles} />
         </div>
         <div className="flex rounded-md border border-[var(--line)] bg-[var(--panel)] p-0.5" role="group" aria-label={t("mods.comments.editor.mode")}>
           <button className={`focus-ring rounded px-3 py-1.5 text-xs font-bold ${mode === "edit" ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setMode("edit")}>{t("mods.comments.editor.edit")}</button>
