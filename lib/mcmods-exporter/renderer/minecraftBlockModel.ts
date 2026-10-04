@@ -451,7 +451,14 @@ async function createModelGroup(
       const materialKey = `${texturePath}|${tint ?? 'none'}`
       let material = materialCache.get(materialKey)
       if (!material) {
-        const texture = new THREE.TextureLoader().load(url)
+        const texture = new THREE.TextureLoader().load(url, (loaded) => {
+          const target = materialCache.get(materialKey)
+          // Only opaque independent planes can drop the back/front ordering.
+          if (target?.opacity === 1 && hasSmallOpaqueImage(loaded.image)) {
+            target.forceSinglePass = true
+            target.needsUpdate = true
+          }
+        })
         texture.colorSpace = THREE.SRGBColorSpace
         texture.magFilter = THREE.NearestFilter
         texture.minFilter = THREE.NearestMipmapNearestFilter
@@ -465,6 +472,8 @@ async function createModelGroup(
           color: tint ?? 0xffffff,
         })
         materialCache.set(materialKey, material)
+        // Late PNG completion must not analyze an already disposed material.
+        material.addEventListener('dispose', () => materialCache.delete(materialKey))
       }
       const geometry = faceGeometry(element, direction, face)
       const mesh = new THREE.Mesh(geometry, material)
@@ -480,6 +489,33 @@ async function createModelGroup(
     throw new Error('模型没有可渲染的 faces，或导出包缺少引用贴图')
   }
   return group
+}
+
+function hasSmallOpaqueImage(image: unknown): boolean {
+  if (!(image instanceof HTMLImageElement)) return false
+  const width = image.naturalWidth
+  const height = image.naturalHeight
+  // This is an optional bounded optimization, not a texture/rendering limit.
+  if (!width || !height || width > 256 || height > 256) return false
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  try {
+    const context = canvas.getContext('2d', { willReadFrequently: true })
+    if (!context) return false
+    context.drawImage(image, 0, 0)
+    const pixels = context.getImageData(0, 0, width, height).data
+    for (let alpha = 3; alpha < pixels.length; alpha += 4) {
+      if (pixels[alpha] !== 255) return false
+    }
+    return true
+  } catch {
+    // A tainted/unreadable image keeps the existing two-pass rendering path.
+    return false
+  } finally {
+    canvas.width = 0
+    canvas.height = 0
+  }
 }
 
 function readCustomElementGroups(model: ModelJson): Record<string, ModelElement[]> {

@@ -195,6 +195,7 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "editor
   const [facets, setFacets] = useState<ReviewQueueResponse["facets"]>({ categories: [], operations: [], projectTypes: [] });
   const [editorNextCursor, setEditorNextCursor] = useState("");
   const [editorLoadingMore, setEditorLoadingMore] = useState(false);
+  const editorPageRequest = useRef<number | null>(null);
   const requestGeneration = useRef(0);
   const requestController = useRef<AbortController | null>(null);
   const pageSize = 50;
@@ -208,7 +209,9 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "editor
   const contentEndpoint = `/api/v1/reviews/content?${contentSearch}`;
   const load = useCallback(async (editorCursor = "") => {
     const appendEditorPage = kind === "editor" && Boolean(editorCursor);
+    if (appendEditorPage && editorPageRequest.current !== null) return;
     const generation = ++requestGeneration.current;
+    editorPageRequest.current = appendEditorPage ? generation : null;
     requestController.current?.abort();
     const controller = new AbortController();
     requestController.current = controller;
@@ -238,7 +241,10 @@ export function ModReviewQueuePanel({ kind, token }: { kind: "content" | "editor
       if (generation !== requestGeneration.current || (error as { name?: string }).name === "AbortError") return;
       setMessage(error instanceof Error ? error.message : t("admin.reviews.loadFailed"));
     } finally {
-      if (generation === requestGeneration.current) setEditorLoadingMore(false);
+      if (generation === requestGeneration.current) {
+        editorPageRequest.current = null;
+        setEditorLoadingMore(false);
+      }
     }
   }, [contentEndpoint, kind, t, token]);
   useEffect(() => {

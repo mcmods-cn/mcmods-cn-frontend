@@ -46,3 +46,27 @@ export function readUILocaleCookie(cookieHeader: string): UILocale | undefined {
 export function serializeUILocaleCookie(locale: UILocale): string {
   return `${uiLocaleCookieName}=${encodeURIComponent(locale)}; Path=/; Max-Age=31536000; SameSite=Lax`;
 }
+
+export type UILocaleSyncHint = { changedAt: number; locale: UILocale };
+
+function parseUILocaleSyncHint(value: string | null): UILocaleSyncHint | undefined {
+  if (!value || value.length > 32) return undefined;
+  const match = /^(0|[1-9][0-9]{0,15}):([a-z]{2}-[A-Z]{2})$/.exec(value);
+  if (!match) return undefined;
+  const changedAt = Number(match[1]);
+  if (!Number.isSafeInteger(changedAt) || changedAt < 0) return undefined;
+  const locale = normalizeUILocale(match[2]);
+  if (!locale || locale !== match[2]) return undefined;
+  return { changedAt, locale };
+}
+
+// A storage event may reach another renderer before its cookie snapshot is
+// updated. Carry the same validated preference in the hint. A newer stored
+// value or an already observed update wins over a delayed event.
+export function resolveUILocaleSyncHint(eventValue: string | null, storedValue: string | null, lastChangedAt: number): UILocaleSyncHint | undefined {
+  const incoming = parseUILocaleSyncHint(eventValue);
+  if (!incoming) return undefined;
+  const stored = parseUILocaleSyncHint(storedValue);
+  const latest = stored && stored.changedAt >= incoming.changedAt ? stored : incoming;
+  return latest.changedAt < lastChangedAt ? undefined : latest;
+}

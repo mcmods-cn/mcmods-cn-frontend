@@ -486,6 +486,8 @@ function transparentMaterial(material: THREE.Material | THREE.Material[]): THREE
     result.transparent = true
     result.opacity = 0.16
     result.depthWrite = false
+    // Layer context is translucent even when the source PNG is fully opaque.
+    result.forceSinglePass = false
     return result
   }
   return Array.isArray(material) ? material.map(clone) : clone(material)

@@ -68,6 +68,8 @@ export class StructureRenderer {
   private loadGeneration = 0
   private loadController?: AbortController
   private disposed = false
+  private needsRender = true
+  private readonly textureVersions = new Map<THREE.Texture, number>()
   private pointerStart?: { x: number; y: number }
   private firstPerson = false
   private previousFrameTime = performance.now()
@@ -106,6 +108,8 @@ export class StructureRenderer {
     this.controls.autoRotate = options.autoRotate ?? false
     this.controls.autoRotateSpeed = 0.55
     this.firstPersonControls = new PointerLockControls(this.camera, this.canvas)
+    this.controls.addEventListener('change', this.invalidate)
+    this.firstPersonControls.addEventListener('change', this.invalidate)
 
     this.observer = new ResizeObserver(() => this.resize())
     this.observer.observe(host)
@@ -154,6 +158,7 @@ export class StructureRenderer {
         }
         this.structureGroup = built.group
         this.scene.add(built.group)
+        this.trackStructureTextures(built.group)
         this.setLayerView(0, Math.max(0, blueprint.size[1] - 1), 'visible')
         const result: StructureRendererLoadResult = {
           blueprint,
@@ -185,10 +190,14 @@ export class StructureRenderer {
 
   setAutoRotate(enabled: boolean) {
     this.controls.autoRotate = enabled
+    this.invalidate()
   }
 
   setGridVisible(visible: boolean) {
-    if (this.grid) this.grid.visible = visible
+    if (this.grid) {
+      this.grid.visible = visible
+      this.invalidate()
+    }
   }
 
   setLayerView(minLayer: number, maxLayer: number, outsideMode: OutsideLayerMode = 'transparent', showBelow = true, showAbove = true) {
@@ -198,6 +207,7 @@ export class StructureRenderer {
         setStructureMeshLayerView(object, this.blueprint!.blocks, minLayer, maxLayer, outsideMode, showBelow, showAbove)
       }
     })
+    this.invalidate()
   }
 
   resetCamera() {
@@ -215,6 +225,7 @@ export class StructureRenderer {
     this.controls.minDistance = Math.max(0.5, radius * 0.05)
     this.controls.maxDistance = radius * 12
     this.controls.update()
+    this.invalidate()
   }
 
   setFirstPerson(enabled: boolean) {
@@ -223,6 +234,7 @@ export class StructureRenderer {
     this.controls.enabled = !enabled
     if (!enabled && this.firstPersonControls.isLocked) this.firstPersonControls.unlock()
     this.canvas.style.cursor = enabled ? 'crosshair' : 'grab'
+    this.invalidate()
   }
 
   async captureImage(width = 1210, height = 750, type = 'image/webp', quality = 0.88): Promise<Blob> {
@@ -253,6 +265,7 @@ export class StructureRenderer {
       if (this.grid && gridVisible !== undefined) this.grid.visible = gridVisible
       if (this.selection && selectionVisible !== undefined) this.selection.visible = selectionVisible
       target.dispose()
+      this.invalidate()
     }
 
     const output = document.createElement('canvas')
@@ -286,6 +299,8 @@ export class StructureRenderer {
     window.removeEventListener('blur', this.handleBlur)
     if (this.firstPersonControls.isLocked) this.firstPersonControls.unlock()
 	this.firstPersonControls.disconnect()
+    this.firstPersonControls.removeEventListener('change', this.invalidate)
+    this.controls.removeEventListener('change', this.invalidate)
     this.controls.dispose()
     this.clearStructure()
     this.renderer.dispose()
@@ -359,6 +374,7 @@ export class StructureRenderer {
       0xffd45f,
     )
     this.scene.add(this.selection)
+    this.invalidate()
     this.options.onSelectBlock?.(block)
   }
 
@@ -368,6 +384,7 @@ export class StructureRenderer {
     this.renderer.setSize(width, height, false)
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
+    this.invalidate()
   }
 
   private fitCamera() {
@@ -380,9 +397,11 @@ export class StructureRenderer {
     this.grid.position.set(size[0] / 2, -0.01, size[2] / 2)
     this.grid.visible = this.options.showGrid ?? true
     this.scene.add(this.grid)
+    this.invalidate()
   }
 
   private clearStructure() {
+    this.textureVersions.clear()
     this.disposeSelection()
     if (this.structureGroup) {
       this.structureGroup.removeFromParent()
@@ -398,6 +417,7 @@ export class StructureRenderer {
     }
     this.blueprint = undefined
     this.options.onSelectBlock?.(null)
+    this.invalidate()
   }
 
   private disposeSelection() {
@@ -407,25 +427,56 @@ export class StructureRenderer {
     const materials = Array.isArray(this.selection.material) ? this.selection.material : [this.selection.material]
     materials.forEach((material) => material.dispose())
     this.selection = undefined
+    this.invalidate()
+  }
+
+  private readonly invalidate = () => {
+    this.needsRender = true
+  }
+
+  private trackStructureTextures(group: THREE.Group) {
+    this.textureVersions.clear()
+    // TextureLoader can finish after scene construction. Poll only the unique
+    // model textures, not blueprint blocks or individual instances, so a late
+    // image upload gets a frame without continuously submitting the whole scene.
+    group.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return
+      const materials = Array.isArray(object.material) ? object.material : [object.material]
+      for (const material of materials) {
+        for (const value of Object.values(material)) {
+          if (value instanceof THREE.Texture) this.textureVersions.set(value, value.version)
+        }
+      }
+    })
   }
 
   private animate = () => {
     if (this.disposed) return
-	const now = performance.now()
-	const delta = Math.min(0.05, Math.max(0, (now - this.previousFrameTime) / 1000))
-	this.previousFrameTime = now
-	if (this.firstPerson && this.firstPersonControls.isLocked) {
-		const speed = (this.pressedKeys.has('ShiftLeft') || this.pressedKeys.has('ShiftRight')) ? 18 : 8
-		const forward = Number(this.pressedKeys.has('KeyW')) - Number(this.pressedKeys.has('KeyS'))
-		const right = Number(this.pressedKeys.has('KeyD')) - Number(this.pressedKeys.has('KeyA'))
-		if (forward) this.firstPersonControls.moveForward(forward * speed * delta)
-		if (right) this.firstPersonControls.moveRight(right * speed * delta)
-		if (this.pressedKeys.has('Space')) this.camera.position.y += speed * delta
-		if (this.pressedKeys.has('ControlLeft') || this.pressedKeys.has('ControlRight')) this.camera.position.y -= speed * delta
-	} else {
-		this.controls.update()
-	}
-    this.renderer.render(this.scene, this.camera)
+    const now = performance.now()
+    const delta = Math.min(0.05, Math.max(0, (now - this.previousFrameTime) / 1000))
+    this.previousFrameTime = now
+    if (this.firstPerson && this.firstPersonControls.isLocked) {
+      const speed = (this.pressedKeys.has('ShiftLeft') || this.pressedKeys.has('ShiftRight')) ? 18 : 8
+      const forward = Number(this.pressedKeys.has('KeyW')) - Number(this.pressedKeys.has('KeyS'))
+      const right = Number(this.pressedKeys.has('KeyD')) - Number(this.pressedKeys.has('KeyA'))
+      if (forward) this.firstPersonControls.moveForward(forward * speed * delta)
+      if (right) this.firstPersonControls.moveRight(right * speed * delta)
+      if (this.pressedKeys.has('Space')) this.camera.position.y += speed * delta
+      if (this.pressedKeys.has('ControlLeft') || this.pressedKeys.has('ControlRight')) this.camera.position.y -= speed * delta
+      if (forward || right || this.pressedKeys.has('Space') || this.pressedKeys.has('ControlLeft') || this.pressedKeys.has('ControlRight')) this.invalidate()
+    } else {
+      if (this.controls.update()) this.invalidate()
+    }
+    for (const [texture, version] of this.textureVersions) {
+      if (texture.version !== version) {
+        this.textureVersions.set(texture, texture.version)
+        this.invalidate()
+      }
+    }
+    if (this.needsRender) {
+      this.needsRender = false
+      this.renderer.render(this.scene, this.camera)
+    }
     this.frame = requestAnimationFrame(this.animate)
   }
 }

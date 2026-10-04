@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { localizedCatalogResourceName } from "../../_lib/content-language";
 import { loadCatalogResourcePresentations, loadCatalogResources } from "../../_lib/editor-api";
@@ -128,12 +128,21 @@ function OpenResourcePickerDialog({
     };
   }, [kind, loadPage, locale, manualMode, page, pageCursors, registry, submittedQuery, token]);
 
-  useEffect(() => {
+  const hydrationScope = JSON.stringify(value.filter(needsResourceHydration).map((resource) => ({
+    publicId: resource.publicId,
+    id: resource.rawIdentifier || resource.id,
+    kind: resource.kind,
+    registry: resource.registry,
+  })));
+  const hydrateSelection = useEffectEvent((controller: AbortController) => {
     const pending = value.filter(needsResourceHydration);
-    if (!pending.length) return;
+    return loadCatalogResourcePresentations(pending, locale, token, controller.signal);
+  });
+  useEffect(() => {
+    if (hydrationScope === "[]") return;
     let cancelled = false;
     const controller = new AbortController();
-    void loadCatalogResourcePresentations(pending, locale, token, controller.signal).then((resolved) => {
+    void hydrateSelection(controller).then((resolved) => {
       if (cancelled || !resolved.length) return;
       setSelected((current) => resolveSelectedResources(current, resolved));
     }).catch((reason: unknown) => {
@@ -143,7 +152,7 @@ function OpenResourcePickerDialog({
       cancelled = true;
       controller.abort();
     };
-  }, [locale, token, value]);
+  }, [hydrationScope, locale, token]);
 
   const cursorBased = typeof result.hasMore === "boolean";
   const pages = cursorBased ? page + (result.hasMore ? 1 : 0) : Math.max(1, Math.ceil((result.total ?? 0) / pageSize));
