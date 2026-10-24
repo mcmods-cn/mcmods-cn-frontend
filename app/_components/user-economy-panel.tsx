@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { apiRequest } from "../_lib/api";
+import { ApiError, apiRequest } from "../_lib/api";
 import {
   Currency,
   EconomyOverview,
@@ -66,6 +66,8 @@ export function UserEconomyPanel({
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [recipient, setRecipient] = useState("");
+  const [recipientType, setRecipientType] = useState<"identifier" | "public_id">("identifier");
+  const recipientHintId = useId();
   const [transferCurrency, setTransferCurrency] = useState("");
   const [transferAmount, setTransferAmount] = useState(1);
   const [heatBoostItem, setHeatBoostItem] = useState<ShopItem | null>(null);
@@ -177,7 +179,7 @@ export function UserEconomyPanel({
         {
           method: "POST",
           body: JSON.stringify({
-            recipient: recipient.trim(),
+            ...(recipientType === "public_id" ? { recipientPublicId: recipient.trim() } : { recipient: recipient.trim() }),
             currency: transferCurrency,
             amount: transferAmount,
           }),
@@ -193,7 +195,7 @@ export function UserEconomyPanel({
       setTransferAmount(1);
       await load();
     } catch (error) {
-      notifySite(errorMessage(error, t("user.transferFailed")), t("user.transfer"), "danger");
+      notifySite(error instanceof ApiError && error.code === "TRANSFER_RECIPIENT_AMBIGUOUS" ? t("user.transferRecipientAmbiguous") : errorMessage(error, t("user.transferFailed")), t("user.transfer"), "danger");
     } finally {
       setBusy("");
     }
@@ -381,13 +383,23 @@ export function UserEconomyPanel({
           <h3 className="text-lg font-black">{t("user.transfer")}</h3>
           <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={transfer}>
             <label className="grid gap-2 sm:col-span-2">
+              <span className="text-sm font-bold">{t("user.transferRecipientType")}</span>
+              <select className="field" value={recipientType} disabled={busy === "transfer"} onChange={(event) => setRecipientType(event.target.value as "identifier" | "public_id")}>
+                <option value="identifier">{t("user.transferRecipientUsernameOrEmail")}</option>
+                <option value="public_id">{t("user.transferRecipientPublicId")}</option>
+              </select>
+            </label>
+            <label className="grid gap-2 sm:col-span-2">
               <span className="text-sm font-bold">{t("user.transferRecipient")}</span>
               <input
                 className="field"
-                placeholder={t("user.transferRecipientPlaceholder")}
+                aria-label={t("user.transferRecipient")}
+                aria-describedby={recipientType === "public_id" ? recipientHintId : undefined}
+                placeholder={t(recipientType === "public_id" ? "user.transferRecipientPublicIdPlaceholder" : "user.transferRecipientPlaceholder")}
                 value={recipient}
                 onChange={(event) => setRecipient(event.target.value)}
               />
+              {recipientType === "public_id" ? <span id={recipientHintId} className="text-xs text-[var(--muted)]">{t("user.transferRecipientPublicIdHint")}</span> : null}
             </label>
             <label className="grid gap-2">
               <span className="text-sm font-bold">{t("user.transferCurrency")}</span>

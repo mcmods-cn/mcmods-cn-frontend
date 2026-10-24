@@ -1,6 +1,15 @@
 import en from "./en-US";
 const ja = {
   ...en,
+  user: { ...en.user,
+    transferRecipientType: "送金先の識別方法",
+    transferRecipientUsernameOrEmail: "ユーザー名またはメール",
+    transferRecipientPublicId: "ユーザーの公開 ID",
+    transferRecipientPublicIdPlaceholder: "公開ユーザー ID を正確に入力",
+    transferRecipientPublicIdHint: "送金先のプロフィールに表示された公開 ID を使用してください。",
+    transferRecipientAmbiguous: "複数のアカウントが一致します。「ユーザーの公開 ID」を選択し、送金先のプロフィールに表示された ID を入力してください。",
+    transferRecipientPlaceholder: "ユーザー名またはメールを入力",
+  },
   logShare: { ...en.logShare,
     tool: {
       "kicker": "ツール",

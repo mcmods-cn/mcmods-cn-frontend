@@ -1,6 +1,15 @@
 import en from "./en-US";
 const ru = {
   ...en,
+  user: { ...en.user,
+    transferRecipientType: "Тип идентификатора получателя",
+    transferRecipientUsernameOrEmail: "Имя пользователя или почта",
+    transferRecipientPublicId: "Публичный ID пользователя",
+    transferRecipientPublicIdPlaceholder: "Введите публичный ID точно",
+    transferRecipientPublicIdHint: "Используйте публичный ID из профиля получателя.",
+    transferRecipientAmbiguous: "Найдено несколько аккаунтов. Выберите публичный ID пользователя и введите ID из профиля получателя.",
+    transferRecipientPlaceholder: "Имя пользователя или почта",
+  },
   logShare: { ...en.logShare,
     tool: {
       "kicker": "Инструменты",

@@ -1,6 +1,15 @@
 import zhCN from "./zh-CN";
 const zhTW = {
   ...zhCN,
+  user: { ...zhCN.user,
+    transferRecipientType: "收款人識別類型",
+    transferRecipientUsernameOrEmail: "使用者名稱或電子郵件",
+    transferRecipientPublicId: "使用者公開 ID",
+    transferRecipientPublicIdPlaceholder: "完整輸入使用者公開 ID",
+    transferRecipientPublicIdHint: "請使用收款人個人頁面顯示的公開 ID。",
+    transferRecipientAmbiguous: "符合多個帳號。請選擇「使用者公開 ID」，並輸入收款人個人頁面顯示的 ID。",
+    transferRecipientPlaceholder: "輸入使用者名稱或電子郵件",
+  },
   logShare: { ...zhCN.logShare,
     tool: {
       "kicker": "工具",

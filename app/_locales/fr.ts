@@ -1,6 +1,15 @@
 import en from "./en-US";
 const fr = {
   ...en,
+  user: { ...en.user,
+    transferRecipientType: "Identifiant du destinataire",
+    transferRecipientUsernameOrEmail: "Nom d’utilisateur ou e-mail",
+    transferRecipientPublicId: "ID public de l’utilisateur",
+    transferRecipientPublicIdPlaceholder: "Saisissez exactement l’ID public",
+    transferRecipientPublicIdHint: "Utilisez l’ID public affiché sur le profil du destinataire.",
+    transferRecipientAmbiguous: "Plusieurs comptes correspondent. Choisissez ID public de l’utilisateur et saisissez l’ID affiché sur son profil.",
+    transferRecipientPlaceholder: "Nom d’utilisateur ou e-mail",
+  },
   logShare: { ...en.logShare,
     tool: {
       "kicker": "Outils",
