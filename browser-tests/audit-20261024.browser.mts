@@ -90,7 +90,7 @@ test("CONT-003 and GR-010 direct recipe links render exact recipe with independe
     const slot = page.locator('#recipe-recipe01 span[tabindex="0"]');
     assert.equal(await slot.count(), 1);
     assert.deepEqual(await slot.evaluate(node => ({ left: (node as HTMLElement).style.left, top: (node as HTMLElement).style.top, width: (node as HTMLElement).style.width, height: (node as HTMLElement).style.height })), { left: "20px", top: "40px", width: "48px", height: "60px" });
-    const visual = slot.locator('span.pointer-events-none.absolute');
+    const visual = slot.locator('span.pointer-events-none.absolute.block');
     assert.equal(await visual.evaluate(node => (node as HTMLElement).style.left), "4px");
     assert.equal(await visual.evaluate(node => (node as HTMLElement).style.width), "32px");
     await slot.focus();

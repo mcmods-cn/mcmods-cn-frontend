@@ -57,6 +57,7 @@ test("FID-001 ambiguous text keeps its input and interpretation until the user e
     assert.equal(await mode.inputValue(), "identifier");
     assert.equal(await recipient.inputValue(), "000012345");
     assert.deepEqual(requests, [{ recipient: "000012345", currency: "audit", amount: 1 }]);
+    await page.getByRole("alertdialog").getByRole("button", { name: "Close", exact: true }).click();
     await mode.selectOption("public_id");
     assert.equal(requests.length, 1, "Changing interpretation must not replay a transfer");
     await page.getByRole("button", { name: "Confirm transfer", exact: true }).click();
