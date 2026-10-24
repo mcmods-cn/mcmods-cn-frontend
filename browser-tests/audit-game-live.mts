@@ -95,7 +95,9 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
     assert.notEqual(reviewerIdentity.id, creatorIdentity.id);
     assert(!reviewerIdentity.permissionRules?.some((rule: { allow: boolean; code: string }) => rule.allow && ["*", "admin.*"].includes(rule.code)), "Independent reviewer must use explicit review authority");
     report.reviewerId = reviewerIdentity.id;
-    const queue = await get(reviewer, `/api/v1/reviews/content?limit=100&q=${encodeURIComponent(runtime.projectSiteId)}`);
+    // Review text search covers display fields; a site slug is not a supported search key.
+    // Bind the actual returned revision to its public project identity below.
+    const queue = await get(reviewer, "/api/v1/reviews/content?limit=100");
     const reviewItem = queue.items.find((item: { source: string; projectId: string }) => item.source === "export" && item.projectId === runtime.projectPublicId);
     assert(reviewItem, "Actual review queue must contain the browser-created import revision");
     report.revisionId = reviewItem.id;
