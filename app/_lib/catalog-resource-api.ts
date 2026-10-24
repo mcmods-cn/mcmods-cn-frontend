@@ -1,7 +1,9 @@
 import { apiRequest } from "./api";
 import { apiRecord as record, apiText as text } from "./api-normalizers";
-import type { LocalizedContentFields, LocalizationVersion, ReviewStatus } from "./editor-types";
+import type { EditResult, LocalizedContentFields, LocalizationVersion, ReviewStatus } from "./editor-types";
 import { parseLocalizedContentVersions, parseOptionalPublishedReviewStatus } from "./localization-boundary.mts";
+
+import { normalizeEditResult, type CatalogLocalizationPayload } from "./catalog-editor-api";
 
 type CatalogEditorLocalization = LocalizationVersion<LocalizedContentFields>;
 
@@ -96,4 +98,29 @@ export function loadGlobalResourceBindings(publicId: string, token: string, opti
     { signal },
     token,
   );
+}
+
+
+export type CatalogResourceMutation = {
+  baseRevisionId?: string;
+  reason: string;
+  defaultLocale: string;
+  localizations: CatalogLocalizationPayload[];
+  kindCode: string;
+  canonicalId: string;
+  definition: Record<string, unknown>;
+  iconFileId?: string;
+  renderFileId?: string;
+};
+
+export async function saveCatalogResource(publicId: string | undefined, payload: CatalogResourceMutation, token: string) {
+  const result = await apiRequest<EditResult>(publicId ? `${resourcesPath}/${encodeURIComponent(publicId)}` : resourcesPath,
+    { method: publicId ? "PUT" : "POST", body: JSON.stringify(payload) }, token);
+  return normalizeEditResult(result);
+}
+
+export async function archiveCatalogResource(publicId: string, baseRevisionId: string | undefined, reason: string, token: string) {
+  const result = await apiRequest<EditResult>(`${resourcesPath}/${encodeURIComponent(publicId)}`,
+    { method: "DELETE", body: JSON.stringify({ baseRevisionId, reason }) }, token);
+  return normalizeEditResult(result);
 }

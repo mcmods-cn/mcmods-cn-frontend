@@ -1092,6 +1092,13 @@ const en = {
     },
   },
   catalogEditor: {
+    resourceCreate: "Create global resource",
+    resourceEdit: "Edit global resource",
+    resourceDescription: "Submit the resource identity, localized introduction, and technical definition for independent review.",
+    resourceDefinition: "Resource definition (JSON)",
+    definitionObjectRequired: "Enter a valid JSON object for the resource definition.",
+    iconFileId: "Icon file public ID (optional)",
+    renderFileId: "Render file public ID (optional)",
     applicableVersions: "Applicable Minecraft versions",
     applicableVersionsHint: "Versions are expanded explicitly when saved; newly added versions in the same group are not included automatically.",
     multipleVersionsWarning: "This recipe is bound to multiple versions. Changes to its content affect all of them.",

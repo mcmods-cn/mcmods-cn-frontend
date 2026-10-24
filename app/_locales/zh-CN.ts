@@ -1092,6 +1092,13 @@ const zhCN = {
     },
   },
   catalogEditor: {
+    resourceCreate: "创建全局资源",
+    resourceEdit: "编辑全局资源",
+    resourceDescription: "提交资源标识、本地化介绍和技术定义，经过独立审核后公开。",
+    resourceDefinition: "资源定义（JSON）",
+    definitionObjectRequired: "资源定义必须是有效的 JSON 对象。",
+    iconFileId: "图标文件公开 ID（可选）",
+    renderFileId: "渲染文件公开 ID（可选）",
     applicableVersions: "适用 Minecraft 版本",
     applicableVersionsHint: "保存时会展开为明确版本；以后新增同分类版本不会自动加入。",
     multipleVersionsWarning: "此合成表同时绑定多个版本，修改合成内容将影响这些版本。",

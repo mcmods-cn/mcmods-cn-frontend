@@ -174,7 +174,7 @@ function normalizeResources(value: unknown): CatalogResourceRef[] {
   }).filter((entry) => entry.publicId && entry.id);
 }
 
-function normalizeEditResult(value: RawEditResult): EditResult {
+export function normalizeEditResult(value: RawEditResult): EditResult {
   return {
     objectPublicId: value.objectPublicId || "",
     revisionId: text(value.revisionId) || undefined,
