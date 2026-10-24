@@ -7,7 +7,7 @@ import { createServer } from "node:net";
 import { createServer as createHTTPServer, type Server as HTTPServer } from "node:http";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { chromium, type Browser, type Page, type Route } from "playwright";
+import { chromium, type Browser, type BrowserContextOptions, type Page, type Route } from "playwright";
 
 const repository = fileURLToPath(new URL("../", import.meta.url));
 export type APIReply = { data?: unknown; error?: string; code?: string; retryAfter?: number; details?: unknown; status?: number; headers?: Record<string, string>; contentType?: string; bytes?: Uint8Array };
@@ -113,9 +113,9 @@ export class ProductionBrowserFixture {
     }
   }
 
-  async page(handler: APIHandler) {
+  async page(handler: APIHandler, options: BrowserContextOptions = {}) {
     assert(this.browser, "Call start before creating a page");
-    const context = await this.browser.newContext({ locale: "en-US", serviceWorkers: "block" });
+    const context = await this.browser.newContext({ locale: "en-US", serviceWorkers: "block", ...options });
     await context.addCookies([{ name: "mcmods-ui-locale", value: "en-US", url: this.origin }]);
     const page = await context.newPage();
     page.setDefaultTimeout(5000);
@@ -172,7 +172,7 @@ export class ProductionBrowserFixture {
       headers: {
         "access-control-allow-origin": this.origin,
         "access-control-allow-credentials": "true",
-        "access-control-allow-headers": "Content-Type,Authorization,X-Client-ID,X-Request-ID",
+        "access-control-allow-headers": "Content-Type,Authorization,X-Client-ID,X-Request-ID,Idempotency-Key,X-Anti-Abuse-Challenge,X-Anti-Abuse-Form,X-Anti-Abuse-Trap",
         "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
         ...reply.headers,
       },
