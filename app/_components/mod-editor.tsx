@@ -45,6 +45,8 @@ import { ModResourcePickerDialog } from "./editor/mod-resource-picker";
 import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { FileDropZone } from "./file-drop-zone";
+import { AntiAbuseChallengeDialog } from "./anti-abuse-challenge";
+import { challengeFromDetails, type AntiAbuseChallenge } from "../_lib/anti-abuse-api";
 import { ReviewLockGate } from "./review-edit-lock";
 import { useAutoDraft } from "../_lib/use-auto-draft";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
@@ -107,6 +109,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
   const [baseRevisionId, setBaseRevisionId] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [challenge, setChallenge] = useState<{ value: AntiAbuseChallenge; snapshot: CreateModPayload; reason: string; idempotencyKey: string }>();
   const [importProgress, setImportProgress] = useState(0);
   const importAttemptRef = useRef("");
   const loadedEditorKey = useRef("");
@@ -235,6 +238,16 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const snapshot = payloadFromDraft(draft);
+    if (snapshot.localizations.length && !snapshot.localizations.find((item) => item.locale === snapshot.defaultLocale)?.name.trim()) {
+      setSelectedLocale(snapshot.defaultLocale as Locale);
+      setMessage(t("mods.submission.defaultLocaleNameRequired"));
+      return;
+    }
+    await persistSubmission(snapshot, changeReason);
+  }
+
+  async function persistSubmission(snapshot: CreateModPayload, reason: string, challengeProof = "", idempotencyKey = crypto.randomUUID()) {
     if (submitInFlight.current || submitting || !recordLoaded || iconUploading || galleryUploading || markdownUploading) return;
     if (!token) {
       setMessage(t("mods.submission.loginRequired"));
@@ -243,12 +256,12 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
     submitInFlight.current = true;
     setSubmitting(true);
     setMessage("");
-    const snapshot = payloadFromDraft(draft);
+    const headers = { "Idempotency-Key": idempotencyKey, ...(challengeProof ? { "X-Anti-Abuse-Challenge": challengeProof } : {}) };
     try {
       if (siteId) {
         const revision = await apiRequest<BackendModRevision>(
           `/api/v1/mods/${encodeURIComponent(siteId)}/revisions`,
-          { method: "POST", body: JSON.stringify({ snapshot, changeReason, baseRevisionId }) },
+          { method: "POST", headers, body: JSON.stringify({ snapshot, changeReason: reason, baseRevisionId }) },
           token,
         );
         await autoDraft.completeDraft({
@@ -259,7 +272,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
         }).catch(() => { window.alert(t("drafts.completionFailed")); });
         router.push(`/mods/${revision.status === "approved" ? snapshot.siteId : siteId}/history`);
       } else {
-        const created = await apiRequest<BackendModRecord>("/api/v1/mods", { method: "POST", body: JSON.stringify(snapshot) }, token);
+        const created = await apiRequest<BackendModRecord>("/api/v1/mods", { method: "POST", headers, body: JSON.stringify(snapshot) }, token);
         await autoDraft.completeDraft({
           projectKey: `mod:${created.siteId}`,
           projectTitle: created.primaryName,
@@ -269,6 +282,14 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
         router.push(`/mods/${created.siteId}`);
       }
     } catch (error) {
+      if (error instanceof ApiError && error.code === "challenge_required") {
+        const value = challengeFromDetails(error.details);
+        if (value) {
+          setChallenge({ value, snapshot, reason, idempotencyKey });
+          setMessage(t("antiAbuse.challengeRequired"));
+          return;
+        }
+      }
       setMessage(error instanceof ApiError ? error.message : t("mods.submission.createFailed"));
     } finally {
       submitInFlight.current = false;
@@ -339,7 +360,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
 
   const editor = (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}><fieldset disabled={submitting} className="min-w-0">
+      <form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}><fieldset disabled={submitting || Boolean(challenge)} className="min-w-0">
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5">
           <div>
             <Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={siteId ? `/mods/${siteId}` : "/mods"}>{t("mods.detail.back")}</Link>
@@ -501,6 +522,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
           }}
         />
       </fieldset></form>
+      {challenge ? <AntiAbuseChallengeDialog key={challenge.value.id} challenge={challenge.value} busy={submitting} onCancel={() => setChallenge(undefined)} onSubmit={(proof) => void persistSubmission(challenge.snapshot, challenge.reason, proof, challenge.idempotencyKey)} /> : null}
     </main>
   );
   return siteId && uniqueId
