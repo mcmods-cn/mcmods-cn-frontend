@@ -25,6 +25,7 @@ async function startPreview() {
     .replace('from "react"', `from ${JSON.stringify(hooks)}`)
     .replace('from "three"', `from ${JSON.stringify(three)}`)
     .replace('from "three/examples/jsm/controls/OrbitControls.js"', `from ${JSON.stringify(controls)}`)
+    .replace('from "@/app/_lib/skin-texture-access.mts"', `from ${JSON.stringify(new URL("./skin-texture-access.mts", import.meta.url).href)}`)
     .replace('from "@/app/_lib/i18n-provider"', `from ${JSON.stringify(i18n)}`);
   const output = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText
     .replace('from "react/jsx-runtime"', `from ${JSON.stringify(import.meta.resolve("react/jsx-runtime"))}`);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { skinTextureCrossOrigin } from "../_lib/skin-texture-access.mts";
 import { SkinModel } from "../_lib/skin-api";
 
 export function SkinPreview2D({
@@ -24,7 +25,7 @@ export function SkinPreview2D({
     if (!canvas || !src) return;
     let cancelled = false;
     const image = new Image();
-    image.crossOrigin = "anonymous";
+    image.crossOrigin = skinTextureCrossOrigin(src);
     image.onload = () => {
       if (cancelled) return;
       const context = canvas.getContext("2d");

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { useI18n } from "@/app/_lib/i18n-provider";
+import { skinTextureCrossOrigin } from "@/app/_lib/skin-texture-access.mts";
 import { SkinModel } from "@/app/_lib/skin-api";
 
 type Props = {
@@ -149,7 +150,9 @@ export function SkinViewerCanvas({
 
 async function loadTexture(url: string) {
   if (!url) return null;
-  const texture = await new THREE.TextureLoader().loadAsync(url);
+  const loader = new THREE.TextureLoader();
+  loader.crossOrigin = skinTextureCrossOrigin(url);
+  const texture = await loader.loadAsync(url);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.magFilter = THREE.NearestFilter;
   texture.minFilter = THREE.NearestFilter;
