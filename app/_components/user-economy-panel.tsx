@@ -384,7 +384,7 @@ export function UserEconomyPanel({
           <form className="mt-4 grid gap-3 sm:grid-cols-2" onSubmit={transfer}>
             <label className="grid gap-2 sm:col-span-2">
               <span className="text-sm font-bold">{t("user.transferRecipientType")}</span>
-              <select className="field" value={recipientType} disabled={busy === "transfer"} onChange={(event) => setRecipientType(event.target.value as "identifier" | "public_id")}>
+              <select aria-label={t("user.transferRecipientType")} className="field" value={recipientType} disabled={busy === "transfer"} onChange={(event) => setRecipientType(event.target.value as "identifier" | "public_id")}>
                 <option value="identifier">{t("user.transferRecipientUsernameOrEmail")}</option>
                 <option value="public_id">{t("user.transferRecipientPublicId")}</option>
               </select>
