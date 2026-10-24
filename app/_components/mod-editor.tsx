@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { API_BASE_URL, apiRequest, ApiError } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
@@ -46,7 +46,7 @@ import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-cro
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { FileDropZone } from "./file-drop-zone";
 import { AntiAbuseChallengeDialog } from "./anti-abuse-challenge";
-import { challengeFromDetails, type AntiAbuseChallenge } from "../_lib/anti-abuse-api";
+import { challengeFromDetails, loadAntiAbuseFormToken, type AntiAbuseFormToken, type AntiAbuseChallenge } from "../_lib/anti-abuse-api";
 import { ReviewLockGate } from "./review-edit-lock";
 import { useAutoDraft } from "../_lib/use-auto-draft";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
@@ -110,6 +110,35 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
   const [challenge, setChallenge] = useState<{ value: AntiAbuseChallenge; snapshot: CreateModPayload; reason: string; idempotencyKey: string }>();
+  const [antiAbuseFormToken, setAntiAbuseFormToken] = useState<AntiAbuseFormToken>();
+  const [honeypot, setHoneypot] = useState("");
+  const formTokenValue = useRef<AntiAbuseFormToken | undefined>(undefined);
+  const formTokenRequest = useRef<AbortController | undefined>(undefined);
+  const refreshSubmissionFormToken = useCallback(async () => {
+    formTokenRequest.current?.abort();
+    if (!token) return;
+    const controller = new AbortController();
+    formTokenRequest.current = controller;
+    const object = siteId ? `/api/v1/mods/${encodeURIComponent(siteId)}/revisions` : "/api/v1/mods";
+    try {
+      const next = await loadAntiAbuseFormToken("review.submit", object, token, controller.signal);
+      if (controller.signal.aborted) return;
+      formTokenValue.current = next;
+      setAntiAbuseFormToken(next);
+    } catch {
+      // This metadata is an optional risk signal. Keep the existing server
+      // challenge and rejection paths authoritative if it is unavailable.
+      if (!controller.signal.aborted) {
+        formTokenValue.current = undefined;
+        setAntiAbuseFormToken(undefined);
+      }
+    }
+  }, [siteId, token]);
+  useEffect(() => {
+    const scheduled = window.setTimeout(() => { void refreshSubmissionFormToken(); }, 0);
+    return () => { window.clearTimeout(scheduled); formTokenRequest.current?.abort(); formTokenValue.current = undefined; };
+  }, [refreshSubmissionFormToken]);
+
   const [importProgress, setImportProgress] = useState(0);
   const importAttemptRef = useRef("");
   const loadedEditorKey = useRef("");
@@ -256,7 +285,14 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
     submitInFlight.current = true;
     setSubmitting(true);
     setMessage("");
-    const headers = { "Idempotency-Key": idempotencyKey, ...(challengeProof ? { "X-Anti-Abuse-Challenge": challengeProof } : {}) };
+    const metadata = formTokenValue.current;
+    const currentFormToken = metadata && Date.parse(metadata.expiresAt) > Date.now() ? metadata.token : "";
+    const headers = {
+      "Idempotency-Key": idempotencyKey,
+      ...(currentFormToken ? { "X-Anti-Abuse-Form": currentFormToken } : {}),
+      ...(honeypot ? { "X-Anti-Abuse-Trap": honeypot } : {}),
+      ...(challengeProof ? { "X-Anti-Abuse-Challenge": challengeProof } : {}),
+    };
     try {
       if (siteId) {
         const revision = await apiRequest<BackendModRevision>(
@@ -294,6 +330,9 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
     } finally {
       submitInFlight.current = false;
       setSubmitting(false);
+      // Form metadata is single-use, including a challenge/rejection response.
+      // Refresh only metadata; the user decides whether to submit again.
+      void refreshSubmissionFormToken();
     }
   }
 
@@ -361,6 +400,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
   const editor = (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <form className="mx-auto max-w-[1440px] px-4 py-6 lg:px-6" onSubmit={submit}><fieldset disabled={submitting || Boolean(challenge)} className="min-w-0">
+        {antiAbuseFormToken ? <input aria-hidden="true" autoComplete="off" className="hidden" name={antiAbuseFormToken.fieldName} tabIndex={-1} value={honeypot} onChange={(event) => setHoneypot(event.target.value)} /> : null}
         <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5">
           <div>
             <Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={siteId ? `/mods/${siteId}` : "/mods"}>{t("mods.detail.back")}</Link>

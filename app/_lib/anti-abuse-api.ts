@@ -14,9 +14,9 @@ export type AntiAbuseChallenge = {
   expiresAt: string;
 };
 
-export function loadAntiAbuseFormToken(action: string, object: string, token: string) {
+export function loadAntiAbuseFormToken(action: string, object: string, token: string, signal?: AbortSignal) {
   const query = new URLSearchParams({ action, object });
-  return apiRequest<AntiAbuseFormToken>(`/api/v1/anti-abuse/form-token?${query}`, {}, token);
+  return apiRequest<AntiAbuseFormToken>(`/api/v1/anti-abuse/form-token?${query}`, { signal }, token);
 }
 
 export function challengeFromDetails(details: unknown): AntiAbuseChallenge | undefined {

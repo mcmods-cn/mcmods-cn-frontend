@@ -122,10 +122,18 @@ test("REM-004 transient auth 429 offers explicit recovery using the existing coo
 });
 
 test("REM-002 Mod challenge preserves input and the same submission key through rejection and retry", { timeout: 30_000 }, async () => {
-  const writes: Array<{ key?: string; proof?: string; body: unknown }> = [];
+  const writes: Array<{ key?: string; proof?: string; form?: string; body: unknown }> = [];
+  const metadataRequests: string[] = [];
   const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/anti-abuse/form-token") {
+      assert.equal(request.url.searchParams.get("action"), "review.submit");
+      assert.equal(request.url.searchParams.get("object"), "/api/v1/mods");
+      const token = `metadata-${metadataRequests.length + 1}`;
+      metadataRequests.push(token);
+      return { data: { token, fieldName: "controlled-contact-field", expiresAt: "2099-01-01T00:00:00Z" } };
+    }
     if (request.path === "/api/v1/mods" && request.method === "POST") {
-      writes.push({ key: request.headers["idempotency-key"], proof: request.headers["x-anti-abuse-challenge"], body: JSON.parse(request.body) });
+      writes.push({ form: request.headers["x-anti-abuse-form"], key: request.headers["idempotency-key"], proof: request.headers["x-anti-abuse-challenge"], body: JSON.parse(request.body) });
       if (writes.length === 1) return { status: 403, code: "challenge_required", error: "Synthetic verification required", details: { challenge: { id: "challenge1", provider: "proof", prompt: "2 + 3", expiresAt: "2099-01-01T00:00:00Z" } } };
       if (writes.at(-1)?.proof !== "challenge1:5") return { status: 403, code: "challenge_invalid", error: "Synthetic wrong answer" };
       return { status: 503, error: "Synthetic persistence barrier after correct proof" };
@@ -148,6 +156,8 @@ test("REM-002 Mod challenge preserves input and the same submission key through 
     await dialog.getByRole("button", { name: "Verify and continue", exact: true }).click();
     await page.getByText("Synthetic persistence barrier after correct proof", { exact: true }).waitFor();
     assert.equal(writes.length, 3);
+    assert(metadataRequests.length >= 3);
+    assert.deepEqual(writes.map(write => write.form), metadataRequests.slice(0, 3));
     assert(writes[0].key);
     assert.equal(writes[0].key, writes[1].key);
     assert.equal(writes[0].key, writes[2].key);
