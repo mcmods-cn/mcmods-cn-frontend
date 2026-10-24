@@ -6,7 +6,7 @@ import { useAuthSnapshot } from "../_lib/auth";
 import { catalogAssetURL, contentLocales, type GlobalRecipe, localizedCatalogName } from "../_lib/global-catalog-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { RecipeEditLink } from "./recipe-edit-link";
-import { RecipeResourceVisual, recipeSlotPresentation } from "./recipe-resource-slot";
+import { RecipeResourceVisual, recipeSlotAmountLabel, recipeSlotPresentation } from "./recipe-resource-slot";
 import { useRotatingValue } from "./rotating-resource";
 import { recipeIngredientMergeKey, UnifiedRecipeCard, type UnifiedRecipeMaterial } from "./unified-recipe-card";
 
@@ -75,7 +75,7 @@ function RecipeSlot({ slot, scale, locale, showVisual }: { slot: Record<string, 
   const tooltipResourceId = tagId && itemId ? `${itemId} · ${resourceId}` : resourceId;
   const presentation = recipeSlotPresentation(slot, item, scale);
   const src = iconPath && sourceRevisionId ? catalogAssetURL(sourceRevisionId, iconPath) : "";
-  const content = <><RecipeResourceVisual fallback={tagId ? "#" : "?"} name={displayName} presentation={presentation} resourceId={tooltipResourceId} showVisual={showVisual} src={src} /><GlobalRecipeCandidateChanceLabel candidate={item} locale={locale} slot={slot} /></>;
+  const content = <><RecipeResourceVisual amountLabel={recipeSlotAmountLabel(item)} fallback={tagId ? "#" : "?"} name={displayName} presentation={presentation} resourceId={tooltipResourceId} showVisual={showVisual} src={src} /><GlobalRecipeCandidateChanceLabel candidate={item} locale={locale} slot={slot} /></>;
   const label = `${displayName || resourceId} (${tooltipResourceId})`;
   const slotClass = "group focus-ring absolute z-10 hover:z-40 focus-visible:z-40";
   if (tagId && tagPublicId) return <Link aria-label={label} className={slotClass} href={`/mods-tag?publicId=${encodeURIComponent(tagPublicId)}`} style={presentation.style}>{content}</Link>;

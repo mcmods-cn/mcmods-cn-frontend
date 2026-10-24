@@ -18,7 +18,7 @@ import {
 import { minecraftLocale, modExportAssetURL } from "../_lib/mod-export-api";
 import { useI18n } from "../_lib/i18n-provider";
 import type { ModContentEntryField, ModContentEntryType } from "../_lib/mod-content-api";
-import { RecipeResourceVisual, recipeSlotPresentation } from "./recipe-resource-slot";
+import { RecipeResourceVisual, recipeSlotAmountLabel, recipeSlotPresentation } from "./recipe-resource-slot";
 import {
   recipeIngredientMergeKey,
   UnifiedRecipeCard,
@@ -689,6 +689,7 @@ function ModRecipeSlot({
   const src = iconPath && sourceRevisionId ? modExportAssetURL(sourceRevisionId, iconPath) : "";
   const content = <>
     <RecipeResourceVisual
+      amountLabel={recipeSlotAmountLabel(item)}
       fallback={tagId ? "#" : "?"}
       name={displayName}
       presentation={presentation}

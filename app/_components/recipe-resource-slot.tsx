@@ -1,11 +1,13 @@
 import Image from "next/image";
 import { FloatingTooltip } from "./floating-tooltip";
 
+export { recipeSlotAmountLabel } from "../_lib/recipe-slot-amount.mts";
 export { recipeSlotPresentation } from "../_lib/recipe-slot-geometry.mts";
 import type { RecipeSlotPresentation } from "../_lib/recipe-slot-geometry.mts";
 
 export function RecipeResourceVisual({
   fallback,
+  amountLabel,
   name,
   presentation,
   resourceId,
@@ -13,6 +15,7 @@ export function RecipeResourceVisual({
   src,
 }: {
   fallback: string;
+  amountLabel?: string;
   name: string;
   presentation: RecipeSlotPresentation;
   resourceId: string;
@@ -30,7 +33,7 @@ export function RecipeResourceVisual({
       : <Image unoptimized alt={name} className="h-full w-full object-contain [image-rendering:pixelated]" height={Math.max(1, Math.round(height))} width={Math.max(1, Math.round(width))} src={src} />
       : <span className="grid h-full w-full place-items-center text-[10px] font-black">{fallback}</span>
       : null;
-  const positionedVisual = <span className="pointer-events-none absolute block" style={presentation.visualStyle}>{visual}</span>;
+  const positionedVisual = <span className="pointer-events-none absolute block" style={presentation.visualStyle}>{visual}{showVisual && amountLabel ? <span className="pointer-events-none absolute bottom-0 right-0 z-20 rounded bg-black/75 px-0.5 text-[10px] font-black leading-none text-white">{amountLabel}</span> : null}</span>;
   if (!resourceId) return positionedVisual;
   return (
     <FloatingTooltip content={<>
