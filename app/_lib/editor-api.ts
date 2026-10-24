@@ -182,7 +182,7 @@ export function loadCatalogResourcePresentations(
   signal?: AbortSignal,
 ) {
   if (!resources.length) return Promise.resolve<CatalogResourceRef[]>([]);
-  return apiRequest<{ items: CatalogResourceRef[] }>("/api/v1/catalog/resource-presentations", {
+  return apiRequest<{ items: Array<CatalogResourceRef & { inputIndex?: number }> }>("/api/v1/catalog/resource-presentations", {
     method: "POST",
     signal,
     body: JSON.stringify({
@@ -194,9 +194,10 @@ export function loadCatalogResourcePresentations(
         registry: resource.registry,
       })),
     }),
-  }, token || undefined).then((response) => response.items.map((resource) => ({
+  }, token || undefined).then((response) => response.items.map(({ inputIndex, ...resource }) => ({
     ...resource,
     names: resource.names ?? {},
+    requestedPublicId: Number.isInteger(inputIndex) ? resources[inputIndex!]?.publicId : undefined,
   })));
 }
 

@@ -66,6 +66,7 @@ type CatalogResourceSource = {
 export type CatalogResourceRef = {
   publicId: string;
   entityId?: string;
+  requestedPublicId?: string;
   id: string;
   registry: string;
   kind: string;

@@ -317,6 +317,7 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
       },
       {
         signal: controller.signal,
+        allNamespacesMessage: t("mods.exportImport.namespaceScopeHint"),
         resumeTicket: initialTicket,
         completedPartNumbers: completedParts.current,
         onTicket: async (ticket) => {
@@ -523,6 +524,7 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
   }
 
   const form = <><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><input className="mt-1 h-4 w-4 accent-[var(--accent)]" type="checkbox" disabled={busy || checkingRecovery || recoveryFailed || disabled || hasActiveTask} checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} /><span><strong className="block">{t("mods.exportImport.overwriteExisting")}</strong><small className="mt-1 block leading-5 text-[var(--muted)]">{t("mods.exportImport.overwriteExistingHint")}</small></span></label>
+    <p className="mt-4 text-sm text-[var(--muted)]">{t("mods.exportImport.namespaceScopeHint")}</p>
     <label className={`mt-5 grid min-h-48 place-items-center rounded-lg border border-dashed p-6 text-center ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${dragging ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel-subtle)]"}`} onDragEnter={(event) => { event.preventDefault(); if (!disabled && !busy && !checkingRecovery && !recoveryFailed && !hasActiveTask) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { if (disabled || busy || checkingRecovery || recoveryFailed || hasActiveTask) { event.preventDefault(); setDragging(false); return; } drop(event); }}><input className="sr-only" type="file" accept=".zip,application/zip" disabled={busy || checkingRecovery || recoveryFailed || disabled || hasActiveTask} onChange={(event: ChangeEvent<HTMLInputElement>) => void importFile(event.target.files?.[0])} /><span><strong className="block text-lg">{upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : t("mods.exportImport.drop")}</strong><small className="mt-2 block text-[var(--muted)]">{t("mods.exportImport.dropHint")}</small></span></label>
     {upload && !job ? <Progress label={t(`mods.exportImport.uploadPhases.${upload.phase}`)} percent={upload.percent} upload={upload} /> : null}
     {job ? <><p className="mt-4 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("mods.exportImport.importInBackground")}</p><Progress label={t(`mods.exportImport.stages.${job.currentStage || job.status}`)} percent={job.progress} />{job.status === "confirmation_required" ? <MODIDConfirmationCard busy={busy} job={job} onCancel={() => void cancelImport()} onConfirm={() => void confirmMODIDMismatch()} /> : null}{job.reviewRequired ? <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p> : null}</> : null}

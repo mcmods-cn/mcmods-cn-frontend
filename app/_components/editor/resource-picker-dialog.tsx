@@ -2,11 +2,12 @@
 
 import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { unresolvedPublicID, sameResourceIdentity, resolveSelectedResources, needsResourceHydration } from "../../_lib/resource-selection.mts";
 import { localizedCatalogResourceName } from "../../_lib/content-language";
 import { loadCatalogResourcePresentations, loadCatalogResources } from "../../_lib/editor-api";
 import type { CatalogResourcePage, CatalogResourceRef, ResourcePageLoader } from "../../_lib/editor-types";
 import { useI18n } from "../../_lib/i18n-provider";
-import { namespaceFromIdentifier } from "../../_lib/catalog-resource-identifiers";
+import { catalogRegistryForKind, namespaceFromIdentifier } from "../../_lib/catalog-resource-identifiers";
 import { CatalogResourceIcon, CatalogResourceIdentity, type SelectedResourceListLabels } from "./selected-resource-list";
 
 type ResourceFilterOption = { value: string; label: string };
@@ -174,7 +175,7 @@ function OpenResourcePickerDialog({
       if (next.has(resource.publicId)) next.delete(resource.publicId);
       else {
         const unresolvedMatch = [...next.entries()].find(([, selectedResource]) =>
-          selectedResource.unresolved && selectedResource.id.toLowerCase() === resource.id.toLowerCase());
+          selectedResource.unresolved && sameResourceIdentity(selectedResource, resource));
         if (unresolvedMatch) next.delete(unresolvedMatch[0]);
         next.set(resource.publicId, resource);
       }
@@ -190,11 +191,11 @@ function OpenResourcePickerDialog({
     setSelected((current) => {
       const next = multiple ? new Map(current) : new Map<string, CatalogResourceRef>();
       for (const identifier of identifiers) {
-        const publicId = unresolvedPublicID(manualKind, identifier);
+        const publicId = unresolvedPublicID(manualKind, identifier, manualRegistry);
         next.set(publicId, {
           publicId,
           id: identifier,
-          registry: manualRegistry || namespaceFromIdentifier(identifier),
+          registry: manualRegistry || catalogRegistryForKind(manualKind) || namespaceFromIdentifier(identifier),
           kind: manualKind,
           names: {},
           unresolved: true,
@@ -339,33 +340,6 @@ function SelectedIconStrip({
   </div>;
 }
 
-function unresolvedPublicID(kind: string, identifier: string) {
-  return `unresolved:${kind.toLowerCase()}:${identifier.toLowerCase()}`;
-}
-
-function needsResourceHydration(resource: CatalogResourceRef) {
-  return resource.unresolved || (!resource.resolvedName && Object.values(resource.names).every((name) => !name.trim()));
-}
-
-function resolveSelectedResources(current: Map<string, CatalogResourceRef>, candidates: readonly CatalogResourceRef[]) {
-  let next: Map<string, CatalogResourceRef> | undefined;
-  for (const [key, selectedResource] of current) {
-    if (!needsResourceHydration(selectedResource)) continue;
-    const match = candidates.find((candidate) => resourceMatches(candidate, selectedResource));
-    if (!match) continue;
-    next ??= new Map(current);
-    next.delete(key);
-    next.set(match.publicId, match);
-  }
-  return next ?? current;
-}
-
-function resourceMatches(candidate: CatalogResourceRef, selectedResource: CatalogResourceRef) {
-  if (candidate.publicId.toLowerCase() === selectedResource.publicId.toLowerCase()) return true;
-  const identifier = (selectedResource.rawIdentifier || selectedResource.id).trim().toLowerCase();
-  const kindMatches = selectedResource.kind === "" || selectedResource.kind === "resource" || candidate.kind === selectedResource.kind;
-  return identifier !== "" && kindMatches && candidate.id.trim().toLowerCase() === identifier;
-}
 
 function defaultIdentifierValidator(identifier: string) {
   return identifier.length <= 255 && /^[A-Za-z0-9_#.-]+(?::[A-Za-z0-9_./#-]+)?$/.test(identifier);

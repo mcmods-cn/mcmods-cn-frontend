@@ -1,3 +1,4 @@
+import { readExporterManifest, isAllNamespacesExport } from "./exporter-manifest-preflight.mts";
 import { API_BASE_URL, apiRequest } from "./api";
 import {
   abortMultipartUpload,
@@ -101,6 +102,7 @@ export type ModExportUploadControl = {
   completedPartNumbers?: Iterable<number>;
   onTicket?: (ticket: OSSDirectUploadTicket) => void | Promise<void>;
   onPartComplete?: (partNumber: number) => void;
+  allNamespacesMessage?: string;
 };
 
 export async function uploadModExportPackage(
@@ -111,6 +113,9 @@ export async function uploadModExportPackage(
   onProgress?: (progress: ModExportUploadProgress) => void,
   control: ModExportUploadControl = {},
 ) {
+  const manifest = await readExporterManifest(file);
+  if (control.signal?.aborted) throw new DOMException("Upload cancelled", "AbortError");
+  if (isAllNamespacesExport(manifest)) throw new Error(control.allNamespacesMessage || "This import targets one project. Export explicit namespace(s) with /mcmods_export <MODID> all; offline all-namespace exports cannot be assigned to one project.");
   const root = `/api/v1/mods/${encodeURIComponent(siteId)}/export-imports`;
   let ticket = control.resumeTicket;
   if (ticket && (ticket.sizeBytes !== file.size || ticket.originalName !== file.name)) {

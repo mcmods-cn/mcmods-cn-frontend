@@ -14,6 +14,7 @@ import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
 import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
 import { waitForPolledJob } from "../_lib/job-polling.mts";
+import { normalizeSimpleProjectCollections } from "../_lib/simple-project-normalization.mts";
 import { emptySimpleProject, simpleProjectConfig, simpleProjectIconURL, simpleProjectImportProviders, type SimpleProjectImportJob, type SimpleProjectImportProvider, type SimpleProjectLocalization, type SimpleProjectParent, type SimpleProjectPayload, type SimpleProjectRecord, type SimpleProjectType } from "../_lib/simple-project-api";
 import { CreatorPicker } from "./creator-picker";
 import { ModResourceSelectionField, type ProjectResourceType } from "./editor/mod-resource-picker";
@@ -76,12 +77,12 @@ function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL 
         if (controller.signal.aborted) return;
         loadedEditorKey.current = editorKey;
           setRecordLoaded(true);
-        setDraft(record);
+        setDraft(normalizeSimpleProjectCollections(record));
         setIconPreviewUrl(simpleProjectIconURL(record));
         setPublicId(record.id);
         setBaseRevisionId(record.publishedRevisionId || "");
         setSelectedLocale((record.defaultLocale || "zh-CN") as Locale);
-        setKeywordsInput(record.searchKeywords.join(", "));
+        setKeywordsInput((record.searchKeywords || []).join(", "));
       })
       .catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : t("largeProjects.editor.loadFailed")); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -101,7 +102,7 @@ function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL 
     value: { changeReason, draft, keywordsInput },
     onRestore: (payload) => {
       setChangeReason(payload.changeReason);
-      setDraft(payload.draft);
+      setDraft(normalizeSimpleProjectCollections(payload.draft));
       setKeywordsInput(payload.keywordsInput);
       setSelectedLocale((payload.draft.defaultLocale || "zh-CN") as Locale);
     },
@@ -181,7 +182,7 @@ function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL 
         );
       }
       if (controller.signal.aborted) return;
-      const imported = job.result;
+      const imported = job.result ? normalizeSimpleProjectCollections(job.result) : undefined;
       if (job.status !== "completed" || !imported) throw new Error(job.error || t("mods.submission.importFailed"));
       setDraft((current) => ({
         ...imported,
