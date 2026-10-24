@@ -10,6 +10,7 @@ type ImportRevision = {
   id: string;
   revisionNo: number;
   status: string;
+  isActive?: boolean;
   modSiteId: string;
   sourceKind: string;
   namespace: string;
@@ -51,9 +52,9 @@ function ImportRevisionDetail({ siteId, revisionId }: { siteId: string; revision
     <h1 className="mt-3 text-3xl font-black">{t("modImportHistory.title")}</h1>
     {error ? <div className="mt-5" role="alert"><p>{error}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => setAttempt((value) => value + 1)}>{t("common.retry")}</button></div> : !revision ? <p className="mt-5">{t("common.loading")}</p> : <>
       <dl className="mt-5 grid gap-3 rounded border border-[var(--line)] p-5 sm:grid-cols-2">
-        {[["revision", `${revision.id} · #${revision.revisionNo}`], ["status", revision.status], ["source", `${revision.sourceKind} · ${revision.namespace}`], ["target", `${revision.targetVersionLabel || revision.targetVersionPublicId} · ${revision.minecraftVersion} · ${revision.loader}`], ["archive", revision.package?.archiveName || ""], ["hash", revision.package?.sha256 || ""]].map(([key, value]) => <div className="min-w-0" key={key}><dt className="text-sm text-[var(--muted)]">{t(`modImportHistory.${key}`)}</dt><dd className="break-all font-mono text-sm">{value}</dd></div>)}
+        {[["revision", `${revision.id} · #${revision.revisionNo}`], ["status", t(`contentHistory.statuses.${revision.status}`) === `contentHistory.statuses.${revision.status}` ? revision.status : t(`contentHistory.statuses.${revision.status}`)], ["published", t(revision.isActive ? "common.yes" : "common.no")], ["source", `${revision.sourceKind} · ${revision.namespace}`], ["target", `${revision.targetVersionLabel || revision.targetVersionPublicId} · ${revision.minecraftVersion} · ${revision.loader}`], ["archive", revision.package?.archiveName || ""], ["hash", revision.package?.sha256 || ""]].map(([key, value]) => <div className="min-w-0" key={key}><dt className="text-sm text-[var(--muted)]">{t(`modImportHistory.${key}`)}</dt><dd className="break-all font-mono text-sm">{value}</dd></div>)}
       </dl>
-      <h2 className="mt-6 text-xl font-black">{t("modImportHistory.scope")}</h2><dl className="mt-3 grid gap-3 sm:grid-cols-3">{Object.entries(revision.counts || {}).map(([key, count]) => <div className="rounded border border-[var(--line)] p-3" key={key}><dt>{key}</dt><dd>{count}</dd></div>)}</dl>
+      <h2 className="mt-6 text-xl font-black">{t("modImportHistory.scope")}</h2><dl className="mt-3 grid gap-3 sm:grid-cols-3">{Object.entries(revision.counts || {}).map(([key, count]) => <div className="rounded border border-[var(--line)] p-3" key={key}><dt>{key === "resources" ? t("modImportHistory.resources") : key}</dt><dd>{count}</dd></div>)}</dl>
       <h2 className="mt-6 text-xl font-black">{t("modImportHistory.changes")}</h2><dl className="mt-3 grid gap-3 sm:grid-cols-3">{Object.entries(revision.resourceChanges || {}).map(([key, count]) => <div className="rounded border border-[var(--line)] p-3" key={key}><dt>{t(`modImportHistory.${key}`)}</dt><dd>{count}</dd></div>)}</dl>
       {revision.previousRevisionId ? <Link className="button-secondary focus-ring mt-4 inline-block" href={`/mods/${encodeURIComponent(siteId)}/history?importRevisionId=${encodeURIComponent(revision.previousRevisionId)}`}>{t("modImportHistory.previous")}</Link> : null}
     </>}

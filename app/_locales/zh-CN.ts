@@ -2022,7 +2022,7 @@ const zhCN = {
       fields: { defaultLocale: "默认内容语言", localizations: "各语言内容", galleryImages: "图库", siteId: "模组站内 ID", primaryName: "主要名称", secondaryName: "本地化名称", abbreviation: "简写名称", summary: "简介", modId: "MODID", modIds: "Mod ID 与适用版本", environment: "运行环境", primaryCategory: "主标签", compatibilities: "加载器与版本兼容关系", tags: "描述标签", searchKeywords: "搜索辅助关键词", authors: "作者与团队", officialStatus: "官方状态", sourceStatus: "开源状态", license: "许可证", curseforgeProjectId: "CurseForge Project ID", modrinthProjectId: "Modrinth Project ID", githubProjectPath: "GitHub 项目地址", iconUrl: "模组图标", bodyMarkdown: "介绍正文 Markdown", submissionMethod: "提交方式", links: "相关链接", relationshipGroups: "模组关系条件组" },
     },
   },
-  modImportHistory: {"title": "导入修订历史", "revision": "修订", "status": "审核状态", "source": "来源与命名空间", "target": "目标版本", "archive": "来源包", "hash": "来源包 SHA256", "scope": "导入范围", "changes": "相对上一修订的资源变化", "added": "新增", "changed": "变更", "removed": "删除", "previous": "查看上一导入修订"},
+  modImportHistory: { resources: "资源", published: "当前公开使用", "title": "导入修订历史", "revision": "修订", "status": "导入状态", "source": "来源与命名空间", "target": "目标版本", "archive": "来源包", "hash": "来源包 SHA256", "scope": "导入范围", "changes": "相对上一修订的资源变化", "added": "新增", "changed": "变更", "removed": "删除", "previous": "查看上一导入修订"},
   commentModeration: { loadMore: "加载更多评论","title": "评论人工审核", "status": "队列状态", "pending": "待审核", "rejected": "审核驳回", "restore": "恢复到待审队列", "note": "审核说明", "denied": "需要评论审核权限。", "description": "独立批准或驳回反滥用系统暂扣的评论。恢复后的评论需要重新审核。"},
   contentHistory: {
 	page: "第 {page} 页",

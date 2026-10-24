@@ -179,7 +179,7 @@ test("REM-003 missing default-language name is located before any write and no t
 
 test("GR-008 import history renders the exact authorized revision, package, target and change scope", { timeout: 30_000 }, async () => {
   const browser = await fixture.page(({ path }) => path === "/api/v1/export-revisions/importrev1" ? { data: {
-    id: "importrev1", revisionNo: 7, status: "pending", modSiteId: "historymod", sourceKind: "mcmods_exporter", namespace: "audit", minecraftVersion: "1.20.1", loader: "forge", targetVersionPublicId: "target001", targetVersionLabel: "1.2.3 · 1.20.1 · Forge", package: { sha256: "a".repeat(64), archiveName: "original-game-package.zip" }, counts: { resources: 3 }, resourceChanges: { added: 1, changed: 2, removed: 0 }, previousRevisionId: "importrev0",
+    id: "importrev1", revisionNo: 7, status: "ready", isActive: false, modSiteId: "historymod", sourceKind: "mcmods_exporter", namespace: "audit", minecraftVersion: "1.20.1", loader: "forge", targetVersionPublicId: "target001", targetVersionLabel: "1.2.3 · 1.20.1 · Forge", package: { sha256: "a".repeat(64), archiveName: "original-game-package.zip" }, counts: { resources: 3 }, resourceChanges: { added: 1, changed: 2, removed: 0 }, previousRevisionId: "importrev0",
   } } : undefined);
   try {
     const { page } = browser;
@@ -187,6 +187,7 @@ test("GR-008 import history renders the exact authorized revision, package, targ
     await page.getByText("original-game-package.zip", { exact: true }).waitFor();
     assert.equal(await page.getByText("1.2.3 · 1.20.1 · Forge · 1.20.1 · forge", { exact: true }).count(), 1);
     assert.equal(await page.getByText("a".repeat(64), { exact: true }).count(), 1);
+    assert.equal(await page.locator("dl > div").filter({ has: page.getByText("Currently published", { exact: true }) }).locator("dd").innerText(), "No");
     assert.equal(await page.getByRole("link", { name: "View previous import revision", exact: true }).getAttribute("href"), "/mods/historymod/history?importRevisionId=importrev0");
   } finally { await browser.close(); }
 });
