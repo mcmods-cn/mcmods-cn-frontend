@@ -2023,7 +2023,7 @@ const zhCN = {
     },
   },
   modImportHistory: {"title": "导入修订历史", "revision": "修订", "status": "审核状态", "source": "来源与命名空间", "target": "目标版本", "archive": "来源包", "hash": "来源包 SHA256", "scope": "导入范围", "changes": "相对上一修订的资源变化", "added": "新增", "changed": "变更", "removed": "删除", "previous": "查看上一导入修订"},
-  commentModeration: {"title": "评论人工审核", "status": "队列状态", "pending": "待审核", "rejected": "审核驳回", "restore": "恢复到待审队列", "note": "审核说明", "denied": "需要评论审核权限。", "description": "独立批准或驳回反滥用系统暂扣的评论。恢复后的评论需要重新审核。"},
+  commentModeration: { loadMore: "加载更多评论","title": "评论人工审核", "status": "队列状态", "pending": "待审核", "rejected": "审核驳回", "restore": "恢复到待审队列", "note": "审核说明", "denied": "需要评论审核权限。", "description": "独立批准或驳回反滥用系统暂扣的评论。恢复后的评论需要重新审核。"},
   contentHistory: {
 	page: "第 {page} 页",
     title: "历史版本",

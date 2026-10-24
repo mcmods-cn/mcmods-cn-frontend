@@ -2023,7 +2023,7 @@ const en = {
     },
   },
   modImportHistory: {"title": "Import revision history", "revision": "Revision", "status": "Review status", "source": "Source and namespace", "target": "Target version", "archive": "Source package", "hash": "Package SHA256", "scope": "Imported scope", "changes": "Resource changes from the previous revision", "added": "Added", "changed": "Changed", "removed": "Removed", "previous": "View previous import revision"},
-  commentModeration: {"title": "Comment moderation", "status": "Queue status", "pending": "Pending review", "rejected": "Rejected by moderation", "restore": "Restore to review queue", "note": "Review note", "denied": "Comment moderation permission is required.", "description": "Independently approve or reject comments held by anti-abuse checks. Restored comments require a new review."},
+  commentModeration: { loadMore: "Load more comments","title": "Comment moderation", "status": "Queue status", "pending": "Pending review", "rejected": "Rejected by moderation", "restore": "Restore to review queue", "note": "Review note", "denied": "Comment moderation permission is required.", "description": "Independently approve or reject comments held by anti-abuse checks. Restored comments require a new review."},
   contentHistory: {
 	page: "Page {page}",
     title: "Version history",

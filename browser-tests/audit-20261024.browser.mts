@@ -469,3 +469,77 @@ test("TP-007 production Mod list decodes configured API icons and preserves empt
     await image.waitFor();
   } finally { await browser.close(); }
 });
+
+for (const failure of ["401", "invalid-header"]) test(`DGR-002 actual browser account switch ignores an old ${failure} response`, { timeout: 30_000 }, async () => {
+  let actor = "A";
+  const oldResponse = deferred<import("./fixture.mts").APIReply>();
+  const oldStarted = deferred<void>();
+  let authReads = 0;
+  const browser = await fixture.page(({ path }) => {
+    if (path === "/api/v1/auth/me") { authReads++; return { data: { id: `session${actor}`, username: `Session ${actor}`, roleCodes: [], permissionRules: [], permissionVersion: 1, rbacVersion: 1 } }; }
+    if (path === "/api/v1/me/unread-summary") return { data: { total: 0, notifications: 0 } };
+    if (path === "/api/v1/messages/conversations") return { data: { items: [], hasMore: false, nextCursor: "", limit: 30 } };
+    if (path === "/api/v1/notifications") {
+      if (actor === "A") { oldStarted.resolve(); return oldResponse.promise; }
+      return { data: { items: [{ id: "noticeB", kind: "system", title: "Current session B content", body: "Synthetic current B", sourceLocale: "en-US", read: true, data: {}, actors: [], createdAt: stamp, updatedAt: stamp, translationAllowed: false }], limit: 50, hasMore: false, nextCursor: "" } };
+    }
+  });
+  const switcher = await browser.page.context().newPage();
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/messages`);
+    await oldStarted.promise;
+    await switcher.goto(`${fixture.origin}/robots.txt`);
+    actor = "B";
+    await switcher.evaluate(() => localStorage.setItem("mcmods-auth-sync", `login:${Date.now()}:session-B`));
+    await page.getByText("Current session B content", { exact: true }).waitFor();
+    const late = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/notifications");
+    oldResponse.resolve(failure === "401" ? { status: 401, error: "Synthetic expired A session" } : { data: { items: [], limit: 50, hasMore: false, nextCursor: "" }, headers: { "x-mcmods-auth-state": "invalid" } });
+    await (await late).finished();
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    assert.equal(await page.getByRole("link", { name: "Session B", exact: true }).count(), 1);
+    assert.equal(await page.getByText("Current session B content", { exact: true }).count(), 1);
+    assert.equal(authReads, 2);
+  } finally { oldResponse.resolve({ status: 401, error: "Synthetic test teardown" }); await switcher.close(); await browser.close(); }
+});
+
+test("CMP-004 moderation keyset pagination retains failed pages and does not skip rows after review", { timeout: 30_000 }, async () => {
+  const removed = new Set<string>();
+  const requests: Array<{ status: string; cursor: string }> = [];
+  let failNextPage = true;
+  const browser = await fixture.page(({ path, method, body, url }) => {
+    if (path === "/api/v1/auth/me") return { data: { id: "moderator01", username: "Independent moderator", roleCodes: [], permissionRules: [{ code: "comment.moderate", allow: true, priority: 10 }], permissionVersion: 1, rbacVersion: 1 } };
+    if (path === "/api/v1/admin/comments/pending") {
+      const status = url.searchParams.get("status") || "pending";
+      const cursor = url.searchParams.get("cursor") || "";
+      requests.push({ status, cursor });
+      if (cursor && failNextPage) { failNextPage = false; return { status: 503, error: "Synthetic next-page interruption" }; }
+      const after = Number(cursor.replace("after-", "")) || 0;
+      const all = status === "hidden" ? [] : Array.from({ length: 105 }, (_, index) => index + 1).filter(index => index > after && !removed.has(`comment${index}`));
+      const page = all.slice(0, 50);
+      const items = page.map(index => ({ id: `comment${index}`, body: `Pending row ${index}`, authorId: "otherauthor1", status, createdAt: stamp, target: { type: "mod", key: "targetmod1", title: "Target Mod", url: "/mods/target-mod" } }));
+      return { data: { items, hasMore: all.length > 50, nextCursor: all.length > 50 ? `after-${page.at(-1)}` : "" } };
+    }
+    if (path === "/api/v1/comments/comment1/review" && method === "PATCH") { assert.equal(JSON.parse(body).status, "approved"); removed.add("comment1"); return { data: { status: "approved" } }; }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/comments/moderation`);
+    await page.getByText("Pending row 50", { exact: true }).waitFor();
+    await page.locator("article").filter({ has: page.getByText("Pending row 1", { exact: true }) }).getByRole("button", { name: "Approve", exact: true }).click();
+    await page.getByText("Pending row 1", { exact: true }).waitFor({ state: "detached" });
+    await page.getByRole("button", { name: "Load more comments", exact: true }).click();
+    await page.getByText("Synthetic next-page interruption", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Pending row 50", { exact: true }).count(), 1);
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await page.getByText("Pending row 100", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Pending row 51", { exact: true }).count(), 1);
+    await page.getByRole("button", { name: "Load more comments", exact: true }).click();
+    await page.getByText("Pending row 105", { exact: true }).waitFor();
+    assert.equal(await page.locator("article").count(), 104);
+    assert.deepEqual(requests.slice(0, 4), [{ status: "pending", cursor: "" }, { status: "pending", cursor: "after-50" }, { status: "pending", cursor: "after-50" }, { status: "pending", cursor: "after-100" }]);
+    await page.getByRole("combobox", { name: "Queue status", exact: true }).selectOption("hidden");
+    await page.getByText("No version history yet.", { exact: true }).waitFor();
+    assert.deepEqual(requests.at(-1), { status: "hidden", cursor: "" });
+  } finally { await browser.close(); }
+});
