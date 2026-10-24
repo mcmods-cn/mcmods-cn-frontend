@@ -87,6 +87,10 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
   const [defaultLocale, setDefaultLocale] = useState<Locale>(initialDefaultLocale);
   const [selectedLocale, setSelectedLocale] = useState<Locale>(initialDefaultLocale);
   const [localizations, setLocalizations] = useState<CreatorLocalization[]>(() => creatorEditorLocalizations(detail, initialDefaultLocale));
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState("");
+  const [avatarPreviewObjectKey, setAvatarPreviewObjectKey] = useState("");
+  const avatarPreviewRecovery = useRef(false);
+  const [avatarPreviewError, setAvatarPreviewError] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(detail?.creator.avatarUrl ?? "");
   const [avatarFileId, setAvatarFileId] = useState<string | undefined>(detail?.avatarFileId);
   const [links, setLinks] = useState<CreatorLink[]>(detail?.links ?? []);
@@ -164,13 +168,29 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
     try {
       const uploaded = await uploadUserFileToOSS(file, token, `creator_avatar:${kind}:${detail?.creator.publicId || "new"}`);
       setAvatarFileId(uploaded.id);
-      setAvatarUrl(uploaded.storageUrl || uploaded.accessUrl || uploaded.url || "");
+      setAvatarUrl(uploaded.storageUrl || uploaded.objectKey);
+      setAvatarPreviewUrl(uploaded.accessUrl || uploaded.url || "");
+      setAvatarPreviewObjectKey(uploaded.objectKey);
+      avatarPreviewRecovery.current = false;
+      setAvatarPreviewError(false);
       setImportedAvatarPreviewUrl("");
     } catch (uploadError) {
       notifySite(uploadError instanceof Error ? uploadError.message : t("creators.avatarUploadFailed"), t("creators.avatar"), "danger");
     } finally {
       mutationInFlight.current = false;
       setUploadingAvatar(false);
+    }
+  }
+
+  async function refreshAvatarPreview(manual = false) {
+    if (!avatarPreviewObjectKey || (!manual && avatarPreviewRecovery.current)) return;
+    avatarPreviewRecovery.current = true;
+    setAvatarPreviewError(true);
+    try {
+      const result = await apiRequest<{ url: string }>("/api/v1/users/me/files/presign", { method: "POST", body: JSON.stringify({ objectKey: avatarPreviewObjectKey }) }, token);
+      setAvatarPreviewUrl(result.url);
+    } catch (error) {
+      notifySite(error instanceof Error ? error.message : t("creators.avatarUploadFailed"), t("creators.avatar"), "danger");
     }
   }
 
@@ -292,7 +312,8 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
         <div className="mt-6 grid gap-5 xl:grid-cols-2">
             <section className="rounded-lg border border-[var(--line)] p-4">
               <h2 className="font-black">{t("creators.avatar")}</h2>
-              <div className="mt-3 flex items-center gap-3"><CreatorAvatar avatarUrl={importedAvatarPreviewUrl || avatarUrl} name={name} /><label className="button-secondary focus-ring cursor-pointer">{uploadingAvatar ? t("common.loading") : t("creators.chooseAvatar")}<input className="sr-only" accept="image/png,image/jpeg,image/webp,image/gif,image/apng,.apng" disabled={uploadingAvatar} type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setAvatarCropFile(file); }} /></label></div>
+              <div className="mt-3 flex items-center gap-3"><CreatorAvatar avatarUrl={importedAvatarPreviewUrl || avatarPreviewUrl || avatarUrl} name={name} onLoad={() => setAvatarPreviewError(false)} onError={() => { setAvatarPreviewError(true); void refreshAvatarPreview(); }} /><label className="button-secondary focus-ring cursor-pointer">{uploadingAvatar ? t("common.loading") : t("creators.chooseAvatar")}<input className="sr-only" accept="image/png,image/jpeg,image/webp,image/gif,image/apng,.apng" disabled={uploadingAvatar} type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setAvatarCropFile(file); }} /></label></div>
+              {avatarPreviewError ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => void refreshAvatarPreview(true)}>{t("common.retry")}</button> : null}
               {importedAvatarPreviewUrl ? <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{t("creators.importAvatarPreviewOnly")}</p> : null}
             </section>
             <LinkEditor links={links} onChange={setLinks} />
@@ -310,8 +331,8 @@ function LinkEditor({ links, onChange }: { links: CreatorLink[]; onChange: (link
   return <section className="rounded-lg border border-[var(--line)] p-4"><div className="flex items-center justify-between gap-3"><h2 className="font-black">{t("creators.relatedLinks")}</h2><button className="button-secondary focus-ring px-3 py-1.5 text-sm" type="button" onClick={() => onChange([...links, { type: "website", url: "", label: "" }])}>+ {t("common.add")}</button></div><div className="mt-3 grid gap-3">{links.map((link, index) => <div className="grid gap-2 rounded-md bg-[var(--panel-subtle)] p-3" key={index}><div className="grid gap-2 sm:grid-cols-2"><input className="field" placeholder={t("creators.linkType")} value={link.type} onChange={(event) => onChange(links.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value } : item))} /><input className="field" placeholder={t("creators.linkLabel")} value={link.label} onChange={(event) => onChange(links.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item))} /></div><div className="grid gap-2 sm:grid-cols-[1fr_auto]"><input className="field" placeholder="https://" type="url" value={link.url} onChange={(event) => onChange(links.map((item, itemIndex) => itemIndex === index ? { ...item, url: event.target.value } : item))} /><button className="button-secondary focus-ring" type="button" onClick={() => onChange(links.filter((_, itemIndex) => itemIndex !== index))}>{t("common.delete")}</button></div></div>)}{!links.length ? <p className="text-sm text-[var(--muted)]">{t("creators.noLinks")}</p> : null}</div></section>;
 }
 
-function CreatorAvatar({ avatarUrl, name }: { avatarUrl: string; name: string }) {
-  return <span className="grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent-soft)] text-3xl font-black text-[var(--accent)]">{avatarUrl ? <img alt="" className="h-full w-full object-cover" src={avatarUrl} /> : name.trim().slice(0, 1).toUpperCase()}</span>;
+function CreatorAvatar({ avatarUrl, name, onError, onLoad }: { avatarUrl: string; name: string; onError?: () => void; onLoad?: () => void }) {
+  return <span className="grid h-24 w-24 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--accent-soft)] text-3xl font-black text-[var(--accent)]">{avatarUrl ? <img alt="" className="h-full w-full object-cover" src={avatarUrl} onError={onError} onLoad={onLoad} /> : name.trim().slice(0, 1).toUpperCase()}</span>;
 }
 
 function creatorBaseHref(kind: CreatorKind) {

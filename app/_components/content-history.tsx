@@ -16,24 +16,30 @@ function ContentHistoryPanel({ endpoint, backHref, titleKey }: { endpoint: strin
   const { ready, token } = useAuthSnapshot();
   const [page, setPage] = useState<ContentHistoryPage | null>(null);
   const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
+  const [requestedHistory, setRequestedHistory] = useState<string[]>([""]);
   const [message, setMessage] = useState("");
-  const currentCursor = cursorHistory[cursorHistory.length - 1] || "";
+  const [loading, setLoading] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [loadedCursor, setLoadedCursor] = useState("");
+  const currentCursor = requestedHistory[requestedHistory.length - 1] || "";
   const items = page?.items ?? [];
 
   useEffect(() => {
     if (!ready) return;
     const controller = new AbortController();
+    queueMicrotask(() => { if (!controller.signal.aborted) setLoading(true); });
     loadContentHistory(endpoint, token, currentCursor, controller.signal)
-      .then((result) => { if (!controller.signal.aborted) { setPage(result); setMessage(""); } })
-      .catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : t("contentHistory.loadFailed")); });
+      .then((result) => { if (!controller.signal.aborted) { setPage(result); setCursorHistory(requestedHistory); setLoadedCursor(currentCursor); setMessage(""); } })
+      .catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : t("contentHistory.loadFailed")); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [currentCursor, endpoint, ready, t, token]);
+  }, [attempt, currentCursor, endpoint, ready, requestedHistory, t, token]);
 
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]"><div className="mx-auto max-w-5xl">
     <header className="border-b border-[var(--line)] pb-5"><Link className="font-bold text-[var(--accent)] hover:underline" href={backHref}>← {t("contentHistory.back")}</Link><h1 className="mt-3 text-3xl font-black">{t(titleKey)} · {t("contentHistory.title")}</h1><p className="mt-2 text-[var(--muted)]">{t("contentHistory.description")}</p></header>
-    {message ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{message}</p> : null}
+    {message ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{message}<button className="button-secondary focus-ring ml-3" disabled={loading} onClick={() => setAttempt((value) => value + 1)} type="button">{t("common.retry")}</button></p> : null}
     <div className="mt-6 grid gap-3">{items.map((item) => <HistoryRow item={item} locale={locale} key={`${item.origin}:${item.id}`} />)}{!message && !items.length ? <div className="grid min-h-48 place-items-center rounded-xl border border-dashed border-[var(--line)] font-bold text-[var(--muted)]">{t(page ? "contentHistory.empty" : "common.loading")}</div> : null}</div>
-    {page && (cursorHistory.length > 1 || page.hasMore) ? <div className="mt-6 flex items-center justify-between gap-3 border-t border-[var(--line)] pt-4"><button className="button-secondary focus-ring" disabled={cursorHistory.length <= 1} type="button" onClick={() => { setPage(null); setCursorHistory((history) => history.slice(0, -1)); }}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("contentHistory.page", { page: cursorHistory.length })}</span><button className="button-secondary focus-ring" disabled={!page?.hasMore || !page.nextCursor} type="button" onClick={() => { setPage(null); setCursorHistory((history) => [...history, page.nextCursor]); }}>{t("common.next")}</button></div> : null}
+    {page && (cursorHistory.length > 1 || page.hasMore) ? <div className="mt-6 flex items-center justify-between gap-3 border-t border-[var(--line)] pt-4"><button className="button-secondary focus-ring" disabled={loading || cursorHistory.length <= 1} type="button" onClick={() => { setRequestedHistory(cursorHistory.slice(0, -1)); }}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("contentHistory.page", { page: cursorHistory.length })}</span><button className="button-secondary focus-ring" disabled={loading || currentCursor !== loadedCursor || !page?.hasMore || !page.nextCursor} type="button" onClick={() => { setRequestedHistory([...cursorHistory, page.nextCursor]); }}>{t("common.next")}</button></div> : null}
   </div></main>;
 }
 

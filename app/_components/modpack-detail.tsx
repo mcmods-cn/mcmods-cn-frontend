@@ -90,7 +90,7 @@ function ModpackMods({ record }: { record: BackendModpackRecord }) {
 }
 
 function ResourceIcon({ icon, name, resolved }: { icon?: string; name: string; resolved: boolean }) {
-  if (icon) return <Image alt="" className="h-12 w-12 shrink-0 rounded-md object-contain" height={48} src={icon} width={48} />;
+  if (icon) return <Image unoptimized={resolved} alt="" className="h-12 w-12 shrink-0 rounded-md object-contain" height={48} src={icon} width={48} />;
   return <span className="grid h-12 w-12 shrink-0 place-items-center rounded-md bg-[var(--panel-subtle)] font-black text-[var(--muted)]">{resolved ? [...name].slice(0, 2).join("") : "?"}</span>;
 }
 

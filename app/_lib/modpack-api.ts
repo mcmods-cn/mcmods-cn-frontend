@@ -112,6 +112,7 @@ export function modpackIconURL(record: Pick<BackendModpackRecord, "siteId" | "ic
 }
 
 export function modpackModIconURL(mod: BackendModpackMod) {
+  if (!mod.iconUrl) return "";
   return mod.resolved && mod.modSiteId
     ? `${API_BASE_URL}/api/v1/mods/${encodeURIComponent(mod.modSiteId)}/icon`
     : mod.iconUrl || "";
