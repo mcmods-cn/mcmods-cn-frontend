@@ -16,7 +16,14 @@ async function fixture() {
   const effects: Array<() => void | (() => void)> = [];
   const harness = { states, effects, fetch: (url: string) => url.endsWith("/logout") ? Promise.resolve(new Response("{}")) : new Promise<Response>((resolve) => pending.push(resolve)) };
   Reflect.set(globalThis, harnessKey, harness);
-  const apiSource = `export const API_BASE_URL="http://127.0.0.1";export const backendFetch=(url)=>globalThis[${JSON.stringify(harnessKey)}].fetch(url);export const isBearerAccessToken=(value)=>Boolean(value?.split('.').length===3);export const rememberAuthorizationVersion=()=>{};`;
+  const backendStatusURL = `data:text/javascript;base64,${Buffer.from("export const reportBackendAvailability=()=>{};").toString("base64")}`;
+  const apiSource = ts.transpileModule((await readFile(new URL("./api.ts", import.meta.url), "utf8"))
+    .replace('from "./backend-status"', `from ${JSON.stringify(backendStatusURL)}`)
+    .replaceAll('from "./browser-storage.mts"', `from ${JSON.stringify(new URL("./browser-storage.mts", import.meta.url).href)}`)
+    .replaceAll('from "./api-error.mts"', `from ${JSON.stringify(new URL("./api-error.mts", import.meta.url).href)}`)
+    .replace('await fetch(input, init)', `await globalThis[${JSON.stringify(harnessKey)}].fetch(String(input), init)`),
+    { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+
   const apiURL = `data:text/javascript;base64,${Buffer.from(apiSource).toString("base64")}`;
   const reactSource = `const harness=globalThis[${JSON.stringify(harnessKey)}];export function useState(initial){const state={value:initial};harness.states.push(state);return [initial,(next)=>{state.value=next;}];}export function useEffect(effect){harness.effects.push(effect);}`;
   const reactURL = `data:text/javascript;base64,${Buffer.from(reactSource).toString("base64")}`;
@@ -26,6 +33,7 @@ async function fixture() {
     .replace('from "./api"', `from ${JSON.stringify(apiURL)}`) + "\nexport { bootstrapAuth };";
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
   const auth = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`) as {
+    retryAuthentication: () => Promise<User | null>;
     bootstrapAuth: (force?: boolean) => Promise<User | null>;
     useAuthSnapshot: () => { ready: boolean; token: string; user: User | null };
     clearAuth: () => void;
@@ -114,5 +122,48 @@ test("local logout publishes an empty session without bootstrapping the old cook
     f.auth.clearAuth();
     assert.equal(f.pending.length, 0, "logout must not issue me before the logout response clears the cookie");
     assert(f.states.every((state) => state.value.ready && state.value.user === null && state.value.token === ""));
+  } finally { unmount(); f.cleanup(); }
+});
+
+for (const invalidHeader of [false, true]) {
+  test(`a late ${invalidHeader ? "invalid header" : "401"} from the old session cannot clear a new login`, async () => {
+    const f = await fixture();
+    const unmount = f.mount(1);
+    try {
+      f.auth.saveAuth({ user: user("new-session") });
+      f.pending.shift()!(new Response("{}", { status: invalidHeader ? 200 : 401, headers: invalidHeader ? { "x-mcmods-auth-state": "invalid" } : {} }));
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(f.states.at(-1)!.value.user?.id, "new-session");
+    } finally { unmount(); f.cleanup(); }
+  });
+}
+
+test("current invalid headers still expire the session", async () => {
+  const f = await fixture();
+  const unmount = f.mount(1);
+  try {
+    f.pending.shift()!(response(user("current")));
+    await f.auth.bootstrapAuth();
+    const current = f.auth.bootstrapAuth(true);
+    f.pending.shift()!(new Response("{}", { headers: { "x-mcmods-auth-state": "invalid" } }));
+    await current;
+    assert.equal(f.states.at(-1)!.value.user, null);
+  } finally { unmount(); f.cleanup(); }
+});
+
+test("a transient 429 exposes recovery and retries only the identity read", async () => {
+  const f = await fixture();
+  const unmount = f.mount(1);
+  try {
+    f.pending.shift()!(new Response("{}", { status: 429, headers: { "retry-after": "0" } }));
+    await f.auth.bootstrapAuth();
+    assert.equal((f.states.at(-1)!.value as { error?: string }).error, "429");
+    assert.equal(f.states.at(-1)!.value.ready, false, "uncertain identity must not become an authenticated guest conclusion");
+    assert.equal(f.pending.length, 0, "no automatic retry loop");
+    const retry = f.auth.retryAuthentication();
+    assert.equal(f.pending.length, 1);
+    f.pending.shift()!(response(user("recovered")));
+    await retry;
+    assert.equal(f.states.at(-1)!.value.user?.id, "recovered");
   } finally { unmount(); f.cleanup(); }
 });

@@ -2,7 +2,7 @@
 
 import { writeBrowserStorage } from "./browser-storage.mts";
 import { useEffect, useState } from "react";
-import { API_BASE_URL, backendFetch, isBearerAccessToken, rememberAuthorizationVersion } from "./api";
+import { API_BASE_URL, advanceAuthenticationGeneration, backendFetch, isBearerAccessToken, rememberAuthorizationVersion } from "./api";
 
 type AuthPermissionRule = {
   code: string;
@@ -32,6 +32,8 @@ export type AuthSnapshot = {
   ready: boolean;
   token: string;
   user: AuthUser | null;
+  error?: string;
+  retryAt?: number;
 };
 
 export const cookieSessionToken = "cookie-session";
@@ -43,16 +45,21 @@ let activeUser: AuthUser | null = null;
 let bootstrapRequest: Promise<AuthUser | null> | null = null;
 let authGeneration = 0;
 let authReady = false;
+let authError = "";
+let authRetryAt = 0;
 const authSubscribers = new Set<(snapshot: AuthSnapshot) => void>();
 let authEventsInstalled = false;
 
 function publishAuthSnapshot() {
-  const snapshot = { ready: authReady, token: activeToken, user: activeUser };
+  const snapshot = { ready: authReady, token: activeToken, user: activeUser, error: authError, retryAt: authRetryAt };
   for (const subscriber of authSubscribers) subscriber(snapshot);
 }
 
 function expireAuthSnapshot() {
   authGeneration += 1;
+  advanceAuthenticationGeneration();
+  authError = "";
+  authRetryAt = 0;
   activeToken = "";
   activeUser = null;
   bootstrapRequest = null;
@@ -89,14 +96,17 @@ function subscribeAuthSnapshot(subscriber: (snapshot: AuthSnapshot) => void) {
     window.addEventListener("mcmods-auth-expired", expireAuthSnapshot);
     window.addEventListener("mcmods-permissions-changed", refreshAuthPermissions);
   }
-  subscriber({ ready: authReady, token: activeToken, user: activeUser });
-  if (!authReady) void bootstrapAuth();
+  subscriber({ ready: authReady, token: activeToken, user: activeUser, error: authError, retryAt: authRetryAt });
+  if (!authReady && !authError) void bootstrapAuth();
   return () => { authSubscribers.delete(subscriber); };
 }
 
 export function saveAuth(result: AuthResult) {
   authGeneration += 1;
+  advanceAuthenticationGeneration();
   bootstrapRequest = null;
+  authError = "";
+  authRetryAt = 0;
   activeToken = result.token || cookieSessionToken;
   activeUser = normalizeAuthUser(result.user);
   authReady = true;
@@ -108,7 +118,10 @@ export function saveAuth(result: AuthResult) {
 export function clearAuth() {
   if (authReady && !activeToken && !activeUser) return;
   authGeneration += 1;
+  advanceAuthenticationGeneration();
   const logoutToken = activeToken;
+  authError = "";
+  authRetryAt = 0;
   activeToken = "";
   activeUser = null;
   authReady = true;
@@ -188,6 +201,11 @@ function permissionSpecificity(rule: string, required: string) {
   return -1;
 }
 
+export function retryAuthentication() {
+  if (Date.now() < authRetryAt) return Promise.resolve(null);
+  return bootstrapAuth(true);
+}
+
 async function bootstrapAuth(force = false) {
   if (activeUser && !force) return activeUser;
   if (bootstrapRequest) return bootstrapRequest;
@@ -198,25 +216,35 @@ async function bootstrapAuth(force = false) {
   })
     .then(async (response) => {
       if (!response.ok) {
-        if (response.status === 401 && generation === authGeneration) {
+        if (generation !== authGeneration) return null;
+        if (response.status === 401) {
+          authError = "";
+          authRetryAt = 0;
           activeToken = "";
           activeUser = null;
           rememberAuthorizationVersion();
+        } else {
+          authError = String(response.status);
+          const retry = response.headers.get("retry-after") || "";
+          const seconds = /^\d+$/.test(retry) ? Number(retry) * 1000 : Math.max(0, Date.parse(retry) - Date.now());
+          authRetryAt = Date.now() + (Number.isFinite(seconds) ? Math.min(seconds, Number.MAX_SAFE_INTEGER - Date.now()) : 0);
         }
         return null;
       }
       const envelope = (await response.json()) as { data?: AuthUser };
       if (!envelope.data || generation !== authGeneration) return null;
+      authError = "";
+      authRetryAt = 0;
       activeToken = cookieSessionToken;
       activeUser = normalizeAuthUser(envelope.data);
       rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
       return activeUser;
     })
-    .catch(() => null)
+    .catch(() => { if (generation === authGeneration) authError = "network"; return null; })
     .finally(() => {
       if (bootstrapRequest === request) bootstrapRequest = null;
       if (generation === authGeneration) {
-        authReady = true;
+        authReady = !authError || Boolean(activeUser);
         publishAuthSnapshot();
       }
     });

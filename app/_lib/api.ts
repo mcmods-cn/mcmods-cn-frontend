@@ -7,6 +7,12 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 let observedAuthorizationVersion = "";
+let authenticationGeneration = 0;
+
+export function advanceAuthenticationGeneration() {
+  authenticationGeneration += 1;
+  observedAuthorizationVersion = "";
+}
 
 type ApiEnvelope<T> = {
   data?: T;
@@ -21,6 +27,7 @@ export async function apiRequest<T>(
   options: RequestInit = {},
   token?: string,
 ): Promise<T> {
+  const generation = authenticationGeneration;
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
   if (isBearerAccessToken(token)) {
@@ -42,7 +49,7 @@ export async function apiRequest<T>(
 
   const envelope = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
+    if (response.status === 401 && generation === authenticationGeneration && typeof window !== "undefined") {
       clearExpiredAuth();
     }
     throw new ApiError(envelope.error ?? "请求失败", response.status, envelope.code, envelope.retryAfter, envelope.details);
@@ -54,9 +61,10 @@ export async function apiRequest<T>(
 }
 
 export async function backendFetch(input: RequestInfo | URL, init?: RequestInit) {
+  const generation = authenticationGeneration;
   try {
     const response = await fetch(input, init);
-    observeAuthenticationHeaders(response);
+    if (generation === authenticationGeneration) observeAuthenticationHeaders(response);
     // A structured JSON 502/503/504 is an API response from our backend, not
     // proof that the whole backend is offline. Optional dependencies (OSS,
     // mail, NATS, import providers, and others) deliberately use these status

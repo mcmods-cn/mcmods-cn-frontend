@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { type WheelEvent as ReactWheelEvent, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
-import { canAccessAdmin, canAccessReviewQueue, clearAuth, type AuthUser, useAuthSnapshot } from "../_lib/auth";
+import { canAccessAdmin, canAccessReviewQueue, clearAuth, retryAuthentication, type AuthUser, useAuthSnapshot } from "../_lib/auth";
 import { isBackendUnavailable, reportBackendAvailability } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { readBrowserStorage, writeBrowserStorage } from "../_lib/browser-storage.mts";
@@ -68,6 +68,7 @@ export function SiteShell({ children }: SiteShellProps) {
   const admin = pathname?.startsWith("/admin");
   return (
     <>
+      <AuthenticationRecovery />
       <SitePresence />
       <RealtimeBridge />
       {admin ? <BackendStatusBanner /> : <SiteHeader />}
@@ -75,6 +76,28 @@ export function SiteShell({ children }: SiteShellProps) {
       <SiteNoticeDialog />
     </>
   );
+}
+
+function AuthenticationRecovery() {
+  const { error, retryAt } = useAuthSnapshot();
+  const { t } = useI18n();
+  const [retryReady, setRetryReady] = useState(false);
+  useEffect(() => {
+    if (!error || !retryAt) return;
+    let cancelled = false;
+    let timer = 0;
+    const check = () => {
+      if (cancelled) return;
+      const remaining = retryAt - Date.now();
+      if (remaining <= 0) setRetryReady(true);
+      else timer = window.setTimeout(check, Math.min(remaining, 2_147_000_000));
+    };
+    queueMicrotask(() => { if (!cancelled) { setRetryReady(false); check(); } });
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [error, retryAt]);
+  if (!error) return null;
+  const wait = Boolean(retryAt) && !retryReady;
+  return <div className="border-b border-[var(--warning)] bg-[var(--panel)] p-3" role="status">{t("site.authTemporarilyUnavailable")} <button className="button-secondary focus-ring" disabled={wait} type="button" onClick={() => void retryAuthentication()}>{t("common.retry")}</button></div>;
 }
 
 function RealtimeBridge() {
