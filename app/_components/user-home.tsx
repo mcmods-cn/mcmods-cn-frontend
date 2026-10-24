@@ -91,7 +91,7 @@ function UserHomeSession() {
   const [cardSlots, setCardSlots] = useState<string[]>(["", "", "", "", "", ""]);
   const [savingProfile, setSavingProfile] = useState(false);
   const [overview, setOverview] = useState<UserOverview | null>(null);
-  const activeSection = accountSection(searchParams.get("section"));
+  const activeSection = accountSection(searchParams.get("section") || searchParams.get("tab"));
 
   useEffect(() => {
     if (!token) return;
@@ -362,7 +362,7 @@ function UserHomeSession() {
           <div className="surface rounded-lg p-6">
             <h1 className="text-2xl font-bold">{t("user.loginRequiredTitle")}</h1>
             <p className="mt-2 text-sm text-[var(--muted)]">{t("user.loginRequiredDescription")}</p>
-            <Link className="button-primary focus-ring mt-4 inline-flex" href="/login">
+            <Link className="button-primary focus-ring mt-4 inline-flex" href={`/login?next=${encodeURIComponent(`/user?${searchParams}`)}`}>
               {t("user.goLogin")}
             </Link>
           </div>

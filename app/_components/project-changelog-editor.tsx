@@ -71,6 +71,7 @@ function ProjectChangelogEditorForm({ id, targetId, targetType }: { id: string; 
           const collection = await loadProjectChangelogs(result.target.type, result.target.id, locale, token, controller.signal);
           const localizations = supportedLocales.map((language) => ({ locale: language.code, bodyMarkdown: result.item.localizations?.find((value) => value.locale === language.code)?.bodyMarkdown || "" }));
           return { target: result.target, categories: collection.categories, selectedCategory: result.item.category, categoryPage: { locale, hasMore: collection.categoriesHasMore === true, cursor: collection.categoriesNextCursor || "" }, draft: {
+            baseRevisionId: result.item.publishedRevisionId || null,
             eventAt: toLocalDateTime(result.item.eventAt), minecraftVersions: result.item.minecraftVersions,
             projectVersion: result.item.projectVersion, defaultLocale: result.item.defaultLocale,
             categoryId: result.item.category?.id, categoryMode: result.item.category ? "existing" as const : "automatic" as const,
@@ -190,14 +191,14 @@ function mergeCategories(categories: ChangelogCategory[], selected: ChangelogCat
 }
 
 function emptyDraft(locale: Locale): EditableChangelogDraft {
-  return { eventAt: toLocalDateTime(new Date().toISOString()), minecraftVersions: [], projectVersion: "", defaultLocale: locale,
+  return { baseRevisionId: null, eventAt: toLocalDateTime(new Date().toISOString()), minecraftVersions: [], projectVersion: "", defaultLocale: locale,
     categoryMode: "automatic", localizations: supportedLocales.map((item) => ({ locale: item.code, bodyMarkdown: "" })), reason: "" };
 }
 
 function emptyCategory(locale: string) { return { defaultLocale: locale, localizations: supportedLocales.map((item) => ({ locale: item.code, name: "" })) }; }
 
 function preparePayload(draft: EditableChangelogDraft, eventAt: string): ChangelogDraft {
-  return { eventAt, minecraftVersions: draft.minecraftVersions, projectVersion: draft.projectVersion.trim(), defaultLocale: draft.defaultLocale,
+  return { baseRevisionId: draft.baseRevisionId || null, eventAt, minecraftVersions: draft.minecraftVersions, projectVersion: draft.projectVersion.trim(), defaultLocale: draft.defaultLocale,
     categoryId: draft.categoryMode === "existing" ? draft.categoryId : undefined,
     newCategory: draft.categoryMode === "new" ? draft.newCategory : undefined,
     localizations: draft.localizations.filter((item) => item.bodyMarkdown.trim()).map((item) => ({ ...item, bodyMarkdown: item.bodyMarkdown.trim() })), reason: draft.reason?.trim() };

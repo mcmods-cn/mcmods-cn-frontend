@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
 import {
   Currency,
@@ -50,6 +51,10 @@ export function UserEconomyPanel({
   onBackgroundChange: (url: string) => void;
 }) {
   const { locale, t } = useI18n();
+  const query = useSearchParams();
+  const targetType = query.get("objectType") || "";
+  const targetId = query.get("publicId") || "";
+  const targetDOMId = targetId && ["currency", "task", "shop_item"].includes(targetType) ? `economy-${targetType}-${targetId}` : "";
   const [overview, setOverview] = useState<EconomyOverview | null>(null);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
@@ -256,12 +261,23 @@ export function UserEconomyPanel({
     }
   }
 
+  useEffect(() => {
+    if (loading || !targetDOMId) return;
+    const element = document.getElementById(targetDOMId);
+    element?.scrollIntoView({ block: "center" });
+    element?.focus({ preventScroll: true });
+  }, [loading, targetDOMId]);
+
+  const targetCurrency = targetType === "currency" ? currencies.find((item) => item.publicId === targetId) : undefined;
+  const targetExists = targetType === "currency" ? Boolean(targetCurrency) : targetType === "task" ? tasks.some((item) => item.publicId === targetId) : targetType === "shop_item" ? shopItems.some((item) => item.publicId === targetId) : false;
   if (loading && !overview) {
     return <section className="surface rounded-lg p-12 text-center font-bold text-[var(--muted)]">{t("common.loading")}</section>;
   }
 
   return (
     <section className="grid gap-4">
+      {targetDOMId && !loading && !targetExists ? <p className="surface rounded p-4" role="alert">{t("user.economyObjectUnavailable")}</p> : null}
+      {targetCurrency ? <article className="surface rounded-lg border-2 border-[var(--accent)] p-5" id={targetDOMId} tabIndex={-1}><h3 className="text-lg font-black">{currencyName(targetCurrency, locale)}</h3><p>{targetCurrency.description}</p><code>{targetCurrency.code}</code></article> : null}
       <div className="surface rounded-lg p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -422,7 +438,7 @@ export function UserEconomyPanel({
             const progress = Math.max(0, Number(task.progress ?? 0));
             const percent = Math.min(100, Math.round((progress / target) * 100));
             return (
-              <article className="rounded-lg border border-[var(--line)] p-4" key={task.publicId}>
+              <article className={`rounded-lg border p-4 ${targetId === task.publicId && targetType === "task" ? "border-[var(--accent)]" : "border-[var(--line)]"}`} id={`economy-task-${task.publicId}`} tabIndex={-1} key={task.publicId}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
                     <ItemIcon icon={task.icon} name={localizedName(task, locale)} />
@@ -457,7 +473,7 @@ export function UserEconomyPanel({
             const quantity = item.inventoryQuantity ?? 0;
             const name = localizedName(item, locale);
             return (
-              <article className="flex min-h-64 flex-col rounded-lg border border-[var(--line)] p-4" key={item.publicId}>
+              <article className={`flex min-h-64 flex-col rounded-lg border p-4 ${targetId === item.publicId && targetType === "shop_item" ? "border-[var(--accent)]" : "border-[var(--line)]"}`} id={`economy-shop_item-${item.publicId}`} tabIndex={-1} key={item.publicId}>
                 <div className="flex items-center gap-3">
                   <ItemIcon icon={item.icon} name={name} />
                   <div className="min-w-0">

@@ -21,6 +21,8 @@ import {
   GlobalTag,
   loadGlobalRecipeTypeCatalog,
   loadGlobalRecipeTypes,
+  loadGlobalRecipe,
+  type GlobalRecipe,
   loadGlobalTags,
   localizedCatalogName,
   RecipeCatalyst,
@@ -123,10 +125,30 @@ export function RecipeTypeCatalog() {
   if (editor === "recipe-edit" && recipePublicId) return <ResolveRecipeEditorRoute key={`${scope}:${recipePublicId}`} recipePublicId={recipePublicId} />;
 	if (editor === "create") return <CatalogRecipeTypeEditor mode="create" />;
 	if (editor === "edit" && publicId) return <CatalogRecipeTypeEditor mode="edit" publicId={publicId} />;
+  if (recipePublicId) return <PublicRecipeDetail key={`${scope}:${recipePublicId}:${locale}`} recipePublicId={recipePublicId} />;
 	if (publicId) return <RecipeTypeDetail publicId={publicId} key={`${scope}:${publicId}:${locale}`} />;
   const canonicalId = searchParams.get("id") || "";
   if (canonicalId) return <ResolveCanonicalCatalogRoute key={`${scope}:recipe-type:${canonicalId}`} kind="recipe-type" canonicalId={canonicalId} />;
 	return <RecipeTypeList key={`${scope}:${searchParams.get("q") || ""}`} />;
+}
+
+function PublicRecipeDetail({ recipePublicId }: { recipePublicId: string }) {
+  const { ready, token } = useAuthSnapshot();
+  const { locale, t } = useI18n();
+  const [recipe, setRecipe] = useState<GlobalRecipe>();
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    if (!ready) return;
+    const controller = new AbortController();
+    loadGlobalRecipe(recipePublicId, locale, token, controller.signal)
+      .then((value) => { if (!controller.signal.aborted) { setRecipe(value); setError(""); } })
+      .catch((reason) => { if (!controller.signal.aborted) setError(errorText(reason)); });
+    return () => controller.abort();
+  }, [attempt, locale, ready, recipePublicId, token]);
+  return <CatalogFrame active="recipes" title={recipe?.recipeId || recipePublicId} description={recipePublicId}>
+    {error ? <><ErrorBox text={error} /><button className="button-secondary focus-ring mt-3" type="button" onClick={() => setAttempt((value) => value + 1)}>{t("common.retry")}</button></> : recipe ? <div className="mt-5" id={`recipe-${recipePublicId}`}><GlobalRecipeCard recipe={recipe} editHref={`/recipe-types?editor=recipe-edit&recipePublicId=${encodeURIComponent(recipePublicId)}`} /></div> : <Loading />}
+  </CatalogFrame>;
 }
 
 // Exported data retains canonical Minecraft identifiers. Resolve them through

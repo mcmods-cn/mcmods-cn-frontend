@@ -6,6 +6,7 @@ type ChangelogLocalization = { locale: string; bodyMarkdown: string };
 export type ChangelogCategory = { id: string; defaultLocale: string; names: Record<string, string>; name: string };
 export type ChangelogTarget = { type: ChangelogTargetType; id: string; name: string; url: string; canEdit: boolean };
 export type ChangelogItem = {
+  publishedRevisionId?: string | null;
   id: string;
   eventAt: string;
   minecraftVersions: string[];
@@ -65,6 +66,7 @@ export type ChangelogCategoryPage = {
 };
 
 export type ChangelogDraft = {
+  baseRevisionId?: string | null;
   eventAt: string;
   minecraftVersions: string[];
   projectVersion: string;

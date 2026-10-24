@@ -320,6 +320,7 @@ function contentReviewHistoryHref(item: ModContentReviewItem) {
     case "issue": return `/issues/${item.modSiteId}`;
     case "news": return `/news/${item.modSiteId}`;
     case "discussion": return `/discussions/${item.modSiteId}`;
+    case "export": return `/mods/${encodeURIComponent(item.modSiteId)}/history?importRevisionId=${encodeURIComponent(item.id)}`;
     case "modpack": return `/modpacks/${item.modSiteId}/history`;
     case "plugin": return `/plugins/${item.modSiteId}/history`;
     case "map": return `/maps/${item.modSiteId}/history`;

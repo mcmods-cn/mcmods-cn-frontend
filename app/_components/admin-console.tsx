@@ -19,6 +19,7 @@ import { AdminDashboardPanel, AdminProjectWorkbenchPanel, type AdminDashboardDat
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
 import { AdminActivityRetentionPanel } from "./admin-activity-retention-panel";
+import { CommentModerationPanel } from "./comment-moderation-panel";
 import { AdminAntiAbusePanel } from "./admin-anti-abuse-panel";
 import { ProjectAutomationAdminPanel, SeedCrawlerAdminPanel } from "./admin-automation-panels";
 import { BanAdminPanel } from "./admin-ban-panel";
@@ -46,6 +47,7 @@ type PanelId =
   | "project-authorship"
   | "activity-monitor"
   | "anti-abuse"
+  | "comment-moderation"
   | "economy-config"
   | "currencies"
   | "shop-items"
@@ -112,6 +114,7 @@ const adminNavGroups: Array<{
     id: "reviews",
     label: "",
     items: [
+      { id: "comment-moderation", label: "", description: "" },
       { id: "reviews-content", label: "", description: "" },
       { id: "reviews-editor", label: "", description: "" },
       { id: "reviews-server", label: "", description: "" },
@@ -560,6 +563,7 @@ export function AdminConsole() {
           {visiblePanel === "creator-claims" ? <CreatorClaimsPanel token={auth.token} /> : null}
           {visiblePanel === "project-authorship" ? <AdminProjectAuthorshipPanel token={auth.token} /> : null}
           {visiblePanel === "activity-monitor" ? <><ActivityMonitorPanel token={auth.token} />{hasPermission(auth.user, "log.read") ? <AdminActivityRetentionPanel token={auth.token} /> : null}</> : null}
+          {visiblePanel === "comment-moderation" ? <CommentModerationPanel /> : null}
           {visiblePanel === "anti-abuse" ? <AdminAntiAbusePanel token={auth.token} /> : null}
           {visiblePanel === "economy-config" ? <EconomyConfigPanel token={auth.token} /> : null}
           {visiblePanel === "currencies" ? <CurrencyManagementPanel token={auth.token} /> : null}
@@ -632,6 +636,7 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
     "creator-claims": t("admin.community.creatorClaims"),
     "project-authorship": t("admin.projectAuthorship.title"),
     "activity-monitor": t("admin.community.activity"),
+    "comment-moderation": t("commentModeration.title"),
     "anti-abuse": t("antiAbuse.navTitle"),
     "economy-config": t("admin.community.economyConfig"),
     currencies: t("admin.community.currencies"),
@@ -708,6 +713,7 @@ function panelPermissions(panel: PanelId): string[] {
     users: "user.read",
     "activity-monitor": "activity.read",
     "logs-cleanup": "log.read",
+    "comment-moderation": "comment.moderate",
     "anti-abuse": "security.anti-abuse.read",
     "oss-files": "oss.file.read",
     stickers: "sticker.manage",
@@ -751,6 +757,7 @@ function adminNavItemDescription(panel: PanelId, fallback: string, t: (key: stri
     "creator-claims": t("admin.community.creatorClaimsDescription"),
     "project-authorship": t("admin.projectAuthorship.description"),
     "activity-monitor": t("admin.community.activityDescription"),
+    "comment-moderation": t("commentModeration.description"),
     "anti-abuse": t("antiAbuse.navDescription"),
     "economy-config": t("admin.community.economyConfigDescription"),
     currencies: t("admin.community.currenciesDescription"),
