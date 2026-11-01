@@ -42,6 +42,12 @@ nor SharedWorker receive a recoverable error; the form remains intact and no
 unsafe parallel request is issued. Re-enable the relevant browser capability or
 use a supported browser, then explicitly retry.
 
+If coordination is unavailable, `clearAuth` still publishes a local guest, but
+the server logout has not necessarily completed: its cookie/session can remain
+valid. Local guest state is not evidence of remote revocation. Restore browser
+support, reload to read the real `/auth/me` state, then explicitly retry logout.
+Network failure likewise does not establish whether remote revocation completed.
+
 OAuth links retain normal anchors, modifier clicks and new-tab navigation. Their
 internal `/login/provider` landing page validates the existing provider and return
 path and waits for queued logout before navigating to the original API start URL.
