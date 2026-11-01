@@ -101,3 +101,20 @@ docker build \
 `CODEX_PROXY_CERT` 应由当前环境配置为已授权的 CA 文件路径；其他环境使用自己的可信文件路径。上述域名仅供构建验收，不是运行中的后端。Yggdrasil 地址可以省略。构建成功后可仅绑定回环地址运行测试容器：`docker run --rm -p 127.0.0.1:3000:3000 mcmods-cn-frontend:local`。只停止和删除本任务新建的测试容器或镜像，不清理共享缓存及原有服务。
 
 跨标签语言更新携带已校验的规范语言和时间戳；接收页面先同步相同 UI cookie 再通知界面，避免存储事件先于 cookie 可见时遗留旧语言。迟到事件不会覆盖已观察到的较新偏好；无效事件忽略。此过程不刷新页面、不重新初始化后台表单、不写回存储产生事件循环。浏览器拒绝存储时仍保留本标签页语言切换；其他标签页是否收到真实事件取决于浏览器存储权限。
+
+## 真实资料目录回归
+
+`browser-tests/audit-recipe-live.mjs` 是显式运行的真实浏览器检查，不替换 API 响应。
+后端的隔离资料夹具必须已通过普通 HTTP 创建人工资料、独立审核，并完成具名导入。
+夹具 runtime 应声明精确三仓库提交、受控回环前端 origin、人工/导入/混合资料公开 ID 和已验证的数量/概率。
+
+```sh
+MCMODS_AUDIT_RECIPE_RUNTIME=/absolute/path/to/owned-fixture/runtime.json \
+  node browser-tests/audit-recipe-live.mjs
+```
+
+需要已安装的 Playwright Chromium 和可用的图形显示。检查使用正常浏览器身份，逐项对照真实目录响应与页面，验证数量、概率、短链、刷新和浏览器历史。
+存在实际几何样本时，另检查桌面/触摸视口的交互范围、绘制范围及键盘 Tab 焦点；缺少的 fluid/gas/缩放样本不会被推断为通过。
+运行器把独立结果、实际 API 响应摘要、截图、源码摘要和提交组合写入夹具目录的新子目录，不覆盖旧失败。
+若浏览器服务来自另一份干净 checkout，可显式指定 `MCMODS_AUDIT_FRONTEND_CHECKOUT`；其提交必须与 runtime 的编译来源一致。
+API 小页分页和数据库/审计后置条件由后端的只读观察器分别验证；本脚本不宣称真实队列、生产 bucket 或完整发布验收。
