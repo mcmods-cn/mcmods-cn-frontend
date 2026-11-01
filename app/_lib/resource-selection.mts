@@ -1,4 +1,4 @@
-import { normalizeCatalogResourceKind } from "./catalog-resource-identifiers.ts";
+import { catalogRegistryForKind, namespaceFromIdentifier, normalizeCatalogResourceKind } from "./catalog-resource-identifiers.ts";
 import type { CatalogResourceRef } from "./editor-types";
 
 export function unresolvedPublicID(kind: string, identifier: string, registry: string) {
@@ -27,8 +27,21 @@ export function resolveSelectedResources(current: Map<string, CatalogResourceRef
 
 export function sameResourceIdentity(a: CatalogResourceRef, b: CatalogResourceRef) {
   return normalizeCatalogResourceKind(a.kind) === normalizeCatalogResourceKind(b.kind)
-    && a.registry.toLowerCase() === b.registry.toLowerCase()
+    && identityRegistry(a) === identityRegistry(b)
     && a.id.trim().toLowerCase() === b.id.trim().toLowerCase();
+}
+
+function identityRegistry(resource: CatalogResourceRef) {
+  const kind = normalizeCatalogResourceKind(resource.kind);
+  const registry = resource.registry.trim().toLowerCase();
+  if (kind === "tag") return registry;
+  const namespace = namespaceFromIdentifier(resource.id.trim()).toLowerCase();
+  const family = catalogRegistryForKind(kind);
+  // Catalog resource DTOs expose the canonical namespace here; manual entries
+  // and template fields may carry the known family (items/blocks/fluids).
+  // Normalize only those two representations of a fully qualified resource.
+  // Tags, unknown families and other explicit registries remain distinct.
+  return namespace && family && (registry === family || registry === namespace) ? namespace : registry;
 }
 
 function resourceMatches(candidate: CatalogResourceRef, selectedResource: CatalogResourceRef) {
