@@ -20,13 +20,7 @@ export function resolvePublicDeploymentConfig(
   nodeEnvironment = "development",
 ): PublicDeploymentConfig {
   const production = nodeEnvironment === "production";
-  const apiBaseURL = resolveRequiredPublicURL(
-    "NEXT_PUBLIC_API_BASE_URL",
-    input.apiBaseURL,
-    production,
-    "http://localhost:8080",
-    { trailingSlash: "remove" },
-  );
+  const apiBaseURL = resolvePublicAPIBaseURL(input.apiBaseURL, nodeEnvironment);
   const siteURL = resolveRequiredPublicURL(
     "NEXT_PUBLIC_SITE_URL",
     input.siteURL,
@@ -51,6 +45,16 @@ export function resolvePublicSiteURL(value?: string, nodeEnvironment = "developm
     nodeEnvironment === "production",
     "http://localhost:3000",
     { originOnly: true, trailingSlash: "remove" },
+  );
+}
+
+export function resolvePublicAPIBaseURL(value?: string, nodeEnvironment = "development") {
+  return resolveRequiredPublicURL(
+    "NEXT_PUBLIC_API_BASE_URL",
+    value,
+    nodeEnvironment === "production",
+    "http://localhost:8080",
+    { trailingSlash: "remove" },
   );
 }
 

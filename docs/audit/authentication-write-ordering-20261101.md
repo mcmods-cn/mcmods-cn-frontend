@@ -65,8 +65,10 @@ and PostgreSQL observations are recorded separately in the task's evidence ledge
 
 Ship the client, public worker and configuration route together, with the same
 `NEXT_PUBLIC_API_BASE_URL`; the existing deployment validator still requires HTTPS
-for production. Retain the public worker in the standalone/Docker public asset
-copy. Previously loaded frontend code does not participate in this newly added
+for production. All three consume the same existing public-URL resolver, including
+its supported API base paths and trailing-slash normalization. Retain the public
+worker in the standalone/Docker public asset copy. Previously loaded frontend
+code does not participate in this newly added
 coordination: refresh those tabs before claiming this ordering guarantee across
 all of a user's windows. There is no database migration or production data repair.
 A rollback must keep a mutually compatible client/worker/configuration set.

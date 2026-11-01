@@ -14,18 +14,20 @@ async function fixture() {
   const harnessKey = `mcmods-auth-test-${crypto.randomUUID()}`;
   const states: Array<{ value: { ready: boolean; token: string; user: User | null } }> = [];
   const effects: Array<() => void | (() => void)> = [];
-  const harness = { states, effects, fetch: (url: string) => url.endsWith("/logout") ? Promise.resolve(new Response("{}")) : new Promise<Response>((resolve) => pending.push(resolve)) };
+  const requests: string[] = [];
+  const harness = { states, effects, fetch: (url: string) => { requests.push(url); return url.endsWith("/logout") ? Promise.resolve(new Response("{}")) : new Promise<Response>((resolve) => pending.push(resolve)); } };
   Reflect.set(globalThis, harnessKey, harness);
   const backendStatusURL = `data:text/javascript;base64,${Buffer.from("export const reportBackendAvailability=()=>{};").toString("base64")}`;
   const apiSource = ts.transpileModule((await readFile(new URL("./api.ts", import.meta.url), "utf8"))
     .replace('from "./backend-status"', `from ${JSON.stringify(backendStatusURL)}`)
     .replaceAll('from "./browser-storage.mts"', `from ${JSON.stringify(new URL("./browser-storage.mts", import.meta.url).href)}`)
     .replaceAll('from "./api-error.mts"', `from ${JSON.stringify(new URL("./api-error.mts", import.meta.url).href)}`)
+    .replaceAll('from "./deployment-env.mts"', `from ${JSON.stringify(new URL("./deployment-env.mts", import.meta.url).href)}`)
     .replace('fetcher: typeof fetch = fetch', `fetcher: typeof fetch = globalThis[${JSON.stringify(harnessKey)}].fetch`),
     { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 
   const apiURL = `data:text/javascript;base64,${Buffer.from(apiSource).toString("base64")}`;
-  const api = await import(apiURL) as { apiRequest: (path: string, options?: RequestInit) => Promise<unknown> };
+  const api = await import(apiURL) as { API_BASE_URL: string; apiRequest: (path: string, options?: RequestInit) => Promise<unknown> };
   const reactSource = `const harness=globalThis[${JSON.stringify(harnessKey)}];export function useState(initial){const state={value:initial};harness.states.push(state);return [initial,(next)=>{state.value=next;}];}export function useEffect(effect){harness.effects.push(effect);}`;
   const reactURL = `data:text/javascript;base64,${Buffer.from(reactSource).toString("base64")}`;
   const source = (await readFile(new URL("./auth.ts", import.meta.url), "utf8"))
@@ -45,7 +47,7 @@ async function fixture() {
   Object.assign(fakeWindow, { localStorage: { setItem() {} } });
   const oldWindow = Reflect.get(globalThis, "window");
   Reflect.set(globalThis, "window", fakeWindow);
-  return { auth, api, pending, fakeWindow, states, mount(count: number) {
+  return { auth, api, pending, fakeWindow, states, requests, mount(count: number) {
     for (let index = 0; index < count; index++) auth.useAuthSnapshot();
     const cleanup = effects.splice(0).map((effect) => effect());
     return () => { for (const dispose of cleanup) dispose?.(); };
@@ -198,5 +200,27 @@ for (const invalidHeader of [false, true]) {
       await assert.rejects(attempt, { status: 401 });
       assert.equal(f.states.at(-1)!.value.user, null);
     } finally { unmount(); f.cleanup(); }
+  });
+}
+for (const sample of [
+  { configured: "https://api.example.test/", normalized: "https://api.example.test" },
+  { configured: "https://api.example.test/v1/", normalized: "https://api.example.test/v1" },
+  { configured: "HTTPS://API.example.test:443/v1/", normalized: "https://api.example.test/v1" },
+]) {
+  test(`the real API module preserves supported public base normalization: ${sample.configured}`, async () => {
+    const previous = process.env.NEXT_PUBLIC_API_BASE_URL;
+    process.env.NEXT_PUBLIC_API_BASE_URL = sample.configured;
+    const f = await fixture();
+    try {
+      assert.equal(f.api.API_BASE_URL, sample.normalized);
+      const attempt = f.api.apiRequest("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ account: "synthetic" }) });
+      assert.equal(f.requests.at(-1), sample.normalized + "/api/v1/auth/login");
+      f.pending.shift()!(response(user("normalized-B")));
+      await attempt;
+    } finally {
+      f.cleanup();
+      if (previous === undefined) delete process.env.NEXT_PUBLIC_API_BASE_URL;
+      else process.env.NEXT_PUBLIC_API_BASE_URL = previous;
+    }
   });
 }

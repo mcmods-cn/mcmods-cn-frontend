@@ -1,10 +1,13 @@
 import { reportBackendAvailability } from "./backend-status";
 import { readBrowserStorage, writeBrowserStorage } from "./browser-storage.mts";
 import { ApiError } from "./api-error.mts";
+import { resolvePublicAPIBaseURL } from "./deployment-env.mts";
 export { ApiError } from "./api-error.mts";
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
+export const API_BASE_URL = resolvePublicAPIBaseURL(
+  process.env.NEXT_PUBLIC_API_BASE_URL,
+  process.env.NODE_ENV,
+);
 
 let observedAuthorizationVersion = "";
 let authenticationGeneration = 0;
