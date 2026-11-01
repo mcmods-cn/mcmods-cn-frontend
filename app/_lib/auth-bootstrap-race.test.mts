@@ -21,7 +21,7 @@ async function fixture() {
     .replace('from "./backend-status"', `from ${JSON.stringify(backendStatusURL)}`)
     .replaceAll('from "./browser-storage.mts"', `from ${JSON.stringify(new URL("./browser-storage.mts", import.meta.url).href)}`)
     .replaceAll('from "./api-error.mts"', `from ${JSON.stringify(new URL("./api-error.mts", import.meta.url).href)}`)
-    .replace('await fetch(input, init)', `await globalThis[${JSON.stringify(harnessKey)}].fetch(String(input), init)`),
+    .replace('fetcher: typeof fetch = fetch', `fetcher: typeof fetch = globalThis[${JSON.stringify(harnessKey)}].fetch`),
     { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 
   const apiURL = `data:text/javascript;base64,${Buffer.from(apiSource).toString("base64")}`;
@@ -30,6 +30,7 @@ async function fixture() {
   const source = (await readFile(new URL("./auth.ts", import.meta.url), "utf8"))
     .replace('from "react"', `from ${JSON.stringify(reactURL)}`)
     .replace('from "./browser-storage.mts"', `from ${JSON.stringify(new URL('./browser-storage.mts', import.meta.url).href)}`)
+    .replace('from "./authentication-mutation.mts"', `from ${JSON.stringify(new URL('./authentication-mutation.mts', import.meta.url).href)}`)
     .replace('from "./api"', `from ${JSON.stringify(apiURL)}`) + "\nexport { bootstrapAuth };";
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
   const auth = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`) as {

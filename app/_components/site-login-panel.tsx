@@ -5,18 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { AuthResult, AuthUser, canAccessAdmin, cookieSessionToken, saveAuth } from "../_lib/auth";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
+import { runAuthenticationMutation } from "../_lib/authentication-mutation.mts";
+import { oauthProviders, oauthProviderStartPath } from "../_lib/oauth-navigation.mts";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { normalizeInternalPath } from "../_lib/navigation";
 import { MinecraftLanguagePicker } from "./minecraft-language-picker";
 import { TimezonePicker } from "./timezone-picker";
 
 const reservedUsernames = new Set(["admin", "administrator", "root", "system", "mcmods"]);
-const thirdPartyProviders = [
-  { key: "wechat", label: "WeChat" },
-  { key: "qq", label: "QQ" },
-  { key: "google", label: "Google" },
-  { key: "github", label: "GitHub" },
-];
 export function SiteLoginPanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,9 +37,10 @@ export function SiteLoginPanel() {
   useEffect(() => {
     if (searchParams.get("oauth") !== "success") return;
     let cancelled = false;
-    void apiRequest<AuthUser>("/api/v1/auth/me")
-      .then((user) => {
+    void runAuthenticationMutation(API_BASE_URL, async ({ assertCurrent }) => {
+        const user = await apiRequest<AuthUser>("/api/v1/auth/me");
         if (cancelled) return;
+        assertCurrent();
         saveAuth({ token: cookieSessionToken, user });
         router.replace(destinationAfterLogin(nextPath, user));
       })
@@ -69,17 +66,18 @@ export function SiteLoginPanel() {
     }
     setLoading(true);
     try {
-      const result =
+      const result = await runAuthenticationMutation(API_BASE_URL, async ({ fetch: fetcher, assertCurrent }) => {
+        const result =
         mode === "login"
           ? loginMethod === "password"
             ? await apiRequest<AuthResult>("/api/v1/auth/login", {
                 method: "POST",
                 body: JSON.stringify({ account, password }),
-              })
+              }, undefined, fetcher)
             : await apiRequest<AuthResult>("/api/v1/auth/email-login", {
                 method: "POST",
                 body: JSON.stringify({ email, code: emailCode }),
-              })
+              }, undefined, fetcher)
           : await apiRequest<AuthResult>("/api/v1/auth/register", {
               method: "POST",
               body: JSON.stringify({
@@ -92,8 +90,11 @@ export function SiteLoginPanel() {
                 preferredContentLanguage,
                 preferredUILanguage,
               }),
-            });
-      saveAuth(result);
+            }, undefined, fetcher);
+        assertCurrent();
+        saveAuth(result);
+        return result;
+      });
       router.replace(destinationAfterLogin(nextPath, result.user));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("login.processing"));
@@ -226,7 +227,7 @@ export function SiteLoginPanel() {
             <span className="h-px flex-1 bg-[var(--line)]" />{t("login.thirdParty")}<span className="h-px flex-1 bg-[var(--line)]" />
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {thirdPartyProviders.map((provider) => <a key={provider.key} className="button-secondary focus-ring text-center" href={`${API_BASE_URL}/api/v1/auth/oauth/${provider.key}/start${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`}>{provider.label}</a>)}
+            {oauthProviders.map((provider) => <a key={provider.key} className="button-secondary focus-ring text-center" href={oauthProviderStartPath(provider.key, nextPath)}>{provider.label}</a>)}
           </div>
         </section>
       </div>

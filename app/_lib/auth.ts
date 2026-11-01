@@ -3,6 +3,7 @@
 import { writeBrowserStorage } from "./browser-storage.mts";
 import { useEffect, useState } from "react";
 import { API_BASE_URL, advanceAuthenticationGeneration, backendFetch, isBearerAccessToken, rememberAuthorizationVersion } from "./api";
+import { runAuthenticationMutation } from "./authentication-mutation.mts";
 
 type AuthPermissionRule = {
   code: string;
@@ -120,6 +121,14 @@ export function clearAuth() {
   authGeneration += 1;
   advanceAuthenticationGeneration();
   const logoutToken = activeToken;
+  const headers = new Headers();
+  if (isBearerAccessToken(logoutToken)) headers.set("Authorization", `Bearer ${logoutToken}`);
+  // Register the write before another tab observes guest state and signs in.
+  const logout = runAuthenticationMutation(API_BASE_URL, ({ fetch: fetcher }) => backendFetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+  }, fetcher));
   authError = "";
   authRetryAt = 0;
   activeToken = "";
@@ -130,13 +139,7 @@ export function clearAuth() {
   broadcastAuthChange("logout");
   window.dispatchEvent(new Event("mcmods-auth-change"));
 
-  const headers = new Headers();
-  if (isBearerAccessToken(logoutToken)) headers.set("Authorization", `Bearer ${logoutToken}`);
-  void backendFetch(`${API_BASE_URL}/api/v1/auth/logout`, {
-    method: "POST",
-    credentials: "include",
-    headers,
-  }).catch(() => undefined);
+  void logout.catch(() => undefined);
 }
 
 export function useAuthSnapshot(): AuthSnapshot {

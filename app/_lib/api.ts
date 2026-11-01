@@ -26,6 +26,7 @@ export async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
   token?: string,
+  fetcher?: typeof fetch,
 ): Promise<T> {
   const generation = authenticationGeneration;
   const headers = new Headers(options.headers);
@@ -42,7 +43,7 @@ export async function apiRequest<T>(
     ...options,
     credentials: options.credentials ?? "include",
     headers,
-  });
+  }, fetcher);
 
   // DELETE endpoints intentionally return an empty 204 response.
   if (response.status === 204) return undefined as T;
@@ -60,10 +61,10 @@ export async function apiRequest<T>(
   return envelope.data;
 }
 
-export async function backendFetch(input: RequestInfo | URL, init?: RequestInit) {
+export async function backendFetch(input: RequestInfo | URL, init?: RequestInit, fetcher: typeof fetch = fetch) {
   const generation = authenticationGeneration;
   try {
-    const response = await fetch(input, init);
+    const response = await fetcher(input, init);
     if (generation === authenticationGeneration) observeAuthenticationHeaders(response);
     // A structured JSON 502/503/504 is an API response from our backend, not
     // proof that the whole backend is offline. Optional dependencies (OSS,
