@@ -109,10 +109,18 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
   const [baseRevisionId, setBaseRevisionId] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [defaultNameValidationAttempt, setDefaultNameValidationAttempt] = useState(0);
+  const localizedNameInput = useRef<HTMLInputElement>(null);
   const [challenge, setChallenge] = useState<{ value: AntiAbuseChallenge; snapshot: CreateModPayload; reason: string; idempotencyKey: string }>();
   const [antiAbuseFormToken, setAntiAbuseFormToken] = useState<AntiAbuseFormToken>();
   const [honeypot, setHoneypot] = useState("");
   const formTokenValue = useRef<AntiAbuseFormToken | undefined>(undefined);
+
+  useEffect(() => {
+    if (!defaultNameValidationAttempt) return;
+    localizedNameInput.current?.focus({ preventScroll: true });
+    localizedNameInput.current?.scrollIntoView({ block: "center", behavior: "instant" });
+  }, [defaultNameValidationAttempt]);
   const formTokenRequest = useRef<AbortController | undefined>(undefined);
   const refreshSubmissionFormToken = useCallback(async () => {
     formTokenRequest.current?.abort();
@@ -271,6 +279,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
     if (snapshot.localizations.length && !snapshot.localizations.find((item) => item.locale === snapshot.defaultLocale)?.name.trim()) {
       setSelectedLocale(snapshot.defaultLocale as Locale);
       setMessage(t("mods.submission.defaultLocaleNameRequired"));
+      setDefaultNameValidationAttempt((attempt) => attempt + 1);
       return;
     }
     await persistSubmission(snapshot, changeReason);
@@ -434,7 +443,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
             <Field label={t("mods.submission.fields.siteId")} required hint={t("mods.submission.hints.siteId")}><input className="field font-mono" required maxLength={100} pattern="[a-z0-9](?:[a-z0-9_-]{0,98}[a-z0-9])?" value={draft.siteId} onChange={(event) => setDraft({ ...draft, siteId: normalizeProjectSiteIdInput(event.target.value) })} /></Field>
             {uniqueId ? <Field label={t("mods.submission.fields.uniqueId")} hint={t("mods.submission.hints.uniqueId")}><input className="field font-mono" readOnly value={uniqueId} /></Field> : null}
             <Field label={t("mods.submission.fields.primaryName")} required hint={t("mods.submission.hints.primaryName")}><input className="field" required maxLength={160} value={draft.primaryName} onChange={(event) => setDraft({ ...draft, primaryName: event.target.value })} /></Field>
-            <Field label={`${t("mods.submission.fields.secondaryName")} (${selectedLocale})`} hint={t("mods.submission.hints.secondaryName")}><input className="field" maxLength={160} value={localized.name} onChange={(event) => setDraft(updateModLocalization(draft, selectedLocale, { name: event.target.value }))} /></Field>
+            <Field label={`${t("mods.submission.fields.secondaryName")} (${selectedLocale})`} hint={t("mods.submission.hints.secondaryName")}><input ref={localizedNameInput} className="field" maxLength={160} value={localized.name} onChange={(event) => setDraft(updateModLocalization(draft, selectedLocale, { name: event.target.value }))} /></Field>
             <Field label={t("mods.submission.fields.abbreviation")} hint={t("mods.submission.hints.abbreviation")}><input className="field" maxLength={32} pattern="[\x21-\x7E]*" value={draft.abbreviation} onChange={(event) => setDraft({ ...draft, abbreviation: event.target.value })} /></Field>
           </div>
           <Field label={`${t("mods.submission.fields.summary")} (${selectedLocale})`} hint={t("mods.submission.hints.summary")}><textarea className="field min-h-24 resize-y" maxLength={500} value={localized.summary} onChange={(event) => setDraft(updateModLocalization(draft, selectedLocale, { summary: event.target.value }))} /></Field>
