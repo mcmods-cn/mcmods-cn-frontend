@@ -168,7 +168,7 @@ export function canAccessAdmin(user: AuthUser | null) {
 }
 
 export function canAccessReviewQueue(user: AuthUser | null) {
-  if (hasPermission(user, "content.review") || hasPermission(user, "project.review")) return true;
+  if (hasPermission(user, "content.review") || hasPermission(user, "project.review") || hasPermission(user, "project.review.*")) return true;
   return user?.permissionRules.some((rule) => {
     const code = rule.code.toLowerCase().trim();
     return code.startsWith("project.review.")
