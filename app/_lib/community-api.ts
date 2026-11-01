@@ -76,6 +76,7 @@ export type CreatorDetail = {
   canClaim: boolean;
   publishedRevisionId?: string;
   avatarFileId?: string;
+  avatarStorageUrl?: string;
 };
 
 export type CreatorSnapshot = {

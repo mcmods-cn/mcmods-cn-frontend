@@ -15,6 +15,7 @@ import {
   CreatorSnapshot,
   creatorHref,
 } from "../_lib/community-api";
+import { initialCreatorAvatarReferences, restoredCreatorAvatarReference, uploadedCreatorAvatarReference } from "../_lib/creator-avatar-references.mts";
 import { creatorProfilePayload } from "../_lib/creator-capabilities.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -87,11 +88,13 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
   const [defaultLocale, setDefaultLocale] = useState<Locale>(initialDefaultLocale);
   const [selectedLocale, setSelectedLocale] = useState<Locale>(initialDefaultLocale);
   const [localizations, setLocalizations] = useState<CreatorLocalization[]>(() => creatorEditorLocalizations(detail, initialDefaultLocale));
-  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState("");
+  const initialAvatar = initialCreatorAvatarReferences(detail);
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState(initialAvatar.previewUrl);
   const [avatarPreviewObjectKey, setAvatarPreviewObjectKey] = useState("");
   const avatarPreviewRecovery = useRef(false);
+  const avatarPreviewGeneration = useRef(0);
   const [avatarPreviewError, setAvatarPreviewError] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState(detail?.creator.avatarUrl ?? "");
+  const [avatarUrl, setAvatarUrl] = useState(initialAvatar.stableUrl);
   const [avatarFileId, setAvatarFileId] = useState<string | undefined>(detail?.avatarFileId);
   const [links, setLinks] = useState<CreatorLink[]>(detail?.links ?? []);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
@@ -131,8 +134,13 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
       setDefaultLocale(restored.defaultLocale);
       setSelectedLocale(restored.selectedLocale);
       setLocalizations(restored.localizations);
-      setAvatarUrl(restored.avatarUrl);
+      avatarPreviewGeneration.current++;
+      avatarPreviewRecovery.current = false;
+      setAvatarUrl(restoredCreatorAvatarReference(restored, detail));
       setAvatarFileId(restored.avatarFileId);
+      setAvatarPreviewObjectKey("");
+      setAvatarPreviewUrl(restored.avatarFileId === detail?.avatarFileId ? initialAvatar.previewUrl : "");
+      setAvatarPreviewError(Boolean(restored.avatarFileId && restored.avatarFileId !== detail?.avatarFileId));
       setLinks(restored.links);
     },
   });
@@ -165,10 +173,11 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
     if (mutationInFlight.current || busy) return;
     mutationInFlight.current = true;
     setUploadingAvatar(true);
+    avatarPreviewGeneration.current++;
     try {
       const uploaded = await uploadUserFileToOSS(file, token, `creator_avatar:${kind}:${detail?.creator.publicId || "new"}`);
       setAvatarFileId(uploaded.id);
-      setAvatarUrl(uploaded.storageUrl || uploaded.objectKey);
+      setAvatarUrl(uploadedCreatorAvatarReference(uploaded));
       setAvatarPreviewUrl(uploaded.accessUrl || uploaded.url || "");
       setAvatarPreviewObjectKey(uploaded.objectKey);
       avatarPreviewRecovery.current = false;
@@ -183,13 +192,25 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
   }
 
   async function refreshAvatarPreview(manual = false) {
-    if (!avatarPreviewObjectKey || (!manual && avatarPreviewRecovery.current)) return;
+    if ((!avatarPreviewObjectKey && !avatarFileId && !detail) || (!manual && avatarPreviewRecovery.current)) return;
+    const generation = avatarPreviewGeneration.current;
+    const selectedFileId = avatarFileId;
     avatarPreviewRecovery.current = true;
     setAvatarPreviewError(true);
     try {
-      const result = await apiRequest<{ url: string }>("/api/v1/users/me/files/presign", { method: "POST", body: JSON.stringify({ objectKey: avatarPreviewObjectKey }) }, token);
-      setAvatarPreviewUrl(result.url);
+      let previewUrl: string;
+      if (!avatarPreviewObjectKey && detail && selectedFileId === detail.avatarFileId) {
+        const refreshed = await apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(detail.creator.publicId)}`, {}, token);
+        if (refreshed.avatarFileId !== selectedFileId) throw new Error(t("creators.loadFailed"));
+        previewUrl = refreshed.creator.avatarUrl;
+      } else {
+        const result = await apiRequest<{ url: string }>("/api/v1/users/me/files/presign", { method: "POST", body: JSON.stringify({ objectKey: avatarPreviewObjectKey || undefined, fileId: selectedFileId }) }, token);
+        previewUrl = result.url;
+      }
+      if (generation !== avatarPreviewGeneration.current) return;
+      setAvatarPreviewUrl(previewUrl);
     } catch (error) {
+      if (generation !== avatarPreviewGeneration.current) return;
       notifySite(error instanceof Error ? error.message : t("creators.avatarUploadFailed"), t("creators.avatar"), "danger");
     }
   }
