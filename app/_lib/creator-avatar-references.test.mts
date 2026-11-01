@@ -1,15 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { initialCreatorAvatarReferences, restoredCreatorAvatarReference, uploadedCreatorAvatarReference } from "./creator-avatar-references.mts";
+import { initialCreatorAvatarReferences, restoredCreatorAvatarNeedsVerification, restoredCreatorAvatarReference, uploadedCreatorAvatarReference } from "./creator-avatar-references.mts";
 
 test("OSS-001 a signed initial presentation stays separate from the stored avatar and canonical file identity", () => {
   assert.deepEqual(initialCreatorAvatarReferences({ creator: { avatarUrl: "https://private.example/avatar.png?x-oss-signature=temporary" }, avatarStorageUrl: "https://private.example/avatar.png", avatarFileId: "avatar001" }), {
-    previewUrl: "https://private.example/avatar.png?x-oss-signature=temporary", stableUrl: "https://private.example/avatar.png", fileId: "avatar001",
+    previewUrl: "https://private.example/avatar.png?x-oss-signature=temporary", stableUrl: "https://private.example/avatar.png", fileId: "avatar001", needsVerification: false,
   });
 });
 test("OSS-001 a current legacy avatar without a file identity retains its explicit stored reference", () => {
   assert.deepEqual(initialCreatorAvatarReferences({ creator: { avatarUrl: "https://private.example/legacy.png?x-oss-signature=temporary" }, avatarStorageUrl: "https://private.example/legacy.png" }), {
-    previewUrl: "https://private.example/legacy.png?x-oss-signature=temporary", stableUrl: "https://private.example/legacy.png", fileId: undefined,
+    previewUrl: "https://private.example/legacy.png?x-oss-signature=temporary", stableUrl: "https://private.example/legacy.png", fileId: undefined, needsVerification: false,
   });
 });
 test("OSS-001 an older server with a file identity cannot cause its signed display URL to enter a new draft", () => {
@@ -40,4 +40,11 @@ test("OSS-001 even an explicit stored field containing a known signature cannot 
 
 test("OSS-001 restoring a signed legacy draft cannot copy a signed explicit stored field", () => {
   assert.equal(restoredCreatorAvatarReference({ avatarUrl: "https://private.example/avatar.png?Signature=old", avatarFileId: "avatar001" }, { creator: { avatarUrl: "https://private.example/avatar.png?Signature=preview" }, avatarStorageUrl: "https://private.example/avatar.png?Signature=legacy", avatarFileId: "avatar001" }), "");
+});
+
+test("OSS-001 draft restoration holds an unbound capability but permits a separately reauthorized replacement file", () => {
+  const detail = { creator: { avatarUrl: "https://private.example/legacy.png?Signature=old" }, avatarReferenceNeedsVerification: true };
+  assert.equal(restoredCreatorAvatarNeedsVerification({ avatarUrl: "https://private.example/legacy.png?Signature=old" }, detail), true);
+  assert.equal(restoredCreatorAvatarNeedsVerification({ avatarUrl: "https://private.example/replacement.png", avatarFileId: "avatar002" }, detail), false);
+  assert.equal(restoredCreatorAvatarNeedsVerification({ avatarUrl: "https://private.example/legacy.png?Signature=old" }, { creator: { avatarUrl: "" }, avatarFileId: "avatar001" }), true);
 });

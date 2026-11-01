@@ -77,6 +77,7 @@ export type CreatorDetail = {
   publishedRevisionId?: string;
   avatarFileId?: string;
   avatarStorageUrl?: string;
+  avatarReferenceNeedsVerification?: boolean;
 };
 
 export type CreatorSnapshot = {

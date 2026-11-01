@@ -15,7 +15,7 @@ import {
   CreatorSnapshot,
   creatorHref,
 } from "../_lib/community-api";
-import { initialCreatorAvatarReferences, restoredCreatorAvatarReference, uploadedCreatorAvatarReference } from "../_lib/creator-avatar-references.mts";
+import { creatorAvatarVerificationMessage, initialCreatorAvatarReferences, restoredCreatorAvatarNeedsVerification, restoredCreatorAvatarReference, uploadedCreatorAvatarReference } from "../_lib/creator-avatar-references.mts";
 import { creatorProfilePayload } from "../_lib/creator-capabilities.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -79,7 +79,7 @@ function CreatorEditorPageContent({ initialKind, publicId }: { initialKind: Crea
 }
 
 function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDetail | null; initialKind: CreatorKind; token: string }) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const router = useRouter();
   const editing = Boolean(detail);
   const [kind, setKind] = useState<CreatorKind>(detail?.creator.kind ?? initialKind);
@@ -94,6 +94,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
   const avatarPreviewRecovery = useRef(false);
   const avatarPreviewGeneration = useRef(0);
   const [avatarPreviewError, setAvatarPreviewError] = useState(false);
+  const [avatarReferenceNeedsVerification, setAvatarReferenceNeedsVerification] = useState(initialAvatar.needsVerification);
   const [avatarUrl, setAvatarUrl] = useState(initialAvatar.stableUrl);
   const [avatarFileId, setAvatarFileId] = useState<string | undefined>(detail?.avatarFileId);
   const [links, setLinks] = useState<CreatorLink[]>(detail?.links ?? []);
@@ -126,6 +127,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
       localizations,
       avatarUrl,
       avatarFileId,
+      avatarReferenceNeedsVerification,
       links,
     },
     onRestore: (restored) => {
@@ -138,6 +140,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
       avatarPreviewRecovery.current = false;
       setAvatarUrl(restoredCreatorAvatarReference(restored, detail));
       setAvatarFileId(restored.avatarFileId);
+      setAvatarReferenceNeedsVerification(restoredCreatorAvatarNeedsVerification(restored, detail));
       setAvatarPreviewObjectKey("");
       setAvatarPreviewUrl(restored.avatarFileId === detail?.avatarFileId ? initialAvatar.previewUrl : "");
       setAvatarPreviewError(Boolean(restored.avatarFileId && restored.avatarFileId !== detail?.avatarFileId));
@@ -177,6 +180,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
     try {
       const uploaded = await uploadUserFileToOSS(file, token, `creator_avatar:${kind}:${detail?.creator.publicId || "new"}`);
       setAvatarFileId(uploaded.id);
+      setAvatarReferenceNeedsVerification(false);
       setAvatarUrl(uploadedCreatorAvatarReference(uploaded));
       setAvatarPreviewUrl(uploaded.accessUrl || uploaded.url || "");
       setAvatarPreviewObjectKey(uploaded.objectKey);
@@ -199,16 +203,22 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
     setAvatarPreviewError(true);
     try {
       let previewUrl: string;
+      let verifiedCurrentReference: ReturnType<typeof initialCreatorAvatarReferences> | undefined;
       if (!avatarPreviewObjectKey && detail && selectedFileId === detail.avatarFileId) {
         const refreshed = await apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(detail.creator.publicId)}`, {}, token);
         if (refreshed.avatarFileId !== selectedFileId) throw new Error(t("creators.loadFailed"));
         previewUrl = refreshed.creator.avatarUrl;
+        verifiedCurrentReference = initialCreatorAvatarReferences(refreshed);
       } else {
         const result = await apiRequest<{ url: string }>("/api/v1/users/me/files/presign", { method: "POST", body: JSON.stringify({ objectKey: avatarPreviewObjectKey || undefined, fileId: selectedFileId }) }, token);
         previewUrl = result.url;
       }
       if (generation !== avatarPreviewGeneration.current) return;
       setAvatarPreviewUrl(previewUrl);
+      if (verifiedCurrentReference && !verifiedCurrentReference.needsVerification) {
+        setAvatarUrl(verifiedCurrentReference.stableUrl);
+        setAvatarReferenceNeedsVerification(false);
+      }
     } catch (error) {
       if (generation !== avatarPreviewGeneration.current) return;
       notifySite(error instanceof Error ? error.message : t("creators.avatarUploadFailed"), t("creators.avatar"), "danger");
@@ -240,6 +250,10 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!snapshot.name || busy || mutationInFlight.current) return;
+    if (avatarReferenceNeedsVerification) {
+      notifySite(creatorAvatarVerificationMessage(locale), t("creators.avatar"), "danger");
+      return;
+    }
     mutationInFlight.current = true;
     setSaving(true);
     try {
@@ -334,7 +348,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
             <section className="rounded-lg border border-[var(--line)] p-4">
               <h2 className="font-black">{t("creators.avatar")}</h2>
               <div className="mt-3 flex items-center gap-3"><CreatorAvatar avatarUrl={importedAvatarPreviewUrl || avatarPreviewUrl || avatarUrl} name={name} onLoad={() => setAvatarPreviewError(false)} onError={() => { setAvatarPreviewError(true); void refreshAvatarPreview(); }} /><label className="button-secondary focus-ring cursor-pointer">{uploadingAvatar ? t("common.loading") : t("creators.chooseAvatar")}<input className="sr-only" accept="image/png,image/jpeg,image/webp,image/gif,image/apng,.apng" disabled={uploadingAvatar} type="file" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) setAvatarCropFile(file); }} /></label></div>
-              {avatarPreviewError ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => void refreshAvatarPreview(true)}>{t("common.retry")}</button> : null}
+              {avatarPreviewError || avatarReferenceNeedsVerification ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => void refreshAvatarPreview(true)}>{t("common.retry")}</button> : null}
               {importedAvatarPreviewUrl ? <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{t("creators.importAvatarPreviewOnly")}</p> : null}
             </section>
             <LinkEditor links={links} onChange={setLinks} />
