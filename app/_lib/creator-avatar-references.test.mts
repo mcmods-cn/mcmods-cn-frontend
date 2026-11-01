@@ -29,3 +29,15 @@ test("OSS-001 legitimate stable query parameters and immutable object keys survi
   assert.equal(uploadedCreatorAvatarReference({ storageUrl: stable, objectKey: "owned/avatar.png" }), stable);
   assert.equal(uploadedCreatorAvatarReference({ storageUrl: "https://private.example/avatar.png?x-oss-signature=bad-contract", objectKey: "owned/avatar.png" }), "owned/avatar.png");
 });
+
+test("OSS-001 even an explicit stored field containing a known signature cannot enter a future draft", () => {
+  const result = initialCreatorAvatarReferences({ creator: { avatarUrl: "https://private.example/avatar.png?x-oss-signature=preview" }, avatarStorageUrl: "https://private.example/avatar.png?x-oss-signature=legacy", avatarFileId: "avatar001" });
+  assert.equal(result.stableUrl, "");
+  assert.equal(result.previewUrl, "https://private.example/avatar.png?x-oss-signature=preview");
+  assert.equal(result.fileId, "avatar001");
+  assert.equal(result.needsVerification, true);
+});
+
+test("OSS-001 restoring a signed legacy draft cannot copy a signed explicit stored field", () => {
+  assert.equal(restoredCreatorAvatarReference({ avatarUrl: "https://private.example/avatar.png?Signature=old", avatarFileId: "avatar001" }, { creator: { avatarUrl: "https://private.example/avatar.png?Signature=preview" }, avatarStorageUrl: "https://private.example/avatar.png?Signature=legacy", avatarFileId: "avatar001" }), "");
+});
