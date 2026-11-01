@@ -50,7 +50,13 @@ export async function apiRequest<T>(
 
   const envelope = (await response.json().catch(() => ({}))) as ApiEnvelope<T>;
   if (!response.ok) {
-    if (response.status === 401 && generation === authenticationGeneration && typeof window !== "undefined") {
+    // Invalid submitted credentials do not prove that an existing cookie
+    // session has expired. Explicit invalid-auth headers are still observed by
+    // backendFetch; protected reads and auth/me retain normal 401 handling.
+    const credentialSubmission = path === "/api/v1/auth/login"
+      || path === "/api/v1/auth/email-login"
+      || path === "/api/v1/auth/register";
+    if (response.status === 401 && !credentialSubmission && generation === authenticationGeneration && typeof window !== "undefined") {
       clearExpiredAuth();
     }
     throw new ApiError(envelope.error ?? "请求失败", response.status, envelope.code, envelope.retryAfter, envelope.details);

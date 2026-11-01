@@ -25,6 +25,7 @@ async function fixture() {
     { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
 
   const apiURL = `data:text/javascript;base64,${Buffer.from(apiSource).toString("base64")}`;
+  const api = await import(apiURL) as { apiRequest: (path: string, options?: RequestInit) => Promise<unknown> };
   const reactSource = `const harness=globalThis[${JSON.stringify(harnessKey)}];export function useState(initial){const state={value:initial};harness.states.push(state);return [initial,(next)=>{state.value=next;}];}export function useEffect(effect){harness.effects.push(effect);}`;
   const reactURL = `data:text/javascript;base64,${Buffer.from(reactSource).toString("base64")}`;
   const source = (await readFile(new URL("./auth.ts", import.meta.url), "utf8"))
@@ -44,7 +45,7 @@ async function fixture() {
   Object.assign(fakeWindow, { localStorage: { setItem() {} } });
   const oldWindow = Reflect.get(globalThis, "window");
   Reflect.set(globalThis, "window", fakeWindow);
-  return { auth, pending, fakeWindow, states, mount(count: number) {
+  return { auth, api, pending, fakeWindow, states, mount(count: number) {
     for (let index = 0; index < count; index++) auth.useAuthSnapshot();
     const cleanup = effects.splice(0).map((effect) => effect());
     return () => { for (const dispose of cleanup) dispose?.(); };
@@ -168,3 +169,34 @@ test("a transient 429 exposes recovery and retries only the identity read", asyn
     assert.equal(f.states.at(-1)!.value.user?.id, "recovered");
   } finally { unmount(); f.cleanup(); }
 });
+
+for (const path of ["/api/v1/auth/login", "/api/v1/auth/email-login", "/api/v1/auth/register"]) {
+  test(`invalid submitted credentials at ${path} preserve a current valid identity`, async () => {
+    const f = await fixture();
+    const unmount = f.mount(1);
+    try {
+      f.pending.shift()!(response(user("valid-B")));
+      await f.auth.bootstrapAuth();
+      const attempt = f.api.apiRequest(path, { method: "POST", body: JSON.stringify({ account: "invalid-submission" }) });
+      f.pending.shift()!(new Response(JSON.stringify({ error: "Invalid submitted credentials" }), { status: 401 }));
+      await assert.rejects(attempt, { status: 401 });
+      assert.equal(f.states.at(-1)!.value.user?.id, "valid-B");
+      assert.equal((await f.auth.bootstrapAuth())?.id, "valid-B");
+    } finally { unmount(); f.cleanup(); }
+  });
+}
+
+for (const invalidHeader of [false, true]) {
+  test(`a genuinely current ${invalidHeader ? "invalid header on credential submission" : "protected 401"} still expires the identity`, async () => {
+    const f = await fixture();
+    const unmount = f.mount(1);
+    try {
+      f.pending.shift()!(response(user("revoked-B")));
+      await f.auth.bootstrapAuth();
+      const attempt = f.api.apiRequest(invalidHeader ? "/api/v1/auth/login" : "/api/v1/notifications", { method: invalidHeader ? "POST" : "GET" });
+      f.pending.shift()!(new Response(JSON.stringify({ error: "Current session invalid" }), { status: 401, headers: invalidHeader ? { "x-mcmods-auth-state": "invalid" } : {} }));
+      await assert.rejects(attempt, { status: 401 });
+      assert.equal(f.states.at(-1)!.value.user, null);
+    } finally { unmount(); f.cleanup(); }
+  });
+}

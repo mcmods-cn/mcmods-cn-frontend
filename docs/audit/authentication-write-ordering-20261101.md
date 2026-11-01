@@ -14,6 +14,13 @@ origin-wide Web Lock. A genuinely invalid current response retains the existing
 authentication-generation behavior. A failed form submission does not publish a
 successful identity and preserves the input for an explicit retry.
 
+An incorrect password's 401 is a credential-validation failure, not evidence
+that an already valid B session expired. The three credential-submission endpoints
+therefore retain the current identity on that status. Explicit invalid-auth
+headers, protected reads and `/auth/me` still expire a genuinely invalid current
+session. The real negative case preserves its original failure: unchanged B
+cookie and actual `/auth/me` 200, but the old generic 401 handler erased B's UI.
+
 When Web Locks are unavailable in a window, a same-origin SharedWorker owns the
 actual credentialed fetch. Its queue remains held until the caller acknowledges
 that parsing and identity publication have finished. A cancelled callback checks
