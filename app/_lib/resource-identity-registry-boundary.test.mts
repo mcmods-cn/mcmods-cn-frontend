@@ -29,3 +29,19 @@ test("RPH-004 equivalence keeps explicit registries, tag registries, and unknown
   assert.equal(sameResourceIdentity(ref("minecraft.item", "items"), ref("minecraft.block", "audit_rn")), false);
   assert.equal(sameResourceIdentity({ ...ref("item", "ITEMS"), id: "AUDIT_RN:SHARED" }, ref("minecraft.item", "audit_rn")), true);
 });
+
+for (const [kind, guessedFamily] of [
+  ["extension.item_bundle", "items"],
+  ["extension.fluid_jar", "fluids"],
+  ["minecraft.custom_block", "blocks"],
+]) {
+  test(`RPH-004 unknown kind ${kind} retains its explicit registry scope`, () => {
+    const manual = { ...ref(kind, guessedFamily, "unresolved"), names: {}, unresolved: true };
+    const candidate = ref(kind, "audit_rn");
+    assert.equal(sameResourceIdentity(manual, candidate), false);
+    const selected = new Map([[manual.publicId, manual]]);
+    const resolved = resolveSelectedResources(selected, [candidate]);
+    assert.equal(resolved, selected);
+    assert.equal(resolved.has(candidate.publicId), false);
+  });
+}
