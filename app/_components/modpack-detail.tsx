@@ -95,7 +95,7 @@ function ResourceIcon({ icon, name, resolved }: { icon?: string; name: string; r
 }
 
 function ProjectIcon({ icon, name }: { icon: string; name: string }) {
-  return icon ? <Image alt="" className="h-24 w-24 shrink-0 rounded-lg border border-[var(--line)] object-cover sm:h-28 sm:w-28" height={112} src={icon} width={112} /> : <div className="grid h-24 w-24 shrink-0 place-items-center rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] text-3xl font-black text-[var(--accent)] sm:h-28 sm:w-28">{[...name].slice(0, 2).join("")}</div>;
+  return icon ? <Image unoptimized alt="" className="h-24 w-24 shrink-0 rounded-lg border border-[var(--line)] object-cover sm:h-28 sm:w-28" height={112} src={icon} width={112} /> : <div className="grid h-24 w-24 shrink-0 place-items-center rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] text-3xl font-black text-[var(--accent)] sm:h-28 sm:w-28">{[...name].slice(0, 2).join("")}</div>;
 }
 
 function CreatorSection({ record }: { record: BackendModpackRecord }) {
