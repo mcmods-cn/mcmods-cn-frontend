@@ -43,7 +43,7 @@ export function GlobalRecipeCard({ recipe, editHref }: { recipe: GlobalRecipe; e
 }
 
 function GlobalRecipeCandidateChanceLabel({ candidate, slot, locale }: { candidate: Record<string, unknown>; slot: Record<string, unknown>; locale: string }) {
-  if (slot.role !== "output") return null;
+  if (slot.role !== "output" && slot.role !== "byproduct") return null;
   const candidateHasChance = candidate.chance_available === true || candidate.chance !== undefined || candidate.chance_percent !== undefined || candidate.probability !== undefined || candidate.byproduct !== undefined;
   const source = candidateHasChance ? candidate : slot;
   if (source.chance_available === false) return null;
