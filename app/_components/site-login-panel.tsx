@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { AuthResult, AuthUser, canAccessAdmin, cookieSessionToken, saveAuth } from "../_lib/auth";
+import { AuthResult, AuthUser, acceptOAuthSession, canAccessAdmin, clearAuth, hasUnconfirmedLogout, saveAuth } from "../_lib/auth";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { runAuthenticationMutation } from "../_lib/authentication-mutation.mts";
 import { oauthProviders, oauthProviderStartPath } from "../_lib/oauth-navigation.mts";
@@ -38,11 +38,8 @@ export function SiteLoginPanel() {
     if (searchParams.get("oauth") !== "success") return;
     let cancelled = false;
     void runAuthenticationMutation(API_BASE_URL, async ({ assertCurrent }) => {
-        const user = await apiRequest<AuthUser>("/api/v1/auth/me");
-        if (cancelled) return;
-        assertCurrent();
-        saveAuth({ token: cookieSessionToken, user });
-        router.replace(destinationAfterLogin(nextPath, user));
+        const user = await acceptOAuthSession(() => { assertCurrent(); return !cancelled; });
+        if (!cancelled) router.replace(user ? destinationAfterLogin(nextPath, user) : "/login");
       })
       .catch(() => {
         if (!cancelled) router.replace("/login?oauthError=1");
@@ -227,7 +224,13 @@ export function SiteLoginPanel() {
             <span className="h-px flex-1 bg-[var(--line)]" />{t("login.thirdParty")}<span className="h-px flex-1 bg-[var(--line)]" />
           </div>
           <div className="grid grid-cols-2 gap-2">
-            {oauthProviders.map((provider) => <a key={provider.key} className="button-secondary focus-ring text-center" href={oauthProviderStartPath(provider.key, nextPath)}>{provider.label}</a>)}
+            {oauthProviders.map((provider) => <a key={provider.key} className="button-secondary focus-ring text-center" href={oauthProviderStartPath(provider.key, nextPath)}
+              onClick={event => {
+                if (!hasUnconfirmedLogout()) return;
+                event.preventDefault();
+                const destination = event.currentTarget.href;
+                void clearAuth().then(confirmed => { if (confirmed) window.location.assign(destination); });
+              }}>{provider.label}</a>)}
           </div>
         </section>
       </div>

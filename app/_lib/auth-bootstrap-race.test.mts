@@ -41,6 +41,7 @@ async function fixture(logout = async () => new Response(JSON.stringify({ data: 
     bootstrapAuth: (force?: boolean) => Promise<User | null>;
     useAuthSnapshot: () => { ready: boolean; token: string; user: User | null };
     clearAuth: () => Promise<boolean>;
+    acceptOAuthSession: (isCurrent: () => boolean) => Promise<User | null>;
     updateAuthProfile: (previous: User, fields: { username: string }) => void;
     saveAuth: (value: { user: User; token?: string }) => void;
   };
@@ -324,4 +325,28 @@ test("a new tab cannot confirm a legacy bearer sign-out by sending an unrelated 
     assert.equal(f.states[0].value.logoutStatus, "retry");
     assert.equal(f.requests.length, 0);
   } finally { unmount(); f.cleanup(); }
+});
+
+test("OAuth cookie confirmation cannot publish an older callback after sign-out or a subsequent login", async () => {
+  const f = await fixture(async () => logoutFailure(false));
+  try {
+    const accepted = f.auth.acceptOAuthSession(() => true);
+    f.pending.shift()!(response(user("A")));
+    assert.equal((await accepted)?.id, "A", "a genuine current callback publishes its actor");
+    const interrupted = f.auth.acceptOAuthSession(() => true);
+    const oldCookieReply = f.pending.shift()!;
+    await f.auth.clearAuth();
+    oldCookieReply(response(user("A")));
+    assert.equal(await interrupted, null);
+    const reads = f.requests.length;
+    assert.equal(await f.auth.acceptOAuthSession(() => true), null, "re-opening the callback URL must not restore A");
+    assert.equal(f.requests.length, reads);
+    f.auth.saveAuth({ user: user("B") });
+    assert.equal((await f.auth.bootstrapAuth())?.id, "B", "an explicit new credential write may succeed");
+    const stale = f.auth.acceptOAuthSession(() => true);
+    f.storage.set("mcmods-auth-sync", "login:newer");
+    f.pending.shift()!(response(user("old")));
+    assert.equal(await stale, null);
+    assert.equal((await f.auth.bootstrapAuth())?.id, "B");
+  } finally { f.cleanup(); }
 });

@@ -78,8 +78,16 @@ function expireAuthSnapshot() {
   publishAuthSnapshot();
 }
 
+function pendingLogoutMarker(value: string | null) {
+  return /^(logout-pending|logout-revoked):(.+)$/.exec(value ?? "");
+}
+
+export function hasUnconfirmedLogout() {
+  return Boolean(logoutIntent || pendingLogoutMarker(readBrowserStorage(authSyncKey)));
+}
+
 function syncLogoutIntent(marker: string | null) {
-  const match = /^(logout-pending|logout-revoked):(.+)$/.exec(marker ?? "");
+  const match = pendingLogoutMarker(marker);
   if (!match) return false;
   if (logoutIntent?.id !== match[2]) logoutIntent = { id: match[2], token: "", revoked: false };
   logoutIntent.revoked ||= match[1] === "logout-revoked";
@@ -146,6 +154,18 @@ export function saveAuth(result: AuthResult) {
   publishAuthSnapshot();
 }
 
+// The OAuth return page reads a cookie already set by the server callback.
+// A bookmarked return URL alone is not evidence of a new credential write.
+export async function acceptOAuthSession(isCurrent: () => boolean): Promise<AuthUser | null> {
+  const marker = readBrowserStorage(authSyncKey);
+  const generation = authGeneration;
+  if (logoutIntent || pendingLogoutMarker(marker)) return null;
+  const user = await apiRequest<AuthUser>("/api/v1/auth/me");
+  if (!isCurrent() || generation !== authGeneration || readBrowserStorage(authSyncKey) !== marker) return null;
+  saveAuth({ token: cookieSessionToken, user });
+  return user;
+}
+
 export function updateAuthProfile(user: AuthUser, fields: Pick<AuthUser, "username" | "avatarUrl" | "signature">) {
   // A response to an edit cannot establish a session or update a new actor.
   if (user !== activeUser || logoutIntent) return;
@@ -197,6 +217,7 @@ function submitLogout(intent: LogoutIntent): Promise<boolean> {
 }
 
 export function clearAuth(): Promise<boolean> {
+  if (!logoutIntent) syncLogoutIntent(readBrowserStorage(authSyncKey));
   if (logoutIntent) {
     const request = submitLogout(logoutIntent);
     publishAuthSnapshot();

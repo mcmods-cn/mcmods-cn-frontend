@@ -45,6 +45,9 @@ for (const committed of [false, true]) {
       await page.reload();
       await page.getByText(message, { exact: true }).waitFor();
       const other = await page.context().newPage();
+      await other.goto(`${fixture.origin}/login?oauth=success`);
+      await other.waitForURL(`${fixture.origin}/login`);
+      await other.getByText(message, { exact: true }).waitFor();
       await other.goto(`${fixture.origin}/admin`);
       await other.getByText(message, { exact: true }).waitFor();
       assert.equal(identityReads, readsBeforeReload, "an unconfirmed sign-out cannot restore the original actor by reading the cookie");
