@@ -14,6 +14,8 @@ cp .env.example .env.local
 npm run dev
 ```
 
+后端 README 的隔离示例分别使用 API `http://127.0.0.1:8081` 和前端 `http://127.0.0.1:3001`。采用该示例时，在 `.env.local` 同步 API、站点与可选 Yggdrasil 地址，用 `npm run dev -- --hostname 127.0.0.1 --port 3001` 启动前端。浏览器访问和后端允许的前端 origin 使用同一组地址。
+
 ## 修改入口
 
 | 需求 | 从这里开始 |
