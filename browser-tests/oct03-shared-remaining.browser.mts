@@ -176,8 +176,15 @@ test("OCT03 BUG130 creator pages deduplicate boundaries, retain the current scop
   const slowStarted = Promise.withResolvers<void>();
   const slowRelease = Promise.withResolvers<void>();
   const slowFinished = Promise.withResolvers<void>();
+  const identityStarted = Promise.withResolvers<void>();
+  const identityReady = Promise.withResolvers<void>();
   let failCurrent = true;
   const browser = await fixture.page(async ({ path, url }) => {
+    if (path === "/api/v1/auth/me") {
+      identityStarted.resolve();
+      await identityReady.promise;
+      return { data: actor("catalog130") };
+    }
     if (path !== "/api/v1/creators") return;
     const query = url.searchParams.get("query") || "";
     const cursor = url.searchParams.get("cursor") || "";
@@ -198,6 +205,12 @@ test("OCT03 BUG130 creator pages deduplicate boundaries, retain the current scop
   try {
     const { page } = browser;
     await page.goto(`${fixture.origin}/authors`);
+    await identityStarted.promise;
+    await page.getByRole("searchbox", { name: "Search authors or teams", exact: true }).waitFor();
+    // Hold auth beyond the catalog's real search debounce.
+    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 350)));
+    assert.equal(requests.length, 0, "The directory must wait for the initial session before issuing a scoped request");
+    identityReady.resolve();
     await page.getByText("Creator one", { exact: true }).waitFor();
     await page.getByRole("button", { name: "Load more authors and teams", exact: true }).click();
     await page.getByText("Creator three", { exact: true }).waitFor();
@@ -217,7 +230,7 @@ test("OCT03 BUG130 creator pages deduplicate boundaries, retain the current scop
     assert.equal(await page.getByRole("searchbox").inputValue(), "current");
     assert.deepEqual(requests.map(({ query, cursor }) => ({ query, cursor })), [{ query: "", cursor: "" }, { query: "", cursor: "page-two" }, { query: "slow", cursor: "" }, { query: "current", cursor: "" }, { query: "current", cursor: "" }]);
     assert(requests.every(item => item.limit === "48"));
-  } finally { slowRelease.resolve(); await browser.close(); }
+  } finally { identityReady.resolve(); slowRelease.resolve(); await browser.close(); }
 });
 
 test("OCT03 FS029 a late role save cannot replace the newly selected role and failed saves retain its draft", { timeout: 30_000 }, async () => {

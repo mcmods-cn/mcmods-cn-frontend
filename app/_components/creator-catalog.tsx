@@ -15,13 +15,12 @@ import { CatalogHero, CatalogSortControl } from "./catalog-list-ui";
 const creatorSortFields: CatalogSortField[] = [...coreCatalogSortFields, "relevance", "name"];
 
 export function CreatorCatalog() {
-  const { token, user } = useAuthSnapshot();
-  return <CreatorCatalogSession key={`${user?.id || "guest"}:${token}`} />;
+  const { ready, token, user } = useAuthSnapshot();
+  return <CreatorCatalogSession key={`${user?.id || "guest"}:${token}`} ready={ready} token={token} />;
 }
 
-function CreatorCatalogSession() {
+function CreatorCatalogSession({ ready, token }: { ready: boolean; token: string }) {
   const { t } = useI18n();
-  const { token } = useAuthSnapshot();
   const [kind, setKind] = useState<"" | CreatorKind>("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<CatalogSortField>("name");
@@ -38,6 +37,7 @@ function CreatorCatalogSession() {
   const requestGeneration = useRef(0);
 
   useEffect(() => {
+    if (!ready) return;
     const generation = ++requestGeneration.current;
     let cancelled = false;
     const controller = new AbortController();
@@ -78,7 +78,7 @@ function CreatorCatalogSession() {
       controller.abort();
       window.clearTimeout(timer);
     };
-  }, [attempt, kind, query, scope, sort, sortDirection, t, token]);
+  }, [ready, attempt, kind, query, scope, sort, sortDirection, t, token]);
 
   async function loadMore() {
     const cursor = nextCursor;
