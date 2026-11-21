@@ -283,7 +283,7 @@ test("dead letters stay readable when queue settings fail and repeat searches re
     await page.goto(`${fixture.origin}/admin`);
     await page.locator('[data-admin-group="infrastructure"]').click();
     await page.locator('[data-admin-panel="nats"]').click();
-    await page.getByRole("alert").waitFor();
+    await page.getByRole("main").getByRole("alert").getByText("Unable to load. Please try again.", { exact: true }).waitFor();
     await page.getByText("fixture / event-1", { exact: true }).waitFor();
     assert.equal(await page.getByRole("button", { name: "Replay", exact: true }).count(), 0);
     await page.getByRole("button", { name: "Search", exact: true }).click();
