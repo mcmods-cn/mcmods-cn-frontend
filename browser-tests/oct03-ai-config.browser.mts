@@ -29,8 +29,8 @@ async function openPanel(page: Page, name: AIPanel) {
 function field(page: Page, name: AIPanel) {
   return name === "ai-providers" ? page.locator("fieldset input").nth(2) : name === "ai-models" ? page.locator("fieldset input").nth(2) : page.locator("fieldset textarea");
 }
-async function assertReadOnly(page: Page, name: AIPanel) {
-  assert.equal(await field(page, name).isDisabled(), true);
+async function assertReadOnly(page: Page) {
+  assert.equal(await page.locator("fieldset :is(input, textarea, select, button):enabled").count(), 0);
   assert.equal(await page.getByRole("button", { name: /^(Save AI config|保存 AI 配置|Saving|保存中)$/, exact: true }).isDisabled(), true);
   assert.equal(await page.locator("fieldset").evaluate(element => element instanceof HTMLFieldSetElement && element.disabled), true);
 }
@@ -72,8 +72,9 @@ test("OCT03 FS004 all AI configuration panels wait for fresh snapshots and retai
     try {
       const { page } = browser;
       await openPanel(page, name); await started.promise;
-      await assertReadOnly(page, name); assert.equal(writes.length, 0);
+      await assertReadOnly(page); assert.equal(writes.length, 0);
       release.resolve();
+      await page.locator("fieldset:enabled").waitFor();
       const input = field(page, name);
       await input.fill("Manual AI configuration");
       await changeLanguage(page, "zh-CN");
@@ -82,7 +83,7 @@ test("OCT03 FS004 all AI configuration panels wait for fresh snapshots and retai
       assert.equal(await input.inputValue(), "Manual AI configuration");
       assert.equal(reads, 1, "UI language changes must not overwrite editable snapshots with another GET");
       await page.getByRole("button", { name: "Save AI config", exact: true }).click();
-      await saveStarted.promise; await assertReadOnly(page, name);
+      await saveStarted.promise; await assertReadOnly(page);
       assert.equal(writes.length, 1);
       assert.deepEqual(writes[0].quotas, snapshot.quotas, "model/provider edits must retain request/token/cost budget configuration");
       assert.deepEqual(writes[0].translation, snapshot.translation);
@@ -118,12 +119,12 @@ test("OCT03 FS004 failed AI configuration reads stay read-only until explicit su
       const { page } = browser;
       await openPanel(page, name);
       await page.getByRole("alert").filter({ hasText: "Unable to load. Please try again." }).waitFor();
-      await assertReadOnly(page, name);
+      await assertReadOnly(page);
       await changeLanguage(page, "zh-CN");
       await page.getByRole("alert").filter({ hasText: "加载失败，请重试。" }).waitFor();
       assert.equal(reads, 1);
       await page.getByRole("button", { name: "重试", exact: true }).click();
-      await retryStarted.promise; await assertReadOnly(page, name);
+      await retryStarted.promise; await assertReadOnly(page);
       assert.equal(writes, 0);
       retryRelease.resolve();
       const input = field(page, name);
@@ -160,8 +161,9 @@ test("OCT03 FS004 late AI reads cannot open or replace the next actor's configur
       await secondStarted.promise;
       firstRelease.resolve(); await firstFinished.promise;
       await page.getByText(/Actor actor002/).last().waitFor();
-      await assertReadOnly(page, name);
-      assert.notEqual(await field(page, name).inputValue(), "actor001");
+      await assertReadOnly(page);
+      const visibleValues = await page.locator("fieldset input, fieldset textarea").evaluateAll(controls => controls.map(control => (control as HTMLInputElement).value));
+      assert(!visibleValues.includes("actor001"), "a late response must not fill any next-actor control");
       secondRelease.resolve();
       await page.waitForFunction(() => { const fieldset = document.querySelector("fieldset"); return fieldset instanceof HTMLFieldSetElement && !fieldset.disabled; });
       assert.equal(await field(page, name).inputValue(), "actor002");
