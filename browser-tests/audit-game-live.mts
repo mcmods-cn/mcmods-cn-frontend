@@ -138,7 +138,16 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
     assert.equal(detail.targetVersionPublicId, runtime.targetVersionPublicId);
     assert.equal(detail.namespace, runtime.namespace);
     assert.equal(detail.canReview, true);
-    assert(detail.counts.resources > 0);
+    const resources = detail.counts.resources;
+    assert(Number.isSafeInteger(resources) && resources >= 0);
+    assert.equal(detail.previousRevisionId, "", "Isolated project must start with its first revision");
+    assert.deepEqual(detail.resourceChanges, { added: resources, changed: 0, removed: 0 });
+    const naturalGeneration = sourceEntries["worldgen/natural_generation.json"];
+    if (naturalGeneration) {
+      const entries = JSON.parse(new TextDecoder().decode(naturalGeneration)).entries;
+      assert(Array.isArray(entries) && resources >= entries.length, "Published source counts must include exported natural generation");
+    }
+    report.reviewResourceCount = resources;
     const anonymous = await context();
     assert.equal((await anonymous.request.get(`${api.origin}/api/v1/export-revisions/${encodeURIComponent(reviewItem.id)}`)).status(), 403, "Pending revision must remain unavailable anonymously");
     const reviewPage = await reviewer.newPage();
