@@ -64,7 +64,9 @@ npm run test:browser
 npm audit --audit-level=high
 ```
 
-2026-11-21 在前端 `8d9e882` 的干净检出中，依赖安装、ESLint、TypeScript、409 项单元测试和生产构建均通过。289 项 Chromium 用例使用合成 API，覆盖原生 WebGL、同账号重新登录、跨标签页退出和旧服务回退。独立的真实服务验证通过了登录、收藏、菜单退出，以及 Fabric 和 Forge 游戏 ZIP 的上传、导入、独立审核与公开配方展示。发布镜像以 `nextjs`（UID 1001）启动，登录页和公开认证配置端点均返回 200。[手机实拍与界面测量](docs/ui/README.md)
+2026-11-21，前端 `8c80944` 在独立检出中通过 ESLint、TypeScript、409 项单元测试和生产构建。依赖沿用 `8d9e882` 以同一锁文件完成的 `npm ci`。默认 Chromium 套件共 291 项，290 项通过，1 项需要另行提供游戏 ZIP。使用 exporter 0.10.1 的真实 Fabric 原版包后，配方像素用例 2/2 通过。9 项原生 WebGL 验证也通过。套件使用合成 API，覆盖同账号重新登录、跨标签页退出和旧服务回退。[配方绘制验证](browser-tests/recipe-slot-pixels.browser.mts)
+
+独立的真实服务验证通过了登录、收藏、菜单退出，以及 Fabric 和 Forge 游戏 ZIP 的上传、导入、独立审核与公开配方展示。发布镜像以 `nextjs`（UID 1001）启动，登录页和公开认证配置端点均返回 200。[手机实拍与界面测量](docs/ui/README.md)
 
 以上 `.test` 地址用于模拟 API 的浏览器回归。部署时换成实际的公开 HTTPS 地址。Playwright 套件启动本机 standalone 生产产物，使用合成身份与显式 API fixtures。真实登录、持久化收藏和退出另用 `npm run test:live`，需要同一隔离环境提供 `MCMODS_LIVE_FRONTEND_ORIGIN`、`MCMODS_LIVE_API_ORIGIN`、`MCMODS_LIVE_ACCOUNT`、`MCMODS_LIVE_PASSWORD`。真实资料协议验收见下文。
 
