@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { ApiError, apiRequest } from "../_lib/api";
 import { isBackendUnavailable } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
+import type { OAuthConfig } from "../_lib/oauth-settings.mts";
 import { type MarkdownRendererConfig } from "../_lib/markdown-config";
 import { type AdminYggdrasilConfig } from "./admin-yggdrasil-panel";
 
@@ -242,17 +243,6 @@ type LogRetentionConfig = {
   enabled: boolean;
   defaultDays: number;
   categoryDays: Record<string, number>;
-};
-
-type OAuthConfig = {
-  providers: Record<string, OAuthProviderConfig>;
-};
-
-type OAuthProviderConfig = {
-  enabled: boolean;
-  clientId: string;
-  redirectUri: string;
-  hasClientSecret: boolean;
 };
 
 type LocalizedText = {
@@ -894,5 +884,5 @@ function notifyAdminNotice(message: string, title?: string, tone: "info" | "dang
   window.dispatchEvent(new CustomEvent("mcmods-admin-notice", { detail: { message, title, tone } }));
 }
 
-export type { AIConfig, AIModelConfig, AIProviderConfig, AIProviderProtocol, AIQuotaConfig, AITaskModelConfig, AITaskStatus, AITranslationConfig, AITranslationResult, AdminConfig, AdminNotice, AdminUserBalance, AdminUserDetails, LocalizedText, LocalizedTexts, LogPage, LogRetentionConfig, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, OAuthConfig, OAuthProviderConfig, OSSConfig, OSSFile, Permission, PermissionCatalog, PermissionDefaults, Role, RolePermissionEntry, RuntimeLogEntry, RuntimeLogResponse, User, UserPermissionDetails, UserPermissionEntry };
+export type { AIConfig, AIModelConfig, AIProviderConfig, AIProviderProtocol, AIQuotaConfig, AITaskModelConfig, AITaskStatus, AITranslationConfig, AITranslationResult, AdminConfig, AdminNotice, AdminUserBalance, AdminUserDetails, LocalizedText, LocalizedTexts, LogPage, LogRetentionConfig, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, OSSConfig, OSSFile, Permission, PermissionCatalog, PermissionDefaults, Role, RolePermissionEntry, RuntimeLogEntry, RuntimeLogResponse, User, UserPermissionDetails, UserPermissionEntry };
 export { AdminGateMessage, AdminNoticeDialog, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LocalizedTextPairEditor, PanelShell, aiProviderProtocols, aiTaskTypeLabel, aiTranslationTaskTypes, buildNewPermissionPayload, cleanError, cleanOSSError, cloneAIConfig, cloneRole, detectTextLocale, displayCell, editableLocalizedText, defaultOSSConfig, emptyCatalog, initialAIConfig, formatDateTime, isPermissionError, isTemplatePermissionCode, localizedText, logCategoryTitle, normalizeAIModelProviders, normalizeAIProtocols, normalizeEntityTranslations, normalizeLocalizedTexts, normalizePermissionCatalog, notifyAdminNotice, notifyPermissionDenied, parsePermissionInput, permissionInfoForCode, permissionModule, permissionSuggestions, permissionTemplateCode, preferredTranslationLocale, runAITranslationTask, saveAIConfig, setAIModel, setAIProvider, setAITaskModel, setLocalizedText, splitCodes, valueText, withFallbackLocalizedText };

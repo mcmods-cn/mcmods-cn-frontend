@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { apiRequest } from "../_lib/api";
 import { apiErrorMessage } from "../_lib/api-error.mts";
 import { useI18n } from "../_lib/i18n-provider";
+import { hasCompleteOAuthConfig } from "../_lib/oauth-settings.mts";
 import type { NATSConfig } from "../_lib/nats-config.mts";
 import { defaultMarkdownConfig, type MarkdownRendererConfig } from "../_lib/markdown-config";
 import { AdminDeadLetterPanel } from "./admin-dead-letter-panel";
@@ -96,7 +97,9 @@ function readSettings<T>(valid: (value: T) => boolean) {
 const readGeneral = readSettings((config: AdminConfig["general"]) => typeof config.siteName === "string" && typeof config.logoUrl === "string");
 const readMail = readSettings((config: MailConfig) => typeof config.enabled === "boolean" && typeof config.host === "string"
   && Number.isFinite(config.port) && typeof config.username === "string" && typeof config.from === "string" && typeof config.useTLS === "boolean");
-const readAuth = readSettings((config: AuthConfig) => Boolean(config.auth && config.oauth?.providers));
+const readAuth = readSettings((config: AuthConfig) => hasCompleteOAuthConfig(config.oauth)
+  && ["allowRegistration", "emailPasswordLogin", "usernamePasswordLogin", "userIDPasswordLogin", "emailCodeLogin", "requireEmailVerification"].every(key => typeof config.auth?.[key] === "boolean")
+  && Number.isFinite(config.auth?.passwordMinLength) && Number.isFinite(config.auth?.tokenTTLHours));
 const readProfile = readSettings((config: AdminConfig["profile"]) => Number.isFinite(config.signatureMaxBytes));
 const readMarkdown = readSettings((config: MarkdownRendererConfig) =>
   (Object.keys(defaultMarkdownConfig) as (keyof MarkdownRendererConfig)[]).every(key => typeof config[key] === typeof defaultMarkdownConfig[key]));

@@ -11,7 +11,8 @@ import type { LevelConfig, RoleTrack } from "../_lib/community-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
 import { buildNATSUpdatePayload, bytesPerMiB, streamCapacityBytes, type NATSConfig, type NATSTaskConfig } from "../_lib/nats-config.mts";
-import { AIConfig, AIProviderProtocol, AdminConfig, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, OAuthConfig, PanelShell, PermissionCatalog, PermissionDefaults, Role, User, aiProviderProtocols, aiTaskTypeLabel, aiTranslationTaskTypes, cleanError, displayCell, initialAIConfig, normalizeAIModelProviders, normalizeAIProtocols, notifyAdminNotice, saveAIConfig, setAIModel, setAIProvider, setAITaskModel, valueText } from "./admin-console-shared";
+import { OAuthSettingsPanel } from "./admin-oauth-config-panel";
+import { AIConfig, AIProviderProtocol, AdminConfig, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, PanelShell, PermissionCatalog, PermissionDefaults, Role, User, aiProviderProtocols, aiTaskTypeLabel, aiTranslationTaskTypes, cleanError, displayCell, initialAIConfig, normalizeAIModelProviders, normalizeAIProtocols, notifyAdminNotice, saveAIConfig, setAIModel, setAIProvider, setAITaskModel, valueText } from "./admin-console-shared";
 
 function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NATSConfig; token: string; canWrite: boolean }) {
   const { t } = useI18n();
@@ -821,7 +822,7 @@ function AuthPanelV2({ config, token }: { config: Pick<AdminConfig, "auth" | "oa
         <ConfigLine label={t("admin.emailVerification")} value={valueText(config.auth.requireEmailVerification)} />
         <ConfigLine label={t("admin.passwordStorage")} value="PBKDF2-SHA256 + salt" />
       </ConfigBlock>
-      <OAuthConfigPanelV2 config={config.oauth} token={token} />
+      <OAuthSettingsPanel config={config.oauth} token={token} />
     </div>
   );
 }
@@ -1330,70 +1331,6 @@ function MarkdownConfigPanel({ initialConfig, token }: { initialConfig: Markdown
         </div>
       </section>
     </div>
-  );
-}
-
-function OAuthConfigPanelV2({ config, token }: { config: OAuthConfig; token: string }) {
-  const { t } = useI18n();
-  const [message, setMessage] = useState("");
-  const providers = [
-    ["wechat", "WeChat"],
-    ["qq", "QQ"],
-    ["google", "Google"],
-    ["github", "GitHub"],
-  ] as const;
-
-  async function saveOAuth(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const payload: { providers: Record<string, Record<string, string | boolean>> } = { providers: {} };
-    for (const [key] of providers) {
-      payload.providers[key] = {
-        enabled: form.get(`${key}.enabled`) === "on",
-        clientId: String(form.get(`${key}.clientId`) ?? ""),
-        clientSecret: String(form.get(`${key}.clientSecret`) ?? ""),
-        redirectUri: String(form.get(`${key}.redirectUri`) ?? ""),
-      };
-    }
-    try {
-      await apiRequest<OAuthConfig>("/api/v1/admin/config/oauth", { method: "PUT", body: JSON.stringify(payload) }, token);
-      setMessage(t("admin.saveSuccess"));
-    } catch (error) {
-      setMessage(cleanError(error));
-    }
-  }
-
-  return (
-    <section className="surface rounded-lg p-4 lg:col-span-2">
-      <h2 className="mb-3 text-lg font-bold">{t("admin.oauthConfig")}</h2>
-      <form className="grid gap-4" onSubmit={saveOAuth}>
-        {providers.map(([key, label]) => {
-          const current = config.providers[key] ?? { enabled: false, clientId: "", redirectUri: "", hasClientSecret: false };
-          return (
-            <div key={key} className="grid gap-3 rounded-lg border border-[var(--line)] p-3 lg:grid-cols-[120px_1fr_1fr_1fr]">
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input defaultChecked={current.enabled} name={`${key}.enabled`} type="checkbox" />
-                {label}
-              </label>
-              <input className="field" defaultValue={current.clientId} name={`${key}.clientId`} placeholder="AppID / Client ID" />
-              <input
-                className="field"
-                name={`${key}.clientSecret`}
-                placeholder={current.hasClientSecret ? t("admin.clientSecretSaved") : "AppSecret / Client Secret"}
-                type="password"
-              />
-              <input className="field" defaultValue={current.redirectUri} name={`${key}.redirectUri`} placeholder={`https://mcmods.cn/api/v1/auth/oauth/${key}/callback`} />
-            </div>
-          );
-        })}
-        <div className="flex flex-wrap items-center gap-3">
-          <button className="button-primary focus-ring" type="submit">
-            {t("admin.saveOauth")}
-          </button>
-          {message ? <InlineMessage text={message} /> : null}
-        </div>
-      </form>
-    </section>
   );
 }
 
