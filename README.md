@@ -1,94 +1,94 @@
-# Mcmods-cn Frontend
+# MCMods-cn 前端
 
-Mcmods-cn 的 Next.js 前端，包含站点主页、登录、用户中心、后台管理和 Markdown 工具。
-
-## 环境要求
-
-- Node.js 20 或更高版本
-- npm 10 或更高版本
-- 正在运行的 `mcmods-cn-backend`
+Minecraft 百科与资源社区的 Next.js App Router 应用。游客可浏览项目、教程、讨论、资料、配方和媒体。登录用户按服务端权限投稿、编辑或审核。游戏客户端导出 ZIP，用户在资料工作区选择目标版本并上传，后端校验并导入，资料经独立审核或已授权的发布流程后公开展示。[游戏导出 Mod](https://github.com/mcmods-cn/mcmods_exporter) · [Go API 与 Worker](https://github.com/mcmods-cn/mcmods-cn-backend)
 
 ## 本地开发
 
+CI 与发布容器使用 Node.js **24.19.0**。本轮验证使用 npm **11.17.0**、Next **16.4.6**、React **19.2.4**。使用锁文件安装依赖。在准备修改 Next 入口、路由或组件前，阅读本版本随包提供的文档。[项目约定](AGENTS.md)
+
+在 `localhost:8080` 启动后端，并将其 `FRONTEND_ORIGIN` 设为 `http://localhost:3000`。浏览器和 Next 服务端都需要能够访问配置的 API 地址。启动后可检查后端就绪状态并访问首页。[后端就绪检查](http://localhost:8080/ready) · [前端首页](http://localhost:3000)
+
 ```bash
-npm install
+npm ci
+cp .env.example .env.local
 npm run dev
 ```
 
-默认访问地址为 <http://localhost:3000>，默认后端地址为 <http://localhost:8080>。
+## 修改入口
 
-复制无凭据的示例文件后按环境修改：
+| 需求 | 从这里开始 |
+| --- | --- |
+| 页面与分类检索 | `app/` 下的 `page.tsx` 连接领域组件。首页的分类只导航到已有目录，筛选、游标和历史由目录管理。见 [首页](app/_components/home-page.tsx)、[目录状态](app/_lib/catalog-state.ts) |
+| 新 API、权限显示和会话 | 在 `app/_lib/*-api.ts` 中定义领域类型和操作，调用 [apiRequest / backendFetch](app/_lib/api.ts)。登录用户和有效权限来自 [auth](app/_lib/auth.ts)。实际读写及项目范围检查由 Go API 执行 |
+| 资料与批量导入 | [资料工作区](app/_components/mod-content-workspace.tsx) → [导入面板](app/_components/mod-catalog-data.tsx) → [ZIP 预检、上传、任务](app/_lib/mod-export-api.ts)。复用 [上传器](app/_lib/oss-upload.ts)、[按账号和版本恢复](app/_lib/mod-export-upload-store.ts)、[可取消轮询](app/_lib/job-polling.mts)。使用 exporter 仓库的 schema 和样例协调字段变更 |
+| 编辑与展示 | [编辑器外壳](app/_components/editor/editor-shell.tsx)、[文件选择与拖放](app/_components/file-drop-zone.tsx)、[共享配方卡](app/_components/unified-recipe-card.tsx)、[Markdown](app/_components/markdown-renderer.tsx)。Three.js 模型与皮肤视图位于 `components/` |
+| 后台与翻译 | 从 [面板导航](app/_components/admin-console.tsx) 注册入口，按面板权限和领域 API 取数。界面词条在 [八套词典](app/_locales)，支持简单 `{name}` 插值。[后台数据保护](docs/admin-data-integrity.md) · [表单、缓存和失败恢复](docs/frontend-state-recovery.md) |
 
-```bash
-cp .env.example .env.local
-```
+## 浏览器可见的构建配置
 
-所有 `NEXT_PUBLIC_*` 值都会在构建期内联到浏览器产物，不能包含密码、令牌或其他秘密；修改后必须重新构建并重启。配置面如下：
+所有 `NEXT_PUBLIC_*` 值都会在构建期内联到浏览器产物，修改后必须重新构建并部署。数据库密码、OSS 密钥、邮件和 AI 供应商凭据属于后端的私密运行配置。
 
 | 变量 | 生产要求 | 用途 |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_BASE_URL` | 必填 | 浏览器访问的后端 API 根地址；本地默认 `http://localhost:8080` |
-| `NEXT_PUBLIC_SITE_URL` | 必填 | robots 与 sitemap 的公开站点 origin；本地默认 `http://localhost:3000` |
-| `NEXT_PUBLIC_YGGDRASIL_API_ROOT` | 可选 | `X-Authlib-Injector-API-Location` 发现头；配置后自动补尾部 `/` |
+| `NEXT_PUBLIC_API_BASE_URL` | 必填 | 浏览器访问的后端 API 根地址，本地默认 `http://localhost:8080` |
+| `NEXT_PUBLIC_SITE_URL` | 必填 | robots 与 sitemap 的公开站点 origin，本地默认 `http://localhost:3000` |
+| `NEXT_PUBLIC_YGGDRASIL_API_ROOT` | 可选 | `X-Authlib-Injector-API-Location` 发现头，配置后自动补尾部 `/` |
 | `NEXT_PUBLIC_ICONFONT_SYMBOL_URL` | 与 integrity 成对可选 | Iconfont Symbol 脚本地址 |
 | `NEXT_PUBLIC_ICONFONT_SYMBOL_INTEGRITY` | 与 URL 成对可选 | 固定脚本的单个 SHA-384 SRI 摘要 |
-| `NEXT_PUBLIC_CSP_CONNECT_ORIGINS` | 可选 | 浏览器额外外连 origin；直传 OSS 时列出每个签名上传 origin |
+| `NEXT_PUBLIC_CSP_CONNECT_ORIGINS` | 可选 | 浏览器额外外连 origin，直传 OSS 时列出每个签名上传 origin |
 | `NEXT_PUBLIC_CSP_IMAGE_ORIGINS` | 可选 | 内建图片来源之外的额外图片/CDN origin |
-| `NEXT_PUBLIC_CSP_MEDIA_ORIGINS` | 可选 | 允许的外部音视频 origin；默认无外部来源 |
-| `NEXT_PUBLIC_CSP_FONT_ORIGINS` | 可选 | 允许的外部字体 origin；默认无外部来源 |
+| `NEXT_PUBLIC_CSP_MEDIA_ORIGINS` | 可选 | 允许的外部音视频 origin，默认无外部来源 |
+| `NEXT_PUBLIC_CSP_FONT_ORIGINS` | 可选 | 允许的外部字体 origin，默认无外部来源 |
 
-生产构建要求 API 和站点地址为绝对 HTTPS URL，且不得包含凭据、查询参数或 fragment；站点地址只能是 origin。Yggdrasil 地址若配置也必须符合相同安全限制。任一必填项缺失或格式无效都会让构建失败，不再静默生成错误的发现头、robots 或 sitemap。
+生产构建需要绝对 HTTPS 地址。站点地址只接受 origin。API 和可选 Yggdrasil 地址允许路径，均禁止凭据、查询参数和 fragment。配置错误会终止构建。
 
-`NEXT_PUBLIC_ICONFONT_SYMBOL_URL` 必须是 Iconfont 项目生成的精确 `https://at.alicdn.com/t/c/font_*.js` Symbol 链接，而不是 `iconfont.cn` 首页。下载脚本后，用它唯一的 SHA-384 SRI 值固定在 `NEXT_PUBLIC_ICONFONT_SYMBOL_INTEGRITY`；只配置其中一项或任一格式无效时，启动会关闭失败。共享图标组件使用 `icon-playground`、`icon-drawio`、`icon-permissions`、`icon-edit`、`icon-expand` 和 `icon-swap` 等 Symbol ID；对应 Symbol 可用前仍保留可读回退。
+使用图标 Symbol 时填写形如 `https://at.alicdn.com/t/c/font_*.js` 的精确地址，以及对应文件的 SHA-384 SRI 摘要。只配置其中一项会导致配置校验失败。Symbol 加载前页面保留文字回退。
 
-CSP来源变量使用逗号分隔的精确origin（例如`https://bucket.oss-cn-beijing.aliyuncs.com`），不接受路径、凭据、查询参数、通配主机或`https:`整类来源；生产只接受HTTPS。`connect-src`默认仅含本站、API和Turnstile，直传OSS的单段及分片URL origin必须在部署时加入`NEXT_PUBLIC_CSP_CONNECT_ORIGINS`。图片内建闭集为本站/API、`oss.mcmods.cn`、GitHub头像/原始资源、Modrinth、Forge CDN和Minecraft纹理；其他业务CDN须显式加入图片列表。媒体和字体没有任意HTTPS回退。变量均为公开构建配置，不得放入凭据。
+CSP 允许的来源使用逗号分隔的精确 origin，例如 `https://bucket.oss-cn-beijing.aliyuncs.com`。生产环境只接受 HTTPS。默认连接范围含本站、API 和 Turnstile，OSS 单段与分片签名使用的 origin 都要加入 `NEXT_PUBLIC_CSP_CONNECT_ORIGINS`。默认图片来源含本站、API、`oss.mcmods.cn`、GitHub 头像与原始资源、Modrinth、Forge CDN 和 Minecraft 纹理。额外 CDN、外部媒体和字体使用表中的专用配置。[CSP 实现](app/_lib/csp-policy.mts)
 
-PlantUML 渲染默认关闭，浏览器只会请求同站的 `/plantuml/svg/...` 路径，不内建任何公共 PlantUML 服务。需要启用时，部署方必须把 `/plantuml` 反向代理到自己控制的自建 PlantUML 实例，并确认代理不会把图表源码转发给第三方；管理端不能改为外部绝对 URL。独立 PlantUML 工具也使用相同的同站路径。
+PlantUML 默认关闭。启用时将同站的 `/plantuml` 反向代理到自有渲染服务，确保图表源文停留在部署方控制的系统中。浏览器渲染与独立绘图页面都使用同站路径。
 
-## 常用命令
+## 验证与发布
 
 ```bash
 npm run check
+npm test
+export NEXT_PUBLIC_API_BASE_URL=https://api.example.test
+export NEXT_PUBLIC_SITE_URL=https://www.example.test
+export NEXT_PUBLIC_YGGDRASIL_API_ROOT=https://api.example.test/api/yggdrasil/
 npm run build
-npm run start
+npx playwright install chromium
+npm run test:browser
+npm audit --audit-level=high
 ```
 
-- `check`：运行 ESLint 和 TypeScript 类型检查。
-- `build`：创建生产构建。
-- `start`：启动已生成的生产构建。
+以上 `.test` 地址用于模拟 API 的浏览器回归。部署时换成实际的公开 HTTPS 地址。Playwright 套件启动本机 standalone 生产产物，使用合成身份与显式 API fixtures。真实登录、持久化收藏和退出另用 `npm run test:live`，需要同一隔离环境提供 `MCMODS_LIVE_FRONTEND_ORIGIN`、`MCMODS_LIVE_API_ORIGIN`、`MCMODS_LIVE_ACCOUNT`、`MCMODS_LIVE_PASSWORD`。真实资料协议验收见下文。
 
-项目统一使用 npm，并提交 `package-lock.json` 以保证依赖版本可复现。
+本地查看生产产物时，使用发布容器采用的 standalone 服务器。静态文件需一同提供。
 
-## 编辑与浏览器偏好
+```bash
+cp -r public .next/standalone/
+cp -r .next/static .next/standalone/.next/
+HOSTNAME=127.0.0.1 PORT=3000 node .next/standalone/server.js
+```
 
-更新日志编辑器允许临时清空更新时间；提交时才检查有效时间，不会在输入过程中使页面崩溃。切换界面语言会刷新分类名称，保留当前未保存的版本、正文和时间；切换到其他更新日志会建立独立编辑状态。保存失败时保留输入，供用户修正或重试。
+生产发布与回滚均按**完整镜像与对应构建配置**切换。本轮前端变更无需迁移数据库。先部署支持面板独立读取和现有导入状态的后端，再更新前端，检查 `/authentication-write-config` 指向目标 API。登录不保持时核对后端允许的前端 origin 与 Cookie 设置。浏览器上传失败时核对签名地址的 CSP origin。缺少样式或出现静态资源 404 时检查 `public`、`.next/static` 是否和同一次构建的 server.js 一同部署。
 
-模组、整合包、其他大型项目及 Markdown 演练场在切换界面语言时保留未保存的内容；资源切换建立独立编辑状态。导入轮询在离开编辑页面后取消本页请求。浏览器禁用持久存储时，访客 Markdown 草稿仅在当前标签页保留，界面会明确提示关闭或刷新可能丢失。
+## 依赖审查
 
-社区文章翻译由用户主动触发；客户端轮询有 90 秒上限，离开文章或切换目标语言会取消本页请求，迟到结果不能替换其他文章或语言的正文。已有原文在失败或超时时继续展示。取消客户端请求不代表取消已经在后端入队的任务或供应商请求。
+2026-11-21 锁文件审查将 Next 升到 16.4.6、sharp 升到 0.35.5。自托管应用提供 Next 图片优化接口，允许的远端主机由 `next.config.ts` 限定。站点 Logo 接口先向后端确认设置写权限，再核对文件大小和 PNG、JPEG、GIF、WebP 的文件头。只有匹配后才调用原生解码器，随后校验实际格式、尺寸和动画帧预算。[Next 图片优化公告](https://github.com/advisories/GHSA-2464-fhr4-w9xw) · [sharp 公告](https://github.com/advisories/GHSA-wq5f-xc86-pv6w) · [站点 Logo 净化](app/_lib/site-logo-image.mts)
 
-资料统计使用界面词条与语言格式化数字，浏览器拒绝会话存储时仍可展示页面，并以有界内存集合保留本标签页的访问去重。
+该次 `npm audit` 报告的受影响包条目从 15 降至 4。剩余 4 条来自同一个 KaTeX 低危公告，涉及数学标记解析和 Markdown 展示。这条通告的前提是运行环境已受原型污染。当前渲染器显式传入 `trust: false`。插件声明兼容 KaTeX 0.16，升级时需核对它们的版本范围并重新验证公式渲染。本次没有复现该前提条件。[KaTeX 公告](https://github.com/advisories/GHSA-238p-pmpm-9mq7) · [Markdown 渲染](app/_components/markdown-renderer.tsx)
 
-个人设置分别保存昵称、签名、时区和名片统计位置，不覆盖其他尚未提交的编辑。收藏夹已有删除确认及默认收藏夹保护；创建、删除和公开状态变更期间防止重复提交，失败时保留列表以供重试。
+## 文档与验收证据
 
-管理员 AI 成本页在后端返回 `requestBudget` 时增加最近 30 天的请求预留和结算明细。`reserved` 为请求前预留，`settled` 为供应商返回用量后的结算，`usage_unknown` 表示未取得实际用量；未知用量保留保守估算，不能视作免费。人民币费用以管理员配置的模型价格计算，未与真实供应商账单核对。旧后端缺少此字段时保留原统计并明确提示预算统计不可用。
-
-语言和主题可以在桌面页头或移动端页头的设置菜单中切换。浏览器拒绝本地存储时，本标签页仍能切换主题和语言、发起请求；关闭页面后偏好可能无法保留。主题使用服务端一致的首屏快照，再读取浏览器偏好，且响应系统主题和其他标签页的主题设置变化。
-
-`npm run test:browser` 包含更新日志的空时间校验、语言切换保留修改、禁用浏览器存储以及移动端键盘切换场景。这些场景使用真实生产前端与明确的 API fixtures，用于验证界面恢复行为，不代替数据库持久化和真实前后端联通验证。运行前先执行生产构建并安装 Playwright Chromium。
-
-发布容器 workflow 从仓库 Variables 读取上表的全部公开构建参数，Dockerfile 在构建阶段显式接收这些值。未配置的可选值保持空；Yggdrasil 发现头可省略。CSP 与图标脚本配置同样需要重新构建镜像，不能仅在已生成容器运行时注入。
-
-认证客户端按会话代际处理 `/auth/me`，退出、跨标签会话变化或新登录后，旧请求的迟到响应不会恢复过期用户。认证事件由浏览器模块统一处理：同一跨标签事件只失效一次并共享一次读取，完成后发布给所有已挂载组件；退出立即发布空会话，不在退出请求清理 cookie 前重新读取旧身份。UI 词条使用 `{name}` 的简单插值（不是 ICU）；插值只做一次，参数值中的占位符作为普通文本保留。本地覆写仅接受非空字符串，损坏的 localStorage 内容回退到内建词条。短链接导航仅接受本站 HTTP(S) 目标，并保留路径、查询参数和 fragment；无效目标显示可重试错误。
-
-创作者认领及项目编辑员申请在部分附件上传失败后保留成功文件的 ID；逐项重试仅上传失败项，申请提交失败后保留证明文字和附件供重试。上传或提交期间暂时禁止编辑、关闭和重复操作，账号或目标变化会创建独立的申请实例。离页后不再上传该批次下一文件，也不把迟到结果写入新申请；当前已发出的对象存储请求不承诺取消，已上传的真实文件仍遵循现有文件管理与清理规则。
-
-更新日志的分类独立按每页 100 项读取，存在更多分类时提供“加载更多分类”。后续页失败可以重试，当前选择及未保存编辑保持不变；编辑已有日志时，即使当前分类不在第一页也继续显示。界面语言变化重新读取该语言的第一页和游标，保留后页已选分类，不把不同项目或语言的游标混用。该补全需要后端分类分页接口及首屏分页标识，旧后端没有标识时继续使用原首屏列表；无需数据库迁移。
-
+- [首页和后台截图对照](docs/ui/README.md) 记录浏览器视口、数据范围和测量。
+- [当前界面行为](docs/frontend-state-recovery.md) 与 [后台设置和审核](docs/admin-data-integrity.md) 说明恢复边界和权限语义。
+- [历史审计](docs/audit) 保留 2026 年 10 月至 11 月的验收、修复和认证时序材料，各文档中的测试结果对应当时的提交。维护者可从本页命令重新验证当前版本。
 
 ## 代理环境中的容器构建
 
-Dockerfile 的依赖阶段支持可选 BuildKit secret `proxy_ca`。在需要企业或云任务代理 CA 的隔离环境中，通过只读 secret 为本次 `npm ci` 增加信任；保留 Docker/HTTP 代理配置和 TLS 校验，不把会话 CA 复制到镜像，也不要关闭 `strict-ssl`。普通构建无需传此 secret。
+Dockerfile 支持可选 BuildKit secret `proxy_ca`。需要企业代理 CA 时，使用只读 secret 为这次 `npm ci` 增加信任。常规环境可以省略此 secret。
 
 ```bash
 docker build \
@@ -98,9 +98,7 @@ docker build \
   --tag mcmods-cn-frontend:local .
 ```
 
-`CODEX_PROXY_CERT` 应由当前环境配置为已授权的 CA 文件路径；其他环境使用自己的可信文件路径。上述域名仅供构建验收，不是运行中的后端。Yggdrasil 地址可以省略。构建成功后可仅绑定回环地址运行测试容器：`docker run --rm -p 127.0.0.1:3000:3000 mcmods-cn-frontend:local`。只停止和删除本任务新建的测试容器或镜像，不清理共享缓存及原有服务。
-
-跨标签语言更新携带已校验的规范语言和时间戳；接收页面先同步相同 UI cookie 再通知界面，避免存储事件先于 cookie 可见时遗留旧语言。迟到事件不会覆盖已观察到的较新偏好；无效事件忽略。此过程不刷新页面、不重新初始化后台表单、不写回存储产生事件循环。浏览器拒绝存储时仍保留本标签页语言切换；其他标签页是否收到真实事件取决于浏览器存储权限。
+`CODEX_PROXY_CERT` 指向构建环境授权的 CA 文件。示例采用测试域名。可用 `docker run --rm -p 127.0.0.1:3000:3000 mcmods-cn-frontend:local` 将测试容器仅绑定到本机。
 
 ## 真实资料目录回归
 
@@ -118,3 +116,10 @@ MCMODS_AUDIT_RECIPE_RUNTIME=/absolute/path/to/owned-fixture/runtime.json \
 运行器把独立结果、实际 API 响应摘要、截图、源码摘要和提交组合写入夹具目录的新子目录，不覆盖旧失败。
 若浏览器服务来自另一份干净 checkout，可显式指定 `MCMODS_AUDIT_FRONTEND_CHECKOUT`；其提交必须与 runtime 的编译来源一致。
 API 小页分页和数据库/审计后置条件由后端的只读观察器分别验证；本脚本不宣称真实队列、生产 bucket 或完整发布验收。
+
+游戏内产出的原始 ZIP 还可经由 `browser-tests/audit-game-live.mts` 验证。先使用后端 `TestAuditFinalGameJourneyFixture` 建立专属对象存储、JetStream、数据库、同源网关及合成投稿和独立审核账号，按夹具说明生成运行清单。浏览器核对包的 SHA-256、匿名读取边界、审核后的配方槽位及与包内图片一致的像素。凭据文件仅留在夹具目录内。[后端测试入口](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/internal/httpapi/audit_final_game_journey_fixture_linux_test.go)
+
+```bash
+MCMODS_AUDIT_JOURNEY_RUNTIME=/absolute/path/to/owned-fixture/runtime.json \
+  node --test browser-tests/audit-game-live.mts
+```
