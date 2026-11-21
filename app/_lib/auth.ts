@@ -24,7 +24,10 @@ export type AuthUser = {
   signature?: string;
 };
 
+type SessionIdentity = AuthUser & { sessionMarker?: string };
+
 export type AuthResult = {
+  sessionMarker?: string;
   token?: string;
   user: AuthUser;
 };
@@ -35,7 +38,7 @@ export type AuthSnapshot = {
   user: AuthUser | null;
   error?: string;
   retryAt?: number;
-  logoutStatus?: "pending" | "retry" | "revoked";
+  logoutStatus?: "pending" | "checking" | "retry" | "revoked" | "check" | "choose" | "source";
 };
 
 export const cookieSessionToken = "cookie-session";
@@ -44,19 +47,24 @@ const authSyncKey = "mcmods-auth-sync";
 const profileSyncKey = "mcmods-profile-update";
 
 let activeToken = "";
+let activeSessionMarker = "";
 let activeUser: AuthUser | null = null;
 let bootstrapRequest: Promise<AuthUser | null> | null = null;
 let authGeneration = 0;
 let authReady = false;
 let authError = "";
 let authRetryAt = 0;
-type LogoutIntent = { id: string; token: string; revoked: boolean; request?: Promise<boolean> };
+type SavedLogout = { id: string; sessionMarker: string; state: "retry" | "revoked" | "check" };
+type LogoutIntent = SavedLogout & { token: string; offerCurrent?: boolean; checking?: boolean; request?: Promise<boolean> };
 let logoutIntent: LogoutIntent | undefined;
 const authSubscribers = new Set<(snapshot: AuthSnapshot) => void>();
 let authEventsInstalled = false;
 
 function currentSnapshot(): AuthSnapshot {
-  const logoutStatus = logoutIntent?.request ? "pending" : logoutIntent?.revoked ? "revoked" : logoutIntent ? "retry" : undefined;
+  let logoutStatus: AuthSnapshot["logoutStatus"] = logoutIntent?.state;
+  if (logoutIntent?.id.startsWith("bearer:") && !logoutIntent.token) logoutStatus = "source";
+  if (logoutIntent?.offerCurrent) logoutStatus = "choose";
+  if (logoutIntent?.request) logoutStatus = logoutIntent.checking ? "checking" : "pending";
   return { ready: authReady, token: activeToken, user: activeUser, error: authError, retryAt: authRetryAt, logoutStatus };
 }
 
@@ -71,6 +79,7 @@ function expireAuthSnapshot() {
   authError = "";
   authRetryAt = 0;
   activeToken = "";
+  activeSessionMarker = "";
   activeUser = null;
   bootstrapRequest = null;
   authReady = true;
@@ -78,19 +87,37 @@ function expireAuthSnapshot() {
   publishAuthSnapshot();
 }
 
-function pendingLogoutMarker(value: string | null) {
-  return /^(logout-pending|logout-revoked):(.+)$/.exec(value ?? "");
+function readAuthSync() { return readBrowserStorage(authSyncKey, true); }
+function writeAuthSync(value: string) { writeBrowserStorage(authSyncKey, value, true); }
+
+// This digest identifies a session but cannot authenticate a request.
+function validSessionMarker(value: unknown): string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value) ? value : "";
+}
+
+function pendingLogoutMarker(value: string | null): SavedLogout | undefined {
+  if (!value || value.length > 512) return;
+  const bound = /^signout-(retry|revoked|check):(-|[A-Za-z0-9_-]{43}):((?:cookie|bearer):.+)$/.exec(value);
+  if (bound) return { state: bound[1] as SavedLogout["state"], sessionMarker: validSessionMarker(bound[2]), id: bound[3] };
+  const old = /^logout-(pending|revoked):(.+)$/.exec(value);
+  if (old) return { state: old[1] === "revoked" ? "revoked" : "check", sessionMarker: "", id: old[2] };
+}
+
+function storeLogout(intent: SavedLogout) {
+  // Older clients ignore this prefix, so cannot replay our conditional intent
+  // at their unconditional endpoint. No token or account data is persisted.
+  writeAuthSync(`signout-${intent.state}:${intent.sessionMarker || "-"}:${intent.id}`);
 }
 
 export function hasUnconfirmedLogout() {
-  return Boolean(logoutIntent || pendingLogoutMarker(readBrowserStorage(authSyncKey)));
+  return Boolean(logoutIntent || pendingLogoutMarker(readAuthSync()));
 }
 
 function syncLogoutIntent(marker: string | null) {
-  const match = pendingLogoutMarker(marker);
-  if (!match) return false;
-  if (logoutIntent?.id !== match[2]) logoutIntent = { id: match[2], token: "", revoked: false };
-  logoutIntent.revoked ||= match[1] === "logout-revoked";
+  const saved = pendingLogoutMarker(marker);
+  if (!saved) return false;
+  if (logoutIntent?.id === saved.id) Object.assign(logoutIntent, saved);
+  else logoutIntent = { ...saved, token: "" };
   expireAuthSnapshot();
   return true;
 }
@@ -100,7 +127,7 @@ function synchronizeAuthTabs(event: StorageEvent) {
     void bootstrapAuth(true);
     return;
   }
-  if (event.key !== authSyncKey || (event.storageArea && readBrowserStorage(authSyncKey) !== event.newValue)) return;
+  if (event.key !== authSyncKey || (event.storageArea && readAuthSync() !== event.newValue)) return;
   if (syncLogoutIntent(event.newValue)) return;
   if (event.newValue?.startsWith("logout:")) {
     logoutIntent = undefined;
@@ -123,7 +150,7 @@ function subscribeAuthSnapshot(subscriber: (snapshot: AuthSnapshot) => void) {
   authSubscribers.add(subscriber);
   if (!authEventsInstalled) {
     authEventsInstalled = true;
-    syncLogoutIntent(readBrowserStorage(authSyncKey));
+    syncLogoutIntent(readAuthSync());
     // One listener set belongs to the browser module for its window lifetime.
     // Hook subscriptions are removed independently on component unmount.
     window.addEventListener("storage", synchronizeAuthTabs);
@@ -147,22 +174,23 @@ export function saveAuth(result: AuthResult) {
   authError = "";
   authRetryAt = 0;
   activeToken = result.token || cookieSessionToken;
+  activeSessionMarker = validSessionMarker(result.sessionMarker);
   activeUser = normalizeAuthUser(result.user);
   authReady = true;
   rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
-  writeBrowserStorage(authSyncKey, `login:${syncID()}`);
+  writeAuthSync(`login:${syncID()}`);
   publishAuthSnapshot();
 }
 
 // The OAuth return page reads a cookie already set by the server callback.
 // A bookmarked return URL alone is not evidence of a new credential write.
 export async function acceptOAuthSession(isCurrent: () => boolean): Promise<AuthUser | null> {
-  const marker = readBrowserStorage(authSyncKey);
+  const marker = readAuthSync();
   const generation = authGeneration;
   if (logoutIntent || pendingLogoutMarker(marker)) return null;
-  const user = await apiRequest<AuthUser>("/api/v1/auth/me");
-  if (!isCurrent() || generation !== authGeneration || readBrowserStorage(authSyncKey) !== marker) return null;
-  saveAuth({ token: cookieSessionToken, user });
+  const { sessionMarker, ...user } = await apiRequest<SessionIdentity>("/api/v1/auth/me");
+  if (!isCurrent() || generation !== authGeneration || readAuthSync() !== marker) return null;
+  saveAuth({ token: cookieSessionToken, user, sessionMarker });
   return user;
 }
 
@@ -175,62 +203,112 @@ export function updateAuthProfile(user: AuthUser, fields: Pick<AuthUser, "userna
 }
 
 function ownsLogout(intent: LogoutIntent) {
-  const marker = readBrowserStorage(authSyncKey);
-  return logoutIntent === intent && (marker === `logout-pending:${intent.id}` || marker === `logout-revoked:${intent.id}`);
+  return logoutIntent === intent && pendingLogoutMarker(readAuthSync())?.id === intent.id;
 }
 
-function submitLogout(intent: LogoutIntent): Promise<boolean> {
+function confirmLogout(intent: LogoutIntent) {
+  if (!ownsLogout(intent)) return false;
+  writeAuthSync(`logout:${intent.id}`);
+  logoutIntent = undefined;
+  expireAuthSnapshot();
+  return true;
+}
+
+// An old or superseded intent may inspect the current cookie, never adopt it
+// as the target of a retry. Keep the private UI closed on a read failure.
+async function inspectCurrentSession(intent: LogoutIntent, assertCurrent: () => void) {
+  try {
+    const bearer = isBearerAccessToken(intent.token);
+    const { sessionMarker, ...user } = await apiRequest<SessionIdentity>("/api/v1/auth/me", { cache: "no-store", credentials: bearer ? "omit" : "include" }, intent.token);
+    assertCurrent();
+    if (ownsLogout(intent) && user.id) saveAuth({ user, sessionMarker, token: bearer ? intent.token : undefined });
+  } catch (error) {
+    assertCurrent();
+    if (error instanceof ApiError && error.status === 401) return confirmLogout(intent);
+  }
+  return false;
+}
+
+function submitLogout(intent: LogoutIntent, explicitCurrent = false): Promise<boolean> {
   if (intent.request) return intent.request;
+  const bearer = isBearerAccessToken(intent.token);
+  // A legacy bearer never survives a reload. Its original tab owns the retry.
+  if (intent.id.startsWith("bearer:") && !bearer) return Promise.resolve(false);
+  const checkOnly = !explicitCurrent && (intent.state === "check" || (!intent.sessionMarker && !bearer));
+  intent.checking = checkOnly;
+  intent.offerCurrent = false;
   const request = runAuthenticationMutation(API_BASE_URL, async ({ fetch: fetcher, assertCurrent }) => {
-    // A retry queued in another tab must never revoke a newer login.
     if (!ownsLogout(intent)) return false;
-    // The current site uses cookies. Older bearer-only clients can retry from
-    // the tab holding the credential, without storing or substituting a token.
-    if (intent.id.startsWith("bearer:") && !isBearerAccessToken(intent.token)) return false;
+    if (checkOnly) return inspectCurrentSession(intent, assertCurrent);
     try {
-      const response = await apiRequest<{ ok: boolean }>("/api/v1/auth/logout", { method: "POST" }, intent.token, fetcher);
+      const path = intent.sessionMarker ? "/api/v1/auth/logout/if-current" : "/api/v1/auth/logout";
+      const response = await apiRequest<{ ok: boolean }>(path, {
+        method: "POST",
+        credentials: bearer ? "omit" : "include",
+        body: intent.sessionMarker ? JSON.stringify({ sessionMarker: intent.sessionMarker }) : undefined,
+      }, intent.token, fetcher);
       if (response?.ok !== true) return false;
     } catch (error) {
-      if (!(error instanceof ApiError)) throw error;
+      assertCurrent();
+      if (!(error instanceof ApiError) || !ownsLogout(intent)) return false;
+      if (error.status === 401) return confirmLogout(intent);
       const details = error.details as { committed?: boolean; operation?: string } | null;
-      if (error.code === "SECURITY_VERSION_REFRESH_FAILED" && details?.committed === true && details.operation === "logout" && ownsLogout(intent)) {
-        intent.revoked = true;
-        writeBrowserStorage(authSyncKey, `logout-revoked:${intent.id}`);
+      if (error.code === "SECURITY_VERSION_REFRESH_FAILED" && details?.committed === true && details.operation === "logout") {
+        intent.state = "revoked";
+      } else if (intent.sessionMarker && error.status === 409 && error.code === "AUTH_SESSION_CHANGED") {
+        intent.state = "check";
+        storeLogout(intent);
+        intent.checking = true;
+        publishAuthSnapshot();
+        return inspectCurrentSession(intent, assertCurrent);
+      } else if (intent.sessionMarker && (error.status === 404 || error.status === 405)) {
+        // An older replica cannot process a conditional write. Never downgrade it.
+        intent.state = "check";
       }
-      // The protected endpoint also returns 401 for an already revoked cookie.
-      if (error.status !== 401) return false;
+      storeLogout(intent);
+      return false;
     }
     assertCurrent();
-    if (!ownsLogout(intent)) return false;
-    // Publish while holding the same write lock as sign-in and registration.
-    writeBrowserStorage(authSyncKey, `logout:${intent.id}`);
-    logoutIntent = undefined;
-    expireAuthSnapshot();
-    return true;
+    return confirmLogout(intent);
   }).catch(() => false).finally(() => {
     if (logoutIntent !== intent) return;
     intent.request = undefined;
+    intent.checking = false;
     publishAuthSnapshot();
   });
   intent.request = request;
   return request;
 }
 
+export function signOutCurrentBrowserSession(): Promise<boolean> {
+  const intent = logoutIntent;
+  if (!intent?.offerCurrent || !ownsLogout(intent)) return Promise.resolve(false);
+  const request = submitLogout(intent, true);
+  publishAuthSnapshot();
+  return request;
+}
+
 export function clearAuth(): Promise<boolean> {
-  if (!logoutIntent) syncLogoutIntent(readBrowserStorage(authSyncKey));
+  if (!logoutIntent) syncLogoutIntent(readAuthSync());
   if (logoutIntent) {
     const request = submitLogout(logoutIntent);
     publishAuthSnapshot();
     return request;
   }
   if (authReady && !activeToken && !activeUser) return Promise.resolve(true);
-  const id = `${isBearerAccessToken(activeToken) ? "bearer" : "cookie"}:${syncID()}`;
-  const intent: LogoutIntent = { id, token: activeToken, revoked: false };
+  const bearer = isBearerAccessToken(activeToken);
+  const bound = Boolean(activeSessionMarker || bearer);
+  const intent: LogoutIntent = {
+    id: `${bearer ? "bearer" : "cookie"}:${syncID()}`,
+    sessionMarker: activeSessionMarker,
+    token: activeToken,
+    state: bound ? "retry" : "check",
+    offerCurrent: !bound && Boolean(activeUser),
+  };
   logoutIntent = intent;
-  // Reserve a place among cookie writers before publishing the local dismissal.
-  const request = submitLogout(intent);
-  // Only a non-secret intent ID crosses tabs or survives a reload.
-  writeBrowserStorage(authSyncKey, `logout-pending:${intent.id}`);
+  storeLogout(intent);
+  // Reserve the write before delivering the local dismissal to subscribers.
+  const request = bound ? submitLogout(intent) : Promise.resolve(false);
   expireAuthSnapshot();
   return request;
 }
@@ -318,6 +396,7 @@ async function bootstrapAuth(force = false) {
           authError = "";
           authRetryAt = 0;
           activeToken = "";
+          activeSessionMarker = "";
           activeUser = null;
           rememberAuthorizationVersion();
         } else {
@@ -328,12 +407,14 @@ async function bootstrapAuth(force = false) {
         }
         return null;
       }
-      const envelope = (await response.json()) as { data?: AuthUser };
+      const envelope = (await response.json()) as { data?: SessionIdentity };
       if (!envelope.data || generation !== authGeneration) return null;
       authError = "";
       authRetryAt = 0;
       activeToken = cookieSessionToken;
-      activeUser = normalizeAuthUser(envelope.data);
+      const { sessionMarker, ...user } = envelope.data;
+      activeSessionMarker = validSessionMarker(sessionMarker);
+      activeUser = normalizeAuthUser(user);
       rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
       return activeUser;
     })

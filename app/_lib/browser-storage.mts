@@ -3,30 +3,52 @@
 const transientValues = new Map<string, string>();
 const pendingWrites = new Set<string>();
 
-export function readBrowserStorage(key: string): string | null {
+type TabBackup = { value: string; previous: string | null };
+function readTabBackup(key: string): TabBackup | undefined {
+  try {
+    const saved = JSON.parse(window.sessionStorage.getItem(key) || "null") as TabBackup | null;
+    if (saved && typeof saved.value === "string" && (saved.previous === null || typeof saved.previous === "string")) return saved;
+  } catch { /* Session storage can also be denied. */ }
+}
+
+function removeTabBackup(key: string) {
+  try { window.sessionStorage.removeItem(key); } catch { /* Shared storage has the current value. */ }
+}
+
+export function readBrowserStorage(key: string, tabFallback = false): string | null {
   if (typeof window === "undefined") return null;
-  if (pendingWrites.has(key)) return transientValues.get(key) ?? null;
+  const backup = tabFallback ? readTabBackup(key) : undefined;
+  if (pendingWrites.has(key) && !backup) return transientValues.get(key) ?? null;
   try {
     const value = window.localStorage.getItem(key);
+    if (backup) {
+      if (value === backup.previous) return backup.value;
+      removeTabBackup(key); // Another tab published a newer value.
+      pendingWrites.delete(key);
+    }
     if (value === null) transientValues.delete(key);
     else transientValues.set(key, value);
     return value;
   } catch {
-    return transientValues.get(key) ?? null;
+    return backup?.value ?? transientValues.get(key) ?? null;
   }
 }
 
-export function writeBrowserStorage(key: string, value: string): boolean {
+export function writeBrowserStorage(key: string, value: string, tabFallback = false): boolean {
   if (typeof window === "undefined") return false;
   transientValues.set(key, value);
   pendingWrites.add(key);
   try {
     window.localStorage.setItem(key, value);
     pendingWrites.delete(key);
+    if (tabFallback) removeTabBackup(key);
     return true;
   } catch {
-    // The current tab still has the value; persistence and cross-tab delivery
-    // resume when a later write succeeds.
+    if (tabFallback) {
+      let previous = null;
+      try { previous = window.localStorage.getItem(key); } catch { /* Neither read nor write is available. */ }
+      try { window.sessionStorage.setItem(key, JSON.stringify({ previous, value })); } catch { /* Keep the in-memory copy. */ }
+    }
     return false;
   }
 }

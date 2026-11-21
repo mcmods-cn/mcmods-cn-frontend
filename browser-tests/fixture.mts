@@ -26,7 +26,7 @@ export class ProductionBrowserFixture {
   private transportErrors: string[] = [];
   origin = "";
 
-  async start(serverAPI?: APIHandler) {
+  async start(serverAPI?: APIHandler, browserArgs: string[] = []) {
     if (serverAPI) {
       this.transportServer = createHTTPServer(async (request, response) => {
         try {
@@ -106,7 +106,7 @@ export class ProductionBrowserFixture {
         await delay(50);
       }
       assert(ready, `Production server was not ready: ${this.output}`);
-      this.browser = await chromium.launch({ headless: true, ...(process.env.MCMODS_BROWSER_CHANNEL ? { channel: process.env.MCMODS_BROWSER_CHANNEL } : {}) });
+      this.browser = await chromium.launch({ headless: true, args: browserArgs, ...(process.env.MCMODS_BROWSER_CHANNEL ? { channel: process.env.MCMODS_BROWSER_CHANNEL } : {}) });
     } catch (error) {
       await this.close();
       throw error;
@@ -198,7 +198,7 @@ export class ProductionBrowserFixture {
 function baselineAPI(path: string): unknown {
   switch (path) {
     case "/ready": return { status: "ready" };
-    case "/api/v1/auth/me": return { id: "test048u1", username: "Test reviewer", email: "test048@example.invalid", roleCodes: [], permissionVersion: 1, rbacVersion: 1, permissionRules: [{ code: "*", allow: true, priority: 100 }] };
+    case "/api/v1/auth/me": return { sessionMarker: "x".repeat(43), id: "test048u1", username: "Test reviewer", email: "test048@example.invalid", roleCodes: [], permissionVersion: 1, rbacVersion: 1, permissionRules: [{ code: "*", allow: true, priority: 100 }] };
     case "/api/v1/anti-abuse/form-token": return { token: "controlled-form-token", fieldName: "controlled-contact-field", expiresAt: "2099-01-01T00:00:00Z" };
     case "/api/v1/site/config": return { siteName: "MCMods browser test", logoUrl: "" };
     case "/api/v1/site/presence": return { online: true };

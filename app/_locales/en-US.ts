@@ -2031,6 +2031,10 @@ const en = {
     statuses: { pending: "Pending review", approved: "Approved", rejected: "Rejected", conflicted: "Conflicted", withdrawn: "Withdrawn", staging: "Processing", ready: "Imported", partial: "Partially imported", superseded: "Superseded" },
   },
   site: {
+    logoutCheckHelp: "The server could not identify the original session. Check which account is signed in now.",
+    logoutCheck: "Check current account",
+    logoutBrowserSession: "Sign out the current browser session",
+    logoutOriginalTab: "Return to the tab where you started signing out to finish.",
     logoutPending: "Signing out…",
     logoutUnconfirmed: "The server hasn’t confirmed sign-out. Please retry.",
     logoutRevoked: "Your session was revoked. Some services are still updating. Retry shortly to confirm.",

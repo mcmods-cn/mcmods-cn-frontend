@@ -1,5 +1,5 @@
 const lockName = "mcmods-authentication-write-v1";
-const paths = new Set(["/api/v1/auth/login", "/api/v1/auth/email-login", "/api/v1/auth/register", "/api/v1/auth/logout"]);
+const paths = new Set(["/api/v1/auth/login", "/api/v1/auth/email-login", "/api/v1/auth/register", "/api/v1/auth/logout", "/api/v1/auth/logout/if-current"]);
 const unavailableMessage = "Sign-in could not be coordinated between browser tabs. Enable browser storage and reload, or use a browser with Web Locks or SharedWorker support. Your form has been preserved.";
 
 export type AuthenticationMutation = {
@@ -15,6 +15,7 @@ type WorkerReply = {
   body?: ArrayBuffer;
   error?: string;
   errorName?: string;
+  canOmitCookies?: boolean;
 };
 type PendingReply = { resolve: (response: WorkerReply) => void; reject: (error: Error) => void };
 let shared: SharedWorker | undefined;
@@ -125,15 +126,21 @@ export function runAuthenticationMutation<T>(apiBaseURL: string, operation: (con
     // The worker reserves the complete operation, not only its HTTP request.
     // Its native fetch and lock remain owned until our finally acknowledgement.
     const acquired = request(port, { type: "begin", id });
+    let canOmitCookies = false;
     const workerFetch: typeof fetch = (input, init) => {
       observeSignal(init?.signal);
       assertCurrent();
       const url = checkedRequest(input, init, apiBaseURL);
+      if (init?.credentials === "omit" && !canOmitCookies) throw new Error("This authentication worker cannot isolate bearer requests from browser cookies.");
       if (++requestCount !== 1) throw new Error("Only one authentication write is allowed per operation");
-      return request(port!, { type: "fetch", operationId: id, id: globalThis.crypto.randomUUID(), url, method: "POST", headers: [...new Headers(init?.headers)], body: init?.body ?? "" })
+      return request(port!, { type: "fetch", operationId: id, id: globalThis.crypto.randomUUID(), url, method: "POST", credentials: init?.credentials, headers: [...new Headers(init?.headers)], body: init?.body ?? "" })
         .then(reply => new Response(reply.status === 204 || reply.status === 205 ? null : reply.body, { status: reply.status, statusText: reply.statusText, headers: reply.headers }));
     };
-    return acquired.then(() => { assertCurrent(); return operation({ fetch: workerFetch, assertCurrent }); }).finally(finish);
+    return acquired.then(reply => {
+      assertCurrent();
+      canOmitCookies = reply.canOmitCookies === true;
+      return operation({ fetch: workerFetch, assertCurrent });
+    }).finally(finish);
   } catch (error) {
     finish();
     return Promise.reject(error);

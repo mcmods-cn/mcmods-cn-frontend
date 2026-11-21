@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { type WheelEvent as ReactWheelEvent, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
-import { canAccessAdmin, canAccessReviewQueue, clearAuth, retryAuthentication, type AuthSnapshot, type AuthUser, useAuthSnapshot } from "../_lib/auth";
+import { canAccessAdmin, canAccessReviewQueue, clearAuth, retryAuthentication, signOutCurrentBrowserSession, type AuthSnapshot, type AuthUser, useAuthSnapshot } from "../_lib/auth";
 import { isBackendUnavailable, reportBackendAvailability } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { readBrowserStorage, writeBrowserStorage } from "../_lib/browser-storage.mts";
@@ -97,11 +97,17 @@ function AuthenticationRecovery({ auth: { error, retryAt, logoutStatus } }: { au
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [error, retryAt]);
   if (logoutStatus) {
-    const pending = logoutStatus === "pending";
-    const key = pending ? "site.logoutPending" : logoutStatus === "revoked" ? "site.logoutRevoked" : "site.logoutUnconfirmed";
+    const pending = logoutStatus === "pending" || logoutStatus === "checking";
+    const check = logoutStatus === "check" || logoutStatus === "choose";
+    const key = {
+      pending: "site.logoutPending", checking: "common.loading", retry: "site.logoutUnconfirmed",
+      revoked: "site.logoutRevoked", check: "site.logoutCheckHelp", choose: "site.logoutCheckHelp",
+      source: "site.logoutOriginalTab",
+    }[logoutStatus];
     return <div className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] bg-[var(--panel)] p-4" role="status">
       <span>{t(key)}</span>
-      {pending ? null : <button className="button-secondary focus-ring" type="button" onClick={() => void clearAuth()}>{t("common.retry")}</button>}
+      {pending || logoutStatus === "source" ? null : <button className="button-secondary focus-ring" type="button" onClick={() => void clearAuth()}>{t(check ? "site.logoutCheck" : "common.retry")}</button>}
+      {logoutStatus === "choose" && <button className="button-secondary focus-ring" type="button" onClick={() => void signOutCurrentBrowserSession()}>{t("site.logoutBrowserSession")}</button>}
       <Link className="text-link focus-ring" href="/login">{t("common.login")}</Link>
     </div>;
   }

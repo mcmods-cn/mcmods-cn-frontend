@@ -2,7 +2,7 @@
  * owns credentialed fetches and retains the queue until the caller has parsed
  * and published its result, or cancelled. No expiring lease or polling. */
 const lockName = "mcmods-authentication-write-v1";
-const paths = ["/api/v1/auth/login", "/api/v1/auth/email-login", "/api/v1/auth/register", "/api/v1/auth/logout"];
+const paths = ["/api/v1/auth/login", "/api/v1/auth/email-login", "/api/v1/auth/register", "/api/v1/auth/logout", "/api/v1/auth/logout/if-current"];
 const allowedHeaders = new Set(["content-type", "authorization", "x-client-id", "x-request-id"]);
 const maxBytes = 1024 * 1024;
 const jobs = new Map();
@@ -40,7 +40,7 @@ async function network(job, message) {
     const headers = new Headers(message.headers);
     for (const [name, value] of headers) if (!allowedHeaders.has(name) || value.length > 16_384) throw new Error("Unsupported authentication header");
     if (job.controller.signal.aborted) throw cancelled();
-    const response = await fetch(message.url, { method: "POST", headers, body: message.body, credentials: "include", redirect: "error", signal: job.controller.signal });
+    const response = await fetch(message.url, { method: "POST", headers, body: message.body, credentials: message.credentials === "omit" ? "omit" : "include", redirect: "error", signal: job.controller.signal });
     const reader = response.body?.getReader();
     const chunks = [];
     let size = 0;
@@ -67,7 +67,7 @@ async function execute(job, id) {
   try {
     if (job.controller.signal.aborted) throw cancelled();
     job.active = true;
-    send(job.port, { id });
+    send(job.port, { id, canOmitCookies: true });
     await job.acknowledged;
     // A cancelled/closed caller does not release the queue while its real
     // fetch could still apply a cookie. Wait for the worker's network terminal.

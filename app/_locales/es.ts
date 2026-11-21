@@ -88,6 +88,10 @@ const es = {
   common: { ...en.common, home: "Inicio", login: "Iniciar sesión", register: "Registrarse", logout: "Cerrar sesión", admin: "Admin", save: "Guardar", delete: "Eliminar", language: "Idioma" },
   site: {
     ...en.site,
+    logoutCheckHelp: "El servidor no pudo identificar la sesión original. Comprueba qué cuenta está conectada ahora.",
+    logoutCheck: "Consultar la cuenta actual",
+    logoutBrowserSession: "Cerrar la sesión actual del navegador",
+    logoutOriginalTab: "Vuelve a la pestaña donde empezaste a cerrar sesión para terminar.",
     logoutPending: "Cerrando sesión…",
     logoutUnconfirmed: "El servidor aún no ha confirmado el cierre de sesión. Vuelve a intentarlo.",
     logoutRevoked: "Se ha revocado tu sesión. Algunos servicios siguen actualizando su estado. Vuelve a comprobarlo en unos instantes.",

@@ -88,6 +88,10 @@ const fr = {
   common: { ...en.common, home: "Accueil", login: "Connexion", register: "Inscription", logout: "Déconnexion", admin: "Admin", save: "Enregistrer", delete: "Supprimer", language: "Langue" },
   site: {
     ...en.site,
+    logoutCheckHelp: "Le serveur n’a pas pu identifier la session initiale. Vérifiez quel compte est connecté.",
+    logoutCheck: "Vérifier le compte actuel",
+    logoutBrowserSession: "Déconnecter la session actuelle du navigateur",
+    logoutOriginalTab: "Terminez la déconnexion dans l’onglet où vous l’avez commencée.",
     logoutPending: "Déconnexion en cours…",
     logoutUnconfirmed: "Le serveur n’a pas encore confirmé la déconnexion. Réessayez.",
     logoutRevoked: "Votre session a été révoquée. Certains services mettent encore à jour votre statut de connexion. Réessayez dans un instant.",

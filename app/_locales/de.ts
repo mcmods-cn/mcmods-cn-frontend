@@ -88,6 +88,10 @@ const de = {
   common: { ...en.common, home: "Start", login: "Anmelden", register: "Registrieren", logout: "Abmelden", admin: "Admin", save: "Speichern", delete: "Löschen", language: "Sprache" },
   site: {
     ...en.site,
+    logoutCheckHelp: "Der Server konnte die ursprüngliche Sitzung nicht zuordnen. Prüfe, welches Konto jetzt angemeldet ist.",
+    logoutCheck: "Aktuelles Konto prüfen",
+    logoutBrowserSession: "Aktuelle Browsersitzung abmelden",
+    logoutOriginalTab: "Schließe die Abmeldung in dem Tab ab, in dem du sie begonnen hast.",
     logoutPending: "Abmeldung läuft…",
     logoutUnconfirmed: "Der Server hat die Abmeldung noch nicht bestätigt. Bitte erneut versuchen.",
     logoutRevoked: "Die Sitzung wurde widerrufen. Einige Dienste aktualisieren noch den Anmeldestatus. Bitte in Kürze erneut prüfen.",

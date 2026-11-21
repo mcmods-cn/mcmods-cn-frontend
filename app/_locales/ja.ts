@@ -88,6 +88,10 @@ const ja = {
   common: { ...en.common, home: "ホーム", login: "ログイン", register: "登録", logout: "ログアウト", admin: "管理", save: "保存", delete: "削除", language: "言語" },
   site: {
     ...en.site,
+    logoutCheckHelp: "サーバーが元のセッションを特定できませんでした。現在ログインしているアカウントを確認できます。",
+    logoutCheck: "現在のアカウントを確認",
+    logoutBrowserSession: "このブラウザーの現在のセッションからログアウト",
+    logoutOriginalTab: "ログアウトを開始したタブに戻って操作を完了してください。",
     logoutPending: "ログアウトしています…",
     logoutUnconfirmed: "サーバーでログアウトを確認できませんでした。もう一度お試しください。",
     logoutRevoked: "セッションは無効になりました。一部のサービスではまだログイン状態を更新しています。しばらくしてからもう一度確認してください。",

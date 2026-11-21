@@ -89,6 +89,10 @@ const zhTW = {
   nav: { ...zhCN.nav, plugins: "插件", skins: "皮膚" },
   site: {
     ...zhCN.site,
+    logoutCheckHelp: "伺服器無法識別原工作階段。你可以查看此瀏覽器目前登入的帳號。",
+    logoutCheck: "查看目前帳號",
+    logoutBrowserSession: "登出瀏覽器目前的工作階段",
+    logoutOriginalTab: "請返回開始登出的分頁完成登出。",
     logoutPending: "正在登出…",
     logoutUnconfirmed: "伺服器尚未確認登出，請重試。",
     logoutRevoked: "工作階段已撤銷，部分服務仍在更新登入狀態。請稍後重試確認。",

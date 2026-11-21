@@ -13,12 +13,13 @@ for (const committed of [false, true]) {
     let confirmed = false;
     const firstRequest = Promise.withResolvers<void>();
     const firstReply = Promise.withResolvers<void>();
-    const browser = await fixture.page(async ({ path, method }) => {
+    const browser = await fixture.page(async ({ path, method, body }) => {
       if (path === "/api/v1/auth/me") {
         identityReads++;
         if (confirmed) return { status: 401, error: "Synthetic expired session" };
       }
-      if (path === "/api/v1/auth/logout" && method === "POST") {
+      if (path === "/api/v1/auth/logout/if-current" && method === "POST") {
+        assert.deepEqual(JSON.parse(body), { sessionMarker: "x".repeat(43) });
         if (++writes === 1) {
           firstRequest.resolve();
           await firstReply.promise;
