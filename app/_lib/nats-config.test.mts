@@ -32,7 +32,7 @@ test("NATS update payload always includes reliability settings and explicit secr
     clearToken: false,
     subjectPrefix: "mcmods",
     tasks: draft.tasks,
-    outboxEnabled: false,
+    outboxEnabled: true,
     realtime: true,
     jetStream: draft.jetStream,
   });

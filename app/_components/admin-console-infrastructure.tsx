@@ -12,32 +12,16 @@ import { useI18n } from "../_lib/i18n-provider";
 import { MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
 import { buildNATSUpdatePayload, type NATSConfig, type NATSTaskConfig } from "../_lib/nats-config.mts";
 import { AdminDeadLetterPanel } from "./admin-dead-letter-panel";
-import { AIConfig, AIProviderProtocol, AdminConfig, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, OAuthConfig, PanelShell, PermissionCatalog, PermissionDefaults, Role, User, aiProviderProtocols, aiTaskTypeLabel, aiTranslationTaskTypes, cleanError, displayCell, normalizeAIModelProviders, normalizeAIProtocols, notifyAdminNotice, saveAIConfig, setAIModel, setAIProvider, setAITaskModel, valueText } from "./admin-console-shared";
+import { AIConfig, AIProviderProtocol, AdminConfig, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, OAuthConfig, PanelShell, PermissionCatalog, PermissionDefaults, Role, User, aiProviderProtocols, aiTaskTypeLabel, aiTranslationTaskTypes, cleanError, displayCell, initialAIConfig, normalizeAIModelProviders, normalizeAIProtocols, notifyAdminNotice, saveAIConfig, setAIModel, setAIProvider, setAITaskModel, valueText } from "./admin-console-shared";
 
-function NATSConfigPanel({ token }: { token: string }) {
+function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NATSConfig; token: string; canWrite: boolean }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState<NATSConfig | null>(null);
-  const [message, setMessage] = useState("");
+  const [draft, setDraft] = useState<NATSConfig>({ ...initialConfig, password: "", token: "", clearPassword: false, clearToken: false });
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    apiRequest<NATSConfig>("/api/v1/admin/config/nats", {}, token)
-      .then((config) => {
-        if (!cancelled) setDraft({ ...config, password: "", token: "", clearPassword: false, clearToken: false });
-      })
-      .catch((error) => {
-        if (!cancelled) setMessage(cleanError(error));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
-
   async function save() {
-    if (!draft) return;
+    if (saving || !canWrite) return;
     setSaving(true);
-    setMessage("");
     try {
       const saved = await apiRequest<NATSConfig>(
         "/api/v1/admin/config/nats",
@@ -57,12 +41,7 @@ function NATSConfigPanel({ token }: { token: string }) {
   }
 
   function updateTask(index: number, patch: Partial<NATSTaskConfig>) {
-    if (!draft) return;
     setDraft({ ...draft, tasks: draft.tasks.map((task, taskIndex) => taskIndex === index ? { ...task, ...patch } : task) });
-  }
-
-  if (!draft) {
-    return <EmptyState text={message || t("common.loading")} />;
   }
 
   const connected = draft.status.connected;
@@ -74,6 +53,7 @@ function NATSConfigPanel({ token }: { token: string }) {
 
   return (
     <div className="grid gap-4">
+      <fieldset disabled={!canWrite || saving} className="grid min-w-0 gap-4">
       <section className="surface rounded-lg p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -152,10 +132,6 @@ function NATSConfigPanel({ token }: { token: string }) {
         <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.nats.reliabilityDescription")}</p>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <label className="flex items-center gap-2 rounded-lg border border-[var(--line)] p-3 text-sm font-semibold">
-            <input checked={draft.outboxEnabled} type="checkbox" onChange={(event) => setDraft({ ...draft, outboxEnabled: event.target.checked })} />
-            {t("admin.nats.outboxEnabled")}
-          </label>
-          <label className="flex items-center gap-2 rounded-lg border border-[var(--line)] p-3 text-sm font-semibold">
             <input checked={draft.realtime} type="checkbox" onChange={(event) => setDraft({ ...draft, realtime: event.target.checked })} />
             {t("admin.nats.realtime")}
           </label>
@@ -230,6 +206,7 @@ function NATSConfigPanel({ token }: { token: string }) {
           </div>
         </div>
       </section>
+      </fieldset>
       <AdminDeadLetterPanel token={token} />
     </div>
   );
@@ -340,9 +317,9 @@ function ModImportConfigPanel({ token }: { token: string }) {
   );
 }
 
-function useAISettingsDraft(initialConfig: AIConfig, token: string, normalize: (config: AIConfig) => AIConfig) {
+function useAISettingsDraft(token: string, normalize: (config: AIConfig) => AIConfig) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState(() => normalize(initialConfig));
+  const [draft, setDraft] = useState(() => normalize(initialAIConfig));
   const [ready, setReady] = useState(false);
   const [loadFailure, setLoadFailure] = useState<unknown>(null);
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -374,9 +351,9 @@ function AISettingsLoadMessage({ ready, error, retry }: { ready: boolean; error:
   return error ? <div role="alert" className="surface flex flex-wrap items-center gap-3 rounded-lg p-4 text-sm text-[var(--danger)]"><span>{error}</span><button className="button-secondary focus-ring" type="button" onClick={retry}>{t("common.retry")}</button></div> : <p role="status" className="text-sm text-[var(--muted)]">{t("common.loading")}</p>;
 }
 
-function AIProvidersPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
+function AIProvidersPanel({ token }: { token: string }) {
   const { t } = useI18n();
-  const { draft, setDraft, ready, loadError, retry } = useAISettingsDraft(initialConfig, token, normalizeAIProtocols);
+  const { draft, setDraft, ready, loadError, retry } = useAISettingsDraft(token, normalizeAIProtocols);
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -430,9 +407,9 @@ function AIProvidersPanel({ initialConfig, token }: { initialConfig: AIConfig; t
   );
 }
 
-function AIModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
+function AIModelsPanel({ token }: { token: string }) {
   const { t } = useI18n();
-  const { draft, setDraft, ready, loadError, retry } = useAISettingsDraft(initialConfig, token, normalizeAIModelProviders);
+  const { draft, setDraft, ready, loadError, retry } = useAISettingsDraft(token, normalizeAIModelProviders);
   const [saving, setSaving] = useState(false);
   const availableProviders = draft.providers.filter((provider) => provider.code.trim());
 
@@ -488,9 +465,9 @@ function AIModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; toke
   );
 }
 
-function AITaskModelsPanel({ initialConfig, token }: { initialConfig: AIConfig; token: string }) {
+function AITaskModelsPanel({ token }: { token: string }) {
   const { t } = useI18n();
-  const { draft, setDraft, ready, loadError, retry } = useAISettingsDraft(initialConfig, token, normalizeAIProtocols);
+  const { draft, setDraft, ready, loadError, retry } = useAISettingsDraft(token, normalizeAIProtocols);
   const [saving, setSaving] = useState(false);
   const enabledProviderCodes = new Set(draft.providers.filter((provider) => provider.enabled).map((provider) => provider.code));
   const availableModels = draft.models.filter((model) => model.enabled && enabledProviderCodes.has(model.provider));
@@ -818,7 +795,7 @@ function AIStatsTable({ title, rows }: { title: string; rows: LogRow[] }) {
   );
 }
 
-function AuthPanelV2({ config, token }: { config: AdminConfig; token: string }) {
+function AuthPanelV2({ config, token }: { config: Pick<AdminConfig, "auth" | "oauth">; token: string }) {
   const { t } = useI18n();
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -1411,7 +1388,8 @@ function OAuthConfigPanelV2({ config, token }: { config: OAuthConfig; token: str
   );
 }
 
-function MailPanelV2({ config, token }: { config: AdminConfig; token: string }) {
+function MailPanelV2({ config: initialConfig, token }: { config: MailConfig; token: string }) {
+  const [config, setConfig] = useState(initialConfig);
   const { t } = useI18n();
   const [message, setMessage] = useState("");
   const [testTo, setTestTo] = useState("");
@@ -1422,9 +1400,10 @@ function MailPanelV2({ config, token }: { config: AdminConfig; token: string }) 
     event.preventDefault();
     setSaving(true);
     setMessage("");
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const payload = {
-      enabled: true,
+      enabled: form.get("enabled") === "on",
       host: String(form.get("host") ?? ""),
       port: Number(form.get("port") ?? 587),
       username: String(form.get("username") ?? ""),
@@ -1433,7 +1412,10 @@ function MailPanelV2({ config, token }: { config: AdminConfig; token: string }) 
       useTLS: form.get("useTLS") === "on",
     };
     try {
-      await apiRequest<MailConfig>("/api/v1/admin/config/mail", { method: "PUT", body: JSON.stringify(payload) }, token);
+      const saved = await apiRequest<MailConfig>("/api/v1/admin/config/mail", { method: "PUT", body: JSON.stringify(payload) }, token);
+      setConfig(saved);
+      const password = formElement.elements.namedItem("password");
+      if (password instanceof HTMLInputElement) password.value = "";
       setMessage(t("admin.saveSuccess"));
     } catch (error) {
       setMessage(cleanError(error));
@@ -1458,45 +1440,51 @@ function MailPanelV2({ config, token }: { config: AdminConfig; token: string }) 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <ConfigBlock title={t("admin.smtpConfig")}>
-        <form className="grid gap-3" onSubmit={saveMail}>
+        <form onSubmit={saveMail}>
+          <fieldset className="grid min-w-0 gap-3" disabled={saving}>
+          <label className="flex items-center gap-2 text-sm font-semibold">
+            <input defaultChecked={config.enabled} name="enabled" type="checkbox" />
+            {t("common.enabled")}
+          </label>
           <label className="text-sm font-semibold">
             {t("admin.server")}
-            <input className="field mt-2" defaultValue={config.mail.host} name="host" />
+            <input className="field mt-2" defaultValue={config.host} name="host" />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-semibold">
               {t("admin.port")}
-              <input className="field mt-2" defaultValue={config.mail.port} min={1} name="port" type="number" />
+              <input className="field mt-2" defaultValue={config.port} min={1} name="port" type="number" />
             </label>
             <label className="text-sm font-semibold">
               {t("admin.sender")}
-              <input className="field mt-2" defaultValue={config.mail.from} name="from" />
+              <input className="field mt-2" defaultValue={config.from} name="from" />
             </label>
           </div>
           <label className="text-sm font-semibold">
             {t("admin.username")}
-            <input className="field mt-2" defaultValue={config.mail.username} name="username" />
+            <input className="field mt-2" defaultValue={config.username} name="username" />
           </label>
           <label className="text-sm font-semibold">
-            Password
-            <input className="field mt-2" name="password" placeholder={config.mail.hasPassword ? t("admin.clientSecretSaved") : ""} type="password" />
+            {t("login.password")}
+            <input className="field mt-2" name="password" placeholder={config.hasPassword ? t("admin.clientSecretSaved") : ""} type="password" />
           </label>
           <label className="flex items-center gap-2 text-sm font-semibold">
-            <input defaultChecked={config.mail.useTLS} name="useTLS" type="checkbox" />
+            <input defaultChecked={config.useTLS} name="useTLS" type="checkbox" />
             TLS / STARTTLS
           </label>
           <button className="button-primary focus-ring" disabled={saving} type="submit">
             {saving ? t("admin.saving") : t("admin.saveMail")}
           </button>
+          </fieldset>
         </form>
       </ConfigBlock>
       <ConfigBlock title={t("admin.testSend")}>
-        <ConfigLine label={t("admin.status")} value={config.mail.enabled ? t("admin.configured") : t("admin.notConfigured")} />
-        <ConfigLine label={t("admin.server")} value={config.mail.host || t("admin.notConfigured")} />
-        <ConfigLine label={t("admin.sender")} value={config.mail.from || t("admin.notConfigured")} />
+        <ConfigLine label={t("admin.status")} value={config.enabled ? t("common.enabled") : t("common.disabled")} />
+        <ConfigLine label={t("admin.server")} value={config.host || t("admin.notConfigured")} />
+        <ConfigLine label={t("admin.sender")} value={config.from || t("admin.notConfigured")} />
         <div className="grid gap-2 pt-2">
           <input className="field" onChange={(event) => setTestTo(event.target.value)} placeholder="test@example.com" type="email" value={testTo} />
-          <button className="button-secondary focus-ring" disabled={testing} type="button" onClick={testMail}>
+          <button className="button-secondary focus-ring" disabled={testing || saving || !config.enabled || !testTo.trim()} type="button" onClick={testMail}>
             {testing ? t("admin.sending") : t("admin.sendTestMail")}
           </button>
           {message ? <InlineMessage text={message} /> : null}

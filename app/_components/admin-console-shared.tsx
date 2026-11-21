@@ -4,9 +4,8 @@ import { useEffect } from "react";
 import { ApiError, apiRequest } from "../_lib/api";
 import { isBackendUnavailable } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
-import { defaultMarkdownConfig, MarkdownRendererConfig } from "../_lib/markdown-config";
-import { defaultAdminYggdrasilConfig, type AdminYggdrasilConfig } from "./admin-yggdrasil-panel";
-import { type AdminDashboardData } from "./admin-dashboard-panel";
+import { type MarkdownRendererConfig } from "../_lib/markdown-config";
+import { type AdminYggdrasilConfig } from "./admin-yggdrasil-panel";
 
 type User = {
   id: string;
@@ -310,118 +309,53 @@ type UserPermissionDetails = {
   effectivePermissionRules: Array<{ code: string; allow: boolean; priority: number; source?: string }>;
 };
 
-const emptyDashboard: AdminDashboardData = {
-  cards: [],
-  overview: {
-    onlineUsers: 0, monthlyActiveUsers: 0, totalUsers: 0, totalProjects: 0,
-    approvedProjects: 0, pendingReviews: 0, viewsToday: 0, actionsToday: 0,
-    oss: { activeFiles: 0, storedBytes: 0, sourceBytes: 0, pendingScans: 0, quarantinedFiles: 0, uploadsToday: 0 },
-    trend: [], updatedAt: "",
-  },
+const defaultOSSConfig: OSSConfig = {
+  enabled: false,
+  region: "cn-beijing",
+  endpoint: "https://oss-cn-beijing.aliyuncs.com",
+  publicEndpoint: "https://oss.mcmods.cn",
+  bucket: "",
+  accessKeyId: "",
+  hasAccessKeySecret: false,
+  hasSecurityToken: false,
+  useCName: false,
+  prefix: "mcmods",
+  downloadUrlTtlMinutes: 10,
+  downloadUrlMode: "oss_presigned",
+  allowedExtensions: [
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg",
+    ".mp4", ".webm", ".mov", ".avi",
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".md",
+    ".txt", ".log", ".json", ".nbt", ".schem", ".schematic",
+    ".zip", ".rar", ".7z", ".jar", ".gz", ".tar",
+  ],
+  bucketAccessPolicy: "private-read-write",
+  temporaryDownloadPolicy: "presigned-url",
 };
 
-const emptyConfig: AdminConfig = {
-  general: { siteName: "Mcmods-cn", logoUrl: "" },
-  yggdrasil: defaultAdminYggdrasilConfig,
-  auth: {
-    allowRegistration: true,
-    emailPasswordLogin: true,
-    usernamePasswordLogin: true,
-    userIDPasswordLogin: true,
-    emailCodeLogin: true,
-    requireEmailVerification: false,
-    passwordMinLength: 8,
-    tokenTTLHours: 24,
-  },
-  oauth: {
-    providers: {
-      wechat: { enabled: false, clientId: "", redirectUri: "", hasClientSecret: false },
-      qq: { enabled: false, clientId: "", redirectUri: "", hasClientSecret: false },
-      google: { enabled: false, clientId: "", redirectUri: "", hasClientSecret: false },
-      github: { enabled: false, clientId: "", redirectUri: "", hasClientSecret: false },
-    },
-  },
-  mail: {
+const initialAIConfig: AIConfig = {
+  providers: [
+    { code: "openai", name: "OpenAI", enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", hasApiKey: false, protocol: "openai-compatible", notes: "" },
+    { code: "aliyun", name: "阿里云百炼", enabled: false, baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", apiKey: "", hasApiKey: false, protocol: "openai-compatible", notes: "" },
+  ],
+  models: [
+    { provider: "openai", model: "gpt-4.1-mini", displayName: "GPT-4.1 mini", enabled: false, contextTokens: 1047576, maxOutputTokens: 32768, inputPricePerMillion: 0, outputPricePerMillion: 0 },
+  ],
+  taskModels: [
+    { taskType: aiTranslationTaskTypes.permission, modelKey: "", timeoutSeconds: 120, prompt: "" },
+    { taskType: aiTranslationTaskTypes.i18n, modelKey: "", timeoutSeconds: 120, prompt: "" },
+    { taskType: aiTranslationTaskTypes.notification, modelKey: "", timeoutSeconds: 90, prompt: "" },
+  ],
+  quotas: [
+    { scope: "site", subject: "default", period: "day", requestLimit: 1000, tokenLimit: 1000000, costLimitCny: 10000 },
+  ],
+  translation: {
     enabled: false,
-    host: "",
-    port: 587,
-    username: "",
-    from: "no-reply@mcmods.cn",
-    useTLS: true,
-    hasPassword: false,
-  },
-  markdown: defaultMarkdownConfig,
-  profile: { signatureMaxBytes: 256 },
-  oss: {
-    enabled: false,
-    region: "cn-beijing",
-    endpoint: "https://oss-cn-beijing.aliyuncs.com",
-    publicEndpoint: "https://oss.mcmods.cn",
-    bucket: "",
-    accessKeyId: "",
-    hasAccessKeySecret: false,
-    hasSecurityToken: false,
-    useCName: false,
-    prefix: "mcmods",
-    downloadUrlTtlMinutes: 10,
-    downloadUrlMode: "oss_presigned",
-    allowedExtensions: [
-      ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg",
-      ".mp4", ".webm", ".mov", ".avi",
-      ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".md",
-      ".txt", ".log", ".json", ".nbt", ".schem", ".schematic",
-      ".zip", ".rar", ".7z", ".jar", ".gz", ".tar",
-    ],
-    bucketAccessPolicy: "private-read-write",
-    temporaryDownloadPolicy: "presigned-url",
-  },
-  ai: {
-    providers: [
-      { code: "openai", name: "OpenAI", enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", hasApiKey: false, protocol: "openai-compatible", notes: "" },
-      { code: "aliyun", name: "阿里云百炼", enabled: false, baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", apiKey: "", hasApiKey: false, protocol: "openai-compatible", notes: "" },
-    ],
-    models: [
-      { provider: "openai", model: "gpt-4.1-mini", displayName: "GPT-4.1 mini", enabled: false, contextTokens: 1047576, maxOutputTokens: 32768, inputPricePerMillion: 0, outputPricePerMillion: 0 },
-    ],
-    taskModels: [
-      { taskType: aiTranslationTaskTypes.permission, modelKey: "", timeoutSeconds: 120, prompt: "" },
-      { taskType: aiTranslationTaskTypes.i18n, modelKey: "", timeoutSeconds: 120, prompt: "" },
-      { taskType: aiTranslationTaskTypes.notification, modelKey: "", timeoutSeconds: 90, prompt: "" },
-    ],
-    quotas: [
-      { scope: "site", subject: "default", period: "day", requestLimit: 1000, tokenLimit: 1000000, costLimitCny: 10000 },
-    ],
-    translation: {
-      enabled: false,
-      sourceLocale: "zh-CN",
-      targetLocales: ["en-US"],
-      taskType: "translation",
-      autoSubmit: false,
-      glossary: "",
-    },
-  },
-  permissions: {
-    mode: "RBAC + wildcard",
-    temporaryGrant: true,
-    auditLog: true,
-    defaultUserRole: "member",
-    firstUserRole: "super_admin",
-  },
-  database: {
-    driver: "PostgreSQL",
-    host: "",
-    port: "",
-    name: "",
-    user: "",
-    sslMode: "disable",
-  },
-  features: {
-    emailSystem: true,
-    permissionRBAC: true,
-    contentReview: true,
-    oss: true,
-    logSystem: true,
-    ai: true,
+    sourceLocale: "zh-CN",
+    targetLocales: ["en-US"],
+    taskType: "translation",
+    autoSubmit: false,
+    glossary: "",
   },
 };
 
@@ -961,4 +895,4 @@ function notifyAdminNotice(message: string, title?: string, tone: "info" | "dang
 }
 
 export type { AIConfig, AIModelConfig, AIProviderConfig, AIProviderProtocol, AIQuotaConfig, AITaskModelConfig, AITaskStatus, AITranslationConfig, AITranslationResult, AdminConfig, AdminNotice, AdminUserBalance, AdminUserDetails, LocalizedText, LocalizedTexts, LogPage, LogRetentionConfig, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, OAuthConfig, OAuthProviderConfig, OSSConfig, OSSFile, Permission, PermissionCatalog, PermissionDefaults, Role, RolePermissionEntry, RuntimeLogEntry, RuntimeLogResponse, User, UserPermissionDetails, UserPermissionEntry };
-export { AdminGateMessage, AdminNoticeDialog, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LocalizedTextPairEditor, PanelShell, aiProviderProtocols, aiTaskTypeLabel, aiTranslationTaskTypes, buildNewPermissionPayload, cleanError, cleanOSSError, cloneAIConfig, cloneRole, detectTextLocale, displayCell, editableLocalizedText, emptyCatalog, emptyConfig, emptyDashboard, formatDateTime, isPermissionError, isTemplatePermissionCode, localizedText, logCategoryTitle, normalizeAIModelProviders, normalizeAIProtocols, normalizeEntityTranslations, normalizeLocalizedTexts, normalizePermissionCatalog, notifyAdminNotice, notifyPermissionDenied, parsePermissionInput, permissionInfoForCode, permissionModule, permissionSuggestions, permissionTemplateCode, preferredTranslationLocale, runAITranslationTask, saveAIConfig, setAIModel, setAIProvider, setAITaskModel, setLocalizedText, splitCodes, valueText, withFallbackLocalizedText };
+export { AdminGateMessage, AdminNoticeDialog, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LocalizedTextPairEditor, PanelShell, aiProviderProtocols, aiTaskTypeLabel, aiTranslationTaskTypes, buildNewPermissionPayload, cleanError, cleanOSSError, cloneAIConfig, cloneRole, detectTextLocale, displayCell, editableLocalizedText, defaultOSSConfig, emptyCatalog, initialAIConfig, formatDateTime, isPermissionError, isTemplatePermissionCode, localizedText, logCategoryTitle, normalizeAIModelProviders, normalizeAIProtocols, normalizeEntityTranslations, normalizeLocalizedTexts, normalizePermissionCatalog, notifyAdminNotice, notifyPermissionDenied, parsePermissionInput, permissionInfoForCode, permissionModule, permissionSuggestions, permissionTemplateCode, preferredTranslationLocale, runAITranslationTask, saveAIConfig, setAIModel, setAIProvider, setAITaskModel, setLocalizedText, splitCodes, valueText, withFallbackLocalizedText };

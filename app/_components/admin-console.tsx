@@ -4,18 +4,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
-import { canAccessAdmin, clearAuth, hasPermission, useAuthSnapshot } from "../_lib/auth";
-import { ApiError, apiRequest } from "../_lib/api";
+import { useEffect, useState } from "react";
+import { type AuthUser, canAccessAdmin, canAccessReviewQueue, clearAuth, hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
-import { normalizeMarkdownConfig } from "../_lib/markdown-config";
 import { ActivityMonitorPanel, CreatorClaimsPanel, CurrencyManagementPanel, EconomyConfigPanel, LevelConfigPanel, ShopManagementPanel, TaskManagementPanel } from "./admin-community-panels";
 import { MinecraftVersionConfigPanel, ModReviewQueuePanel } from "./admin-mod-panels";
 import { ServerReviewQueuePanel, ServerSettingsPanel } from "./admin-server-panels";
 import { AdminUnresolvedReferences } from "./admin-unresolved-references";
 import { AdminContentAttributePanel } from "./admin-content-attribute-panel";
-import { AdminYggdrasilPanel } from "./admin-yggdrasil-panel";
-import { AdminDashboardPanel, AdminProjectWorkbenchPanel, type AdminDashboardData } from "./admin-dashboard-panel";
+import { AdminAccessEditor, AdminOverview, AdminSettingsEditor } from "./admin-panel-data";
+import { AdminProjectWorkbenchPanel } from "./admin-dashboard-panel";
 import { useTheme } from "./theme-provider";
 import { useSiteBrand } from "./site-brand-provider";
 import { AdminActivityRetentionPanel } from "./admin-activity-retention-panel";
@@ -27,10 +25,9 @@ import { UnifiedReportAdminPanel } from "./admin-report-panel";
 import { AboutAdminPanel, SiteChangelogAdminPanel } from "./admin-site-affairs-panels";
 import { AdminStickerPanel } from "./admin-sticker-panel";
 import { AdminProjectAuthorshipPanel } from "./admin-project-authorship-panel";
-import { AdminConfig, AdminGateMessage, AdminNotice, AdminNoticeDialog, PermissionCatalog, User, AIConfig, cleanError, emptyCatalog, emptyConfig, emptyDashboard, normalizePermissionCatalog } from "./admin-console-shared";
-import { PermissionCatalogEditor, PermissionGroupEditor, UserRolePanel } from "./admin-console-permissions";
-import { AICostsPanel, AIModelsPanel, AIProvidersPanel, AITaskLogsPanel, AITaskModelsPanel, AuthPanelV2, GeneralSettingsPanel, MailPanelV2, MarkdownConfigPanel, ModImportConfigPanel, NATSConfigPanel, PermissionSettingsPanel, ProfileSettingsPanel, RoleTracksPanel } from "./admin-console-infrastructure";
-import { NotificationTemplatePanel, ReviewSettingsPanel, SystemNotificationPanel, TranslationManagerPanel, UsersPanelV2 } from "./admin-console-users";
+import { AdminGateMessage, AdminNotice, AdminNoticeDialog } from "./admin-console-shared";
+import { AICostsPanel, AIModelsPanel, AIProvidersPanel, AITaskLogsPanel, AITaskModelsPanel, ModImportConfigPanel } from "./admin-console-infrastructure";
+import { NotificationTemplatePanel, ReviewSettingsPanel, SystemNotificationPanel, TranslationManagerPanel } from "./admin-console-users";
 import { LogCleanupPanel, LogsPanel, OSSConfigPanelV2, OSSFilesPanel, OSSRowsPanel, RuntimeLogsPanel } from "./admin-console-oss";
 
 type PanelId =
@@ -264,20 +261,10 @@ export function AdminConsole() {
   const [activePanel, setActivePanel] = useState<PanelId>("overview");
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [expanded, setExpanded] = useState(["workbench"]);
-  const [dashboard, setDashboard] = useState(emptyDashboard);
-  const [config, setConfig] = useState(emptyConfig);
-  const [catalog, setCatalog] = useState(emptyCatalog);
-  const [users, setUsers] = useState<User[]>([]);
-  const [status, setStatus] = useState(t("admin.backendDisconnected"));
-  const [backendAvailable, setBackendAvailable] = useState<boolean | null>(null);
-  const [reconnectIn, setReconnectIn] = useState(0);
   const [noticeDialog, setNoticeDialog] = useState<AdminNotice | null>(null);
-  const translation = useRef(t);
-  useEffect(() => { translation.current = t; }, [t]);
   const authReady = auth.ready;
   const allowed = canAccessAdmin(auth.user);
-  const requiredPanelPermissions = panelPermissions(activePanel);
-  const visiblePanel = requiredPanelPermissions.length === 0 || requiredPanelPermissions.some((permission) => hasPermission(auth.user, permission)) ? activePanel : "overview";
+  const visiblePanel = canViewPanel(auth.user, activePanel) ? activePanel : "overview";
 
   useEffect(() => {
     function handlePermissionDenied(event: Event) {
@@ -315,79 +302,7 @@ export function AdminConsole() {
       router.replace("/");
       return;
     }
-    let cancelled = false;
-    let retryTimer: number | undefined;
-    let countdownTimer: number | undefined;
-
-    function clearRetryTimers() {
-      if (retryTimer) window.clearTimeout(retryTimer);
-      if (countdownTimer) window.clearInterval(countdownTimer);
-    }
-
-    function scheduleReconnect(attempt: number) {
-      clearRetryTimers();
-      const delaySeconds = Math.min(30, Math.max(3, 3 * 2 ** Math.min(attempt, 3)));
-      setReconnectIn(delaySeconds);
-      countdownTimer = window.setInterval(() => {
-        setReconnectIn((current) => Math.max(0, current - 1));
-      }, 1000);
-      retryTimer = window.setTimeout(() => {
-        if (!cancelled) {
-          loadAdminData(attempt + 1);
-        }
-      }, delaySeconds * 1000);
-    }
-
-    async function loadAdminData(attempt = 0) {
-      try {
-        setStatus(attempt === 0 ? translation.current("admin.connecting") : translation.current("admin.reconnecting"));
-        const [dashboardData, configData, permissionData, userData, aiData] = await Promise.all([
-          apiRequest<AdminDashboardData>("/api/v1/admin/dashboard", {}, auth.token),
-          hasPermission(auth.user, "admin.config.read") ? apiRequest<AdminConfig>("/api/v1/admin/config", {}, auth.token) : Promise.resolve(undefined),
-          hasPermission(auth.user, "permission.read") ? apiRequest<PermissionCatalog>("/api/v1/admin/permissions", {}, auth.token) : Promise.resolve(undefined),
-          hasPermission(auth.user, "user.read") ? apiRequest<User[]>("/api/v1/admin/users", {}, auth.token) : Promise.resolve(undefined),
-          !hasPermission(auth.user, "admin.config.read") && hasPermission(auth.user, "ai.read") ? apiRequest<AIConfig>("/api/v1/admin/ai/config", {}, auth.token) : Promise.resolve(undefined),
-        ]);
-        if (!cancelled) {
-          setDashboard(dashboardData);
-          setConfig({ ...emptyConfig, ...configData, ai: aiData ?? configData?.ai, features: configData?.features ?? {}, markdown: normalizeMarkdownConfig(configData?.markdown) });
-          setCatalog(permissionData ? normalizePermissionCatalog(permissionData) : emptyCatalog);
-          setUsers(userData ?? []);
-          setStatus(translation.current("common.connected"));
-          setBackendAvailable(true);
-          setReconnectIn(0);
-          clearRetryTimers();
-        }
-      } catch (error) {
-        if (!cancelled) {
-          if (error instanceof ApiError && error.status === 401) {
-            clearAuth();
-            router.replace("/login?next=/admin");
-            return;
-          }
-          const message = cleanError(error) || translation.current("admin.backendDisconnected");
-          setStatus(message);
-          setBackendAvailable(false);
-          scheduleReconnect(attempt);
-        }
-      }
-    }
-    loadAdminData();
-    return () => {
-      cancelled = true;
-      clearRetryTimers();
-    };
-  }, [allowed, auth.token, auth.user, authReady, router]);
-
-  async function refreshCatalog() {
-    if (!auth.token) return;
-    setCatalog(normalizePermissionCatalog(await apiRequest<PermissionCatalog>("/api/v1/admin/permissions", {}, auth.token)));
-  }
-
-  async function refreshUsers() {
-    if (!auth.token) return;
-    setUsers(await apiRequest<User[]>("/api/v1/admin/users", {}, auth.token));
-  }
+  }, [allowed, auth.token, authReady, router]);
 
   function toggleGroup(groupId: string) {
     setExpanded((current) =>
@@ -425,26 +340,6 @@ export function AdminConsole() {
     );
   }
 
-  if (backendAvailable === false) {
-    return (
-      <>
-        <AdminGateMessage
-          text={reconnectIn > 0 ? t("admin.retrySeconds", { seconds: reconnectIn }) : t("admin.reconnecting")}
-        />
-        {noticeModal}
-      </>
-    );
-  }
-
-  if (backendAvailable === null) {
-    return (
-      <>
-        <AdminGateMessage text={t("admin.connecting")} />
-        {noticeModal}
-      </>
-    );
-  }
-
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[292px_1fr]">
@@ -459,17 +354,11 @@ export function AdminConsole() {
                 </span>
               </Link>
               <button aria-expanded={mobileNavigationOpen} aria-label={t("admin.navigation")} className="button-secondary focus-ring shrink-0 px-3 py-2 lg:hidden" type="button" onClick={() => setMobileNavigationOpen((value) => !value)}>{mobileNavigationOpen ? "×" : "☰"}</button>
-              <div className="mt-4 hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm text-[var(--muted)] lg:block">
-                {status}
-              </div>
             </div>
 
             <nav className={`${mobileNavigationOpen ? "block" : "hidden"} min-h-0 flex-1 overflow-y-auto p-3 lg:block`}>
               {adminNavGroups.map((group) => {
-                const visibleItems = group.items.filter((item) => {
-                  const required = panelPermissions(item.id);
-                  return required.length === 0 || required.some((permission) => hasPermission(auth.user, permission));
-                });
+                const visibleItems = group.items.filter((item) => canViewPanel(auth.user, item.id));
                 if (visibleItems.length === 0) return null;
                 const open = expanded.includes(group.id);
                 return (
@@ -525,10 +414,9 @@ export function AdminConsole() {
           </div>
         </aside>
 
-        <section key={`${auth.user?.id}:${auth.user?.permissionVersion}:${auth.user?.rbacVersion}`} className="min-w-0 px-4 py-5 md:px-8">
+        <section key={`${auth.user?.id}:${auth.user?.permissionVersion}:${auth.user?.rbacVersion}:${visiblePanel}`} className="min-w-0 px-4 py-5 md:px-8">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-[var(--accent)]">Admin Console</p>
               <h1 className="text-2xl font-bold">{panelTitleV2(visiblePanel, t)}</h1>
             </div>
             {auth.user ? (
@@ -538,28 +426,13 @@ export function AdminConsole() {
             ) : null}
           </div>
 
-          {visiblePanel === "overview" ? <AdminDashboardPanel initialData={dashboard} token={auth.token} features={config.features} /> : null}
+          {visiblePanel === "overview" ? <AdminOverview token={auth.token} canReadConfig={hasPermission(auth.user, "admin.config.read")} /> : null}
           {visiblePanel === "projects" ? <AdminProjectWorkbenchPanel token={auth.token} /> : null}
-          {visiblePanel === "general-settings" ? <GeneralSettingsPanel initialConfig={config.general ?? emptyConfig.general} token={auth.token} /> : null}
-          {visiblePanel === "yggdrasil" ? <AdminYggdrasilPanel initialConfig={config.yggdrasil ?? emptyConfig.yggdrasil} token={auth.token} /> : null}
-          {visiblePanel === "roles" ? (
-            <PermissionGroupEditor catalog={catalog} token={auth.token} refreshCatalog={refreshCatalog} />
-          ) : null}
-          {visiblePanel === "user-roles" ? (
-            <UserRolePanel catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
-          ) : null}
-          {visiblePanel === "permission-list" ? (
-            <PermissionCatalogEditor
-              key={JSON.stringify(catalog.permissions)}
-              catalog={catalog}
-              token={auth.token}
-              refreshCatalog={refreshCatalog}
-            />
-          ) : null}
-          {visiblePanel === "role-tracks" ? (
-            <RoleTracksPanel catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
-          ) : null}
-          {visiblePanel === "permission-settings" ? <PermissionSettingsPanel catalog={catalog} token={auth.token} /> : null}
+          {visiblePanel === "general-settings" || visiblePanel === "mail" || visiblePanel === "auth" || visiblePanel === "profile-settings"
+            || visiblePanel === "markdown" || visiblePanel === "yggdrasil" || visiblePanel === "nats"
+            ? <AdminSettingsEditor panel={visiblePanel} token={auth.token} canWrite={hasPermission(auth.user, visiblePanel === "mail" ? "mail.write" : "admin.config.write")} /> : null}
+          {visiblePanel === "roles" || visiblePanel === "user-roles" || visiblePanel === "permission-list" || visiblePanel === "permission-settings" || visiblePanel === "role-tracks" || visiblePanel === "users"
+            ? <AdminAccessEditor canReadCatalog={hasPermission(auth.user, "permission.read")} canReadUsers={hasPermission(auth.user, "user.read")} panel={visiblePanel} token={auth.token} /> : null}
           {visiblePanel === "creator-claims" ? <CreatorClaimsPanel token={auth.token} /> : null}
           {visiblePanel === "project-authorship" ? <AdminProjectAuthorshipPanel token={auth.token} /> : null}
           {visiblePanel === "activity-monitor" ? <><ActivityMonitorPanel token={auth.token} />{hasPermission(auth.user, "log.read") ? <AdminActivityRetentionPanel token={auth.token} /> : null}</> : null}
@@ -570,9 +443,6 @@ export function AdminConsole() {
           {visiblePanel === "shop-items" ? <ShopManagementPanel token={auth.token} /> : null}
           {visiblePanel === "level-config" ? <LevelConfigPanel token={auth.token} /> : null}
           {visiblePanel === "tasks" ? <TaskManagementPanel token={auth.token} /> : null}
-          {visiblePanel === "users" ? (
-            <UsersPanelV2 catalog={catalog} token={auth.token} users={users} refreshUsers={refreshUsers} />
-          ) : null}
           {visiblePanel === "notifications" ? <SystemNotificationPanel token={auth.token} /> : null}
           {visiblePanel === "notification-templates" ? <NotificationTemplatePanel token={auth.token} /> : null}
           {visiblePanel === "reviews-content" ? <ModReviewQueuePanel kind="content" token={auth.token} /> : null}
@@ -582,10 +452,6 @@ export function AdminConsole() {
           {visiblePanel === "bans" ? <BanAdminPanel token={auth.token} /> : null}
           {visiblePanel === "review-settings" ? <ReviewSettingsPanel token={auth.token} /> : null}
           {visiblePanel === "server-settings" ? <ServerSettingsPanel token={auth.token} /> : null}
-          {visiblePanel === "mail" ? <MailPanelV2 config={config} token={auth.token} /> : null}
-          {visiblePanel === "auth" ? <AuthPanelV2 config={config} token={auth.token} /> : null}
-          {visiblePanel === "markdown" ? <MarkdownConfigPanel initialConfig={config.markdown} token={auth.token} /> : null}
-          {visiblePanel === "profile-settings" ? <ProfileSettingsPanel initialConfig={config.profile ?? emptyConfig.profile} token={auth.token} /> : null}
           {visiblePanel === "minecraft-versions" ? <MinecraftVersionConfigPanel token={auth.token} /> : null}
           {visiblePanel === "resource-attributes" ? <AdminContentAttributePanel token={auth.token} /> : null}
           {visiblePanel === "mod-import-settings" ? <ModImportConfigPanel token={auth.token} /> : null}
@@ -595,9 +461,8 @@ export function AdminConsole() {
           {visiblePanel === "site-changelogs" ? <SiteChangelogAdminPanel token={auth.token} /> : null}
           {visiblePanel === "unresolved-references" ? <AdminUnresolvedReferences token={auth.token} /> : null}
           {visiblePanel === "stickers" ? <AdminStickerPanel token={auth.token} /> : null}
-          {visiblePanel === "nats" ? <NATSConfigPanel token={auth.token} /> : null}
           {visiblePanel === "i18n" ? <TranslationManagerPanel token={auth.token} /> : null}
-          {visiblePanel === "oss-config" ? <OSSConfigPanelV2 initialConfig={config.oss ?? emptyConfig.oss!} token={auth.token} /> : null}
+          {visiblePanel === "oss-config" ? <OSSConfigPanelV2 token={auth.token} /> : null}
           {visiblePanel === "oss-files" ? <OSSFilesPanel token={auth.token} /> : null}
           {visiblePanel === "oss-uploads" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-uploads", t)} endpoint="/api/v1/admin/oss/uploads" /> : null}
           {visiblePanel === "oss-scans" ? <OSSRowsPanel token={auth.token} title={panelTitleV2("oss-scans", t)} endpoint="/api/v1/admin/oss/scans" /> : null}
@@ -610,9 +475,9 @@ export function AdminConsole() {
           {visiblePanel === "logs-api" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-api", t)} category="api_access" /> : null}
           {visiblePanel === "logs-file-upload" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-file-upload", t)} category="file_upload" /> : null}
           {visiblePanel === "logs-ai" ? <LogsPanel token={auth.token} title={panelTitleV2("logs-ai", t)} category="ai_call" /> : null}
-          {visiblePanel === "ai-providers" ? <AIProvidersPanel initialConfig={config.ai ?? emptyConfig.ai!} token={auth.token} /> : null}
-          {visiblePanel === "ai-models" ? <AIModelsPanel initialConfig={config.ai ?? emptyConfig.ai!} token={auth.token} /> : null}
-          {visiblePanel === "ai-task-models" ? <AITaskModelsPanel initialConfig={config.ai ?? emptyConfig.ai!} token={auth.token} /> : null}
+          {visiblePanel === "ai-providers" ? <AIProvidersPanel token={auth.token} /> : null}
+          {visiblePanel === "ai-models" ? <AIModelsPanel token={auth.token} /> : null}
+          {visiblePanel === "ai-task-models" ? <AITaskModelsPanel token={auth.token} /> : null}
           {visiblePanel === "ai-costs" ? <AICostsPanel token={auth.token} /> : null}
           {visiblePanel === "ai-task-logs" ? <AITaskLogsPanel token={auth.token} /> : null}
         </section>
@@ -690,19 +555,35 @@ function panelTitleV2(panel: PanelId, t: (key: string, params?: Record<string, s
   return titles[panel];
 }
 
+function canViewPanel(user: AuthUser | null, panel: PanelId) {
+  if (panel === "reviews-content") return canAccessReviewQueue(user);
+  if (panel === "user-roles" && !hasPermission(user, "user.read")) return false;
+  const permissions = panelPermissions(panel);
+  return permissions.length === 0 || permissions.some(permission => hasPermission(user, permission));
+}
+
 function panelPermissions(panel: PanelId): string[] {
   if (["general-settings", "yggdrasil", "mail", "auth", "markdown", "profile-settings", "minecraft-versions", "mod-import-settings", "resource-attributes", "review-settings", "server-settings", "nats"].includes(panel)) return ["admin.config.read"];
   if (["ai-providers", "ai-models", "ai-task-models", "ai-costs", "ai-task-logs"].includes(panel)) return ["ai.read"];
-  if (panel === "oss-config") return ["oss.read"];
+  if (["oss-config", "oss-files", "oss-uploads", "oss-scans", "oss-downloads"].includes(panel)) return ["oss.read"];
+  if (panel.startsWith("logs-")) return ["log.read"];
 	if (panel === "project-authorship") return ["project.authorship.manage", "project.team_relation.manage"];
   const permissions: Partial<Record<PanelId, string>> = {
+    "creator-claims": "creator.claim.review",
+    "unresolved-references": "reference.unresolved.read",
+    "economy-config": "economy.read",
+    currencies: "economy.read",
+    "shop-items": "shop.read",
+    "level-config": "level.read",
+    tasks: "task.read",
+    notifications: "notification.system.publish",
+    "notification-templates": "notification.template.manage",
     reports: "report.review",
     bans: "ban.view_internal",
     "site-about": "site_affairs.about.manage",
     "site-changelogs": "site_affairs.changelog.manage",
     "seed-crawler": "seed_crawler.view",
     "project-auto-updates": "project.auto_update.view_logs",
-    "reviews-content": "project.review",
     "reviews-editor": "project.editor.review",
     "reviews-server": "server.review",
     roles: "permission.read",
@@ -712,10 +593,8 @@ function panelPermissions(panel: PanelId): string[] {
     "permission-settings": "permission.read",
     users: "user.read",
     "activity-monitor": "activity.read",
-    "logs-cleanup": "log.read",
     "comment-moderation": "comment.moderate",
     "anti-abuse": "security.anti-abuse.read",
-    "oss-files": "oss.file.read",
     stickers: "sticker.manage",
   };
   return permissions[panel] ? [permissions[panel]] : [];

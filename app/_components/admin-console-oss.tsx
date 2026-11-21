@@ -4,7 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "re
 import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
 import { abortMultipartUpload, completeOSSUpload, computeFileSHA256, formatBytes, putFileToOSS, type OSSDirectUploadTicket } from "../_lib/oss-upload";
-import { EmptyState, InlineMessage, LogPage, LogRetentionConfig, LogRow, OSSConfig, OSSFile, RuntimeLogEntry, RuntimeLogResponse, cleanError, cleanOSSError, displayCell, emptyConfig, formatDateTime, logCategoryTitle } from "./admin-console-shared";
+import { EmptyState, InlineMessage, LogPage, LogRetentionConfig, LogRow, OSSConfig, OSSFile, RuntimeLogEntry, RuntimeLogResponse, cleanError, cleanOSSError, displayCell, defaultOSSConfig, formatDateTime, logCategoryTitle } from "./admin-console-shared";
 
 function normalizeOSSConfigForUI(config: OSSConfig): OSSConfig {
   const region = config.region || "cn-beijing";
@@ -32,7 +32,7 @@ function splitExtensionText(value: string) {
 }
 
 function normalizeExtensionList(values: string[] | undefined) {
-  const fallback = emptyConfig.oss!.allowedExtensions;
+  const fallback = defaultOSSConfig.allowedExtensions;
   const seen = new Set<string>();
   const result: string[] = [];
   for (const value of values && values.length > 0 ? values : fallback) {
@@ -52,9 +52,9 @@ function isAllowedFileName(fileName: string, allowedExtensions: string[]) {
   return normalizeExtensionList(allowedExtensions).some((ext) => lowerName.endsWith(ext));
 }
 
-function OSSConfigPanelV2({ initialConfig, token }: { initialConfig: OSSConfig; token: string }) {
+function OSSConfigPanelV2({ token }: { token: string }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState({ ...normalizeOSSConfigForUI(initialConfig), accessKeySecret: "", securityToken: "" });
+  const [draft, setDraft] = useState({ ...normalizeOSSConfigForUI(defaultOSSConfig), accessKeySecret: "", securityToken: "" });
   const [message, setMessage] = useState("");
   const [loadedToken, setLoadedToken] = useState<string>();
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -338,7 +338,7 @@ function OSSFilesPanel({ token }: { token: string }) {
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState("project");
   const [source, setSource] = useState("admin");
-  const [allowedExtensions, setAllowedExtensions] = useState(emptyConfig.oss!.allowedExtensions);
+  const [allowedExtensions, setAllowedExtensions] = useState(defaultOSSConfig.allowedExtensions);
   const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
@@ -354,7 +354,7 @@ function OSSFilesPanel({ token }: { token: string }) {
       void load();
       void apiRequest<OSSConfig>("/api/v1/admin/config/oss", {}, token)
         .then((config) => setAllowedExtensions(normalizeExtensionList(config.allowedExtensions)))
-        .catch(() => setAllowedExtensions(emptyConfig.oss!.allowedExtensions));
+        .catch(() => setAllowedExtensions(defaultOSSConfig.allowedExtensions));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load, token]);

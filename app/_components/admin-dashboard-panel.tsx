@@ -103,10 +103,10 @@ const emptyOverview: AdminDashboardData["overview"] = {
 
 const projectTypes = ["", "mod", "modpack", "plugin", "addon", "datapack", "map", "resource_pack", "shader_pack", "minecraft_server"];
 
-export function AdminDashboardPanel({ initialData, token, features }: {
+export function AdminDashboardPanel({ initialData, token, featureStatus }: {
   initialData: AdminDashboardData;
   token: string;
-  features: Record<string, boolean>;
+  featureStatus?: React.ReactNode;
 }) {
   const { locale, t } = useI18n();
   const [refreshedDashboard, setRefreshedDashboard] = useState<AdminDashboardData | null>(null);
@@ -158,12 +158,7 @@ export function AdminDashboardPanel({ initialData, token, features }: {
         <DashboardCard icon="◎" label={t("admin.dashboard.totalUsers")} value={overview.totalUsers} hint={t("admin.dashboard.siteTotal")} tone="blue" locale={locale} />
         <DashboardCard icon="◉" label={t("admin.dashboard.viewsToday")} value={overview.viewsToday} hint={t("admin.dashboard.today")} tone="green" locale={locale} />
         <DashboardCard icon="⌁" label={t("admin.dashboard.actionsToday")} value={overview.actionsToday} hint={t("admin.dashboard.today")} tone="violet" locale={locale} />
-        <div className="surface rounded-xl p-4">
-          <p className="text-sm font-black">{t("admin.dashboard.systemState")}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {Object.entries(features).slice(0, 8).map(([key, enabled]) => <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${enabled ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`} key={key}>{key}</span>)}
-          </div>
-        </div>
+        {featureStatus}
       </section>
 
       <section className="surface rounded-xl p-4 sm:p-5">

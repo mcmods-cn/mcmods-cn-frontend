@@ -64,7 +64,8 @@ export function buildNATSUpdatePayload(draft: NATSConfig): NATSUpdatePayload {
     clearToken: draft.clearToken ?? false,
     subjectPrefix: draft.subjectPrefix,
     tasks: draft.tasks,
-    outboxEnabled: draft.outboxEnabled,
+    // Older servers accept this field. Durable delivery is always required.
+    outboxEnabled: true,
     realtime: draft.realtime,
     jetStream: draft.jetStream,
   };
