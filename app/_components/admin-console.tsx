@@ -342,7 +342,7 @@ export function AdminConsole() {
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[292px_1fr]">
+      <div className="flex min-h-screen flex-col lg:grid lg:grid-cols-[292px_minmax(0,1fr)]">
         <aside className="sticky top-0 z-40 border-b border-[var(--line)] bg-[var(--panel)] lg:static lg:z-auto lg:border-b-0 lg:border-r">
           <div className="flex max-h-[80vh] flex-col lg:sticky lg:top-0 lg:h-screen lg:max-h-none">
             <div className="flex items-center gap-3 border-b border-[var(--line)] p-3 lg:block lg:p-4">
@@ -353,10 +353,10 @@ export function AdminConsole() {
                   <span className="block text-xl font-bold">{t("admin.title")}</span>
                 </span>
               </Link>
-              <button aria-expanded={mobileNavigationOpen} aria-label={t("admin.navigation")} className="button-secondary focus-ring shrink-0 px-3 py-2 lg:hidden" type="button" onClick={() => setMobileNavigationOpen((value) => !value)}>{mobileNavigationOpen ? "×" : "☰"}</button>
+              <button aria-controls="admin-navigation" aria-expanded={mobileNavigationOpen} aria-label={t("admin.navigation")} className="button-secondary focus-ring shrink-0 px-3 py-2 lg:hidden" type="button" onClick={() => setMobileNavigationOpen((value) => !value)}>{mobileNavigationOpen ? "×" : "☰"}</button>
             </div>
 
-            <nav className={`${mobileNavigationOpen ? "block" : "hidden"} min-h-0 flex-1 overflow-y-auto p-3 lg:block`}>
+            <nav id="admin-navigation" className={`${mobileNavigationOpen ? "block" : "hidden"} min-h-0 flex-1 overflow-y-auto p-3 lg:block`}>
               {adminNavGroups.map((group) => {
                 const visibleItems = group.items.filter((item) => canViewPanel(auth.user, item.id));
                 if (visibleItems.length === 0) return null;
@@ -364,6 +364,7 @@ export function AdminConsole() {
                 return (
                   <section key={group.id} className="mb-2">
                     <button
+                      aria-expanded={open}
                       data-admin-group={group.id}
                       className="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-3 text-left font-bold hover:bg-[var(--panel-subtle)]"
                       type="button"
@@ -377,6 +378,7 @@ export function AdminConsole() {
                         {visibleItems.map((item) => (
                           <button
                             key={item.id}
+                            aria-current={visiblePanel === item.id ? "page" : undefined}
                             data-admin-panel={item.id}
                             className={`focus-ring rounded-lg px-3 py-2 text-left ${
                               visiblePanel === item.id

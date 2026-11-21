@@ -204,3 +204,27 @@ test("overview requests only dashboard metrics, then retries feature flags witho
     assert.deepEqual(requests, ["/api/v1/admin/dashboard", "/api/v1/admin/config/features", "/api/v1/admin/config/features"]);
   } finally { await browser.close(); }
 });
+
+test("the collapsed mobile admin header leaves the failed panel and its retry directly below it", { timeout: 30_000 }, async () => {
+  const browser = await fixture.page(({ path }) => {
+    if (path === "/api/v1/admin/dashboard") return { status: 503, error: "Synthetic dashboard outage" };
+  }, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/admin`);
+    const retry = page.getByRole("alert").getByRole("button", { name: "Retry", exact: true });
+    await retry.waitFor();
+    const header = page.locator("aside");
+    const sizes = await header.evaluate(aside => {
+      const bar = aside.querySelector('button[aria-controls="admin-navigation"]')?.parentElement;
+      return { aside: aside.getBoundingClientRect().height, bar: bar?.getBoundingClientRect().height ?? 0 };
+    });
+    assert(sizes.bar > 0 && sizes.aside <= sizes.bar + 2, "Collapsed mobile navigation should occupy only the header and its border");
+    const menu = header.locator('button[aria-controls="admin-navigation"]');
+    await menu.click();
+    await page.locator('[data-admin-panel="projects"]').waitFor();
+    await menu.click();
+    await page.locator('[data-admin-panel="projects"]').waitFor({ state: "hidden" });
+    assert.equal(await retry.isVisible(), true);
+  } finally { await browser.close(); }
+});
