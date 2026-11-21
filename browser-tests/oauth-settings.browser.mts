@@ -120,7 +120,8 @@ test("two administrators can disable a provider, rename its client and replace o
     const redirect = first.page.locator('[name="github.redirectUri"]');
     await clientId.fill("edited-client");
     await secret.fill("discarded-draft");
-    await secret.fill(""); // An erased draft must never become a secret-clear request.
+    await secret.fill("   "); // A blank draft must never become a secret-clear request.
+    assert.equal(await secret.inputValue(), "");
     await second.page.locator('[name="github.enabled"]').uncheck();
     await submitSettings(second.page);
     await submitSettings(first.page);

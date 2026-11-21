@@ -21,7 +21,8 @@ export function OAuthSettingsPanel({ config, token }: { config: OAuthConfig; tok
   function edit<K extends keyof ProviderForm>(key: string, field: K, value: ProviderForm[K]) {
     setEdits(current => {
       const changed = { ...current[key] };
-      if (value === providerForm(saved[key])[field]) delete changed[field];
+      const blankSecret = field === "clientSecret" && typeof value === "string" && !value.trim();
+      if (blankSecret || value === providerForm(saved[key])[field]) delete changed[field];
       else changed[field] = value;
       const next = { ...current };
       if (Object.keys(changed).length) next[key] = changed;
