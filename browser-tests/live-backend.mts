@@ -81,10 +81,29 @@ test("Live backend: cookie login, persistent favorites, language changes, deleti
     await page.reload();
     await page.getByRole("textbox", { name: "New collection name", exact: true }).waitFor();
     assert.equal(await collection().count(), 0);
-    const logout = await context.request.post(`${api}/api/v1/auth/logout`, { data: {}, headers: { Origin: origin } });
+    const me = await context.request.get(`${api}/api/v1/auth/me`);
+    assert.equal(me.status(), 200);
+    const { data: identity } = await me.json();
+    assert(typeof identity.sessionMarker === "string" && identity.sessionMarker.length > 0);
+    const logoutRequests: string[] = [];
+    page.on("request", request => {
+      const url = new URL(request.url());
+      if (url.origin === api && url.pathname.startsWith("/api/v1/auth/logout") && request.method() === "POST") {
+        logoutRequests.push(url.pathname);
+      }
+    });
+    await page.locator("header").getByRole("link", { name: identity.username, exact: true }).focus();
+    const confirmed = page.waitForResponse(response => response.url() === `${api}/api/v1/auth/logout/if-current`
+      && response.request().method() === "POST");
+    await page.getByRole("button", { name: "Log out", exact: true }).click();
+    const logout = await confirmed;
     assert.equal(logout.status(), 200);
+    assert(logout.request().postDataJSON()?.sessionMarker === identity.sessionMarker, "Bind logout to the displayed session");
+    assert.equal(Boolean(await logout.headerValue("set-cookie")), false);
+    await page.waitForURL(url => url.origin === origin && url.pathname === "/");
+    assert.deepEqual(logoutRequests, ["/api/v1/auth/logout/if-current"]);
     assert.equal((await context.request.get(`${api}/api/v1/auth/me`)).status(), 401);
-    await page.reload();
+    await page.goto(`${origin}/user?section=favorites`);
     await page.getByRole("heading", { name: "Please log in", exact: true }).waitFor();
     assert.deepEqual(errors, [], "The actual application must not throw during this journey");
   } finally {
