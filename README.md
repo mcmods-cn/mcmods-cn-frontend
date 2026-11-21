@@ -64,6 +64,8 @@ npm run test:browser
 npm audit --audit-level=high
 ```
 
+2026-11-21 在前端 `77b1ff5` 上验证了干净安装、lint、类型检查、401 项单元测试和生产构建。284 项 Chromium 用例全部通过，包含真实 WebGL 调用和模拟 API。独立的真实服务旅程验证了登录、收藏、退出，以及游戏 ZIP 上传、导入、独立审核和公开配方。CI 容器使用 `nextjs`（UID 1001）运行，容器内应用的登录页与公开配置均响应 200。[手机实拍与界面测量](docs/ui/README.md)
+
 以上 `.test` 地址用于模拟 API 的浏览器回归。部署时换成实际的公开 HTTPS 地址。Playwright 套件启动本机 standalone 生产产物，使用合成身份与显式 API fixtures。真实登录、持久化收藏和退出另用 `npm run test:live`，需要同一隔离环境提供 `MCMODS_LIVE_FRONTEND_ORIGIN`、`MCMODS_LIVE_API_ORIGIN`、`MCMODS_LIVE_ACCOUNT`、`MCMODS_LIVE_PASSWORD`。真实资料协议验收见下文。
 
 本地查看生产产物时，使用发布容器采用的 standalone 服务器。静态文件需一同提供。
