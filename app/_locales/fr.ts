@@ -142,6 +142,7 @@ const fr = {
     chineseFallbackHint: "Le chinois simplifié et traditionnel se remplacent mutuellement avant l’anglais.", editablePrimary: "Langue modifiable", translationOnlyPrimary: "Traduction uniquement", save: "Enregistrer les langues", saved: "Préférences de langue enregistrées.", required: "Saisissez les deux langues du contenu.", loadFailed: "Impossible de charger les préférences de langue.", saveFailed: "Impossible d’enregistrer les préférences de langue.",
   },
   admin: { ...en.admin, title: "Console admin", i18n: "Gestion multilingue", translationManager: "Gestion des traductions",
+    nats: { ...en.admin.nats, newStreamCapacity: "Capacité des nouveaux flux (Mio)" },
     ai: { ...en.admin.ai,
       delivery: "Distribution",
       deliveryFailed: "Échec de distribution",

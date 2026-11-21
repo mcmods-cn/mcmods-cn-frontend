@@ -3711,6 +3711,7 @@ const en = {
       },
     },
     nats: {
+      newStreamCapacity: "New stream capacity (MiB)",
       infrastructure: "Infrastructure",
       navTitle: "NATS settings",
       navDescription: "Connection settings and per-task queue concurrency",

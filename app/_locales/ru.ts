@@ -142,6 +142,7 @@ const ru = {
     chineseFallbackHint: "Упрощённый и традиционный китайский подменяют друг друга до перехода к английскому.", editablePrimary: "Редактируемый язык", translationOnlyPrimary: "Только перевод", save: "Сохранить языки", saved: "Языковые настройки сохранены.", required: "Укажите первый и второй языки.", loadFailed: "Не удалось загрузить языковые настройки.", saveFailed: "Не удалось сохранить языковые настройки.",
   },
   admin: { ...en.admin, title: "Панель администрирования", i18n: "Управление языками", translationManager: "Управление переводами",
+    nats: { ...en.admin.nats, newStreamCapacity: "Ёмкость новых потоков (МиБ)" },
     ai: { ...en.admin.ai,
       delivery: "Доставка",
       deliveryFailed: "Ошибка доставки",

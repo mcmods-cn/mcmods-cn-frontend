@@ -142,6 +142,7 @@ const ja = {
     chineseFallbackHint: "簡体字中国語と繁体字中国語は英語より先に相互フォールバックします。", editablePrimary: "編集可能な言語", translationOnlyPrimary: "翻訳専用言語", save: "言語設定を保存", saved: "コンテンツ言語設定を保存しました。", required: "第一・第二言語を入力してください。", loadFailed: "言語設定を読み込めませんでした。", saveFailed: "言語設定を保存できませんでした。",
   },
   admin: { ...en.admin, title: "管理コンソール", i18n: "多言語管理", translationManager: "翻訳管理",
+    nats: { ...en.admin.nats, newStreamCapacity: "新規ストリームの容量（MiB）" },
     ai: { ...en.admin.ai,
       delivery: "配信",
       deliveryFailed: "配信失敗",

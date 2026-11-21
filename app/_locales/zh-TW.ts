@@ -148,6 +148,7 @@ const zhTW = {
     required: "請同時填寫第一內容語言與第二內容語言。", loadFailed: "無法載入內容語言偏好。", saveFailed: "無法儲存內容語言偏好。",
   },
   admin: { ...zhCN.admin, title: "後台管理", i18n: "多語言管理", translationManager: "翻譯管理",
+    nats: { ...zhCN.admin.nats, newStreamCapacity: "新建串流容量（MiB）" },
     ai: { ...zhCN.admin.ai,
       delivery: "投遞",
       deliveryFailed: "投遞失敗",

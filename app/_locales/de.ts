@@ -142,6 +142,7 @@ const de = {
     chineseFallbackHint: "Vereinfachtes und traditionelles Chinesisch greifen vor Englisch aufeinander zurück.", editablePrimary: "Bearbeitbare Sprache", translationOnlyPrimary: "Nur Übersetzung", save: "Sprachen speichern", saved: "Inhaltssprachen gespeichert.", required: "Erste und zweite Inhaltssprache eingeben.", loadFailed: "Inhaltssprachen konnten nicht geladen werden.", saveFailed: "Inhaltssprachen konnten nicht gespeichert werden.",
   },
   admin: { ...en.admin, title: "Admin-Konsole", i18n: "Mehrsprachigkeit", translationManager: "Übersetzungen",
+    nats: { ...en.admin.nats, newStreamCapacity: "Kapazität neuer Streams (MiB)" },
     ai: { ...en.admin.ai,
       delivery: "Zustellung",
       deliveryFailed: "Zustellung fehlgeschlagen",

@@ -3710,6 +3710,7 @@ const zhCN = {
       },
     },
     nats: {
+      newStreamCapacity: "新建流容量（MiB）",
       infrastructure: "基础设施",
       navTitle: "NATS 设置",
       navDescription: "连接设置与各类任务的队列并发配置",
