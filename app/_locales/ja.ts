@@ -81,6 +81,12 @@ const ja = {
     },
   },
   common: { ...en.common, home: "ホーム", login: "ログイン", register: "登録", logout: "ログアウト", admin: "管理", save: "保存", delete: "削除", language: "言語" },
+  site: {
+    ...en.site,
+    logoutPending: "ログアウトしています…",
+    logoutUnconfirmed: "サーバーでログアウトを確認できませんでした。もう一度お試しください。",
+    logoutRevoked: "セッションは無効になりました。一部のサービスではまだログイン状態を更新しています。しばらくしてからもう一度確認してください。",
+  },
   home: {
     ...en.home,
     title: "リソースナビゲーション",

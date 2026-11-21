@@ -81,6 +81,12 @@ const ru = {
     },
   },
   common: { ...en.common, home: "Главная", login: "Войти", register: "Регистрация", logout: "Выйти", admin: "Админ", save: "Сохранить", delete: "Удалить", language: "Язык" },
+  site: {
+    ...en.site,
+    logoutPending: "Завершаем сеанс…",
+    logoutUnconfirmed: "Сервер ещё не подтвердил выход. Повторите попытку.",
+    logoutRevoked: "Сеанс отозван. Некоторые сервисы ещё обновляют статус входа. Проверьте ещё раз чуть позже.",
+  },
   home: {
     ...en.home,
     title: "Навигация по ресурсам",

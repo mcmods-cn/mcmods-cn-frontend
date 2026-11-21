@@ -82,6 +82,12 @@ const zhTW = {
   },
   common: { ...zhCN.common, home: "首頁", login: "登入", register: "註冊", logout: "登出", admin: "後台", save: "儲存", delete: "刪除", language: "語言" },
   nav: { ...zhCN.nav, plugins: "插件", skins: "皮膚" },
+  site: {
+    ...zhCN.site,
+    logoutPending: "正在登出…",
+    logoutUnconfirmed: "伺服器尚未確認登出，請重試。",
+    logoutRevoked: "工作階段已撤銷，部分服務仍在更新登入狀態。請稍後重試確認。",
+  },
   home: {
     ...zhCN.home,
     title: "資源導覽",

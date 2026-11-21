@@ -2032,6 +2032,9 @@ const zhCN = {
     statuses: { pending: "等待审核", approved: "已通过", rejected: "已驳回", conflicted: "版本冲突", withdrawn: "已撤回", staging: "处理中", ready: "导入完成", partial: "部分导入", superseded: "已被新版本替代" },
   },
   site: {
+    logoutPending: "正在退出登录…",
+    logoutUnconfirmed: "服务器尚未确认退出，请重试。",
+    logoutRevoked: "会话已撤销，部分服务仍在更新登录状态。请稍后重试确认。",
     mainNavigation: "主导航",
     scrollNavigationLeft: "向左滚动导航栏",
     scrollNavigationRight: "向右滚动导航栏",

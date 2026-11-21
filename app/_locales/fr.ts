@@ -81,6 +81,12 @@ const fr = {
     },
   },
   common: { ...en.common, home: "Accueil", login: "Connexion", register: "Inscription", logout: "Déconnexion", admin: "Admin", save: "Enregistrer", delete: "Supprimer", language: "Langue" },
+  site: {
+    ...en.site,
+    logoutPending: "Déconnexion en cours…",
+    logoutUnconfirmed: "Le serveur n’a pas encore confirmé la déconnexion. Réessayez.",
+    logoutRevoked: "Votre session a été révoquée. Certains services mettent encore à jour votre statut de connexion. Réessayez dans un instant.",
+  },
   home: {
     ...en.home,
     title: "Navigation des ressources",

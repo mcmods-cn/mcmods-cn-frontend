@@ -81,6 +81,12 @@ const es = {
     },
   },
   common: { ...en.common, home: "Inicio", login: "Iniciar sesión", register: "Registrarse", logout: "Cerrar sesión", admin: "Admin", save: "Guardar", delete: "Eliminar", language: "Idioma" },
+  site: {
+    ...en.site,
+    logoutPending: "Cerrando sesión…",
+    logoutUnconfirmed: "El servidor aún no ha confirmado el cierre de sesión. Vuelve a intentarlo.",
+    logoutRevoked: "Se ha revocado tu sesión. Algunos servicios siguen actualizando su estado. Vuelve a comprobarlo en unos instantes.",
+  },
   home: {
     ...en.home,
     title: "Navegación de recursos",

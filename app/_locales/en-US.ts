@@ -2032,6 +2032,9 @@ const en = {
     statuses: { pending: "Pending review", approved: "Approved", rejected: "Rejected", conflicted: "Conflicted", withdrawn: "Withdrawn", staging: "Processing", ready: "Imported", partial: "Partially imported", superseded: "Superseded" },
   },
   site: {
+    logoutPending: "Signing out…",
+    logoutUnconfirmed: "The server hasn’t confirmed sign-out. Please retry.",
+    logoutRevoked: "Your session was revoked. Some services are still updating. Retry shortly to confirm.",
     mainNavigation: "Main navigation",
     scrollNavigationLeft: "Scroll navigation left",
     scrollNavigationRight: "Scroll navigation right",

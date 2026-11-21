@@ -81,6 +81,12 @@ const de = {
     },
   },
   common: { ...en.common, home: "Start", login: "Anmelden", register: "Registrieren", logout: "Abmelden", admin: "Admin", save: "Speichern", delete: "Löschen", language: "Sprache" },
+  site: {
+    ...en.site,
+    logoutPending: "Abmeldung läuft…",
+    logoutUnconfirmed: "Der Server hat die Abmeldung noch nicht bestätigt. Bitte erneut versuchen.",
+    logoutRevoked: "Die Sitzung wurde widerrufen. Einige Dienste aktualisieren noch den Anmeldestatus. Bitte in Kürze erneut prüfen.",
+  },
   home: {
     ...en.home,
     title: "Ressourcen-Navigation",
