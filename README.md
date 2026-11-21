@@ -68,6 +68,12 @@ npm audit --audit-level=high
 
 以上 `.test` 地址用于模拟 API 的浏览器回归。部署时换成实际的公开 HTTPS 地址。Playwright 套件启动本机 standalone 生产产物，使用合成身份与显式 API fixtures。真实登录、持久化收藏和退出另用 `npm run test:live`，需要同一隔离环境提供 `MCMODS_LIVE_FRONTEND_ORIGIN`、`MCMODS_LIVE_API_ORIGIN`、`MCMODS_LIVE_ACCOUNT`、`MCMODS_LIVE_PASSWORD`。真实资料协议验收见下文。
 
+要核对原版火把的绘制位置，在完成生产构建后提供 Minecraft 1.20.1 的 `minecraft` 单命名空间、`all` 导出 ZIP。该用例通过本地 API 夹具加载原包的模板、背景和火把图标，再在 Chromium 实拍中检查火焰是否落入工作台输出格。常规套件也验证自定义流体的绘制区域可大于命中格。
+
+```bash
+MCMODS_TEST_VANILLA_GEOMETRY_ZIP=/path/to/minecraft.zip node --test browser-tests/recipe-slot-pixels.browser.mts
+```
+
 本地查看生产产物时，使用发布容器采用的 standalone 服务器。静态文件需一同提供。
 
 ```bash
