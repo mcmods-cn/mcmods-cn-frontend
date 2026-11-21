@@ -102,6 +102,29 @@ test("OCT02 user permission reads must succeed before an empty draft can be save
   } finally { await browser.close(); }
 });
 
+test("the translation editor pages the entire dictionary and preserves local edits across scopes", { timeout: 30_000 }, async () => {
+  const browser = await fixture.page(() => undefined);
+  try {
+    const { page } = browser;
+    await panel(page, "i18n", "system");
+    const rows = page.locator("tbody tr");
+    assert.equal(await rows.count(), 50);
+    const key = await rows.first().locator("td").first().innerText();
+    await rows.first().locator("textarea").fill("Saved local wording");
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    assert.equal(await rows.count(), 50);
+    assert.notEqual(await rows.first().locator("td").first().innerText(), key);
+    await page.getByRole("button", { name: "Previous", exact: true }).click();
+    assert.equal(await rows.first().locator("textarea").inputValue(), "Saved local wording");
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.locator('input[placeholder*="key / text"]').fill(key);
+    const row = rows.filter({ has: page.getByRole("cell", { name: key, exact: true }) });
+    assert.equal(await row.locator("textarea").inputValue(), "Saved local wording");
+    await page.locator('input[placeholder*="key / text"]').fill("");
+    assert.equal(await rows.first().locator("td").first().innerText(), key);
+  } finally { await browser.close(); }
+});
+
 test("OCT02 a late local AI completion cannot overwrite manual translations", { timeout: 30_000 }, async () => {
   const started = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();

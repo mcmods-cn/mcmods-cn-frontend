@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
+import { CatalogPagination } from "./catalog-list-ui";
 import { apiRequest } from "../_lib/api";
 import { hasSameI18nPlaceholders } from "../_lib/i18n-message.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
@@ -733,6 +734,8 @@ function isResourceDataPageTranslationKey(key: string) {
   return key.startsWith("mods.detail.dataCategories.") || key.startsWith("mods.detail.dataDescriptions.");
 }
 
+const translationPageSize = 50;
+
 function TranslationManagerPanel({ token }: { token: string }) {
   const {
     locale,
@@ -750,13 +753,15 @@ function TranslationManagerPanel({ token }: { token: string }) {
   const [targetLocale, setTargetLocale] = useState<Locale>(locale);
   const [query, setQuery] = useState("");
   const [missingOnly, setMissingOnly] = useState(false);
+  const [page, setPage] = useState(1);
   const [aiCompleting, setAICompleting] = useState(false);
   const completionGeneration = useRef(0);
   useEffect(() => () => { completionGeneration.current += 1; }, [token]);
 
-  const visibleKeys = translationKeys.filter((key) => {
+  const keyword = query.trim().toLowerCase();
+  const filteredKeys = translationKeys.filter((key) => {
     if (isResourceDataPageTranslationKey(key)) return false;
-    const keyword = query.trim().toLowerCase();
+    if (!keyword && !missingOnly) return true;
     const targetOwn = getOwnTranslation(targetLocale, key);
     if (missingOnly && targetOwn.trim() !== "") return false;
     if (!keyword) return true;
@@ -767,6 +772,11 @@ function TranslationManagerPanel({ token }: { token: string }) {
     );
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredKeys.length / translationPageSize));
+  const currentPage = Math.min(page, totalPages);
+  const offset = (currentPage - 1) * translationPageSize;
+  const pageKeys = filteredKeys.slice(offset, offset + translationPageSize);
+
   function saveTranslation(key: string, value: string) {
     setTranslation(targetLocale, key, value);
   }
@@ -776,7 +786,7 @@ function TranslationManagerPanel({ token }: { token: string }) {
       notifyAdminNotice(t("admin.ai.sameLanguage"), t("admin.noticeTitle"), "danger");
       return;
     }
-    const candidates = visibleKeys
+    const candidates = filteredKeys
       .filter((key) => getOwnTranslation(targetLocale, key).trim() === "" && getTranslation(sourceLocale, key).trim() !== "")
       .slice(0, 100);
     if (candidates.length === 0) {
@@ -822,7 +832,7 @@ function TranslationManagerPanel({ token }: { token: string }) {
           <select
             className="field mt-2"
             value={sourceLocale}
-            onChange={(event) => setSourceLocale(event.target.value as Locale)}
+            onChange={(event) => { setPage(1); setSourceLocale(event.target.value as Locale); }}
           >
             {supportedLocales.map((item) => (
               <option key={item.code} value={item.code}>
@@ -836,7 +846,7 @@ function TranslationManagerPanel({ token }: { token: string }) {
             <select
               className="field mt-2"
               value={targetLocale}
-              onChange={(event) => setTargetLocale(event.target.value as Locale)}
+              onChange={(event) => { setPage(1); setTargetLocale(event.target.value as Locale); }}
             >
             {supportedLocales.map((item) => (
               <option key={item.code} value={item.code}>
@@ -852,11 +862,11 @@ function TranslationManagerPanel({ token }: { token: string }) {
           <input
             className="field min-w-0 flex-1"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setPage(1); setQuery(event.target.value); }}
             placeholder={`${t("common.search")} key / text`}
           />
           <label className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm font-semibold">
-            <input checked={missingOnly} type="checkbox" onChange={(event) => setMissingOnly(event.target.checked)} />
+            <input checked={missingOnly} type="checkbox" onChange={(event) => { setPage(1); setMissingOnly(event.target.checked); }} />
             {t("admin.missingOnly")}
           </label>
           <button className="button-primary focus-ring whitespace-nowrap" disabled={aiCompleting} type="button" onClick={completeMissingTranslations}>
@@ -882,7 +892,7 @@ function TranslationManagerPanel({ token }: { token: string }) {
             </tr>
           </thead>
           <tbody>
-            {visibleKeys.map((key) => {
+            {pageKeys.map((key) => {
               const baseTarget = getBaseTranslation(targetLocale, key);
               const target = getOwnTranslation(targetLocale, key);
               const edited = target !== "" && target !== baseTarget;
@@ -911,6 +921,21 @@ function TranslationManagerPanel({ token }: { token: string }) {
           </tbody>
         </table>
       </div>
+      {totalPages > 1 && <div className="px-4 pb-4">
+        <CatalogPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={translationPageSize}
+          labels={{
+            previous: t("common.previous"),
+            next: t("common.next"),
+            pageSize: t("mods.pagination.pageSize"),
+            pageSummary: t("mods.pagination.pageSummary", { page: currentPage, pages: totalPages }),
+            itemSummary: t("mods.pagination.itemSummary", { start: offset + 1, end: offset + pageKeys.length, total: filteredKeys.length }),
+          }}
+          onPageChange={setPage}
+        />
+      </div>}
     </section>
   );
 }
