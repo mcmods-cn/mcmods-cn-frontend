@@ -64,7 +64,7 @@ npm run test:browser
 npm audit --audit-level=high
 ```
 
-2026-11-21 在前端 `77b1ff5` 上验证了干净安装、lint、类型检查、401 项单元测试和生产构建。284 项 Chromium 用例全部通过，包含真实 WebGL 调用和模拟 API。独立的真实服务旅程验证了登录、收藏、退出，以及游戏 ZIP 上传、导入、独立审核和公开配方。CI 容器使用 `nextjs`（UID 1001）运行，容器内应用的登录页与公开配置均响应 200。[手机实拍与界面测量](docs/ui/README.md)
+2026-11-21 在前端 `8d9e882` 的干净检出中，依赖安装、ESLint、TypeScript、409 项单元测试和生产构建均通过。289 项 Chromium 用例使用合成 API，覆盖原生 WebGL、同账号重新登录、跨标签页退出和旧服务回退。独立的真实服务验证通过了登录、收藏、菜单退出，以及 Fabric 和 Forge 游戏 ZIP 的上传、导入、独立审核与公开配方展示。发布镜像以 `nextjs`（UID 1001）启动，登录页和公开认证配置端点均返回 200。[手机实拍与界面测量](docs/ui/README.md)
 
 以上 `.test` 地址用于模拟 API 的浏览器回归。部署时换成实际的公开 HTTPS 地址。Playwright 套件启动本机 standalone 生产产物，使用合成身份与显式 API fixtures。真实登录、持久化收藏和退出另用 `npm run test:live`，需要同一隔离环境提供 `MCMODS_LIVE_FRONTEND_ORIGIN`、`MCMODS_LIVE_API_ORIGIN`、`MCMODS_LIVE_ACCOUNT`、`MCMODS_LIVE_PASSWORD`。真实资料协议验收见下文。
 
@@ -76,7 +76,7 @@ cp -r .next/static .next/standalone/.next/
 HOSTNAME=127.0.0.1 PORT=3000 node .next/standalone/server.js
 ```
 
-生产发布与回滚均按**完整镜像与对应构建配置**切换。本轮前端变更无需迁移数据库。先部署支持面板独立读取和现有导入状态的后端，再更新前端，检查 `/authentication-write-config` 指向目标 API。登录不保持时核对后端允许的前端 origin 与 Cookie 设置。浏览器上传失败时核对签名地址的 CSP origin。缺少样式或出现静态资源 404 时检查 `public`、`.next/static` 是否和同一次构建的 server.js 一同部署。
+生产发布与回滚均按**完整镜像与对应构建配置**切换。本轮前端变更无需迁移数据库。先将所有 API 实例升级到支持后台面板独立读取、OAuth 按字段 PATCH、条件退出和当前导入状态的版本，再更新前端。检查 `/authentication-write-config` 指向目标 API。回滚至旧 API 时，条件退出路由返回 404/405，页面允许检查当前账号。OAuth 设置保留未保存的草稿，支持 PATCH 的实例恢复后可重试。登录不保持时核对后端允许的前端 origin 与 Cookie 设置。浏览器上传失败时核对签名地址的 CSP origin。缺少样式或出现静态资源 404 时检查 `public`、`.next/static` 是否和同一次构建的 server.js 一同部署。
 
 ## 依赖审查
 
