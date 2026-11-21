@@ -15,16 +15,17 @@ type ProviderForm = ReturnType<typeof providerForm>;
 export function OAuthSettingsPanel({ config, token }: { config: OAuthConfig; token: string }) {
   const { t } = useI18n();
   const [saved, setSaved] = useState(config.providers);
-  const [edits, setEdits] = useState<Record<string, ProviderForm>>({});
+  const [edits, setEdits] = useState<Record<string, Partial<ProviderForm>>>({});
   const [saving, setSaving] = useState(false);
 
-  function edit(key: string, change: Partial<ProviderForm>) {
+  function edit<K extends keyof ProviderForm>(key: string, field: K, value: ProviderForm[K]) {
     setEdits(current => {
-      const original = saved[key];
-      const value = { ...(current[key] ?? providerForm(original)), ...change };
+      const changed = { ...current[key] };
+      if (value === providerForm(saved[key])[field]) delete changed[field];
+      else changed[field] = value;
       const next = { ...current };
-      if (!value.clientSecret && value.enabled === original.enabled && value.clientId === original.clientId && value.redirectUri === original.redirectUri) delete next[key];
-      else next[key] = value;
+      if (Object.keys(changed).length) next[key] = changed;
+      else delete next[key];
       return next;
     });
   }
@@ -35,7 +36,7 @@ export function OAuthSettingsPanel({ config, token }: { config: OAuthConfig; tok
     setSaving(true);
     try {
       const updated = await apiRequest<OAuthConfig>("/api/v1/admin/config/oauth", {
-        method: "PUT", body: JSON.stringify({ providers: edits }),
+        method: "PATCH", body: JSON.stringify({ providers: edits }),
       }, token);
       if (!hasCompleteOAuthConfig(updated)) throw new Error(t("common.loadFailed"));
       setSaved(updated.providers);
@@ -53,17 +54,17 @@ export function OAuthSettingsPanel({ config, token }: { config: OAuthConfig; tok
     <form onSubmit={save}>
       <fieldset className="grid min-w-0 gap-4" disabled={saving}>
         {oauthProviders.map(({ key, label }) => {
-          const value = edits[key] ?? providerForm(saved[key]);
+          const value = { ...providerForm(saved[key]), ...edits[key] };
           return <div key={key} className="grid gap-3 rounded-lg border border-[var(--line)] p-3 lg:grid-cols-[120px_1fr_1fr_1fr]">
             <label className="flex items-center gap-2 text-sm font-semibold">
-              <input checked={value.enabled} name={`${key}.enabled`} type="checkbox" onChange={event => edit(key, { enabled: event.target.checked })} />
+              <input checked={value.enabled} name={`${key}.enabled`} type="checkbox" onChange={event => edit(key, "enabled", event.target.checked)} />
               {label}
             </label>
-            <input className="field" name={`${key}.clientId`} value={value.clientId} placeholder="AppID / Client ID" aria-label={`${label} Client ID`} onChange={event => edit(key, { clientId: event.target.value })} />
+            <input className="field" name={`${key}.clientId`} value={value.clientId} placeholder="AppID / Client ID" aria-label={`${label} Client ID`} onChange={event => edit(key, "clientId", event.target.value)} />
             <input className="field" name={`${key}.clientSecret`} type="password" autoComplete="new-password" value={value.clientSecret} aria-label={`${label} Client Secret`}
-              placeholder={saved[key].hasClientSecret ? t("admin.clientSecretSaved") : "AppSecret / Client Secret"} onChange={event => edit(key, { clientSecret: event.target.value })} />
+              placeholder={saved[key].hasClientSecret ? t("admin.clientSecretSaved") : "AppSecret / Client Secret"} onChange={event => edit(key, "clientSecret", event.target.value)} />
             <input className="field" name={`${key}.redirectUri`} value={value.redirectUri} aria-label={`${label} redirect_uri`}
-              placeholder={`${API_BASE_URL}/api/v1/auth/oauth/${key}/callback`} onChange={event => edit(key, { redirectUri: event.target.value })} />
+              placeholder={`${API_BASE_URL}/api/v1/auth/oauth/${key}/callback`} onChange={event => edit(key, "redirectUri", event.target.value)} />
           </div>;
         })}
         <div><button className="button-primary focus-ring" type="submit" disabled={!Object.keys(edits).length}>{t("admin.saveOauth")}</button></div>
