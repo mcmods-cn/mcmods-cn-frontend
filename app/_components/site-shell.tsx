@@ -7,7 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { type WheelEvent as ReactWheelEvent, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
-import { canAccessAdmin, canAccessReviewQueue, clearAuth, retryAuthentication, type AuthUser, useAuthSnapshot } from "../_lib/auth";
+import { canAccessAdmin, canAccessReviewQueue, clearAuth, retryAuthentication, type AuthSnapshot, type AuthUser, useAuthSnapshot } from "../_lib/auth";
 import { isBackendUnavailable, reportBackendAvailability } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { readBrowserStorage, writeBrowserStorage } from "../_lib/browser-storage.mts";
@@ -66,9 +66,11 @@ const navItems: HeaderNavItem[] = [
 export function SiteShell({ children }: SiteShellProps) {
   const pathname = usePathname();
   const admin = pathname?.startsWith("/admin");
+  const auth = useAuthSnapshot();
+  if (auth.logoutStatus && pathname !== "/login") return <AuthenticationRecovery auth={auth} />;
   return (
     <>
-      <AuthenticationRecovery />
+      <AuthenticationRecovery auth={auth} />
       <SitePresence />
       <RealtimeBridge />
       {admin ? <BackendStatusBanner /> : <SiteHeader />}
@@ -78,8 +80,7 @@ export function SiteShell({ children }: SiteShellProps) {
   );
 }
 
-function AuthenticationRecovery() {
-  const { error, retryAt } = useAuthSnapshot();
+function AuthenticationRecovery({ auth: { error, retryAt, logoutStatus } }: { auth: AuthSnapshot }) {
   const { t } = useI18n();
   const [retryReady, setRetryReady] = useState(false);
   useEffect(() => {
@@ -95,6 +96,15 @@ function AuthenticationRecovery() {
     queueMicrotask(() => { if (!cancelled) { setRetryReady(false); check(); } });
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [error, retryAt]);
+  if (logoutStatus) {
+    const pending = logoutStatus === "pending";
+    const key = pending ? "site.logoutPending" : logoutStatus === "revoked" ? "site.logoutRevoked" : "site.logoutUnconfirmed";
+    return <div className="flex flex-wrap items-center gap-3 border-b border-[var(--line)] bg-[var(--panel)] p-4" role="status">
+      <span>{t(key)}</span>
+      {pending ? null : <button className="button-secondary focus-ring" type="button" onClick={() => void clearAuth()}>{t("common.retry")}</button>}
+      <Link className="text-link focus-ring" href="/login">{t("common.login")}</Link>
+    </div>;
+  }
   if (!error) return null;
   const wait = Boolean(retryAt) && !retryReady;
   return <div className="border-b border-[var(--warning)] bg-[var(--panel)] p-3" role="status">{t("site.authTemporarilyUnavailable")} <button className="button-secondary focus-ring" disabled={wait} type="button" onClick={() => void retryAuthentication()}>{t("common.retry")}</button></div>;
@@ -480,7 +490,7 @@ function SiteHeader() {
                       {canAccessAdmin(user) ? <ProfileMenuLink href="/admin">{t("common.admin")}</ProfileMenuLink> : null}
                     </nav>
                     <div className="border-t border-[var(--line)] p-2">
-                      <button className="focus-ring w-full rounded-md px-3 py-2 text-left text-sm font-bold text-[var(--red)] hover:bg-[var(--panel-subtle)]" type="button" onClick={() => { clearAuth(); router.replace("/"); router.refresh(); }}>
+                      <button className="focus-ring w-full rounded-md px-3 py-2 text-left text-sm font-bold text-[var(--red)] hover:bg-[var(--panel-subtle)]" type="button" onClick={async () => { if (await clearAuth()) { router.replace("/"); router.refresh(); } }}>
                         {t("common.logout")}
                       </button>
                     </div>

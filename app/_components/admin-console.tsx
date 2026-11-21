@@ -293,7 +293,7 @@ export function AdminConsole() {
   }, [t]);
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!authReady || auth.logoutStatus) return;
     if (!auth.token) {
       router.replace("/login?next=/admin");
       return;
@@ -302,7 +302,7 @@ export function AdminConsole() {
       router.replace("/");
       return;
     }
-  }, [allowed, auth.token, authReady, router]);
+  }, [allowed, auth.token, auth.logoutStatus, authReady, router]);
 
   function toggleGroup(groupId: string) {
     setExpanded((current) =>
@@ -311,8 +311,7 @@ export function AdminConsole() {
   }
 
   function logout() {
-    clearAuth();
-    router.push("/login");
+    void clearAuth();
   }
 
   const noticeModal = (

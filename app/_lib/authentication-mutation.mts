@@ -82,6 +82,7 @@ function checkedRequest(input: RequestInfo | URL, init: RequestInit | undefined,
  * publish before an earlier reply. There is deliberately no lease or timeout.
  */
 export function runAuthenticationMutation<T>(apiBaseURL: string, operation: (context: AuthenticationMutation) => Promise<T>): Promise<T> {
+  if (!globalThis.crypto?.randomUUID) return Promise.reject(new Error(unavailableMessage));
   const controller = new AbortController();
   const id = globalThis.crypto.randomUUID();
   let requestCount = 0;

@@ -1,8 +1,8 @@
 "use client";
 
-import { writeBrowserStorage } from "./browser-storage.mts";
+import { readBrowserStorage, writeBrowserStorage } from "./browser-storage.mts";
 import { useEffect, useState } from "react";
-import { API_BASE_URL, advanceAuthenticationGeneration, backendFetch, isBearerAccessToken, rememberAuthorizationVersion } from "./api";
+import { API_BASE_URL, advanceAuthenticationGeneration, apiRequest, ApiError, backendFetch, isBearerAccessToken, rememberAuthorizationVersion } from "./api";
 import { runAuthenticationMutation } from "./authentication-mutation.mts";
 
 type AuthPermissionRule = {
@@ -35,11 +35,13 @@ export type AuthSnapshot = {
   user: AuthUser | null;
   error?: string;
   retryAt?: number;
+  logoutStatus?: "pending" | "retry" | "revoked";
 };
 
 export const cookieSessionToken = "cookie-session";
 
 const authSyncKey = "mcmods-auth-sync";
+const profileSyncKey = "mcmods-profile-update";
 
 let activeToken = "";
 let activeUser: AuthUser | null = null;
@@ -48,11 +50,18 @@ let authGeneration = 0;
 let authReady = false;
 let authError = "";
 let authRetryAt = 0;
+type LogoutIntent = { id: string; token: string; revoked: boolean; request?: Promise<boolean> };
+let logoutIntent: LogoutIntent | undefined;
 const authSubscribers = new Set<(snapshot: AuthSnapshot) => void>();
 let authEventsInstalled = false;
 
+function currentSnapshot(): AuthSnapshot {
+  const logoutStatus = logoutIntent?.request ? "pending" : logoutIntent?.revoked ? "revoked" : logoutIntent ? "retry" : undefined;
+  return { ready: authReady, token: activeToken, user: activeUser, error: authError, retryAt: authRetryAt, logoutStatus };
+}
+
 function publishAuthSnapshot() {
-  const snapshot = { ready: authReady, token: activeToken, user: activeUser, error: authError, retryAt: authRetryAt };
+  const snapshot = currentSnapshot();
   for (const subscriber of authSubscribers) subscriber(snapshot);
 }
 
@@ -69,11 +78,27 @@ function expireAuthSnapshot() {
   publishAuthSnapshot();
 }
 
+function syncLogoutIntent(marker: string | null) {
+  const match = /^(logout-pending|logout-revoked):(.+)$/.exec(marker ?? "");
+  if (!match) return false;
+  if (logoutIntent?.id !== match[2]) logoutIntent = { id: match[2], token: "", revoked: false };
+  logoutIntent.revoked ||= match[1] === "logout-revoked";
+  expireAuthSnapshot();
+  return true;
+}
+
 function synchronizeAuthTabs(event: StorageEvent) {
-  if (event.key !== authSyncKey) return;
+  if (event.key === profileSyncKey && activeUser && event.newValue?.startsWith(`${activeUser.id}:`)) {
+    void bootstrapAuth(true);
+    return;
+  }
+  if (event.key !== authSyncKey || (event.storageArea && readBrowserStorage(authSyncKey) !== event.newValue)) return;
+  if (syncLogoutIntent(event.newValue)) return;
   if (event.newValue?.startsWith("logout:")) {
+    logoutIntent = undefined;
     expireAuthSnapshot();
   } else if (event.newValue?.startsWith("login:")) {
+    logoutIntent = undefined;
     // Invalidate once for the whole module, rather than once for every hook.
     expireAuthSnapshot();
     authReady = false;
@@ -90,19 +115,24 @@ function subscribeAuthSnapshot(subscriber: (snapshot: AuthSnapshot) => void) {
   authSubscribers.add(subscriber);
   if (!authEventsInstalled) {
     authEventsInstalled = true;
+    syncLogoutIntent(readBrowserStorage(authSyncKey));
     // One listener set belongs to the browser module for its window lifetime.
     // Hook subscriptions are removed independently on component unmount.
     window.addEventListener("storage", synchronizeAuthTabs);
-    window.addEventListener("mcmods-auth-change", publishAuthSnapshot);
     window.addEventListener("mcmods-auth-expired", expireAuthSnapshot);
     window.addEventListener("mcmods-permissions-changed", refreshAuthPermissions);
   }
-  subscriber({ ready: authReady, token: activeToken, user: activeUser, error: authError, retryAt: authRetryAt });
+  subscriber(currentSnapshot());
   if (!authReady && !authError) void bootstrapAuth();
   return () => { authSubscribers.delete(subscriber); };
 }
 
+function syncID() {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}:${Math.random()}`;
+}
+
 export function saveAuth(result: AuthResult) {
+  logoutIntent = undefined;
   authGeneration += 1;
   advanceAuthenticationGeneration();
   bootstrapRequest = null;
@@ -112,34 +142,76 @@ export function saveAuth(result: AuthResult) {
   activeUser = normalizeAuthUser(result.user);
   authReady = true;
   rememberAuthorizationVersion(activeUser.permissionVersion, activeUser.rbacVersion);
-  broadcastAuthChange("login");
-  window.dispatchEvent(new Event("mcmods-auth-change"));
+  writeBrowserStorage(authSyncKey, `login:${syncID()}`);
+  publishAuthSnapshot();
 }
 
-export function clearAuth() {
-  if (authReady && !activeToken && !activeUser) return;
-  authGeneration += 1;
-  advanceAuthenticationGeneration();
-  const logoutToken = activeToken;
-  const headers = new Headers();
-  if (isBearerAccessToken(logoutToken)) headers.set("Authorization", `Bearer ${logoutToken}`);
-  // Register the write before another tab observes guest state and signs in.
-  const logout = runAuthenticationMutation(API_BASE_URL, ({ fetch: fetcher }) => backendFetch(`${API_BASE_URL}/api/v1/auth/logout`, {
-    method: "POST",
-    credentials: "include",
-    headers,
-  }, fetcher));
-  authError = "";
-  authRetryAt = 0;
-  activeToken = "";
-  activeUser = null;
-  authReady = true;
-  rememberAuthorizationVersion();
-  bootstrapRequest = null;
-  broadcastAuthChange("logout");
-  window.dispatchEvent(new Event("mcmods-auth-change"));
+export function updateAuthProfile(user: AuthUser, fields: Pick<AuthUser, "username" | "avatarUrl" | "signature">) {
+  // A response to an edit cannot establish a session or update a new actor.
+  if (user !== activeUser || logoutIntent) return;
+  activeUser = { ...user, ...fields };
+  writeBrowserStorage(profileSyncKey, `${user.id}:${syncID()}`);
+  publishAuthSnapshot();
+}
 
-  void logout.catch(() => undefined);
+function ownsLogout(intent: LogoutIntent) {
+  const marker = readBrowserStorage(authSyncKey);
+  return logoutIntent === intent && (marker === `logout-pending:${intent.id}` || marker === `logout-revoked:${intent.id}`);
+}
+
+function submitLogout(intent: LogoutIntent): Promise<boolean> {
+  if (intent.request) return intent.request;
+  const request = runAuthenticationMutation(API_BASE_URL, async ({ fetch: fetcher, assertCurrent }) => {
+    // A retry queued in another tab must never revoke a newer login.
+    if (!ownsLogout(intent)) return false;
+    // The current site uses cookies. Older bearer-only clients can retry from
+    // the tab holding the credential, without storing or substituting a token.
+    if (intent.id.startsWith("bearer:") && !isBearerAccessToken(intent.token)) return false;
+    try {
+      const response = await apiRequest<{ ok: boolean }>("/api/v1/auth/logout", { method: "POST" }, intent.token, fetcher);
+      if (response?.ok !== true) return false;
+    } catch (error) {
+      if (!(error instanceof ApiError)) throw error;
+      const details = error.details as { committed?: boolean; operation?: string } | null;
+      if (error.code === "SECURITY_VERSION_REFRESH_FAILED" && details?.committed === true && details.operation === "logout" && ownsLogout(intent)) {
+        intent.revoked = true;
+        writeBrowserStorage(authSyncKey, `logout-revoked:${intent.id}`);
+      }
+      // The protected endpoint also returns 401 for an already revoked cookie.
+      if (error.status !== 401) return false;
+    }
+    assertCurrent();
+    if (!ownsLogout(intent)) return false;
+    // Publish while holding the same write lock as sign-in and registration.
+    writeBrowserStorage(authSyncKey, `logout:${intent.id}`);
+    logoutIntent = undefined;
+    expireAuthSnapshot();
+    return true;
+  }).catch(() => false).finally(() => {
+    if (logoutIntent !== intent) return;
+    intent.request = undefined;
+    publishAuthSnapshot();
+  });
+  intent.request = request;
+  return request;
+}
+
+export function clearAuth(): Promise<boolean> {
+  if (logoutIntent) {
+    const request = submitLogout(logoutIntent);
+    publishAuthSnapshot();
+    return request;
+  }
+  if (authReady && !activeToken && !activeUser) return Promise.resolve(true);
+  const id = `${isBearerAccessToken(activeToken) ? "bearer" : "cookie"}:${syncID()}`;
+  const intent: LogoutIntent = { id, token: activeToken, revoked: false };
+  logoutIntent = intent;
+  // Reserve a place among cookie writers before publishing the local dismissal.
+  const request = submitLogout(intent);
+  // Only a non-secret intent ID crosses tabs or survives a reload.
+  writeBrowserStorage(authSyncKey, `logout-pending:${intent.id}`);
+  expireAuthSnapshot();
+  return request;
 }
 
 export function useAuthSnapshot(): AuthSnapshot {
@@ -154,7 +226,7 @@ export function useAuthSnapshot(): AuthSnapshot {
     const checkExpiration = () => {
       const remaining = expiresAt - Date.now();
       if (remaining <= 0) {
-        clearAuth();
+        if (activeToken === snapshot.token) expireAuthSnapshot();
         return;
       }
       timer = window.setTimeout(checkExpiration, Math.min(remaining, 2_147_000_000));
@@ -210,6 +282,7 @@ export function retryAuthentication() {
 }
 
 async function bootstrapAuth(force = false) {
+  if (logoutIntent) return null;
   if (activeUser && !force) return activeUser;
   if (bootstrapRequest) return bootstrapRequest;
   const generation = authGeneration;
@@ -263,11 +336,6 @@ function normalizeAuthUser(user: AuthUser): AuthUser {
     permissionVersion: Number.isSafeInteger(user.permissionVersion) && user.permissionVersion > 0 ? user.permissionVersion : 1,
     rbacVersion: Number.isSafeInteger(user.rbacVersion) && user.rbacVersion > 0 ? user.rbacVersion : 1,
   };
-}
-
-function broadcastAuthChange(kind: "login" | "logout") {
-  if (typeof window === "undefined") return;
-  writeBrowserStorage(authSyncKey, `${kind}:${Date.now()}:${Math.random()}`);
 }
 
 function tokenExpiresAt(token: string): number | null {
