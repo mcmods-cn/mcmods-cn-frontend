@@ -143,6 +143,7 @@ test("FP051 imported recipe edit opens its actual type and preserves the draft t
 test("FP068 two native ZIP drops cannot start another import while the initial job POST is pending", { timeout: 35_000 }, async () => {
   const initialJob = Promise.withResolvers<APIReply>();
   const started = Promise.withResolvers<void>();
+  const completed = Promise.withResolvers<APIReply>();
   const presigns: Array<Record<string, unknown>> = [];
   const creations: unknown[] = [];
   let polled = 0;
@@ -157,7 +158,7 @@ test("FP068 two native ZIP drops cannot start another import while the initial j
       return { data: { uploadRequired: false, originalName: payload.originalName, sizeBytes: payload.sizeBytes, file: { id: "file-one" } } };
     }
     if (path === "/api/v1/mods/fixture-mod/export-imports" && method === "POST") { creations.push(JSON.parse(body)); started.resolve(); return initialJob.promise; }
-    if (path === "/api/v1/mods/fixture-mod/export-imports/job-one" && method === "GET") { polled++; return { data: job }; }
+    if (path === "/api/v1/mods/fixture-mod/export-imports/job-one" && method === "GET") { polled++; return completed.promise; }
   });
   try {
     const { page } = browser;
@@ -166,6 +167,11 @@ test("FP068 two native ZIP drops cannot start another import while the initial j
     const input = page.locator('input[accept=".zip,application/zip"]').first();
     await page.waitForFunction(() => (document.querySelector('input[accept=".zip,application/zip"]') as HTMLInputElement | null)?.disabled === false);
     const dropZone = input.locator("..");
+    await page.getByText("The source ZIP is private.", { exact: false }).waitFor();
+    await input.setInputFiles({ name: "readme.txt", mimeType: "text/plain", buffer: Buffer.from("test") });
+    await page.getByText(/Choose a ZIP exported by mcmods_exporter/i).waitFor();
+    assert.equal(presigns.length, 0);
+
     await dropZone.evaluate(node => {
       for (const filename of ["first.zip", "second.zip"]) {
         const data = new DataTransfer();
@@ -185,10 +191,16 @@ test("FP068 two native ZIP drops cannot start another import while the initial j
     assert.equal(presigns[0].originalName, "first.zip");
     assert.deepEqual(creations, [{ ossFileId: "file-one", targetVersionPublicId: "version01", overwriteExistingImportData: false }]);
     assert.equal(polled, 0, "The job response is still pending");
-    initialJob.resolve({ data: job });
+    initialJob.resolve({ status: 202, data: { ...job, status: "queued", currentStage: "queued", progress: 0, reviewRequired: true } });
+    await page.getByText("Queued", { exact: true }).waitFor();
+    assert.equal(await page.getByText(/awaiting review/i).count(), 0);
+    completed.resolve({ data: { ...job, status: "partial", currentStage: "review", reviewRequired: true } });
+    await page.getByText("Partial import complete", { exact: true }).waitFor();
+    await page.getByText("This import is awaiting review.", { exact: false }).waitFor();
+    assert.equal(await page.getByText("File uploaded. You can close this window.", { exact: false }).count(), 0);
     await page.waitForFunction(() => (document.querySelector('input[accept=".zip,application/zip"]') as HTMLInputElement | null)?.disabled === false);
     assert.equal(polled, 1, "Only the returned job is monitored to completion");
     assert.equal(presigns.length, 1);
     assert.equal(creations.length, 1);
-  } finally { initialJob.resolve({ data: job }); await browser.close(); }
+  } finally { initialJob.resolve({ data: job }); completed.resolve({ data: job }); await browser.close(); }
 });

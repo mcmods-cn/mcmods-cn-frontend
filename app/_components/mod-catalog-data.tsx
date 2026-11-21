@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ChangeEvent, DragEvent, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import {
@@ -29,6 +29,7 @@ import { loadModContentSections, loadModContentTemplates, loadModContentVersions
 import { formatBytes } from "../_lib/oss-upload";
 import { useI18n } from "../_lib/i18n-provider";
 import { IconFont } from "./iconfont";
+import { FileDropZone } from "./file-drop-zone";
 import { MODIDConfirmationCard } from "./modid-confirmation-card";
 
 type Props = {
@@ -204,7 +205,6 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
   const [checkingRecovery, setCheckingRecovery] = useState(true);
   const [recoveryFailed, setRecoveryFailed] = useState(false);
   const [recoveryAttempt, setRecoveryAttempt] = useState(0);
-  const [dragging, setDragging] = useState(false);
   const [error, setError] = useState("");
   const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
   const [overwrite, setOverwrite] = useState(false);
@@ -519,15 +519,28 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
     }
   }
 
-  function drop(event: DragEvent<HTMLLabelElement>) {
-    event.preventDefault(); setDragging(false); void importFile(event.dataTransfer.files[0]);
-  }
+  const running = job?.status === "queued" || job?.status === "validating" || job?.status === "importing";
+  const imported = job?.status === "ready" || job?.status === "partial";
+  const stage = running ? job.currentStage || job.status : job?.status;
 
   const form = <><label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><input className="mt-1 h-4 w-4 accent-[var(--accent)]" type="checkbox" disabled={busy || checkingRecovery || recoveryFailed || disabled || hasActiveTask} checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} /><span><strong className="block">{t("mods.exportImport.overwriteExisting")}</strong><small className="mt-1 block leading-5 text-[var(--muted)]">{t("mods.exportImport.overwriteExistingHint")}</small></span></label>
     <p className="mt-4 text-sm text-[var(--muted)]">{t("mods.exportImport.namespaceScopeHint")}</p>
-    <label className={`mt-5 grid min-h-48 place-items-center rounded-lg border border-dashed p-6 text-center ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"} ${dragging ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel-subtle)]"}`} onDragEnter={(event) => { event.preventDefault(); if (!disabled && !busy && !checkingRecovery && !recoveryFailed && !hasActiveTask) setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { if (disabled || busy || checkingRecovery || recoveryFailed || hasActiveTask) { event.preventDefault(); setDragging(false); return; } drop(event); }}><input className="sr-only" type="file" accept=".zip,application/zip" disabled={busy || checkingRecovery || recoveryFailed || disabled || hasActiveTask} onChange={(event: ChangeEvent<HTMLInputElement>) => void importFile(event.target.files?.[0])} /><span><strong className="block text-lg">{upload ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : t("mods.exportImport.drop")}</strong><small className="mt-2 block text-[var(--muted)]">{t("mods.exportImport.dropHint")}</small></span></label>
+    <FileDropZone
+      accept=".zip,application/zip"
+      className="mt-4 min-h-36 p-4 sm:min-h-44"
+      disabled={busy || checkingRecovery || recoveryFailed || disabled || hasActiveTask}
+      title={upload && !job ? t(`mods.exportImport.uploadPhases.${upload.phase}`) : t("mods.exportImport.drop")}
+      hint={t("mods.exportImport.dropHint")}
+      onFiles={([file]) => void importFile(file)}
+      onRejected={() => setError(t("mods.exportImport.errors.zipOnly"))}
+    />
     {upload && !job ? <Progress label={t(`mods.exportImport.uploadPhases.${upload.phase}`)} percent={upload.percent} upload={upload} /> : null}
-    {job ? <><p className="mt-4 rounded-md border border-[var(--accent)] bg-[var(--accent-soft)] p-3 text-sm font-bold">{t("mods.exportImport.importInBackground")}</p><Progress label={t(`mods.exportImport.stages.${job.currentStage || job.status}`)} percent={job.progress} />{job.status === "confirmation_required" ? <MODIDConfirmationCard busy={busy} job={job} onCancel={() => void cancelImport()} onConfirm={() => void confirmMODIDMismatch()} /> : null}{job.reviewRequired ? <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p> : null}</> : null}
+    {job && <>
+      {running && <p className="mt-4 rounded-md bg-[var(--accent-soft)] p-3 text-sm">{t("mods.exportImport.importInBackground")}</p>}
+      <Progress label={t(`mods.exportImport.stages.${stage}`)} percent={job.progress} />
+      {job.status === "confirmation_required" && <MODIDConfirmationCard busy={busy} job={job} onCancel={() => void cancelImport()} onConfirm={() => void confirmMODIDMismatch()} />}
+      {imported && job.reviewRequired && <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p>}
+    </>}
     {(busy || hasActiveTask) && !["ready", "partial", "failed", "cancelled"].includes(job?.status || "") ? <div className="mt-4 flex justify-end"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void cancelImport()}>{t("common.cancel")}</button></div> : null}
     {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{recoveryFailed ? <button className="button-secondary focus-ring" disabled={busy || checkingRecovery} type="button" onClick={() => setRecoveryAttempt(value => value + 1)}>{t("common.retry")}</button> : job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : !job && hasActiveTask ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void resumeUpload()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
   </>;

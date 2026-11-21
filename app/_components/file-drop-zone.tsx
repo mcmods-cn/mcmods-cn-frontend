@@ -9,6 +9,7 @@ export function FileDropZone({
   hint,
   multiple = false,
   onFiles,
+  onRejected,
   title,
 }: {
   accept: string;
@@ -17,6 +18,7 @@ export function FileDropZone({
   hint: string;
   multiple?: boolean;
   onFiles: (files: File[]) => void;
+  onRejected?: () => void;
   title: string;
 }) {
   const [dragDepth, setDragDepth] = useState(0);
@@ -27,8 +29,10 @@ export function FileDropZone({
   }
 
   function emitFiles(files: Iterable<File>) {
-    const accepted = Array.from(files).filter((file) => fileMatchesAccept(file, accept));
+    const selected = Array.from(files);
+    const accepted = selected.filter((file) => fileMatchesAccept(file, accept));
     if (accepted.length) onFiles(multiple ? accepted : accepted.slice(0, 1));
+    else if (selected.length) onRejected?.();
   }
 
   function handleDragEnter(event: DragEvent<HTMLLabelElement>) {
