@@ -27,7 +27,11 @@ async function openPanel(page: Page, name: AIPanel) {
   await page.locator(`[data-admin-panel="${name}"]`).click();
 }
 function field(page: Page, name: AIPanel) {
-  return name === "ai-providers" ? page.locator("fieldset input").nth(2) : name === "ai-models" ? page.locator("fieldset input").nth(2) : page.locator("fieldset textarea");
+  const selected = page.locator(`[data-admin-panel="${name}"][aria-current="page"]`);
+  const ready = page.getByRole("main").filter({ has: selected }).locator("fieldset:enabled");
+  if (name === "ai-providers") return ready.getByPlaceholder(/^(Name|名称)$/);
+  if (name === "ai-models") return ready.getByPlaceholder(/^(Display name|显示名)$/);
+  return ready.locator("textarea");
 }
 async function assertReadOnly(page: Page) {
   assert.equal(await page.locator("fieldset :is(input, textarea, select, button):enabled").count(), 0);
@@ -176,28 +180,48 @@ test("OCT03 FS004 switching AI panels preserves models, providers and task bindi
   let current = config(); current.models[0].displayName = "Model from fresh GET";
   let reads = 0;
   const writes: AIConfig[] = [];
-  const browser = await fixture.page(({ path, method, body }) => {
+  const taskReadStarted = Promise.withResolvers<void>();
+  const taskReadRelease = Promise.withResolvers<void>();
+  const browser = await fixture.page(async ({ path, method, body }) => {
     if (path === "/api/v1/admin/config") return { data: { general: { siteName: "Synthetic", logoUrl: "" }, features: {}, ai: config() } };
     if (path === "/api/v1/admin/ai/config") {
-      if (method === "PUT") { current = JSON.parse(body) as AIConfig; writes.push(structuredClone(current)); }
-      else reads++;
+      if (method === "PUT") {
+        current = JSON.parse(body) as AIConfig;
+        writes.push(structuredClone(current));
+      } else {
+        assert.equal(method, "GET");
+        if (++reads === 3) {
+          taskReadStarted.resolve();
+          await taskReadRelease.promise;
+        }
+      }
       return { data: structuredClone(current) };
     }
   });
   try {
     const { page } = browser;
     await openPanel(page, "ai-models");
-    await field(page, "ai-models").fill("Saved model");
+    const modelName = field(page, "ai-models");
+    assert.equal(await modelName.inputValue(), "Model from fresh GET");
+    await modelName.fill("Saved model");
     await page.getByRole("button", { name: "Save AI config", exact: true }).click();
     await page.getByRole("alertdialog").filter({ hasText: "AI config saved" }).waitFor(); await closeNotice(page);
     assert.equal(current.models[0].displayName, "Saved model");
     await page.locator('[data-admin-panel="ai-providers"]').click();
-    await field(page, "ai-providers").fill("Saved provider");
+    const providerName = field(page, "ai-providers");
+    assert.equal(await providerName.inputValue(), "Fixture provider");
+    await providerName.fill("Saved provider");
     await page.getByRole("button", { name: "Save AI config", exact: true }).click();
     await page.getByRole("alertdialog").filter({ hasText: "AI config saved" }).waitFor(); await closeNotice(page);
     assert.equal(current.providers[0].name, "Saved provider"); assert.equal(current.models[0].displayName, "Saved model");
     await page.locator('[data-admin-panel="ai-task-models"]').click();
-    await field(page, "ai-task-models").fill("Saved prompt");
+    await taskReadStarted.promise;
+    await assertReadOnly(page);
+    assert.equal(writes.length, 2);
+    taskReadRelease.resolve();
+    const taskPrompt = field(page, "ai-task-models");
+    assert.equal(await taskPrompt.inputValue(), "Original prompt");
+    await taskPrompt.fill("Saved prompt");
     await page.getByRole("button", { name: "Save AI config", exact: true }).click();
     await page.getByRole("alertdialog").filter({ hasText: "AI config saved" }).waitFor(); await closeNotice(page);
     assert.equal(current.providers[0].name, "Saved provider"); assert.equal(current.models[0].displayName, "Saved model"); assert.equal(current.taskModels[0].prompt, "Saved prompt");
@@ -206,5 +230,5 @@ test("OCT03 FS004 switching AI panels preserves models, providers and task bindi
     assert.equal(await field(page, "ai-models").inputValue(), "Saved model");
     assert.equal(reads, 4); assert.equal(writes.length, 3);
     for (const write of writes) { assert.deepEqual(write.quotas, config().quotas); assert.deepEqual(write.translation, config().translation); }
-  } finally { await browser.close(); }
+  } finally { taskReadRelease.resolve(); await browser.close(); }
 });
