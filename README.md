@@ -121,7 +121,7 @@ MCMODS_AUDIT_RECIPE_RUNTIME=/absolute/path/to/owned-fixture/runtime.json \
 若浏览器服务来自另一份干净 checkout，可显式指定 `MCMODS_AUDIT_FRONTEND_CHECKOUT`；其提交必须与 runtime 的编译来源一致。
 API 小页分页和数据库/审计后置条件由后端的只读观察器分别验证；本脚本不宣称真实队列、生产 bucket 或完整发布验收。
 
-游戏内产出的原始 ZIP 还可经由 `browser-tests/audit-game-live.mts` 验证。先使用后端 `TestAuditFinalGameJourneyFixture` 建立专属对象存储、JetStream、数据库、同源网关及合成投稿和独立审核账号，按夹具说明生成运行清单。浏览器核对包的 SHA-256、匿名读取边界、审核后的配方槽位及与包内图片一致的像素。凭据文件仅留在夹具目录内。[后端测试入口](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/internal/httpapi/audit_final_game_journey_fixture_linux_test.go)
+复跑真实游戏包时，先在后端运行 `TestAuditLiveGameJourneyFixture`。它为本次测试准备独立的数据库 schema、文件持久化的 JetStream、回环 HTTP API 与对象存储替身，并生成投稿人和审核人的合成会话。使用清单中的地址启动前端，再用下面的浏览器脚本核对上传 SHA-256、匿名读取边界、审核后的配方槽位和图片像素。Fabric、Forge 原包及生产提交随本轮后端一起交付。凭据文件仅留在测试目录内。[后端复跑步骤](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/docs/testing-isolated-environment.md#真实游戏包经浏览器和-jetstream-的验证)
 
 ```bash
 MCMODS_AUDIT_JOURNEY_RUNTIME=/absolute/path/to/owned-fixture/runtime.json \
