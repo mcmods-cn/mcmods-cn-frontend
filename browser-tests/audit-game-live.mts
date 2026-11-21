@@ -9,6 +9,31 @@ import { chromium, type BrowserContext } from "playwright";
 import { unzipSync } from "fflate";
 import sharp from "sharp";
 
+type GameBinding = {
+  slot_id: string;
+  semantic_role: string;
+  ingredient_present: boolean;
+  chance_available?: boolean;
+  chance?: number;
+  chance_percent?: number;
+  alternatives: { resource_location: string; amount: number }[];
+};
+
+type GameCraftingRecipe = {
+  recipe_id: string;
+  source_mod_id: string;
+  source_mod_version: string;
+  bindings: GameBinding[];
+};
+
+type PublicRecipe = { publicId: string; recipeId: string; revisionId: string; modSiteId: string };
+type PublicSlot = {
+  slot_id: string;
+  semantic_role: string;
+  ingredient_present: boolean;
+  alternatives: { id: string; amount: number; chance_available: boolean; chance: number | null; chance_percent: number | null }[];
+};
+
 test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> JetStream business Worker -> independent review -> public recipe and decoded pixels", { timeout: 240_000 }, async () => {
   const runtimePath = process.env.MCMODS_AUDIT_JOURNEY_RUNTIME;
   assert(runtimePath, "Set MCMODS_AUDIT_JOURNEY_RUNTIME to the owned fixture runtime JSON");
@@ -140,8 +165,30 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
     const type = types.items.find((item: { canonicalId: string }) => item.canonicalId === "minecraft:crafting");
     assert(type, "Published actual JEI type must be visible anonymously");
     const catalog = await get(anonymous, `/api/v1/recipe-types/${encodeURIComponent(type.publicId)}/catalog?limit=100`);
-    const recipe = catalog.recipes.find((item: { modSiteId: string; recipeId: string }) => item.modSiteId === runtime.projectSiteId || item.recipeId.startsWith("auditfixture:"));
-    assert(recipe, "Published recipe must belong to the actual imported sample");
+    const collection = JSON.parse(new TextDecoder().decode(sourceEntries["recipes/jei/recipes/minecraft/crafting.json"]));
+    const expectedRecipes = (collection.recipes as GameCraftingRecipe[]).filter(item => item.source_mod_id === runtime.namespace);
+    assert(expectedRecipes.length > 0, "Game fixture must include a crafting recipe owned by its namespace");
+    const projectRecipes: PublicRecipe[] = catalog.recipes.filter((item: PublicRecipe) => item.modSiteId === runtime.projectSiteId && item.revisionId === reviewItem.id);
+    assert.deepEqual(projectRecipes.map(item => item.recipeId).sort(), expectedRecipes.map(item => item.recipe_id).sort());
+    for (const expected of expectedRecipes) {
+      const item = projectRecipes.find(item => item.recipeId === expected.recipe_id)!;
+      const rendered = await get(anonymous, `/api/v1/catalog/recipes/${encodeURIComponent(item.publicId)}/render`);
+      assert.equal(rendered.revisionId, reviewItem.id);
+      assert.equal(rendered.layout.source_mod_id, runtime.namespace);
+      assert.equal(rendered.layout.source_mod_version, expected.source_mod_version);
+      const slots = rendered.layout.slots as PublicSlot[];
+      assert.deepEqual(slots.map(slot => slot.slot_id).sort(), expected.bindings.map(binding => binding.slot_id).sort());
+      for (const binding of expected.bindings) {
+        const slot = slots.find(slot => slot.slot_id === binding.slot_id)!;
+        assert.equal(slot.ingredient_present, binding.ingredient_present);
+        assert.equal(slot.semantic_role, binding.semantic_role);
+        assert.deepEqual(slot.alternatives.map(a => [a.id, a.amount, a.chance_available, a.chance, a.chance_percent]),
+          binding.alternatives.map(a => [a.resource_location, a.amount, binding.chance_available === true, binding.chance ?? null, binding.chance_percent ?? null]),
+          `Public candidates must match ${expected.recipe_id} ${binding.slot_id}`);
+      }
+    }
+    report.craftingRecipeIds = projectRecipes.map(item => item.recipeId);
+    const recipe = projectRecipes[0];
     report.recipePublicId = recipe.publicId;
     const publicPage = await anonymous.newPage();
     publicPage.setDefaultTimeout(20_000);
