@@ -1,4 +1,6 @@
 import Image from "next/image";
+import { minecraftLocale } from "../_lib/mod-export-api";
+import { recipeCandidateChance } from "../_lib/recipe-slot-chance.mts";
 import { FloatingTooltip } from "./floating-tooltip";
 
 export { recipeSlotAmountLabel } from "../_lib/recipe-slot-amount.mts";
@@ -43,4 +45,14 @@ export function RecipeResourceVisual({
       {positionedVisual}
     </FloatingTooltip>
   );
+}
+
+export function RecipeCandidateChanceLabel({ candidate, slot, locale }: {
+  candidate: Record<string, unknown>;
+  slot: Record<string, unknown>;
+  locale: string;
+}) {
+  const chance = recipeCandidateChance(candidate, slot, minecraftLocale(locale), locale);
+  if (!chance) return null;
+  return <span className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-[#242424] px-1 py-0.5 text-[9px] font-black leading-none text-white shadow" title={chance.title}>{chance.label}</span>;
 }

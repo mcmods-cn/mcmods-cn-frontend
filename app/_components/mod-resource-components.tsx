@@ -18,7 +18,8 @@ import {
 import { minecraftLocale, modExportAssetURL } from "../_lib/mod-export-api";
 import { useI18n } from "../_lib/i18n-provider";
 import type { ModContentEntryField, ModContentEntryType } from "../_lib/mod-content-api";
-import { RecipeResourceVisual, recipeSlotAmountLabel, recipeSlotPresentation } from "./recipe-resource-slot";
+import { recipeMaterialAmount } from "../_lib/recipe-slot-amount.mts";
+import { RecipeCandidateChanceLabel, RecipeResourceVisual, recipeSlotAmountLabel, recipeSlotPresentation } from "./recipe-resource-slot";
 import {
   recipeIngredientMergeKey,
   UnifiedRecipeCard,
@@ -612,54 +613,6 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
   />;
 }
 
-function recipeMaterialAmount(item: Record<string, unknown>) {
-  if (typeof item.amount_text === "string" && item.amount_text) return item.amount_text;
-  const amount = numberValue(item.amount ?? item.count, 1);
-  const unit = stringValue(item.unit) || stringValue(item.amount_unit);
-  return `${amount}${unit}`;
-}
-
-function ModRecipeCandidateChanceLabel({
-  candidate,
-  slot,
-  locale,
-}: {
-  candidate: Record<string, unknown>;
-  slot: Record<string, unknown>;
-  locale: string;
-}) {
-  const role = stringValue(slot.role) || stringValue(slot.semantic_role);
-  if (role !== "output" && role !== "byproduct") return null;
-  const candidateHasChance = candidate.chance_available === true
-    || candidate.chance !== undefined
-    || candidate.chance_percent !== undefined
-    || candidate.probability !== undefined
-    || candidate.byproduct !== undefined;
-  const source = candidateHasChance ? candidate : slot;
-  if (source.chance_available === false) return null;
-  const text = localizedRecipeChance(source, locale);
-  if (!text) return null;
-  const percent = numberValue(
-    source.chance_percent,
-    numberValue(source.chance ?? source.probability, Number.NaN) * 100,
-  );
-  const badgeText = Number.isFinite(percent)
-    ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%`
-    : text;
-  return <span className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-0.5 -translate-x-1/2 whitespace-nowrap rounded bg-[#242424] px-1 py-0.5 text-[9px] font-black leading-none text-white shadow" title={text}>{badgeText}</span>;
-}
-
-function localizedRecipeChance(slot: Record<string, unknown>, locale: string) {
-  const normalized = minecraftLocale(locale);
-  const texts = record(slot.chance_texts);
-  if (typeof texts[normalized] === "string") return texts[normalized] as string;
-  if (typeof slot.chance_text === "string" && slot.chance_text) return slot.chance_text;
-  const percent = numberValue(slot.chance_percent, numberValue(slot.chance, Number.NaN) * 100);
-  return Number.isFinite(percent)
-    ? `${percent.toLocaleString(undefined, { maximumFractionDigits: 3 })}%`
-    : "";
-}
-
 function ModRecipeSlot({
   slot,
   scale,
@@ -697,7 +650,7 @@ function ModRecipeSlot({
       showVisual={showVisual}
       src={src}
     />
-    <ModRecipeCandidateChanceLabel candidate={item} locale={locale} slot={slot} />
+    <RecipeCandidateChanceLabel candidate={item} locale={locale} slot={slot} />
   </>;
   const label = `${displayName || resourceId} (${tooltipResourceId})`;
   const slotClass = "group focus-ring absolute z-10 hover:z-40 focus-visible:z-40";

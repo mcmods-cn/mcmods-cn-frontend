@@ -36,3 +36,24 @@ for (const known of [true, false]) test(`NEW-FRONTEND-RECIPE-CHANCE-001 ${known 
     assert.equal(await secondary.getByText("2", { exact: true }).count(), 1, "Byproduct quantity remains separate from probability");
   } finally { await browser.close(); }
 });
+
+test("unknown candidates suppress old slot percentages while a semantic byproduct displays its upper bound", { timeout: 30_000 }, async () => {
+  const publicId = "boundedchance";
+  const browser = await fixture.page(({ path }) => {
+    if (path === `/api/v1/catalog/recipes/${publicId}/render`) return { data: {
+      publicId, recipeTypePublicId: "bounds", recipeId: "sample:bounds", recipeIdSource: "registered",
+      layout: { canvas: { width: 128, height: 64 }, slots: [
+        { role: "output", chance: .8, rect: { x: 32, y: 8, width: 16, height: 16 }, alternatives: [{ id: "sample:unknown", chance_available: false }] },
+        { semantic_role: "byproduct", rect: { x: 64, y: 8, width: 16, height: 16 }, alternatives: [{ id: "sample:fluid", amount: 250, unit: "mB", chance_comparator: "less_than", probability: .01, chance_text: "Below one percent" }] },
+      ] },
+    } };
+  });
+  try {
+    await browser.page.goto(`${fixture.origin}/recipe-types?recipePublicId=${publicId}`);
+    const card = browser.page.locator(`#recipe-${publicId}`);
+    await card.getByText("<1%", { exact: true }).waitFor();
+    assert.equal(await card.getByTitle("Below one percent", { exact: true }).count(), 1);
+    assert.equal(await card.getByText("250 mB", { exact: true }).count(), 1);
+    assert.equal(await card.getByText("80%", { exact: true }).count(), 0);
+  } finally { await browser.close(); }
+});

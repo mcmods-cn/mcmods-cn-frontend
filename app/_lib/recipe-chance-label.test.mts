@@ -1,81 +1,60 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
-import type { ReactElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import ts from "typescript";
-import { recipeSlotAmountLabel } from "./recipe-slot-amount.mts";
+import { recipeCandidateChance } from "./recipe-slot-chance.mts";
+import { recipeMaterialAmount, recipeSlotAmountLabel } from "./recipe-slot-amount.mts";
 
-// Execute the actual label and its real locale/number helpers. This bounded
-// component harness supplies no replacement probability or role implementation.
-async function functions(path: string, names: string[]) {
-  const source = await readFile(new URL(path, import.meta.url), "utf8");
-  const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  return names.map(name => {
-    const node = file.statements.find((entry): entry is ts.FunctionDeclaration => ts.isFunctionDeclaration(entry) && entry.name?.text === name);
-    assert(node, `Actual function ${name} must exist`);
-    return node.getText(file);
-  }).join("\n");
+// The global and project cards use the same projection. The production browser
+// spec also checks the rendered label beside each output and its quantity.
+for (const role of ["output", "byproduct"]) {
+  test(`${role} uses the current candidate and leaves its amount and unit intact`, () => {
+    const slot = { role, probability: .75 };
+    const alternatives = [
+      { amount: 2, unit: "mB", probability: .25 },
+      { amount: 0, chance_available: false },
+      { amount: 3, chance_available: true, chance: 0, chance_percent: 0 },
+    ];
+    const before = structuredClone(alternatives);
+    assert.deepEqual(recipeCandidateChance(alternatives[0], slot, "en_us", "en-US"), { label: "25%", title: "25%" });
+    assert.equal(recipeSlotAmountLabel(alternatives[0]), "2 mB");
+    assert.equal(recipeCandidateChance(alternatives[1], slot, "en_us", "en-US"), null);
+    assert.deepEqual(recipeCandidateChance(alternatives[2], slot, "en_us", "en-US"), { label: "0%", title: "0%" });
+    assert.deepEqual(alternatives, before);
+
+    const unavailable = { chance_available: false, chance: null, chance_percent: null, chance_text: "Unknown" };
+    assert.equal(recipeCandidateChance(unavailable, slot, "en_us", "en-US"), null);
+    assert.equal(recipeCandidateChance({ byproduct: true }, slot, "en_us", "en-US"), null);
+    assert.deepEqual(recipeCandidateChance({}, slot, "en_us", "en-US"), { label: "75%", title: "75%" });
+    assert.equal(recipeCandidateChance({}, { ...slot, chance_available: false }, "en_us", "en-US"), null);
+  });
 }
-const source = (await Promise.all([
-  functions("./mod-export-api.ts", ["minecraftLocale"]),
-  functions("./global-catalog-api.ts", ["contentLocales"]),
-  functions("../_components/global-recipe-card.tsx", ["GlobalRecipeCandidateChanceLabel", "record", "numberValue"]),
-])).join("\n") + "\nexport { GlobalRecipeCandidateChanceLabel };";
-const compiled = ts.transpileModule(source, {
-  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-}).outputText.replace('from "react/jsx-runtime"', `from ${JSON.stringify(import.meta.resolve("react/jsx-runtime"))}`);
-type LabelProps = { candidate: Record<string, unknown>; slot: Record<string, unknown>; locale: string };
-const { GlobalRecipeCandidateChanceLabel: render } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`) as {
-  GlobalRecipeCandidateChanceLabel(props: LabelProps): ReactElement<{ children: string; title: string }> | null;
-};
 
-test("NEW-FRONTEND-RECIPE-CHANCE-001 known primary and byproduct candidates each render their own probability", () => {
-  for (const role of ["output", "byproduct"]) {
-    const candidate = { amount: role === "byproduct" ? 2 : 4, chance_available: true, chance: .25, chance_percent: 25 };
-    const before = structuredClone(candidate);
-    const label = render({ candidate, slot: { role }, locale: "en-US" });
-    assert(label, `${role} must retain its own known probability`);
-    assert.equal(label.props.children, "25%");
-    assert.equal(label.props.title, "25%");
-    assert.match(renderToStaticMarkup(label), />25%<\/span>$/);
-    assert.equal(recipeSlotAmountLabel(candidate), String(candidate.amount));
-    assert.deepEqual(candidate, before, "Displaying probability must not alter quantity or source data");
+test("bounded probabilities preserve their comparator, localized tooltip and UI number formatting", () => {
+  for (const [comparator, symbol] of Object.entries({ exact: "", less_than: "<", greater_than: ">", less_than_or_equal: "≤", greater_than_or_equal: "≥" })) {
+    const candidate = { chance_percent: 1.5, chance_comparator: comparator, chance_texts: { fr_fr: "Texte JEI" }, chance_text: "JEI text" };
+    const slot = { semantic_role: "byproduct" };
+    assert.deepEqual(recipeCandidateChance(candidate, slot, "fr_fr", "fr-FR"), { label: symbol + "1,5%", title: "Texte JEI" });
+    assert.deepEqual(recipeCandidateChance(candidate, slot, "en_us", "en-US"), { label: symbol + "1.5%", title: "JEI text" });
   }
 });
 
-test("unknown candidates suppress numeric and text slot fallbacks for both output roles", () => {
-  for (const role of ["output", "byproduct"]) {
-    const candidate = { amount: 2, chance_available: false, chance: null, chance_percent: null, chance_text: "Chance: unknown" };
-    assert.equal(render({ candidate, slot: { role, chance_available: true, chance: .75, chance_text: "75%" }, locale: "en-US" }), null);
-    assert.equal(recipeSlotAmountLabel(candidate), "2");
+test("legacy textual chances and numeric probability are both supported without inventing zero", () => {
+  const slot = { role: "output", chance_texts: { zh_cn: "低概率" }, chance_text: "Rare" };
+  assert.deepEqual(recipeCandidateChance({}, slot, "zh_cn", "zh-CN"), { label: "低概率", title: "低概率" });
+  assert.deepEqual(recipeCandidateChance({}, slot, "ja_jp", "ja-JP"), { label: "Rare", title: "Rare" });
+  assert.deepEqual(recipeCandidateChance({ chance_text: "Candidate" }, slot, "en_us", "en-US"), { label: "Candidate", title: "Candidate" });
+  assert.equal(recipeCandidateChance({ chance_percent: .00001 }, { role: "output" }, "en_us", "en-US")?.label, "0.00001%");
+  for (const invalid of [null, undefined, "", false, [], -1, 2]) {
+    assert.equal(recipeCandidateChance({ chance: invalid }, { role: "output" }, "en_us", "en-US"), null);
   }
-});
-
-test("candidate probability takes precedence over legacy slot probability for either output role", () => {
-  for (const role of ["output", "byproduct"]) {
-    const label = render({ candidate: { chance: .25 }, slot: { role, chance: .75 }, locale: "en-US" });
-    assert.equal(label?.props.children, "25%");
-    assert.equal(render({ candidate: { byproduct: true }, slot: { role, chance: .75 }, locale: "en-US" }), null,
-      "Candidate byproduct metadata must not invent a missing probability from a slot");
-  }
-});
-
-test("legacy slot probability and localized text fallback remain available when candidates omit chance metadata", () => {
-  for (const role of ["output", "byproduct"]) {
-    assert.equal(render({ candidate: {}, slot: { role, probability: .5 }, locale: "en-US" })?.props.children, "50%");
-    const localized = render({ candidate: {}, slot: { role, chance_texts: { zh_cn: "低概率" }, chance_text: "Rare" }, locale: "zh-CN" });
-    assert.equal(localized?.props.children, "低概率");
-    assert.equal(localized?.props.title, "低概率");
-    assert.equal(render({ candidate: {}, slot: { role, chance_available: false, probability: .5 }, locale: "en-US" }), null);
-  }
-});
-
-test("unrelated slot roles stay unlabeled and an explicit zero chance remains visible", () => {
   for (const role of ["input", "catalyst", "", undefined]) {
-    assert.equal(render({ candidate: { chance_available: true, chance: .25 }, slot: { role }, locale: "en-US" }), null);
+    assert.equal(recipeCandidateChance({ chance: .25 }, { role }, "en_us", "en-US"), null);
   }
-  for (const role of ["output", "byproduct"]) {
-    assert.equal(render({ candidate: { chance_available: true, chance: 0 }, slot: { role }, locale: "en-US" })?.props.children, "0%");
-  }
+});
+
+test("materials with missing quantity never count as one, and known counts keep their units", () => {
+  assert.equal(recipeMaterialAmount({ amount: null }), "");
+  assert.equal(recipeMaterialAmount({ amount: 0 }), "0");
+  assert.equal(recipeMaterialAmount({ count: 1 }), "1");
+  assert.equal(recipeMaterialAmount({ amount: 250, amount_unit: "mB" }), "250mB");
+  assert.equal(recipeMaterialAmount({ amount_text: "1–3" }), "1–3");
 });
