@@ -46,7 +46,7 @@ npm run dev
 
 CSP 允许的来源使用逗号分隔的精确 origin，例如 `https://bucket.oss-cn-beijing.aliyuncs.com`。生产环境只接受 HTTPS。默认连接范围含本站、API 和 Turnstile，OSS 单段与分片签名使用的 origin 都要加入 `NEXT_PUBLIC_CSP_CONNECT_ORIGINS`。默认图片来源含本站、API、`oss.mcmods.cn`、GitHub 头像与原始资源、Modrinth、Forge CDN 和 Minecraft 纹理。额外 CDN、外部媒体和字体使用表中的专用配置。[CSP 实现](app/_lib/csp-policy.mts)
 
-PlantUML 默认关闭。启用时将同站的 `/plantuml` 反向代理到自有渲染服务，确保图表源文停留在部署方控制的系统中。浏览器渲染与独立绘图页面都使用同站路径。
+PlantUML 默认关闭。启用时将同站的 `/plantuml` 反向代理到自建 PlantUML 服务，确保图表源文停留在部署方控制的系统中。浏览器渲染与独立绘图页面都使用同站路径。
 
 ## 验证与发布
 
