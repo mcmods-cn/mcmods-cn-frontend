@@ -180,3 +180,27 @@ test("partial Markdown settings cannot populate a writable form; a read-only acc
     assert.equal(writes, 0);
   } finally { await browser.close(); }
 });
+
+test("overview requests only dashboard metrics, then retries feature flags without reloading the dashboard", { timeout: 30_000 }, async () => {
+  const requests: string[] = [];
+  const browser = await fixture.page(({ path, method }) => {
+    if (!path.startsWith("/api/v1/admin/") || method !== "GET") return;
+    requests.push(path);
+    if (path === "/api/v1/admin/config/features") {
+      return requests.filter(value => value === path).length === 1
+        ? { status: 503, error: "Synthetic feature flag read failed" }
+        : { data: { redis: false } };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/admin`);
+    await page.getByText("All projects", { exact: true }).waitFor();
+    assert.deepEqual(requests, ["/api/v1/admin/dashboard"]);
+    const settings = page.locator("details").filter({ has: page.locator("summary") });
+    await settings.locator("summary").click();
+    await settings.getByRole("button", { name: "Retry", exact: true }).click();
+    await settings.getByText("redis", { exact: true }).waitFor();
+    assert.deepEqual(requests, ["/api/v1/admin/dashboard", "/api/v1/admin/config/features", "/api/v1/admin/config/features"]);
+  } finally { await browser.close(); }
+});
