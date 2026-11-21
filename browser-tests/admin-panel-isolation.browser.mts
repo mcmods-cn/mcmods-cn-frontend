@@ -228,3 +228,66 @@ test("the collapsed mobile admin header leaves the failed panel and its retry di
     assert.equal(await retry.isVisible(), true);
   } finally { await browser.close(); }
 });
+
+for (const supportsCapacity of [true, false]) {
+  test(`the queue panel sends only explicitly edited stream budgets (server supports capacity=${supportsCapacity})`, { timeout: 25_000 }, async () => {
+    const writes: Array<{ jetStream: { newStreamMaxBytes?: number }; outboxEnabled: boolean }> = [];
+    const settings = {
+      enabled: false, url: "nats://queue.example.invalid:4222", username: "", hasPassword: false, hasToken: false, subjectPrefix: "mcmods", tasks: [], outboxEnabled: true, realtime: false,
+      jetStream: { enabled: false, stream: "MCMODS_TASKS", maxDeliver: 8, ackWaitSeconds: 300, publishTimeoutSeconds: 5, ...(supportsCapacity ? { newStreamMaxBytes: 256 * 1024 * 1024 } : {}) },
+      status: { enabled: false, connected: false, jetStream: false, url: "", subjectPrefix: "mcmods", tasks: [] },
+    };
+    const browser = await fixture.page(({ path, method, body }) => {
+      if (path === "/api/v1/admin/infrastructure/dead-letters") return { data: { items: [], hasMore: false, nextCursor: "", limit: 50 } };
+      if (path === "/api/v1/admin/config/nats") {
+        if (method === "PUT") {
+          const write = JSON.parse(body) as typeof writes[number];
+          writes.push(write);
+          if (write.jetStream.newStreamMaxBytes !== undefined) settings.jetStream.newStreamMaxBytes = write.jetStream.newStreamMaxBytes;
+        }
+        return { data: settings };
+      }
+    });
+    try {
+      const { page } = browser;
+      await page.goto(`${fixture.origin}/admin`);
+      await page.locator('[data-admin-group="infrastructure"]').click();
+      await page.locator('[data-admin-panel="nats"]').click();
+      const save = page.getByRole("button", { name: "Save NATS settings", exact: true });
+      await save.waitFor();
+      const size = page.getByRole("spinbutton", { name: "New stream capacity (MiB)", exact: true });
+      if (supportsCapacity) {
+        assert.equal(await size.inputValue(), "256");
+        await size.fill("0");
+        assert.equal(await save.isDisabled(), true);
+        await size.fill("32.5");
+      } else assert.equal(await size.count(), 0);
+      await save.click();
+      await page.getByRole("alertdialog").waitFor();
+      assert.equal(writes.length, 1);
+      assert.equal(writes[0].jetStream.newStreamMaxBytes, supportsCapacity ? 34_078_720 : undefined);
+      assert.equal(writes[0].outboxEnabled, true);
+    } finally { await browser.close(); }
+  });
+}
+
+test("dead letters stay readable when queue settings fail and repeat searches refresh without offering unauthorized replay", { timeout: 25_000 }, async () => {
+  let letterReads = 0;
+  const browser = await fixture.page(({ path }) => {
+    if (path === "/api/v1/auth/me") return { data: { id: "fixture", username: "Fixture reader", email: "reader@example.invalid", roleCodes: [], permissionVersion: 1, rbacVersion: 1, permissionRules: ["admin.access", "admin.config.read"].map(code => ({ code, allow: true, priority: 100 })) } };
+    if (path === "/api/v1/admin/config/nats") return { status: 503, error: "Synthetic configuration outage" };
+    if (path === "/api/v1/admin/infrastructure/dead-letters") return { data: { items: [{ id: 99, eventType: "fixture", eventId: `event-${++letterReads}`, lastError: "Stopped", failedAt: "2026-10-01T10:00:00Z", status: "unresolved", attempts: 1 }], limit: 50, hasMore: false, nextCursor: "" } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/admin`);
+    await page.locator('[data-admin-group="infrastructure"]').click();
+    await page.locator('[data-admin-panel="nats"]').click();
+    await page.getByRole("alert").waitFor();
+    await page.getByText("fixture / event-1", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: "Replay", exact: true }).count(), 0);
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await page.getByText("fixture / event-2", { exact: true }).waitFor();
+    assert.equal(letterReads, 2);
+  } finally { await browser.close(); }
+});

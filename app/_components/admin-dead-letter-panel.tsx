@@ -36,7 +36,7 @@ type DeadLetterFilters = {
 
 const initialFilters: DeadLetterFilters = { status: "unresolved", aggregateType: "", aggregateId: "" };
 
-export function AdminDeadLetterPanel({ token }: { token: string }) {
+export function AdminDeadLetterPanel({ token, canReplay }: { token: string; canReplay: boolean }) {
   const { locale, t } = useI18n();
   const [draft, setDraft] = useState(initialFilters);
   const [filters, setFilters] = useState(initialFilters);
@@ -83,10 +83,11 @@ export function AdminDeadLetterPanel({ token }: { token: string }) {
     setError("");
     setFilters({ status: draft.status, aggregateType, aggregateId });
     setCursorHistory([""]);
+    setReloadKey(value => value + 1);
   }
 
   async function replay(item: DeadLetterItem) {
-    if (!window.confirm(t("admin.nats.deadLettersReplayConfirm", { eventId: item.eventId }))) return;
+    if (!canReplay || !window.confirm(t("admin.nats.deadLettersReplayConfirm", { eventId: item.eventId }))) return;
     setReplayingID(item.id);
     setError("");
     try {
@@ -136,11 +137,11 @@ export function AdminDeadLetterPanel({ token }: { token: string }) {
                   {item.failureStage} · {item.subject} · {item.aggregateType || "—"}/{item.aggregateId || "—"} · {new Date(item.failedAt).toLocaleString(locale)}
                 </p>
               </div>
-              {item.status === "unresolved" ? (
+              {item.status === "unresolved" && canReplay ? (
                 <button className="button-secondary focus-ring" disabled={replayingID === item.id} type="button" onClick={() => void replay(item)}>
                   {replayingID === item.id ? t("admin.nats.deadLettersReplaying") : t("admin.nats.deadLettersReplay")}
                 </button>
-              ) : <span className="text-xs text-[var(--muted)]">{t("admin.nats.deadLettersReplayed")}</span>}
+              ) : <span className="text-xs text-[var(--muted)]">{t(item.status === "replayed" ? "admin.nats.deadLettersReplayed" : "admin.nats.deadLettersUnresolved")}</span>}
             </div>
             <p className="mt-2 whitespace-pre-wrap break-words text-sm text-[var(--danger)]">{item.lastError}</p>
             <p className="mt-1 text-xs text-[var(--muted)]">{t("admin.nats.deadLettersAttempts", { count: item.attempts })}</p>

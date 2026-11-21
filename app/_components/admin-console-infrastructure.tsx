@@ -10,28 +10,33 @@ import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import type { LevelConfig, RoleTrack } from "../_lib/community-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
-import { buildNATSUpdatePayload, type NATSConfig, type NATSTaskConfig } from "../_lib/nats-config.mts";
-import { AdminDeadLetterPanel } from "./admin-dead-letter-panel";
+import { buildNATSUpdatePayload, bytesPerMiB, streamCapacityBytes, type NATSConfig, type NATSTaskConfig } from "../_lib/nats-config.mts";
 import { AIConfig, AIProviderProtocol, AdminConfig, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, OAuthConfig, PanelShell, PermissionCatalog, PermissionDefaults, Role, User, aiProviderProtocols, aiTaskTypeLabel, aiTranslationTaskTypes, cleanError, displayCell, initialAIConfig, normalizeAIModelProviders, normalizeAIProtocols, notifyAdminNotice, saveAIConfig, setAIModel, setAIProvider, setAITaskModel, valueText } from "./admin-console-shared";
 
 function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NATSConfig; token: string; canWrite: boolean }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState<NATSConfig>({ ...initialConfig, password: "", token: "", clearPassword: false, clearToken: false });
   const [saving, setSaving] = useState(false);
+  const [capacityEdit, setCapacityEdit] = useState<string | null>(null);
+  const configuredBytes = draft.jetStream.newStreamMaxBytes;
+  const editableCapacity = typeof configuredBytes === "number" && Number.isSafeInteger(configuredBytes) && configuredBytes > 0;
+  const newStreamMaxBytes = capacityEdit === null ? undefined : streamCapacityBytes(capacityEdit);
+  const invalidCapacity = capacityEdit !== null && newStreamMaxBytes === undefined;
 
   async function save() {
-    if (saving || !canWrite) return;
+    if (saving || !canWrite || invalidCapacity) return;
     setSaving(true);
     try {
       const saved = await apiRequest<NATSConfig>(
         "/api/v1/admin/config/nats",
         {
           method: "PUT",
-          body: JSON.stringify(buildNATSUpdatePayload(draft)),
+          body: JSON.stringify(buildNATSUpdatePayload(draft, newStreamMaxBytes)),
         },
         token,
       );
       setDraft({ ...saved, password: "", token: "", clearPassword: false, clearToken: false });
+      setCapacityEdit(null);
       notifyAdminNotice(t("admin.nats.saved"));
     } catch (error) {
       notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
@@ -63,7 +68,7 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
               {statusText}{draft.status.lastError ? ` / ${draft.status.lastError}` : ""}
             </p>
           </div>
-          <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>
+          <button className="button-primary focus-ring" disabled={saving || invalidCapacity} type="button" onClick={() => void save()}>
             {saving ? t("admin.saving") : t("admin.nats.save")}
           </button>
         </div>
@@ -147,6 +152,11 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
             {t("admin.nats.jetStreamName")}
             <input className="field mt-2" value={draft.jetStream.stream} onChange={(event) => setDraft({ ...draft, jetStream: { ...draft.jetStream, stream: event.target.value } })} />
           </label>
+          {editableCapacity ? <label className="text-sm font-semibold">
+            {t("admin.nats.newStreamCapacity")}
+            <input className="field mt-2" type="number" min={1 / bytesPerMiB} step="any" required aria-invalid={invalidCapacity}
+              value={capacityEdit ?? configuredBytes / bytesPerMiB} onChange={event => setCapacityEdit(event.target.value)} />
+          </label> : null}
           <label className="text-sm font-semibold">
             {t("admin.nats.maxDeliver")}
             <input className="field mt-2" min={2} max={100} type="number" value={draft.jetStream.maxDeliver} onChange={(event) => setDraft({ ...draft, jetStream: { ...draft.jetStream, maxDeliver: Number(event.target.value) } })} />
@@ -207,7 +217,6 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
         </div>
       </section>
       </fieldset>
-      <AdminDeadLetterPanel token={token} />
     </div>
   );
 }

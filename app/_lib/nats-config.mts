@@ -8,6 +8,7 @@ export type NATSTaskConfig = {
 };
 
 export type NATSJetStreamConfig = {
+  newStreamMaxBytes?: number;
   enabled: boolean;
   stream: string;
   maxDeliver: number;
@@ -53,7 +54,19 @@ export type NATSUpdatePayload = Pick<
   clearToken: boolean;
 };
 
-export function buildNATSUpdatePayload(draft: NATSConfig): NATSUpdatePayload {
+export const bytesPerMiB = 1024 * 1024;
+
+export function streamCapacityBytes(mib: string): number | undefined {
+  const bytes = Number(mib) * bytesPerMiB;
+  return Number.isSafeInteger(bytes) && bytes > 0 ? bytes : undefined;
+}
+
+export function buildNATSUpdatePayload(draft: NATSConfig, newStreamMaxBytes?: number): NATSUpdatePayload {
+  const jetStream = { ...draft.jetStream };
+  // An untouched limit stays in the database at its native int64 precision.
+  // Backends without this optional field keep their original request shape.
+  if (newStreamMaxBytes === undefined) delete jetStream.newStreamMaxBytes;
+  else jetStream.newStreamMaxBytes = newStreamMaxBytes;
   return {
     enabled: draft.enabled,
     url: draft.url,
@@ -67,6 +80,6 @@ export function buildNATSUpdatePayload(draft: NATSConfig): NATSUpdatePayload {
     // Older servers accept this field. Durable delivery is always required.
     outboxEnabled: true,
     realtime: draft.realtime,
-    jetStream: draft.jetStream,
+    jetStream,
   };
 }

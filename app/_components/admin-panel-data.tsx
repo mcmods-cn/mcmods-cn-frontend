@@ -4,6 +4,7 @@ import { apiErrorMessage } from "../_lib/api-error.mts";
 import { useI18n } from "../_lib/i18n-provider";
 import type { NATSConfig } from "../_lib/nats-config.mts";
 import { defaultMarkdownConfig, type MarkdownRendererConfig } from "../_lib/markdown-config";
+import { AdminDeadLetterPanel } from "./admin-dead-letter-panel";
 import { AdminDashboardPanel, type AdminDashboardData } from "./admin-dashboard-panel";
 import { AdminYggdrasilPanel, defaultAdminYggdrasilConfig, type AdminYggdrasilConfig } from "./admin-yggdrasil-panel";
 import { AuthPanelV2, GeneralSettingsPanel, MailPanelV2, MarkdownConfigPanel, NATSConfigPanel, PermissionSettingsPanel, ProfileSettingsPanel, RoleTracksPanel } from "./admin-console-infrastructure";
@@ -131,9 +132,12 @@ export function AdminSettingsEditor({ panel, token, canWrite }: { panel: Setting
     case "markdown": return <SettingsRead path="/api/v1/admin/config/markdown" token={token} validate={readMarkdown} editable={canWrite}>
       {markdown => <MarkdownConfigPanel initialConfig={markdown} token={token} />}
     </SettingsRead>;
-    case "nats": return <SettingsRead path="/api/v1/admin/config/nats" token={token} validate={readNATS} editable>
-      {settings => <NATSConfigPanel initialConfig={settings} token={token} canWrite={canWrite} />}
-    </SettingsRead>;
+    case "nats": return <div className="grid gap-4">
+      <SettingsRead path="/api/v1/admin/config/nats" token={token} validate={readNATS} editable>
+        {settings => <NATSConfigPanel initialConfig={settings} token={token} canWrite={canWrite} />}
+      </SettingsRead>
+      <AdminDeadLetterPanel token={token} canReplay={canWrite} />
+    </div>;
   }
 }
 

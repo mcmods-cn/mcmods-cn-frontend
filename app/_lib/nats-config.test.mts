@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildNATSUpdatePayload, type NATSConfig } from "./nats-config.mts";
+import { buildNATSUpdatePayload, bytesPerMiB, streamCapacityBytes, type NATSConfig } from "./nats-config.mts";
 
 test("NATS update payload always includes reliability settings and explicit secret actions", () => {
   const draft: NATSConfig = {
@@ -36,4 +36,15 @@ test("NATS update payload always includes reliability settings and explicit secr
     realtime: true,
     jetStream: draft.jetStream,
   });
+  draft.jetStream.newStreamMaxBytes = 256 * bytesPerMiB;
+  assert.equal(Object.hasOwn(buildNATSUpdatePayload(draft).jetStream, "newStreamMaxBytes"), false, "untouched budgets retain database precision");
+  assert.equal(buildNATSUpdatePayload(draft, streamCapacityBytes("16.5")).jetStream.newStreamMaxBytes, 17_301_504);
+  assert.equal(draft.jetStream.newStreamMaxBytes, 268_435_456, "editing a payload must not mutate the last read snapshot");
+});
+
+test("stream capacity edits require a positive, exactly representable number of bytes", () => {
+  assert.equal(streamCapacityBytes(String(1 / bytesPerMiB)), 1);
+  for (const invalid of ["", "0", "-1", "0.1", "Infinity", "1e300", "not a number"]) {
+    assert.equal(streamCapacityBytes(invalid), undefined, invalid);
+  }
 });
