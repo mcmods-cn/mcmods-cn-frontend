@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { AuthResult, AuthUser, acceptOAuthSession, canAccessAdmin, clearAuth, hasUnconfirmedLogout, saveAuth } from "../_lib/auth";
+import { AuthResult, acceptOAuthSession, canAccessAdmin, clearAuth, hasUnconfirmedLogout, saveAuth } from "../_lib/auth";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { runAuthenticationMutation } from "../_lib/authentication-mutation.mts";
 import { oauthProviders, oauthProviderStartPath } from "../_lib/oauth-navigation.mts";
