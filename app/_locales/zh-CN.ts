@@ -2923,6 +2923,7 @@ const zhCN = {
       copyCode: "复制",
       codeCopied: "已复制",
       diagramLoading: "正在加载图表...",
+      sendDiagramPreview: "将此图发送到 diagrams.net 预览",
       diagramPreviewAlt: "draw.io 图表",
       iconHealth: "生命值",
       iconHealthEx: "生命值(极限)",

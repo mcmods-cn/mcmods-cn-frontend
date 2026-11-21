@@ -56,6 +56,55 @@ test("BUG151 playground read failure disables writes and CAS conflict requires a
   } finally { await browser.close(); }
 });
 
+test("a draft sends only the selected diagram to the preview provider after a user action", { timeout: 30_000 }, async () => {
+  const first = '<mxfile><diagram name="First"></diagram></mxfile>';
+  const second = '<mxfile><diagram name="Revised"></diagram></mxfile>';
+  const fence = (xml: string) => ["```drawio", xml, "```"].join("\n");
+  let providerRequests = 0;
+  const browser = await controlled(({ path, url, method, body }) => {
+    if (path === "/api/v1/users/me/markdown-playground") {
+      return { data: method === "GET" ? { content: fence(first), revision: 1, updatedAt: stamp } :
+        { revision: 2, clientSequence: JSON.parse(body).clientSequence, updatedAt: stamp } };
+    }
+    if (url.origin === "https://embed.diagrams.net") {
+      providerRequests++;
+      const html = `<!doctype html><script>
+        addEventListener('message', event => {
+          if (event.source !== parent) return;
+          const message = JSON.parse(event.data);
+          if (message.action === 'export') document.documentElement.dataset.diagram = message.xml;
+        });
+        parent.postMessage(JSON.stringify({event:'init'}), ${JSON.stringify(fixture.origin)});
+      </script>`;
+      return { contentType: "text/html", bytes: Buffer.from(html) };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/tools/playground`);
+    const figure = page.locator("figure.drawio-preview");
+    const frame = figure.locator("iframe");
+    const preview = figure.getByRole("button", { name: "Send this diagram to diagrams.net for a preview" });
+    await figure.waitFor();
+    assert.equal(await frame.count(), 0, "merely opening the draft mounted the provider");
+    assert.equal(providerRequests, 0);
+    await preview.click();
+    const received = figure.frameLocator("iframe").locator("html[data-diagram]");
+    await received.waitFor({ state: "attached" });
+    assert.equal(await received.getAttribute("data-diagram"), first);
+    assert.equal(providerRequests, 1);
+
+    await page.locator('textarea[spellcheck="false"]').fill(fence(second));
+    await preview.waitFor();
+    assert.equal(await frame.count(), 0, "permission for the old diagram survived an edit");
+    assert.equal(providerRequests, 1);
+    await preview.click();
+    await received.waitFor({ state: "attached" });
+    assert.equal(await received.getAttribute("data-diagram"), second);
+    assert.equal(providerRequests, 2);
+  } finally { await browser.close(); }
+});
+
 test("FP021 FP059 draw.io accepts only the current iframe and maps the actual UI locale", { timeout: 30_000 }, async () => {
   const browser = await controlled(({ path, url }) => {
     if (url.origin === "https://embed.diagrams.net") return { contentType: "text/html", bytes: Buffer.from("<!doctype html><title>Controlled diagram vendor</title>") };

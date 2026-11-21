@@ -1,6 +1,11 @@
 import en from "./en-US";
 const es = {
   ...en,
+  tools: { ...en.tools,
+    playground: { ...en.tools.playground,
+      sendDiagramPreview: "Enviar este diagrama a diagrams.net para obtener una vista previa",
+    },
+  },
   user: { ...en.user,
     transferRecipientType: "Identificador del destinatario",
     transferRecipientUsernameOrEmail: "Nombre de usuario o correo",

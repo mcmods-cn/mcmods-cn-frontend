@@ -1,6 +1,11 @@
 import zhCN from "./zh-CN";
 const zhTW = {
   ...zhCN,
+  tools: { ...zhCN.tools,
+    playground: { ...zhCN.tools.playground,
+      sendDiagramPreview: "將此圖傳送至 diagrams.net 以產生預覽",
+    },
+  },
   user: { ...zhCN.user,
     transferRecipientType: "收款人識別類型",
     transferRecipientUsernameOrEmail: "使用者名稱或電子郵件",

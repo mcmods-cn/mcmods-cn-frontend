@@ -1,6 +1,11 @@
 import en from "./en-US";
 const ja = {
   ...en,
+  tools: { ...en.tools,
+    playground: { ...en.tools.playground,
+      sendDiagramPreview: "この図を diagrams.net に送信してプレビュー",
+    },
+  },
   user: { ...en.user,
     transferRecipientType: "送金先の識別方法",
     transferRecipientUsernameOrEmail: "ユーザー名またはメール",

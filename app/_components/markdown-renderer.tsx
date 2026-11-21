@@ -296,7 +296,7 @@ function MarkdownBody({
           const code = reactNodeToText(children).replace(/\n$/, "");
           if (!language) return <code>{children}</code>;
           const sourcePosition = sourceLineAttributes(node);
-          if (language.toLowerCase() === "drawio") return <DrawioDiagramPreview sourcePosition={sourcePosition} xml={code} />;
+          if (language.toLowerCase() === "drawio") return <DrawioDiagramPreview key={code} sourcePosition={sourcePosition} xml={code} />;
           return (
             <CopyableCodeBlock code={code} language={language} sourcePosition={sourcePosition}>
               {children}
@@ -466,10 +466,12 @@ function sourceLineAttributes(node?: SourcePositionNode) {
 
 function DrawioDiagramPreview({ xml, sourcePosition }: { xml: string; sourcePosition: ReturnType<typeof sourceLineAttributes> }) {
   const { t } = useI18n();
+  const [enabled, setEnabled] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [imageSrc, setImageSrc] = useState("");
 
   useEffect(() => {
+    if (!enabled) return;
     function receiveMessage(event: MessageEvent<unknown>) {
       if (event.origin !== DRAWIO_ORIGIN) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
@@ -493,7 +495,17 @@ function DrawioDiagramPreview({ xml, sourcePosition }: { xml: string; sourcePosi
 
     window.addEventListener("message", receiveMessage);
     return () => window.removeEventListener("message", receiveMessage);
-  }, [xml]);
+  }, [enabled, xml]);
+
+  if (!enabled) {
+    return (
+      <figure {...sourcePosition} className="drawio-preview">
+        <button className="button-secondary focus-ring" onClick={() => setEnabled(true)} type="button">
+          {t("tools.playground.sendDiagramPreview")}
+        </button>
+      </figure>
+    );
+  }
 
   return (
     <figure {...sourcePosition} className="drawio-preview">
@@ -503,7 +515,6 @@ function DrawioDiagramPreview({ xml, sourcePosition }: { xml: string; sourcePosi
         <span className="drawio-preview-loading">{t("tools.playground.diagramLoading")}</span>
       )}
       <iframe
-        key={xml}
         ref={iframeRef}
         src={drawioPreviewUrl()}
         title="draw.io diagram exporter"

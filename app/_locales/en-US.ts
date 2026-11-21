@@ -2924,6 +2924,7 @@ const en = {
       copyCode: "Copy",
       codeCopied: "Copied",
       diagramLoading: "Loading diagram...",
+      sendDiagramPreview: "Send this diagram to diagrams.net for a preview",
       diagramPreviewAlt: "draw.io diagram",
       iconHealth: "Health",
       iconHealthEx: "Health (extra)",
