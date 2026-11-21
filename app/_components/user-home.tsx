@@ -357,7 +357,7 @@ function UserHomeSession() {
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <section className="mx-auto grid max-w-7xl gap-4 px-4 py-6">
+      <section className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-4 py-6">
         {!user ? (
           <div className="surface rounded-lg p-6">
             <h1 className="text-2xl font-bold">{t("user.loginRequiredTitle")}</h1>
@@ -395,7 +395,7 @@ function UserHomeSession() {
                   {t("user.previewAsVisitor")}
                 </Link> : <button className="button-secondary focus-ring" disabled type="button">{t("user.previewAsVisitor")}</button>}
               </div>
-              <div className="relative z-10 mt-5 grid border-y border-[var(--line)] sm:grid-cols-4">
+              <div className="relative z-10 mt-5 grid grid-cols-2 border-y border-[var(--line)] sm:grid-cols-4">
                 <AccountMetric href={profile?.publicId ? `/user/${encodeURIComponent(profile.publicId)}/following` : undefined} label={t("user.myFollowing")} value={overview ? formatTokenCount(overview.following, locale) : "-"} />
                 <AccountMetric className="sm:border-l sm:border-[var(--line)]" href={profile?.publicId ? `/user/${encodeURIComponent(profile.publicId)}/followers` : undefined} label={t("user.myFollowers")} value={overview ? formatTokenCount(overview.followers, locale) : "-"} />
                 <AccountMetric className="sm:border-x sm:border-[var(--line)]" href={profile?.publicId ? `/user/${encodeURIComponent(profile.publicId)}/blocked` : undefined} label={t("user.myBlocked")} value={overview ? formatTokenCount(overview.blocked, locale) : "-"} />
@@ -403,17 +403,16 @@ function UserHomeSession() {
               </div>
             </div>
 
-            <nav className="surface flex overflow-x-auto rounded-lg border-b border-[var(--line)]" aria-label={t("user.accountSections")}>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "overview" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=overview", { scroll: false })}>{t("user.overview")}</button>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "statistics" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=statistics", { scroll: false })}>{t("user.statistics")}</button>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "settings" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=settings", { scroll: false })}>{t("user.settings")}</button>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "drafts" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=drafts", { scroll: false })}>{t("drafts.title")}</button>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "favorites" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=favorites", { scroll: false })}>{t("favorites.title")}</button>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "project-follows" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=project-follows", { scroll: false })}>{t("projectFollows.title")}</button>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "comment-watches" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=comment-watches", { scroll: false })}>{t("commentWatches.title")}</button>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "files" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=files", { scroll: false })}>{t("user.fileManager")}</button>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "economy" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=economy", { scroll: false })}>{t("user.economyAndProgression")}</button>
-              <button className={`focus-ring border-b-2 px-5 py-4 font-black ${activeSection === "players" ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`} type="button" onClick={() => router.replace("/user?section=players", { scroll: false })}>{t("skins.playerProfiles")}</button>
+            <nav aria-label={t("user.accountSections")} className="surface flex min-w-0 max-w-full overflow-x-auto rounded-lg border-b border-[var(--line)]">
+              {accountSections.map(({ id, label }) => (
+                <button
+                  aria-current={activeSection === id ? "page" : undefined}
+                  className={`focus-ring shrink-0 whitespace-nowrap border-b-2 px-3 py-3 font-black sm:px-5 sm:py-4 ${activeSection === id ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--muted)]"}`}
+                  key={id}
+                  onClick={() => router.replace(`/user?section=${id}`, { scroll: false })}
+                  type="button"
+                >{t(label)}</button>
+              ))}
             </nav>
 
             {message ? <p role="status" className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}</p> : null}
@@ -610,10 +609,21 @@ function UserHomeSession() {
   );
 }
 
-type AccountSection = "overview" | "statistics" | "settings" | "drafts" | "favorites" | "project-follows" | "comment-watches" | "files" | "economy" | "players";
+const accountSections = [
+  { id: "overview", label: "user.overview" },
+  { id: "statistics", label: "user.statistics" },
+  { id: "settings", label: "user.settings" },
+  { id: "drafts", label: "drafts.title" },
+  { id: "favorites", label: "favorites.title" },
+  { id: "project-follows", label: "projectFollows.title" },
+  { id: "comment-watches", label: "commentWatches.title" },
+  { id: "files", label: "user.fileManager" },
+  { id: "economy", label: "user.economyAndProgression" },
+  { id: "players", label: "skins.playerProfiles" },
+] as const;
 
-function accountSection(value: string | null): AccountSection {
-  return value === "statistics" || value === "settings" || value === "drafts" || value === "favorites" || value === "project-follows" || value === "comment-watches" || value === "files" || value === "economy" || value === "players" ? value : "overview";
+function accountSection(value: string | null) {
+  return accountSections.find(({ id }) => id === value)?.id ?? "overview";
 }
 
 function FavoriteCollectionsPanel({ token }: { token: string }) {

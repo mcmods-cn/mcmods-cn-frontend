@@ -53,6 +53,21 @@ test("FP012 content-language selections survive a UI language switch and save th
     await preferences.getByRole("button", { name: "保存语言偏好", exact: true }).click();
     await preferences.getByText("内容语言偏好已保存。", { exact: true }).waitFor();
     assert.deepEqual(saves, [{ primaryLocale: "fr-FR", secondaryLocale: "ja-JP" }]);
+    await page.setViewportSize({ width: 390, height: 844 });
+    const navigation = page.getByRole("navigation").filter({ has: page.getByRole("button", { name: "用户设置", exact: true }) });
+    await navigation.waitFor();
+    assert.equal(await navigation.locator('button[aria-current="page"]').innerText(), "用户设置");
+    const layout = await navigation.evaluate(nav => ({
+      width: nav.clientWidth,
+      content: nav.scrollWidth,
+      pageFits: document.documentElement.scrollWidth <= window.innerWidth,
+      singleLine: Array.from(nav.querySelectorAll("button")).every(button => {
+        const range = document.createRange();
+        range.selectNodeContents(button);
+        return range.getClientRects().length === 1;
+      }),
+    }));
+    assert(layout.pageFits && layout.content > layout.width && layout.singleLine);
   } finally { await browser.close(); }
 });
 
@@ -168,6 +183,8 @@ test("FP068 two native ZIP drops cannot start another import while the initial j
     await page.waitForFunction(() => (document.querySelector('input[accept=".zip,application/zip"]') as HTMLInputElement | null)?.disabled === false);
     const dropZone = input.locator("..");
     await page.getByText("The source ZIP is private.", { exact: false }).waitFor();
+    assert.equal(await page.getByRole("link", { name: /Back to Fixture mod/ }).getAttribute("href"), "/mods/fixture-mod");
+    await page.getByText("1.21 · 1", { exact: true }).waitFor();
     await input.setInputFiles({ name: "readme.txt", mimeType: "text/plain", buffer: Buffer.from("test") });
     await page.getByText(/Choose a ZIP exported by mcmods_exporter/i).waitFor();
     assert.equal(presigns.length, 0);
