@@ -44,7 +44,7 @@ test("SEC-002 retains patched transitive dependency floors in package and lock f
     "js-yaml": "4.3.2",
     "nanoid": "3.3.18",
     "postcss": "8.5.23",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
   });
   const braceVersions = Object.entries(lockJSON.packages ?? {})
     .filter(([path]) => path.endsWith("node_modules/brace-expansion"))
@@ -56,13 +56,15 @@ test("SEC-002 retains patched transitive dependency floors in package and lock f
     "baseline-browser-mapping": "2.11.0",
     "browserslist": "4.28.7",
     "js-yaml": "4.3.2",
-    "sharp": "0.35.4",
-    "next": "16.3.8",
-    "eslint-config-next": "16.3.8",
+    "sharp": "0.35.5",
+    "next": "16.4.6",
+    "eslint-config-next": "16.4.6",
+    "source-map-js": "1.2.4",
+    "zod": "4.6.7",
   })) {
     assert.equal(lockJSON.packages?.[`node_modules/${name}`]?.version, expected, `${name} security floor`);
   }
-  assert.equal(packageJSON.dependencies?.next, "16.3.8");
+  assert.equal(packageJSON.dependencies?.next, "16.4.6");
   assert.equal(packageJSON.devDependencies?.["eslint-config-next"], packageJSON.dependencies?.next);
   assert.equal(packageJSON.dependencies?.sharp, packageJSON.overrides?.sharp);
   assert.equal(lockJSON.packages?.["node_modules/nanoid"]?.version, "3.3.18");

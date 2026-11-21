@@ -9,7 +9,17 @@ const maximumFrames = 128;
 const maximumTotalDecodedPixels = 16 * 1024 * 1024;
 const maximumOutputEdge = 512;
 const maximumOutputBytes = 1024 * 1024;
-const acceptedFormats = new Set(["png", "jpeg", "webp", "gif"]);
+const pngHeader = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const jpegHeader = Buffer.from([0xff, 0xd8, 0xff]);
+
+// Select a supported raster family before allowing native image metadata parsing.
+function rasterFormat(bytes: Buffer) {
+  if (bytes.subarray(0, 8).equals(pngHeader)) return "png";
+  if (bytes.subarray(0, 3).equals(jpegHeader)) return "jpeg";
+  const header = bytes.toString("latin1", 0, 6);
+  if (header === "GIF87a" || header === "GIF89a") return "gif";
+  if (bytes.toString("latin1", 0, 4) === "RIFF" && bytes.toString("latin1", 8, 12) === "WEBP") return "webp";
+}
 
 export async function readBoundedRequestBody(request: Pick<Request, "headers" | "body">, maximumBytes = maximumLogoRequestBytes) {
   if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 0) {
@@ -53,9 +63,10 @@ export async function createSafeSiteLogo(source: Buffer | Uint8Array) {
     throw new Error("invalid logo file size");
   }
 
+  const format = rasterFormat(bytes);
+  if (!format) throw new Error("unsupported logo format");
   const metadata = await readLogoMetadata(bytes);
-
-  if (!metadata.format || !acceptedFormats.has(metadata.format)) {
+  if (metadata.format !== format) {
     throw new Error("unsupported logo format");
   }
   const width = metadata.width ?? 0;

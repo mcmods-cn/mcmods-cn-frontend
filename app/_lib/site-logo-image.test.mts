@@ -62,6 +62,15 @@ test("accepted images become bounded static WebP derivatives without source meta
   assert.equal(metadata.xmp, undefined);
 });
 
+test("the raster boundary accepts every advertised format and rejects other headers before decoding", async () => {
+  const pixel = { create: { width: 2, height: 2, channels: 3 as const, background: "white" } };
+  for (const format of ["png", "jpeg", "gif", "webp"] as const) {
+    const source = await sharp(pixel).toFormat(format).toBuffer();
+    assert.equal((await sharp(await createSafeSiteLogo(source)).metadata()).format, "webp");
+  }
+  await assert.rejects(createSafeSiteLogo(Buffer.from("plain text")), /unsupported logo format/);
+});
+
 test("animated input is flattened to one frame and excessive frame counts are rejected", async () => {
   const twoFrames = rawAnimatedFrames(16, 16, 2);
   const animated = await sharp(twoFrames.bytes, { raw: twoFrames.raw })

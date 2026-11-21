@@ -139,7 +139,7 @@ export function MarkdownRenderer({ markdown, config, emptyText, referencePath = 
   ].filter(Boolean) as PluggableList;
   const tocItems = normalized.toc ? extractMarkdownToc(preparedSource, remarkPlugins, normalized.tocMinDepth, normalized.tocMaxDepth) : [];
   const rehypePlugins = [
-    normalized.katex ? [rehypeKatex, { output: "mathml" }] : null,
+    normalized.katex ? [rehypeKatex, { output: "mathml", trust: false }] : null,
     normalized.codeHighlight ? rehypeHighlight : null,
     () => rehypeMcmodsExtensions(normalized, abbreviations, isMainlandChina),
   ].filter(Boolean) as PluggableList;
