@@ -37,3 +37,18 @@ ZIP 上传的浏览器用例覆盖文件选择和拖放共用的入口、同时�
 node --test --test-concurrency=1 browser-tests/home-search.browser.mts browser-tests/admin-panel-isolation.browser.mts
 node --test --test-name-pattern=FP068 browser-tests/specific-journeys.browser.mts
 ```
+
+## 后台词条编辑的挂载成本
+
+进入多语言管理时，原界面同时生成 5,103 个可编辑文本框。分页后，默认每页挂载 50 个。搜索与“只看缺失”遍历完整词典，AI 补全继续从所有匹配项选取最多 100 条。翻页后回到原键可读回本地修改。回归也覆盖 AI 处理期间人工修改优先的情形。
+
+| 首次显示翻译表格 | `cf34540` | `77b1ff5` |
+| --- | ---: | ---: |
+| 每次挂载的词条文本框 | 5,103 | 50 |
+| 三次独立页面观测，毫秒 | 6,061 / 8,169 / 5,238 | 650 / 123 / 124 |
+
+两次都使用 1365 × 840 的 Chromium 151.0.7922.34、Next 16.4.6 生产构建、同一份英文字典与合成身份。计时从点击多语言管理到下一次动画帧检测到首个有尺寸的编辑框。机器的 CPU 配额为四核，期间还有其它任务，计时反映该环境的交互等待。可在仓库构建后运行对应面板回归。
+
+```bash
+node --test --test-name-pattern='translation editor pages|late local AI completion' browser-tests/admin-data-protection.browser.mts
+```
