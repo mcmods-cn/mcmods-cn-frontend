@@ -113,7 +113,7 @@ const fr = {
     },
     submission: { ...en.mods.submission, autoPending: "Vérifiez et complétez les informations importées avant de les soumettre pour validation.", defaultLocale: "Langue de contenu par défaut", galleryUploadFailed: "Échec de l’envoi de l’image de galerie.", modIds: { title: "Identifiants du mod", hint: "Enregistrez les identifiants actuels et historiques selon la version de Minecraft. L’identifiant principal sert à l’affichage canonique et tous pointent vers la même ressource globale.", add: "Ajouter un identifiant", identifier: "Identifiant du mod", minecraftVersions: "Versions Minecraft applicables", allSupportedVersions: "Toutes les versions Minecraft prises en charge", primary: "Identifiant principal" }, sections: { ...en.mods.submission.sections, gallery: "Galerie", galleryHint: "Les images sont envoyées directement vers l’OSS privé et sont validées avec cette révision complète du mod." }, actions: { ...en.mods.submission.actions, uploadGallery: "Ajouter des images à la galerie", uploadingGallery: "Envoi en cours…" } } },
   catalogEditor: { ...en.catalogEditor },
-  modContent: { ...en.modContent, templates: { ...en.modContent.templates, loot_table: "Tables de butin", game_setting: "Paramètres du jeu" } },
+  modContent: { ...en.modContent, managerBack: "Retour à {name}", templates: { ...en.modContent.templates, loot_table: "Tables de butin", game_setting: "Paramètres du jeu" } },
   resourceEditor: {
     ...en.resourceEditor,
     catalogShort: "Ressources", catalogTitle: "Catalogue global des ressources", catalogDescription: "Parcourez et gérez manuellement les objets, blocs, fluides, produits chimiques et autres ressources du jeu. L’importation reste une aide.",

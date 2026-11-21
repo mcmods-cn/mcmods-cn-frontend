@@ -113,7 +113,7 @@ const ru = {
     },
     submission: { ...en.mods.submission, autoPending: "Проверьте и дополните импортированные сведения перед отправкой на проверку.", defaultLocale: "Язык содержимого по умолчанию", galleryUploadFailed: "Не удалось загрузить изображение галереи.", modIds: { title: "ID мода", hint: "Для разных версий Minecraft можно зарегистрировать текущие и прежние ID. Основной ID используется для канонического отображения, а все ID указывают на один глобальный ресурс.", add: "Добавить ID", identifier: "ID мода", minecraftVersions: "Подходящие версии Minecraft", allSupportedVersions: "Все поддерживаемые версии Minecraft", primary: "Основной ID" }, sections: { ...en.mods.submission.sections, gallery: "Галерея", galleryHint: "Изображения загружаются напрямую в приватное OSS и проверяются вместе с полной редакцией мода." }, actions: { ...en.mods.submission.actions, uploadGallery: "Загрузить изображения галереи", uploadingGallery: "Загрузка…" } } },
   catalogEditor: { ...en.catalogEditor },
-  modContent: { ...en.modContent, templates: { ...en.modContent.templates, loot_table: "Таблицы добычи", game_setting: "Настройки игры" } },
+  modContent: { ...en.modContent, managerBack: "Назад к {name}", templates: { ...en.modContent.templates, loot_table: "Таблицы добычи", game_setting: "Настройки игры" } },
   resourceEditor: {
     ...en.resourceEditor,
     catalogShort: "Ресурсы", catalogTitle: "Глобальный каталог ресурсов", catalogDescription: "Просматривайте и вручную редактируйте предметы, блоки, жидкости, химикаты и другие игровые ресурсы. Импорт служит только вспомогательным средством.",

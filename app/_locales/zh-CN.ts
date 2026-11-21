@@ -802,7 +802,7 @@ const zhCN = {
   },
   modContent: {
     managerTitle: "编辑或导入模组资料",
-    managerDescription: "管理「{name}」按版本划分的百科资料。这里与模组名称、项目介绍、作者和兼容性等基础信息编辑相互独立。",
+    managerBack: "返回{name}",
     managerLoginRequired: "请以已认证开发者、本站编辑员或管理员账号登录后管理该模组资料。",
     managerDenied: "你没有管理此模组资料的权限。",
     title: "模组资料工作区",
@@ -824,7 +824,6 @@ const zhCN = {
     versionEditor: {
       customTemplateSavedRetry: "自定义模板已保存。重试可继续添加页面，不会重复创建模板。",
       versionList: "资料版本",
-      versionListHint: "每个版本分别保存自己的资料种类和具体内容。",
       newVersion: "新增资料版本",
       newVersionHint: "设置这份资料对应的 Minecraft 版本、加载器和模组版本。新版本创建后默认没有任何内容。",
       editVersion: "编辑版本",

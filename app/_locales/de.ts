@@ -113,7 +113,7 @@ const de = {
     },
     submission: { ...en.mods.submission, autoPending: "Prüfe und ergänze die importierten Angaben, bevor du sie zur Prüfung einreichst.", defaultLocale: "Standard-Inhaltssprache", galleryUploadFailed: "Das Galeriebild konnte nicht hochgeladen werden.", modIds: { title: "Mod-IDs", hint: "Aktuelle und frühere IDs können je Minecraft-Version registriert werden. Die primäre ID dient der kanonischen Anzeige; alle IDs verweisen auf dieselbe globale Ressourcenidentität.", add: "ID hinzufügen", identifier: "Mod-ID", minecraftVersions: "Anwendbare Minecraft-Versionen", allSupportedVersions: "Alle unterstützten Minecraft-Versionen", primary: "Primäre ID" }, sections: { ...en.mods.submission.sections, gallery: "Galerie", galleryHint: "Bilder werden direkt in das private OSS hochgeladen und zusammen mit dieser vollständigen Mod-Revision geprüft." }, actions: { ...en.mods.submission.actions, uploadGallery: "Galeriebilder hochladen", uploadingGallery: "Wird hochgeladen…" } } },
   catalogEditor: { ...en.catalogEditor },
-  modContent: { ...en.modContent, templates: { ...en.modContent.templates, loot_table: "Beutetabellen", game_setting: "Spieleinstellungen" } },
+  modContent: { ...en.modContent, managerBack: "Zurück zu {name}", templates: { ...en.modContent.templates, loot_table: "Beutetabellen", game_setting: "Spieleinstellungen" } },
   resourceEditor: {
     ...en.resourceEditor,
     catalogShort: "Ressourcen", catalogTitle: "Globaler Ressourcenkatalog", catalogDescription: "Gegenstände, Blöcke, Flüssigkeiten, Chemikalien und weitere Spielressourcen durchsuchen und manuell pflegen. Importe dienen nur als Hilfe.",

@@ -114,7 +114,7 @@ const zhTW = {
     },
     submission: { ...zhCN.mods.submission, autoPending: "匯入後可檢查並補充資料，再提交審核。", defaultLocale: "預設內容語言", galleryUploadFailed: "畫廊圖片上傳失敗。", modIds: { title: "Mod ID", hint: "可為不同 Minecraft 版本登記目前或歷史 ID；主要 ID 用於標準顯示，所有 ID 都解析到同一個全域資源身分。", add: "新增 ID", identifier: "Mod ID", minecraftVersions: "適用 Minecraft 版本", allSupportedVersions: "所有支援的 Minecraft 版本", primary: "主要 ID" }, sections: { ...zhCN.mods.submission.sections, gallery: "畫廊", galleryHint: "圖片會先直接上傳至私有 OSS，並隨本次完整模組修訂一起進入審核。" }, actions: { ...zhCN.mods.submission.actions, uploadGallery: "上傳畫廊圖片", uploadingGallery: "上傳中……" } } },
   catalogEditor: { ...zhCN.catalogEditor },
-  modContent: { ...zhCN.modContent, templates: { ...zhCN.modContent.templates, loot_table: "戰利品表", game_setting: "遊戲設定" } },
+  modContent: { ...zhCN.modContent, managerBack: "返回{name}", templates: { ...zhCN.modContent.templates, loot_table: "戰利品表", game_setting: "遊戲設定" } },
   resourceEditor: {
     ...zhCN.resourceEditor,
     catalogShort: "資源", catalogTitle: "全域資源目錄", catalogDescription: "瀏覽並人工維護可重複使用的物品、方塊、流體、化學品及其他遊戲資源。匯入只用於輔助，不會取代人工維護。",

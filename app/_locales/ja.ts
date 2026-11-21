@@ -113,7 +113,7 @@ const ja = {
     },
     submission: { ...en.mods.submission, autoPending: "取り込んだ情報を確認・追記してから審査に提出できます。", defaultLocale: "既定のコンテンツ言語", galleryUploadFailed: "ギャラリー画像をアップロードできませんでした。", modIds: { title: "Mod ID", hint: "Minecraft のバージョンごとに現在または過去の ID を登録できます。メイン ID は標準表示に使用され、すべての ID は同じグローバルリソース識別子に解決されます。", add: "ID を追加", identifier: "Mod ID", minecraftVersions: "適用する Minecraft バージョン", allSupportedVersions: "対応するすべての Minecraft バージョン", primary: "メイン ID" }, sections: { ...en.mods.submission.sections, gallery: "ギャラリー", galleryHint: "画像は非公開 OSS に直接アップロードされ、この完全な Mod 改訂とともに審査されます。" }, actions: { ...en.mods.submission.actions, uploadGallery: "ギャラリー画像をアップロード", uploadingGallery: "アップロード中……" } } },
   catalogEditor: { ...en.catalogEditor },
-  modContent: { ...en.modContent, templates: { ...en.modContent.templates, loot_table: "戦利品テーブル", game_setting: "ゲーム設定" } },
+  modContent: { ...en.modContent, managerBack: "{name} に戻る", templates: { ...en.modContent.templates, loot_table: "戦利品テーブル", game_setting: "ゲーム設定" } },
   resourceEditor: {
     ...en.resourceEditor,
     catalogShort: "リソース", catalogTitle: "グローバルリソースカタログ", catalogDescription: "アイテム、ブロック、流体、化学物質などのゲームリソースを閲覧し、手動で管理します。インポートは補助機能です。",

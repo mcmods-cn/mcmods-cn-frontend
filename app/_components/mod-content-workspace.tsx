@@ -275,13 +275,13 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
   return <section className="grid min-h-[680px] min-w-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)] lg:grid-cols-[270px_minmax(0,1fr)]">
     <aside className="min-w-0 max-w-full overflow-hidden border-b border-[var(--line)] bg-[var(--panel-subtle)] p-4 lg:border-b-0 lg:border-r">
       <h2 className="font-black">{t("modContent.versionEditor.versionList")}</h2>
-      <p className="mt-1 text-xs leading-5 text-[var(--muted)]">{t("modContent.versionEditor.versionListHint")}</p>
       <div className="mt-4 grid min-w-0 gap-2">
         {versions.map((version) => {
-          const fullCompatibility = `${version.minecraftVersions.join(", ")} · ${version.loaders.join(", ")}`;
+          const fullCompatibility = [version.minecraftVersions.join(", "), version.loaders.join(", ")].filter(Boolean).join(" · ");
+          const summary = [summarizeMinecraftVersions(version.minecraftVersions, 2), summarizeList(version.loaders, 1)].filter(Boolean).join(" · ");
           return <button className={`focus-ring min-w-0 max-w-full overflow-hidden rounded-lg border p-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${version.publicId === selectedVersionId && !addingVersion ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] bg-[var(--panel)]"}`} disabled={importBusy || busy} key={version.publicId} title={fullCompatibility} type="button" onClick={() => selectVersion(version.publicId)}>
             <strong className="block min-w-0 truncate">{version.label}</strong>
-            <small className="mt-1 block min-w-0 truncate text-[var(--muted)]">{summarizeMinecraftVersions(version.minecraftVersions, 2)} · {summarizeList(version.loaders, 1)}</small>
+            {summary && <small className="mt-1 block min-w-0 truncate text-[var(--muted)]">{summary}</small>}
             {version.status !== "active" ? <span className="mt-2 inline-block rounded bg-[var(--warning-soft)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--warning)]">{version.status}</span> : null}
           </button>;
         })}
@@ -292,7 +292,7 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
       {message ? <p className="mb-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm font-bold">{message}</p> : null}
       {addingVersion || !selectedVersion ? <VersionForm busy={busy} compatibilities={compatibilities} draft={versionDraft} editing={false} minecraftConfig={minecraftConfig} usingGlobalCompatibility={usingGlobalCompatibility} onCancel={selectedVersion ? () => setAddingVersion(false) : undefined} onChange={setVersionDraft} onSave={() => void saveVersion()} /> : <>
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] pb-5">
-          <div className="min-w-0"><h2 className="text-2xl font-black">{selectedVersion.label}</h2><p className="mt-2 max-w-full break-words text-sm text-[var(--muted)] [overflow-wrap:anywhere]">{selectedVersion.minecraftVersions.join(", ")} · {selectedVersion.loaders.join(", ")}{selectedVersion.modVersion ? ` · ${selectedVersion.modVersion}` : ""}</p></div>
+          <div className="min-w-0"><h2 className="text-2xl font-black">{selectedVersion.label}</h2><p className="mt-2 max-w-full break-words text-sm text-[var(--muted)] [overflow-wrap:anywhere]">{[selectedVersion.minecraftVersions.join(", "), selectedVersion.loaders.join(", "), selectedVersion.modVersion].filter(Boolean).join(" · ")}</p></div>
           <div className="flex flex-wrap gap-2">
             <button className={workspaceModeButton(editingVersion)} style={workspaceModeStyle(editingVersion)} disabled={importBusy || busy} type="button" onClick={startVersionEdit}>{t("modContent.versionEditor.editVersion")}</button>
             <button className={workspaceModeButton(!editingVersion && importSource === "")} style={workspaceModeStyle(!editingVersion && importSource === "")} disabled={selectedVersion.status !== "active" || importBusy || busy} type="button" onClick={() => selectWorkspaceMode("")}>{t("modContent.versionEditor.manualAdd")}</button>

@@ -802,7 +802,7 @@ const en = {
   },
   modContent: {
     managerTitle: "Edit or import mod data",
-    managerDescription: "Manage the versioned encyclopedia data for {name}. This area is independent from the project's basic name, introduction, authors and compatibility settings.",
+    managerBack: "Back to {name}",
     managerLoginRequired: "Log in as a verified developer, project editor, or administrator to manage this mod's data.",
     managerDenied: "You do not have permission to manage this mod's data.",
     title: "Mod data workspace",
@@ -824,7 +824,6 @@ const en = {
     versionEditor: {
       customTemplateSavedRetry: "The custom template was saved. Retry to finish adding the page without creating another template.",
       versionList: "Data versions",
-      versionListHint: "Each version has independent data types and content.",
       newVersion: "Add data version",
       newVersionHint: "Define which Minecraft versions, loaders and mod version this data set represents. A new version starts empty.",
       editVersion: "Edit version",

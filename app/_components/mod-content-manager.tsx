@@ -33,13 +33,16 @@ function ModContentManagerSession({ siteId, importSource, versionId, createNew }
 
   if (!ready) return <PageFeedback title={t("common.loading")} />;
   if (!token || !user) return <LoginRequiredState nextPath={`/mods/${siteId}/data/edit`} description={t("modContent.managerLoginRequired")} />;
-  if (error) return <PageFeedback title={error || t("modContent.managerDenied")} tone="danger" action={<Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}`}>{t("mods.detail.back")}</Link>} />;
+  if (error) return <PageFeedback title={error || t("modContent.managerDenied")} tone="danger" action={<Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}`}>{t("modContent.managerBack", { name: siteId })}</Link>} />;
   if (!mod) return <PageFeedback title={t("common.loading")} />;
 
   return <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)] lg:px-6">
     <div className="mx-auto max-w-[1500px]">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5">
-        <div><Link className="text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("mods.detail.back")}</Link><h1 className="mt-2 text-3xl font-black">{t("modContent.managerTitle")}</h1><p className="mt-2 max-w-4xl text-sm leading-6 text-[var(--muted)]">{t("modContent.managerDescription", { name: mod.primaryName })}</p></div>
+        <div className="min-w-0">
+          <Link className="focus-ring break-words text-sm font-bold text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(siteId)}`}>← {t("modContent.managerBack", { name: mod.primaryName || siteId })}</Link>
+          <h1 className="mt-2 text-3xl font-black">{t("modContent.managerTitle")}</h1>
+        </div>
         <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/edit`}>{t("mods.detail.edit")}</Link>
       </header>
       <ModContentWorkspace createNew={createNew} initialImportSource={importSource} initialVersionId={versionId} siteId={siteId} subjectId={user.id} token={token} />

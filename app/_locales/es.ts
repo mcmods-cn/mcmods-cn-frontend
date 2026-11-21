@@ -113,7 +113,7 @@ const es = {
     },
     submission: { ...en.mods.submission, autoPending: "Revisa y completa los datos importados antes de enviarlos para su aprobación.", defaultLocale: "Idioma de contenido predeterminado", galleryUploadFailed: "No se pudo subir la imagen de la galería.", modIds: { title: "ID del mod", hint: "Registra los ID actuales e históricos según la versión de Minecraft. El ID principal se usa para la visualización canónica y todos apuntan a la misma identidad de recurso global.", add: "Añadir ID", identifier: "ID del mod", minecraftVersions: "Versiones de Minecraft aplicables", allSupportedVersions: "Todas las versiones de Minecraft admitidas", primary: "ID principal" }, sections: { ...en.mods.submission.sections, gallery: "Galería", galleryHint: "Las imágenes se suben directamente al OSS privado y se revisan junto con esta revisión completa del mod." }, actions: { ...en.mods.submission.actions, uploadGallery: "Subir imágenes de galería", uploadingGallery: "Subiendo…" } } },
   catalogEditor: { ...en.catalogEditor },
-  modContent: { ...en.modContent, templates: { ...en.modContent.templates, loot_table: "Tablas de botín", game_setting: "Ajustes del juego" } },
+  modContent: { ...en.modContent, managerBack: "Volver a {name}", templates: { ...en.modContent.templates, loot_table: "Tablas de botín", game_setting: "Ajustes del juego" } },
   resourceEditor: {
     ...en.resourceEditor,
     catalogShort: "Recursos", catalogTitle: "Catálogo global de recursos", catalogDescription: "Explora y mantiene manualmente objetos, bloques, fluidos, sustancias químicas y otros recursos del juego. La importación solo sirve de ayuda.",
