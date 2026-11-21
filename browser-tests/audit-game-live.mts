@@ -19,10 +19,16 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
   const authPath = resolve(runtime.authPath);
   assert(authPath.startsWith(`${resolve(directory)}/`), "Synthetic credentials must stay in this owned fixture directory");
   const auth = JSON.parse(await readFile(authPath, "utf8")) as { creatorToken: string; reviewerToken: string };
-  const api = new URL(runtime.apiOrigin);
+  const backend = new URL(runtime.apiOrigin);
   const frontend = new URL(runtime.frontendOrigin);
   const oss = new URL(runtime.ossOrigin);
-  for (const origin of [api, frontend, oss]) assert(origin.hostname === "127.0.0.1" && origin.protocol === "http:" && !origin.username && !origin.password && origin.pathname === "/", "Use only the owned local HTTP services");
+  for (const origin of [backend, frontend, oss]) assert(origin.hostname === "127.0.0.1" && origin.protocol === "http:" && !origin.username && !origin.password && origin.pathname === "/" && !origin.search && !origin.hash, "Use only the owned local HTTP services");
+  const config = await fetch(new URL("/authentication-write-config", frontend), { redirect: "error", signal: AbortSignal.timeout(10_000) });
+  assert.equal(config.status, 200);
+  const { apiBaseURL } = await config.json();
+  assert.equal(typeof apiBaseURL, "string");
+  const api = new URL(apiBaseURL);
+  assert([backend.href, frontend.href].includes(api.href), "The frontend must use the owned backend or its same-origin gateway");
   const source = await readFile(runtime.samplePath);
   const sampleHash = createHash("sha256").update(source).digest("hex");
   assert.equal(sampleHash, runtime.sampleSha256);
@@ -31,6 +37,7 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
   const milestones = report.milestones as unknown[];
   const traffic = report.traffic as unknown[];
   const images = report.imageEvidence as unknown[];
+  report.apiTopology = api.origin === frontend.origin ? "same-origin gateway" : "direct loopback backend";
   const browser = await chromium.launch({ headless: true });
   const contexts: BrowserContext[] = [];
   const errors: string[] = [];
@@ -61,7 +68,7 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
     page.on("pageerror", error => errors.push(error.message));
     page.on("response", response => {
       const url = new URL(response.url());
-      if (url.origin === api.origin) traffic.push({ method: response.request().method(), path: url.pathname, status: response.status() });
+      if (url.origin === api.origin && url.pathname.startsWith("/api/")) traffic.push({ method: response.request().method(), path: url.pathname, status: response.status() });
     });
     await page.goto(`${frontend.origin}/mods/${encodeURIComponent(runtime.projectSiteId)}/data/edit?import=exporter&version=${encodeURIComponent(runtime.targetVersionPublicId)}`);
     await page.getByRole("heading", { name: "Edit or import mod data", exact: true }).waitFor();
