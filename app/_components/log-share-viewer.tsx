@@ -2,12 +2,23 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { apiErrorMessage } from "../_lib/api-error.mts";
 import { loadPublicLogShare, loadPublicLogShareEntry, logShareDownloadURL, type LogShare, type LogShareChunk } from "../_lib/log-share-api";
 
 export function LogShareViewer({ code }: { code: string }) {
-  return <LogShareViewerSession key={code} code={code} />;
+  const { generation, ready, user, error } = useAuthSnapshot();
+  if (!ready && !error) return <LogShareLoading />;
+  // Optional authentication may report a revoked cookie on every guest read.
+  // Only a signed-in snapshot needs a distinct key for each session generation.
+  const viewerKey = JSON.stringify([code, user?.id, user ? generation : null]);
+  return <LogShareViewerSession key={viewerKey} code={code} />;
+}
+
+function LogShareLoading() {
+  const { t } = useI18n();
+  return <main className="grid min-h-[60vh] place-items-center p-8 font-bold text-[var(--muted)]" role="status">{t("logShare.loading")}</main>;
 }
 
 function LogShareViewerSession({ code }: { code: string }) {
@@ -69,7 +80,7 @@ function LogShareViewerSession({ code }: { code: string }) {
     catch { setCopyError(true); }
   }
   if (error) return <main className="grid min-h-[60vh] place-items-center p-8"><div className="text-center"><h1 className="text-2xl font-black">{t("logShare.missing")}</h1><p className="mt-2 text-[var(--muted)]">{apiErrorMessage(error, t, t("logShare.loadFailed"))}</p><button className="button-secondary focus-ring mt-3" type="button" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button></div></main>;
-  if (!share) return <main className="grid min-h-[60vh] place-items-center p-8 font-bold text-[var(--muted)]">{t("logShare.loading")}</main>;
+  if (!share) return <LogShareLoading />;
   return <main className="min-h-screen bg-[var(--background)] px-3 py-6 text-[var(--foreground)]"><div className="mx-auto max-w-[1500px]">
     <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-sm font-bold text-[var(--accent)]">{t("logShare.title")}</p><h1 className="mt-1 break-all text-3xl font-black">{share.title || share.originalName || t("logShare.fallbackTitle")}</h1><p className="mt-2 text-sm text-[var(--muted)]">{t("logShare.dates", { created: formatDate(share.createdAt, locale), expires: formatDate(share.expiresAt, locale), version: share.redactionVersion })}</p></div><div className="flex flex-wrap gap-2"><Link className="button-secondary" href="/tools/logs">{t("logShare.create")}</Link>{share.downloadable ? <a className="button-primary" href={logShareDownloadURL(code)}>{t("logShare.download")}</a> : null}</div></div>
     <p className="mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm">{t("logShare.privacyHint")}</p>

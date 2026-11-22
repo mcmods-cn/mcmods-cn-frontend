@@ -83,3 +83,87 @@ test("OCT02 log history clears on a cookie-session account change before the new
     await page.getByText("No log shares yet.", { exact: true }).waitFor();
   } finally { newHistory.resolve({ data: emptyHistory }); await browser.close(); }
 });
+
+for (const change of ["switching accounts", "signing out"] as const) {
+  test(`an already loaded comment log is cleared on the same page when ${change}`, { timeout: 30_000 }, async () => {
+    const code = "owned-log-fixture";
+    const logPath = `/api/v1/log-shares/s/${code}`;
+    const ownerTitle = "Private comment log title";
+    const ownerText = "Private comment log chunk";
+    const chunkStarted = Promise.withResolvers<void>();
+    const delayedChunk = Promise.withResolvers<APIReply>();
+    const logoutStarted = Promise.withResolvers<void>();
+    const finishLogout = Promise.withResolvers<void>();
+    let account = "owner";
+    let logReads = 0;
+    const hidden = { status: 404, error: "Synthetic comment log is hidden" };
+    const browser = await fixture.page(async ({ path, url, method }) => {
+      if (path === "/api/v1/auth/me") {
+        if (account === "guest") return { status: 401, error: "Synthetic revoked session" };
+        return { data: { ...actor(account), sessionMarker: "x".repeat(43), permissionRules: [{ code: "admin.access", allow: true, priority: 100 }] } };
+      }
+      if (path === "/api/v1/auth/logout/if-current" && method === "POST") {
+        logoutStarted.resolve();
+        await finishLogout.promise;
+        account = "guest";
+        return { data: { ok: true } };
+      }
+      if (path === logPath) {
+        logReads++;
+        if (account === "guest") {
+          return { ...hidden, headers: { "x-mcmods-auth-state": "invalid", "access-control-expose-headers": "x-mcmods-auth-state" } };
+        }
+        if (account !== "owner") return hidden;
+        return { data: {
+          publicCode: code, sourceType: "file", title: ownerTitle, originalName: "example.log", status: "ready",
+          expiresAt: stamp, createdAt: stamp, redactionVersion: 2, redactionCounts: {}, downloadable: true,
+          entries: [{ index: 0, name: "example.log", contentType: "text/plain", byteSize: 42, lineCount: 1, checksum: "synthetic" }],
+        } };
+      }
+      if (path === `${logPath}/entries/0/content`) {
+        if (account !== "owner") return hidden;
+        if (url.searchParams.has("cursor")) { chunkStarted.resolve(); return delayedChunk.promise; }
+        return { data: { text: ownerText, characterOffset: 0, hasMore: true, nextCursor: "synthetic-next" } };
+      }
+    });
+    try {
+      const { page } = browser;
+      const sharePage = `${fixture.origin}/log/s/${code}`;
+      await page.goto(sharePage);
+      await page.getByRole("heading", { name: ownerTitle }).waitFor();
+      await page.getByText(ownerText, { exact: true }).waitFor();
+
+      if (change === "switching accounts") {
+        await page.getByRole("button", { name: "Next chunk" }).click();
+        await chunkStarted.promise;
+        account = "other-account";
+        await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:other-account" })));
+        await page.locator('a[title="other-account"]').waitFor();
+      } else {
+        const source = await page.context().newPage();
+        await source.goto(`${fixture.origin}/admin`);
+        await source.getByRole("button", { name: "Log out", exact: true }).click();
+        await logoutStarted.promise;
+        await page.getByText("The server hasn’t confirmed sign-out. Please retry.", { exact: true }).waitFor();
+      }
+
+      assert.equal(await page.getByRole("heading", { name: ownerTitle }).count(), 0);
+      assert.equal(await page.getByText(ownerText, { exact: true }).count(), 0);
+      assert.equal(await page.getByRole("link", { name: "Download redacted file" }).count(), 0);
+      delayedChunk.resolve({ data: { text: "Late private chunk", characterOffset: 42, hasMore: false, nextCursor: "" } });
+      if (change === "signing out") {
+        assert.equal(logReads, 1, "A pending logout cannot re-read with the old cookie");
+        finishLogout.resolve();
+      }
+      await page.getByRole("heading", { name: "Log does not exist or has expired" }).waitFor();
+      assert.equal(await page.getByText("Late private chunk", { exact: true }).count(), 0);
+      assert.equal(await page.getByText(ownerText, { exact: true }).count(), 0);
+      assert.equal(page.url(), sharePage);
+      assert.equal(logReads, 2, "An already signed-out viewer need not reload again when the optional API reports a revoked cookie");
+    } finally {
+      finishLogout.resolve();
+      delayedChunk.resolve(hidden);
+      await browser.close();
+    }
+  });
+}
