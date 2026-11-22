@@ -403,9 +403,11 @@ function CategoryLayoutEditor({
   }
 
   function updateCategoryName(category: ModContentSection, value: string) {
-    const normalizedLocale = normalizeContentLanguage(categoryLocale);
-    const values = category.localizations.filter((item) => normalizeContentLanguage(item.locale) !== normalizedLocale);
-    updateCategory(category.publicId, { localizations: [...values, { locale: categoryLocale, name: value, summary: "", contentMarkdown: "" }] });
+    const current = categoryLocalization(category, categoryLocale);
+    const localizations = current
+      ? category.localizations.map((item) => item === current ? { ...item, name: value } : item)
+      : [...category.localizations, { locale: categoryLocale, name: value, summary: "", contentMarkdown: "" }];
+    updateCategory(category.publicId, { localizations });
   }
 
   function reparentCategory(categoryID: string, parentID: string) {
@@ -533,7 +535,7 @@ function CategoryLayoutEditor({
         const possibleParents = isRoot ? [] : [root, ...categories].filter((item) => categoryReparentPolicy.canReparent(category.publicId, item.publicId));
         return <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3" key={category.publicId} style={{ marginInlineStart: `${isRoot ? 0 : Math.min(4, depthByID.get(category.publicId) || 1) * 18}px` }} onDragOver={(event) => event.preventDefault()} onDrop={() => dropResource(category.publicId)}>
           <header className="flex flex-wrap items-center gap-2">
-            {isRoot ? <strong className="min-w-0 flex-1">{t("modContent.sectionActions.rootCategory")}</strong> : <input aria-label={`${t("modContent.sectionActions.name")}: ${categoryName(category, categoryLocale)}`} className="field min-w-44 flex-1 py-2 font-bold" value={categoryName(category, categoryLocale)} onChange={(event) => updateCategoryName(category, event.target.value)} />}
+            {isRoot ? <strong className="min-w-0 flex-1">{t("modContent.sectionActions.rootCategory")}</strong> : <input aria-label={`${t("modContent.sectionActions.name")}: ${categoryName(category, categoryLocale)}`} className="field min-w-44 flex-1 py-2 font-bold" lang={categoryLocale} placeholder={t("modContent.sectionActions.name")} value={categoryLocalization(category, categoryLocale)?.name ?? ""} onChange={(event) => updateCategoryName(category, event.target.value)} />}
             {!isRoot ? <><select aria-label={t("modContent.sectionActions.parentCategory")} className="field w-auto py-2 text-sm" value={category.parentPublicId} onChange={(event) => reparentCategory(category.publicId, event.target.value)}>{possibleParents.map((item) => <option key={item.publicId} value={item.publicId}>{item.publicId === root.publicId ? t("modContent.sectionActions.rootCategory") : categoryName(item, categoryLocale)}</option>)}</select><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, -1)}>↑</button><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, 1)}>↓</button><button className="button-secondary px-3 text-[var(--red)]" type="button" onClick={() => deleteCategory(category)}>{t("common.delete")}</button></> : null}
           </header>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -1268,10 +1270,14 @@ function flattenCategoryTree(rootID: string, categories: ModContentSection[]) {
   return result;
 }
 
-function categoryName(category: ModContentSection, locale: string) {
+function categoryLocalization(category: ModContentSection, locale: string) {
   const normalized = normalizeContentLanguage(locale);
-  return category.localizations.find((item) => normalizeContentLanguage(item.locale) === normalized)?.name
-    || category.localizations.find((item) => normalizeContentLanguage(item.locale) === normalizeContentLanguage(category.defaultLocale))?.name
+  return category.localizations.find((item) => normalizeContentLanguage(item.locale) === normalized);
+}
+
+function categoryName(category: ModContentSection, locale: string) {
+  return categoryLocalization(category, locale)?.name
+    || categoryLocalization(category, category.defaultLocale)?.name
     || category.localizations[0]?.name
     || category.publicId;
 }
@@ -1309,9 +1315,8 @@ function resourceSearchNames(resource: ModContentLayoutSummary) {
 }
 
 function localizedSectionName(section: ModContentSection, locale: string) {
-  const normalized = normalizeContentLanguage(locale);
-  return section.localizations.find((item) => normalizeContentLanguage(item.locale) === normalized)?.name
-    || section.localizations.find((item) => normalizeContentLanguage(item.locale) === normalizeContentLanguage(section.defaultLocale))?.name
+  return categoryLocalization(section, locale)?.name
+    || categoryLocalization(section, section.defaultLocale)?.name
     || section.localizations[0]?.name
     || section.templateCode;
 }
