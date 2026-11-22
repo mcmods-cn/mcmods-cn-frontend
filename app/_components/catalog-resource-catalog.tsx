@@ -71,7 +71,7 @@ function CatalogResourceDetail({ basePath, publicId }: { basePath: string; publi
       <Link className="font-bold text-[var(--accent)] hover:underline" href={basePath}>{t("resourceEditor.back")}</Link>
     </div>
     <article className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div>
+      <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-4">
           <div className="relative grid h-20 w-20 place-items-center overflow-hidden rounded-lg bg-[var(--panel-subtle)]">
             {iconURL ? <Image unoptimized alt="" className="object-contain [image-rendering:pixelated]" fill sizes="80px" src={iconURL} /> : <strong className="text-xs text-[var(--muted)]">{detail.kindCode.slice(0, 3).toUpperCase()}</strong>}
