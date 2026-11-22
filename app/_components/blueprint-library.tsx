@@ -13,8 +13,13 @@ import { notifySite } from "../_lib/site-notice";
 import { CatalogHero, CatalogSortControl } from "./catalog-list-ui";
 
 export function BlueprintLibrary() {
+  const { generation, ready, token, user } = useAuthSnapshot();
+  const sessionKey = user ? `${user.id}:${generation}` : "guest";
+  return <BlueprintLibrarySession key={sessionKey} ready={ready} token={token} />;
+}
+
+function BlueprintLibrarySession({ ready, token }: { ready: boolean; token: string }) {
   const { t } = useI18n();
-  const { ready, token } = useAuthSnapshot();
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [sort, setSort] = useState<CatalogSortField>("updated");
@@ -60,6 +65,7 @@ export function BlueprintLibrary() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => {
       cancelled = true;
+      requestGeneration.current += 1;
       controller.abort();
     };
   }, [ready, sort, sortDirection, submittedQuery, t, token]);
