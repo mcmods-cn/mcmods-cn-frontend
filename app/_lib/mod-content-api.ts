@@ -201,13 +201,13 @@ type ModContentSectionPayload = Omit<ModContentSection, "publicId" | "templateCo
 export function createModContentSection(siteId: string, payload: ModContentSectionPayload & { reason: string }, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-sections`, { method: "POST", body: JSON.stringify(payload) }, token); }
 export function archiveModContentSection(siteId: string, sectionId: string, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-sections/${encodeURIComponent(sectionId)}`, { method: "DELETE" }, token); }
 export function patchModContentLayout(siteId: string, sectionId: string, payload: ModContentLayoutPatchPayload, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-sections/${encodeURIComponent(sectionId)}/layout`, { method: "PATCH", body: JSON.stringify(payload) }, token); }
-export function loadModContentResource(siteId: string, resourceId: string, token = "") {
-  return apiRequest<ModContentResource>(`${modPath(siteId)}/content-resources/${encodeURIComponent(resourceId)}`, {}, token)
+export function loadModContentResource(siteId: string, resourceId: string, token = "", signal?: AbortSignal) {
+  return apiRequest<ModContentResource>(`${modPath(siteId)}/content-resources/${encodeURIComponent(resourceId)}`, { signal }, token)
     .then((value) => ({ ...value, capabilities: parseModContentCapabilities(value.capabilities) }));
 }
-export function loadModContentSimilarResources(siteId: string, resourceId: string, versionId: string, locale: string, token = "") {
+export function loadModContentSimilarResources(siteId: string, resourceId: string, versionId: string, locale: string, token = "", signal?: AbortSignal) {
   const parameters = new URLSearchParams({ version: versionId, locale });
-  return apiRequest<{ groupId: string; items: ModContentSimilarResource[] }>(`${modPath(siteId)}/content-resources/${encodeURIComponent(resourceId)}/similar?${parameters}`, {}, token);
+  return apiRequest<{ groupId: string; items: ModContentSimilarResource[] }>(`${modPath(siteId)}/content-resources/${encodeURIComponent(resourceId)}/similar?${parameters}`, { signal }, token);
 }
 export function createModContentResource(siteId: string, payload: { resourcePublicId?: string; kindCode: string; canonicalId: string; versionPublicId: string; sectionPublicId?: string; entryTypeCode: string; defaultLocale: string; definition: Record<string, unknown>; iconSmallFilePublicId?: string; iconFilePublicId?: string; renderFilePublicId?: string; localizations: ModContentLocalization[]; reason: string }, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-resources`, { method: "POST", body: JSON.stringify(payload) }, token); }
 export function updateModContentResource(siteId: string, resourceId: string, payload: { resourcePublicId: string; kindCode: string; canonicalId: string; versionPublicId: string; sectionPublicId?: string; entryTypeCode: string; defaultLocale: string; definition: Record<string, unknown>; iconSmallFilePublicId?: string; iconFilePublicId?: string; renderFilePublicId?: string; localizations: ModContentLocalization[]; reason: string; baseRevisionId?: string }, token: string) { return apiRequest<ModContentMutationResult>(`${modPath(siteId)}/content-resources/${encodeURIComponent(resourceId)}`, { method: "PUT", body: JSON.stringify(payload) }, token); }

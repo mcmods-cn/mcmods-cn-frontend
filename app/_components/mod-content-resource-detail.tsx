@@ -36,9 +36,19 @@ import { ContentMetricsPanel } from "./content-metrics-panel";
 
 const BlockModelCanvas = dynamic(() => import("@/components/mcmods-exporter/BlockModelCanvas").then((module) => module.BlockModelCanvas), { ssr: false });
 
-export function ModContentResourceDetail({ siteId, resourceId, versionId, sectionId }: { siteId: string; resourceId: string; versionId: string; sectionId: string }) {
+type ModContentResourceDetailProps = { siteId: string; resourceId: string; versionId: string; sectionId: string };
+
+export function ModContentResourceDetail(props: ModContentResourceDetailProps) {
+  const { t } = useI18n();
+  const { error, generation, ready, token, user } = useAuthSnapshot();
+  if (!ready && !error) return <main className="grid min-h-[65vh] place-items-center p-6" role="status">{t("common.loading")}</main>;
+  // Pending details may only be visible to the previous session.
+  const viewerKey = JSON.stringify([props.siteId, props.resourceId, user?.id, user ? generation : null]);
+  return <ModContentResourceDetailSession key={viewerKey} {...props} token={token} />;
+}
+
+function ModContentResourceDetailSession({ siteId, resourceId, versionId, sectionId, token }: ModContentResourceDetailProps & { token: string }) {
   const { locale, t } = useI18n();
-  const { token } = useAuthSnapshot();
   const capabilityRequestKey = `${siteId}\u0000${resourceId}\u0000${token}`;
   const [detail, setDetail] = useState<ModContentResource>();
   const [detailCapabilityKey, setDetailCapabilityKey] = useState("");
@@ -46,11 +56,16 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
   const [error, setError] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-    loadModContentResource(siteId, resourceId, token)
-      .then((value) => { if (!cancelled) { setDetail(value); setDetailCapabilityKey(capabilityRequestKey); setSimilarResources([]); } })
-      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : String(reason)); });
-    return () => { cancelled = true; };
+    const controller = new AbortController();
+    loadModContentResource(siteId, resourceId, token, controller.signal)
+      .then((value) => {
+        if (controller.signal.aborted) return;
+        setDetail(value);
+        setDetailCapabilityKey(capabilityRequestKey);
+        setSimilarResources([]);
+      })
+      .catch((reason) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason)); });
+    return () => controller.abort();
   }, [capabilityRequestKey, resourceId, siteId, token]);
 
   useEffect(() => {
@@ -59,11 +74,11 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
     const firstDetailedIndex = detail.versions.findIndex((item) => item.hasDetail);
     const currentVersionId = detail.versions[requestedIndex >= 0 ? requestedIndex : Math.max(0, firstDetailedIndex)]?.publicId;
     if (!currentVersionId) return;
-    let cancelled = false;
-    loadModContentSimilarResources(siteId, resourceId, currentVersionId, locale, token)
-      .then((result) => { if (!cancelled) setSimilarResources(result.items); })
-      .catch(() => { if (!cancelled) setSimilarResources([]); });
-    return () => { cancelled = true; };
+    const controller = new AbortController();
+    loadModContentSimilarResources(siteId, resourceId, currentVersionId, locale, token, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setSimilarResources(result.items); })
+      .catch(() => { if (!controller.signal.aborted) setSimilarResources([]); });
+    return () => controller.abort();
   }, [detail, locale, resourceId, siteId, token, versionId]);
 
   if (!detail) return <main className="grid min-h-[65vh] place-items-center p-6">{error || t("common.loading")}</main>;
@@ -86,7 +101,7 @@ export function ModContentResourceDetail({ siteId, resourceId, versionId, sectio
       })}</div>
     </header>
     {current && similarResources.length > 1 ? <SimilarResourceStrip currentResourceId={resourceId} locale={locale} resources={similarResources} sectionId={sectionId} siteId={siteId} versionId={current.publicId} /> : null}
-    {!current || !versionDetail ? <section className="mt-8 rounded-lg border border-dashed border-[var(--red)] bg-[var(--panel)] p-8 text-center"><h2 className="text-xl font-black">{current?.label}</h2><p className="mt-3 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionContentMissing")}</p></section> : <ResourcePresentation canonicalId={detail.canonicalId} current={current} definition={versionDetail.definition} entryTypeCode={versionDetail.entryTypeCode} key={current.publicId} kindCode={detail.kindCode} name={localization?.name || detail.canonicalId} resourceId={resourceId} schemaDefinition={versionDetail.schemaDefinition}>
+    {!current || !versionDetail ? <section className="mt-8 rounded-lg border border-dashed border-[var(--red)] bg-[var(--panel)] p-8 text-center"><h2 className="text-xl font-black">{current?.label}</h2><p className="mt-3 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionContentMissing")}</p></section> : <ResourcePresentation canonicalId={detail.canonicalId} current={current} definition={versionDetail.definition} entryTypeCode={versionDetail.entryTypeCode} key={current.publicId} kindCode={detail.kindCode} name={localization?.name || detail.canonicalId} resourceId={resourceId} schemaDefinition={versionDetail.schemaDefinition} token={token}>
       {localization?.contentMarkdown ? <div className="markdown-preview mt-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={localization.contentMarkdown} /></div> : <p className="mt-5 text-[var(--muted)]">{t("mods.exportImport.entry.noIntroduction")}</p>}
     </ResourcePresentation>}
     <ContentMetricsPanel pageKey={current ? `version:${current.publicId}` : "detail"} publicId={resourceId} />
@@ -136,6 +151,7 @@ function ResourcePresentation({
   name,
   resourceId,
   schemaDefinition,
+  token,
 }: {
   canonicalId: string;
   children: ReactNode;
@@ -146,9 +162,10 @@ function ResourcePresentation({
   name: string;
   resourceId: string;
   schemaDefinition?: ModContentTemplateDefinition;
+  token: string;
 }) {
   const { locale, t } = useI18n();
-  const { token, user } = useAuthSnapshot();
+  const { user } = useAuthSnapshot();
   const [loadedDetail, setLoadedDetail] = useState<{ key: string; detail?: ModExportEntryDetail; error?: string }>();
   const [display3D, setDisplay3D] = useState(false);
   const registry = current.registry || catalogRegistryForKind(kindCode) || "";
@@ -166,9 +183,13 @@ function ResourcePresentation({
 
   useEffect(() => {
     if (!revisionId || !registry) return;
-    getModExportEntryDetail(revisionId, registry, resourceId, canonicalId, minecraftLocale(locale), token)
-      .then((value) => setLoadedDetail({ key: requestKey, detail: value }))
-      .catch((reason) => setLoadedDetail({ key: requestKey, error: reason instanceof Error ? reason.message : String(reason) }));
+    const controller = new AbortController();
+    getModExportEntryDetail(revisionId, registry, resourceId, canonicalId, minecraftLocale(locale), token, controller.signal)
+      .then((value) => { if (!controller.signal.aborted) setLoadedDetail({ key: requestKey, detail: value }); })
+      .catch((reason) => {
+        if (!controller.signal.aborted) setLoadedDetail({ key: requestKey, error: reason instanceof Error ? reason.message : String(reason) });
+      });
+    return () => controller.abort();
   }, [canonicalId, locale, registry, requestKey, resourceId, revisionId, token]);
 
   const modelAssetPaths = entryDetail?.modelAssetPaths;

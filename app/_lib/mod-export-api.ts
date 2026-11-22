@@ -337,8 +337,8 @@ export function minecraftLocale(locale: string) {
   return aliases[normalized] ?? normalized;
 }
 
-export function getModExportEntryDetail(revisionId: string, registry: string, publicId: string, objectId: string, locale: string, token: string) {
+export function getModExportEntryDetail(revisionId: string, registry: string, publicId: string, objectId: string, locale: string, token: string, signal?: AbortSignal) {
   const search = new URLSearchParams({ registry, objectId, locale });
   if (publicId) search.set("publicId", publicId);
-  return apiRequest<ModExportEntryDetail>(`/api/v1/export-revisions/${encodeURIComponent(revisionId)}/entry-detail?${search}`, {}, token);
+  return apiRequest<ModExportEntryDetail>(`/api/v1/export-revisions/${encodeURIComponent(revisionId)}/entry-detail?${search}`, { signal }, token);
 }
