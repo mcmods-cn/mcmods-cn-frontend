@@ -28,7 +28,8 @@ const MODPACK_DETAIL_TABS = ["introduction", "mods", "downloads", "changelog", "
 type ModpackTab = (typeof MODPACK_DETAIL_TABS)[number];
 
 export function ModpackDetailLoader({ siteId }: { siteId: string }) {
-  const { ready, token } = useAuthSnapshot();
+  const auth = useAuthSnapshot();
+  const { token } = auth;
   const { t } = useI18n();
   const load = useCallback((signal: AbortSignal) => {
     return apiRequest<BackendModpackRecord>(
@@ -37,7 +38,7 @@ export function ModpackDetailLoader({ siteId }: { siteId: string }) {
       token,
     );
   }, [siteId, token]);
-  const { state, retry } = useProjectDetailQuery<BackendModpackRecord>(ready, load);
+  const { state, retry } = useProjectDetailQuery<BackendModpackRecord>(auth, siteId, load);
 
   if (state.status === "ready") return <ModpackDetail record={state.data} />;
   return <ProjectDetailLoadFeedback errorTitle={t("modpacks.detail.loadFailed")} notFoundTitle={t("modpacks.detail.notFound")} onRetry={retry} state={state} />;

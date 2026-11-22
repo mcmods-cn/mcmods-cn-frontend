@@ -12,7 +12,8 @@ import { ProjectDetailLoadFeedback, useProjectDetailQuery } from "./project-deta
 
 export function ModDetailLoader({ siteId }: { siteId: string }) {
   const { t, locale } = useI18n();
-  const { ready, token } = useAuthSnapshot();
+  const auth = useAuthSnapshot();
+  const { token } = auth;
   const load = useCallback(async (signal: AbortSignal) => {
     const record = await apiRequest<BackendModRecord>(
       `/api/v1/mods/${encodeURIComponent(siteId)}`,
@@ -26,7 +27,7 @@ export function ModDetailLoader({ siteId }: { siteId: string }) {
       : record;
     return backendModToCatalogEntry(localizedRecord);
   }, [locale, siteId, token]);
-  const { state, retry } = useProjectDetailQuery<ModCatalogEntry>(ready, load);
+  const { state, retry } = useProjectDetailQuery<ModCatalogEntry>(auth, siteId, load);
 
   if (state.status === "ready") return <ModDetail mod={state.data} />;
   return <ProjectDetailLoadFeedback errorTitle={t("mods.detail.loadFailed")} notFoundTitle={t("mods.detail.notFound")} onRetry={retry} state={state} />;

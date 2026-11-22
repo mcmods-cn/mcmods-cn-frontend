@@ -29,7 +29,8 @@ const PROJECT_DETAIL_TABS = ["introduction", "downloads", "changelog", "gallery"
 type ProjectTab = (typeof PROJECT_DETAIL_TABS)[number];
 
 export function SimpleProjectDetailLoader({ projectType, siteId }: { projectType: SimpleProjectType; siteId: string }) {
-  const { ready, token } = useAuthSnapshot();
+  const auth = useAuthSnapshot();
+  const { token } = auth;
   const { t } = useI18n();
   const load = useCallback((signal: AbortSignal) => {
     return apiRequest<SimpleProjectRecord>(
@@ -38,7 +39,7 @@ export function SimpleProjectDetailLoader({ projectType, siteId }: { projectType
       token,
     );
   }, [projectType, siteId, token]);
-  const { state, retry } = useProjectDetailQuery<SimpleProjectRecord>(ready, load);
+  const { state, retry } = useProjectDetailQuery<SimpleProjectRecord>(auth, `${projectType}:${siteId}`, load);
   if (state.status === "ready") return <SimpleProjectDetail record={state.data} />;
   return <ProjectDetailLoadFeedback errorTitle={t("largeProjects.detail.loadFailed")} notFoundTitle={t("largeProjects.detail.notFound")} onRetry={retry} state={state} />;
 }
