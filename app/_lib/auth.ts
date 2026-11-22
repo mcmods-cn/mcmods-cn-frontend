@@ -33,6 +33,7 @@ export type AuthResult = {
 };
 
 export type AuthSnapshot = {
+  generation: number;
   ready: boolean;
   token: string;
   user: AuthUser | null;
@@ -65,7 +66,7 @@ function currentSnapshot(): AuthSnapshot {
   if (logoutIntent?.id.startsWith("bearer:") && !logoutIntent.token) logoutStatus = "source";
   if (logoutIntent?.offerCurrent) logoutStatus = "choose";
   if (logoutIntent?.request) logoutStatus = logoutIntent.checking ? "checking" : "pending";
-  return { ready: authReady, token: activeToken, user: activeUser, error: authError, retryAt: authRetryAt, logoutStatus };
+  return { generation: authGeneration, ready: authReady, token: activeToken, user: activeUser, error: authError, retryAt: authRetryAt, logoutStatus };
 }
 
 function publishAuthSnapshot() {
@@ -314,7 +315,7 @@ export function clearAuth(): Promise<boolean> {
 }
 
 export function useAuthSnapshot(): AuthSnapshot {
-  const [snapshot, setSnapshot] = useState<AuthSnapshot>({ ready: false, token: "", user: null });
+  const [snapshot, setSnapshot] = useState<AuthSnapshot>({ generation: 0, ready: false, token: "", user: null });
 
   useEffect(() => subscribeAuthSnapshot(setSnapshot), []);
 

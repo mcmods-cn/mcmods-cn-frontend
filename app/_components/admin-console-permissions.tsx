@@ -1,10 +1,11 @@
 "use client";
 
+import { aiTranslationTaskTypes, runAITranslationTask } from "../_lib/admin-ai-tasks";
 import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { hasSameI18nPlaceholders } from "../_lib/i18n-message.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
-import { EmptyState, InlineMessage, LocalizedTextPairEditor, Permission, PermissionCatalog, Role, RolePermissionEntry, User, UserPermissionDetails, UserPermissionEntry, aiTranslationTaskTypes, buildNewPermissionPayload, cleanError, cloneRole, editableLocalizedText, localizedText, normalizeLocalizedTexts, notifyAdminNotice, parsePermissionInput, permissionInfoForCode, permissionModule, permissionSuggestions, permissionTemplateCode, runAITranslationTask, setLocalizedText, splitCodes, withFallbackLocalizedText } from "./admin-console-shared";
+import { EmptyState, InlineMessage, LocalizedTextPairEditor, Permission, PermissionCatalog, Role, RolePermissionEntry, User, UserPermissionDetails, UserPermissionEntry, buildNewPermissionPayload, cleanError, cloneRole, editableLocalizedText, localizedText, normalizeLocalizedTexts, notifyAdminNotice, parsePermissionInput, permissionInfoForCode, permissionModule, permissionSuggestions, permissionTemplateCode, setLocalizedText, splitCodes, withFallbackLocalizedText } from "./admin-console-shared";
 
 function PermissionGroupEditor({
   catalog,
@@ -883,10 +884,11 @@ function PermissionBulkAdder({
 }
 
 function PermissionCatalogEditor({
-  catalog,
+  canTranslate, catalog,
   token,
   refreshCatalog,
 }: {
+  canTranslate: boolean;
   catalog: PermissionCatalog;
   token: string;
   refreshCatalog: () => Promise<void>;
@@ -955,7 +957,11 @@ function PermissionCatalogEditor({
     }
   }
 
+  const translationRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => translationRequest.current?.abort(), []);
+
   async function completePermissionTranslations() {
+    if (!canTranslate || translationRequest.current) return;
     if (sourceLocale === targetLocale) {
       notifyAdminNotice(t("admin.ai.sameLanguage"), t("admin.noticeTitle"), "danger");
       return;
@@ -970,13 +976,16 @@ function PermissionCatalogEditor({
       return;
     }
     const requestedEditVersion = editVersion.current;
+    const controller = new AbortController();
+    translationRequest.current = controller;
     setAICompleting(true);
     try {
       const result = await runAITranslationTask(token, aiTranslationTaskTypes.permission, {
         sourceLocale,
         targetLocale,
         items: candidates.map((permission) => ({ key: permission.code, ...editableLocalizedText(permission, sourceLocale) })),
-      });
+      }, controller.signal);
+      if (controller.signal.aborted) return;
       if (requestedEditVersion !== editVersion.current) {
         notifyAdminNotice(t("admin.ai.protectedEdits"));
         return;
@@ -1002,9 +1011,11 @@ function PermissionCatalogEditor({
       setDraft(nextDraft);
       notifyAdminNotice(t("admin.ai.translationCompleted", { count: completed }));
     } catch (error) {
+      if (controller.signal.aborted) return;
       notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
     } finally {
-      setAICompleting(false);
+      translationRequest.current = null;
+      if (!controller.signal.aborted) setAICompleting(false);
     }
   }
 
@@ -1031,7 +1042,7 @@ function PermissionCatalogEditor({
               </option>
             ))}
           </select>
-          <button className="button-secondary focus-ring whitespace-nowrap" disabled={aiCompleting} type="button" onClick={completePermissionTranslations}>
+          <button className="button-secondary focus-ring whitespace-nowrap" disabled={!canTranslate || aiCompleting} type="button" onClick={completePermissionTranslations}>
             {aiCompleting ? t("admin.ai.completingTranslation") : t("admin.ai.completeTranslation")}
           </button>
           <button className="button-primary focus-ring" disabled={saving} type="button" onClick={savePermissions}>

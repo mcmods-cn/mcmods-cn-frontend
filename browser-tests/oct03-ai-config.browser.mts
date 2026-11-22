@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import type { Page } from "playwright";
-import type { AIConfig } from "../app/_components/admin-console-shared.tsx";
+import type { AIConfig } from "../app/_lib/admin-ai-config.mts";
 import { ProductionBrowserFixture } from "./fixture.mts";
 
 // Actual production React panels, deterministic project API transport. The
@@ -14,6 +14,7 @@ const panels = ["ai-providers", "ai-models", "ai-task-models"] as const;
 type AIPanel = typeof panels[number];
 function config(): AIConfig {
   return {
+    revision: "1".repeat(64),
     providers: [{ code: "fixture", name: "Fixture provider", enabled: true, baseUrl: "https://ai-provider.example.invalid/v1", protocol: "openai-compatible", hasApiKey: true, notes: "" }],
     models: [{ provider: "fixture", model: "fixture-model", displayName: "Original model", enabled: true, contextTokens: 4096, maxOutputTokens: 1024, inputPricePerMillion: 1, outputPricePerMillion: 2 }],
     taskModels: [{ taskType: "i18n_translation_completion", modelKey: "fixture/fixture-model", timeoutSeconds: 30, prompt: "Original prompt" }],
@@ -89,13 +90,14 @@ test("OCT03 FS004 all AI configuration panels wait for fresh snapshots and retai
       await page.getByRole("button", { name: "Save AI config", exact: true }).click();
       await saveStarted.promise; await assertReadOnly(page);
       assert.equal(writes.length, 1);
+      assert.equal(writes[0].revision, snapshot.revision);
       assert.deepEqual(writes[0].quotas, snapshot.quotas, "model/provider edits must retain request/token/cost budget configuration");
       assert.deepEqual(writes[0].translation, snapshot.translation);
       if (name === "ai-providers") { assert.equal(writes[0].providers[0].name, "Manual AI configuration"); assert.equal(writes[0].models[0].displayName, "Fresh model"); assert.equal(writes[0].taskModels[0].prompt, "Fresh prompt"); }
       if (name === "ai-models") { assert.equal(writes[0].models[0].displayName, "Manual AI configuration"); assert.equal(writes[0].providers[0].name, "Fresh provider"); assert.equal(writes[0].taskModels[0].prompt, "Fresh prompt"); }
       if (name === "ai-task-models") { assert.equal(writes[0].taskModels[0].prompt, "Manual AI configuration"); assert.equal(writes[0].providers[0].name, "Fresh provider"); assert.equal(writes[0].models[0].displayName, "Fresh model"); }
       saveRelease.resolve();
-      await page.getByRole("alertdialog").filter({ hasText: "Synthetic AI configuration save rejected" }).waitFor();
+      await page.getByRole("alertdialog").filter({ hasText: "Settings could not be saved. Your draft is preserved." }).waitFor();
       await closeNotice(page);
       assert.equal(await input.inputValue(), "Manual AI configuration");
       assert.equal(await input.isEnabled(), true);
@@ -186,8 +188,10 @@ test("OCT03 FS004 switching AI panels preserves models, providers and task bindi
     if (path === "/api/v1/admin/config") return { data: { general: { siteName: "Synthetic", logoUrl: "" }, features: {}, ai: config() } };
     if (path === "/api/v1/admin/ai/config") {
       if (method === "PUT") {
-        current = JSON.parse(body) as AIConfig;
-        writes.push(structuredClone(current));
+        const candidate = JSON.parse(body) as AIConfig;
+        assert.equal(candidate.revision, current.revision);
+        writes.push(structuredClone(candidate));
+        current = { ...candidate, revision: String(writes.length + 1).repeat(64) };
       } else {
         assert.equal(method, "GET");
         if (++reads === 3) {

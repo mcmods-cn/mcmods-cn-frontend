@@ -1,11 +1,12 @@
 "use client";
 
+import { aiTranslationTaskTypes, runAITranslationTask } from "../_lib/admin-ai-tasks";
 import { FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 import { CatalogPagination } from "./catalog-list-ui";
 import { apiRequest } from "../_lib/api";
 import { hasSameI18nPlaceholders } from "../_lib/i18n-message.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
-import { AdminUserBalance, AdminUserDetails, EmptyState, InlineMessage, PanelShell, PermissionCatalog, User, aiTranslationTaskTypes, cleanError, formatDateTime, notifyAdminNotice, runAITranslationTask } from "./admin-console-shared";
+import { AdminUserBalance, AdminUserDetails, EmptyState, InlineMessage, PanelShell, PermissionCatalog, User, cleanError, formatDateTime, notifyAdminNotice } from "./admin-console-shared";
 
 function UsersPanelV2({
   catalog,
@@ -736,7 +737,7 @@ function isResourceDataPageTranslationKey(key: string) {
 
 const translationPageSize = 50;
 
-function TranslationManagerPanel({ token }: { token: string }) {
+function TranslationManagerPanel({ token, canTranslate }: { token: string; canTranslate: boolean }) {
   const {
     locale,
     t,
@@ -781,7 +782,11 @@ function TranslationManagerPanel({ token }: { token: string }) {
     setTranslation(targetLocale, key, value);
   }
 
+  const translationRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => translationRequest.current?.abort(), []);
+
   async function completeMissingTranslations() {
+    if (!canTranslate || translationRequest.current) return;
     if (sourceLocale === targetLocale) {
       notifyAdminNotice(t("admin.ai.sameLanguage"), t("admin.noticeTitle"), "danger");
       return;
@@ -796,13 +801,16 @@ function TranslationManagerPanel({ token }: { token: string }) {
     const requestedGeneration = completionGeneration.current;
     const editVersion = getTranslationEditVersion();
     const sourceTexts = new Map(candidates.map((key) => [key, getTranslation(sourceLocale, key)]));
+    const controller = new AbortController();
+    translationRequest.current = controller;
     setAICompleting(true);
     try {
       const result = await runAITranslationTask(token, aiTranslationTaskTypes.i18n, {
         sourceLocale,
         targetLocale,
         items: candidates.map((key) => ({ key, text: getTranslation(sourceLocale, key) })),
-      });
+      }, controller.signal);
+      if (controller.signal.aborted) return;
       if (requestedGeneration !== completionGeneration.current) return;
       const translations: Record<string, string> = {};
       for (const item of result.items ?? []) {
@@ -814,9 +822,11 @@ function TranslationManagerPanel({ token }: { token: string }) {
         notifyAdminNotice(t("admin.ai.translationCompleted", { count: Object.keys(translations).length }));
       } else notifyAdminNotice(t("admin.ai.protectedEdits"));
     } catch (error) {
+      if (controller.signal.aborted) return;
       if (requestedGeneration === completionGeneration.current) notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
     } finally {
-      setAICompleting(false);
+      translationRequest.current = null;
+      if (!controller.signal.aborted) setAICompleting(false);
     }
   }
 
@@ -869,7 +879,7 @@ function TranslationManagerPanel({ token }: { token: string }) {
             <input checked={missingOnly} type="checkbox" onChange={(event) => { setPage(1); setMissingOnly(event.target.checked); }} />
             {t("admin.missingOnly")}
           </label>
-          <button className="button-primary focus-ring whitespace-nowrap" disabled={aiCompleting} type="button" onClick={completeMissingTranslations}>
+          <button className="button-primary focus-ring whitespace-nowrap" disabled={!canTranslate || aiCompleting} type="button" onClick={completeMissingTranslations}>
             {aiCompleting ? t("admin.ai.completingTranslation") : t("admin.ai.completeTranslation")}
           </button>
         </div>

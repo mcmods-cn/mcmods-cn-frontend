@@ -4,7 +4,7 @@ import test from "node:test";
 
 test("AI task settings expose only the authoritative NATS concurrency control", async () => {
   const [shared, infrastructure, english, chinese] = await Promise.all([
-    readFile(new URL("../_components/admin-console-shared.tsx", import.meta.url), "utf8"),
+    readFile(new URL("./admin-ai-config.mts", import.meta.url), "utf8"),
     readFile(new URL("../_components/admin-console-infrastructure.tsx", import.meta.url), "utf8"),
     readFile(new URL("../_locales/en-US.ts", import.meta.url), "utf8"),
     readFile(new URL("../_locales/zh-CN.ts", import.meta.url), "utf8"),

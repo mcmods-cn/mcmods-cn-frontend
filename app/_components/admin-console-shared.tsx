@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { ApiError, apiRequest } from "../_lib/api";
+import { ApiError } from "../_lib/api";
 import { isBackendUnavailable } from "../_lib/backend-status";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import type { OAuthConfig } from "../_lib/oauth-settings.mts";
@@ -71,18 +71,9 @@ type AdminConfig = {
   markdown: MarkdownRendererConfig;
   profile: { signatureMaxBytes: number };
   oss?: OSSConfig;
-  ai?: AIConfig;
   permissions: Record<string, string | number | boolean>;
   database: Record<string, string>;
   features: Record<string, boolean>;
-};
-
-type AIConfig = {
-  providers: AIProviderConfig[];
-  models: AIModelConfig[];
-  taskModels: AITaskModelConfig[];
-  quotas: AIQuotaConfig[];
-  translation: AITranslationConfig;
 };
 
 type ModImportProviderConfig = {
@@ -102,82 +93,6 @@ type ModImportConfig = {
   modrinth: ModImportProviderConfig;
   curseforge: ModImportProviderConfig;
   github: ModImportProviderConfig;
-};
-
-type AIProviderConfig = {
-  code: string;
-  name: string;
-  enabled: boolean;
-  baseUrl: string;
-  apiKey?: string;
-  hasApiKey?: boolean;
-  protocol: AIProviderProtocol;
-  notes: string;
-};
-
-type AIProviderProtocol = "openai-compatible" | "anthropic";
-
-const aiProviderProtocols: Array<{ value: AIProviderProtocol; label: string }> = [
-  { value: "openai-compatible", label: "OpenAI Compatible" },
-  { value: "anthropic", label: "Anthropic" },
-];
-
-type AIModelConfig = {
-  provider: string;
-  model: string;
-  displayName: string;
-  enabled: boolean;
-  contextTokens: number;
-  maxOutputTokens: number;
-  inputPricePerMillion: number;
-  outputPricePerMillion: number;
-};
-
-type AITaskModelConfig = {
-  taskType: string;
-  modelKey: string;
-  timeoutSeconds: number;
-  prompt: string;
-};
-
-type AITaskStatus = {
-  id: string;
-  status: "queued" | "running" | "completed" | "failed";
-  result?: AITranslationResult;
-  error?: string;
-};
-
-type AITranslationResult = {
-  items?: Array<{
-    key: string;
-    text?: string;
-    name?: string;
-    description?: string;
-  }>;
-};
-
-const aiTranslationTaskTypes = {
-  permission: "permission_translation_completion",
-  i18n: "i18n_translation_completion",
-  notification: "notification_translation_completion",
-} as const;
-
-type AIQuotaConfig = {
-  scope: string;
-  subject: string;
-  period: string;
-  requestLimit: number;
-  tokenLimit: number;
-  costLimitCny: number;
-};
-
-type AITranslationConfig = {
-  enabled: boolean;
-  sourceLocale: string;
-  targetLocales: string[];
-  taskType: string;
-  autoSubmit: boolean;
-  glossary: string;
 };
 
 type OSSConfig = {
@@ -321,32 +236,6 @@ const defaultOSSConfig: OSSConfig = {
   ],
   bucketAccessPolicy: "private-read-write",
   temporaryDownloadPolicy: "presigned-url",
-};
-
-const initialAIConfig: AIConfig = {
-  providers: [
-    { code: "openai", name: "OpenAI", enabled: false, baseUrl: "https://api.openai.com/v1", apiKey: "", hasApiKey: false, protocol: "openai-compatible", notes: "" },
-    { code: "aliyun", name: "阿里云百炼", enabled: false, baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", apiKey: "", hasApiKey: false, protocol: "openai-compatible", notes: "" },
-  ],
-  models: [
-    { provider: "openai", model: "gpt-4.1-mini", displayName: "GPT-4.1 mini", enabled: false, contextTokens: 1047576, maxOutputTokens: 32768, inputPricePerMillion: 0, outputPricePerMillion: 0 },
-  ],
-  taskModels: [
-    { taskType: aiTranslationTaskTypes.permission, modelKey: "", timeoutSeconds: 120, prompt: "" },
-    { taskType: aiTranslationTaskTypes.i18n, modelKey: "", timeoutSeconds: 120, prompt: "" },
-    { taskType: aiTranslationTaskTypes.notification, modelKey: "", timeoutSeconds: 90, prompt: "" },
-  ],
-  quotas: [
-    { scope: "site", subject: "default", period: "day", requestLimit: 1000, tokenLimit: 1000000, costLimitCny: 10000 },
-  ],
-  translation: {
-    enabled: false,
-    sourceLocale: "zh-CN",
-    targetLocales: ["en-US"],
-    taskType: "translation",
-    autoSubmit: false,
-    glossary: "",
-  },
 };
 
 type PermissionDefaults = {
@@ -555,86 +444,6 @@ function logCategoryTitle(category: string, t: (key: string, params?: Record<str
     ai_call: t("admin.panels.logsAi"),
   };
   return titles[category] ?? category;
-}
-
-function cloneAIConfig(config: AIConfig): AIConfig {
-  return JSON.parse(JSON.stringify(config)) as AIConfig;
-}
-
-function normalizeAIProtocols(config: AIConfig): AIConfig {
-  const draft = cloneAIConfig(config);
-  draft.providers = draft.providers.map((provider) => ({
-    ...provider,
-    protocol: provider.protocol === "anthropic" ? "anthropic" : "openai-compatible",
-  }));
-  return draft;
-}
-
-function normalizeAIModelProviders(config: AIConfig): AIConfig {
-  const draft = normalizeAIProtocols(config);
-  const providerCodes = new Set(draft.providers.map((provider) => provider.code.trim()).filter(Boolean));
-  draft.models = draft.models.map((model) => ({
-    ...model,
-    provider: providerCodes.has(model.provider) ? model.provider : "",
-  }));
-  return draft;
-}
-
-async function saveAIConfig(
-  draft: AIConfig,
-  token: string,
-  setDraft: (config: AIConfig) => void,
-  setSaving: (saving: boolean) => void,
-  t: (key: string, params?: Record<string, string | number>) => string,
-) {
-  setSaving(true);
-  try {
-    const payload = normalizeAIProtocols(draft);
-    const saved = await apiRequest<AIConfig>("/api/v1/admin/ai/config", { method: "PUT", body: JSON.stringify(payload) }, token);
-    setDraft(normalizeAIProtocols(saved));
-    notifyAdminNotice(t("admin.ai.configSaved"));
-  } catch (error) {
-    notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
-  } finally {
-    setSaving(false);
-  }
-}
-
-function setAIProvider(draft: AIConfig, setDraft: (config: AIConfig) => void, index: number, patch: Partial<AIProviderConfig>) {
-  setDraft({ ...draft, providers: draft.providers.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) });
-}
-
-function setAIModel(draft: AIConfig, setDraft: (config: AIConfig) => void, index: number, patch: Partial<AIModelConfig>) {
-  setDraft({ ...draft, models: draft.models.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) });
-}
-
-function setAITaskModel(draft: AIConfig, setDraft: (config: AIConfig) => void, index: number, patch: Partial<AITaskModelConfig>) {
-  setDraft({ ...draft, taskModels: draft.taskModels.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) });
-}
-
-function aiTaskTypeLabel(taskType: string, t: (key: string, params?: Record<string, string | number>) => string) {
-  const labels: Record<string, string> = {
-    [aiTranslationTaskTypes.permission]: t("admin.ai.permissionTranslationTask"),
-    [aiTranslationTaskTypes.i18n]: t("admin.ai.i18nTranslationTask"),
-    [aiTranslationTaskTypes.notification]: t("admin.ai.notificationTranslationTask"),
-  };
-  return labels[taskType] ?? taskType;
-}
-
-async function runAITranslationTask(token: string, taskType: string, payload: Record<string, unknown>) {
-  const created = await apiRequest<{ id: string; taskUid: string; status: string }>(
-    "/api/v1/admin/ai/tasks",
-    { method: "POST", body: JSON.stringify({ taskType, payload }) },
-    token,
-  );
-  const deadline = Date.now() + 180_000;
-  while (Date.now() < deadline) {
-    const task = await apiRequest<AITaskStatus>(`/api/v1/admin/ai/tasks/${created.id}`, {}, token);
-    if (task.status === "completed") return task.result ?? { items: [] };
-    if (task.status === "failed") throw new Error(task.error || "AI translation task failed");
-    await new Promise((resolve) => window.setTimeout(resolve, 800));
-  }
-  throw new Error("AI translation task timed out");
 }
 
 function normalizePermissionCatalog(catalog: PermissionCatalog): PermissionCatalog {
@@ -884,5 +693,5 @@ function notifyAdminNotice(message: string, title?: string, tone: "info" | "dang
   window.dispatchEvent(new CustomEvent("mcmods-admin-notice", { detail: { message, title, tone } }));
 }
 
-export type { AIConfig, AIModelConfig, AIProviderConfig, AIProviderProtocol, AIQuotaConfig, AITaskModelConfig, AITaskStatus, AITranslationConfig, AITranslationResult, AdminConfig, AdminNotice, AdminUserBalance, AdminUserDetails, LocalizedText, LocalizedTexts, LogPage, LogRetentionConfig, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, OSSConfig, OSSFile, Permission, PermissionCatalog, PermissionDefaults, Role, RolePermissionEntry, RuntimeLogEntry, RuntimeLogResponse, User, UserPermissionDetails, UserPermissionEntry };
-export { AdminGateMessage, AdminNoticeDialog, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LocalizedTextPairEditor, PanelShell, aiProviderProtocols, aiTaskTypeLabel, aiTranslationTaskTypes, buildNewPermissionPayload, cleanError, cleanOSSError, cloneAIConfig, cloneRole, detectTextLocale, displayCell, editableLocalizedText, defaultOSSConfig, emptyCatalog, initialAIConfig, formatDateTime, isPermissionError, isTemplatePermissionCode, localizedText, logCategoryTitle, normalizeAIModelProviders, normalizeAIProtocols, normalizeEntityTranslations, normalizeLocalizedTexts, normalizePermissionCatalog, notifyAdminNotice, notifyPermissionDenied, parsePermissionInput, permissionInfoForCode, permissionModule, permissionSuggestions, permissionTemplateCode, preferredTranslationLocale, runAITranslationTask, saveAIConfig, setAIModel, setAIProvider, setAITaskModel, setLocalizedText, splitCodes, valueText, withFallbackLocalizedText };
+export type { AdminConfig, AdminNotice, AdminUserBalance, AdminUserDetails, LocalizedText, LocalizedTexts, LogPage, LogRetentionConfig, LogRow, MailConfig, ModImportConfig, ModImportProviderConfig, OSSConfig, OSSFile, Permission, PermissionCatalog, PermissionDefaults, Role, RolePermissionEntry, RuntimeLogEntry, RuntimeLogResponse, User, UserPermissionDetails, UserPermissionEntry };
+export { AdminGateMessage, AdminNoticeDialog, ConfigBlock, ConfigLine, EmptyState, InlineMessage, LocalizedTextPairEditor, PanelShell, buildNewPermissionPayload, cleanError, cleanOSSError, cloneRole, detectTextLocale, displayCell, editableLocalizedText, defaultOSSConfig, emptyCatalog, formatDateTime, isPermissionError, isTemplatePermissionCode, localizedText, logCategoryTitle, normalizeEntityTranslations, normalizeLocalizedTexts, normalizePermissionCatalog, notifyAdminNotice, notifyPermissionDenied, parsePermissionInput, permissionInfoForCode, permissionModule, permissionSuggestions, permissionTemplateCode, preferredTranslationLocale, setLocalizedText, splitCodes, valueText, withFallbackLocalizedText };
