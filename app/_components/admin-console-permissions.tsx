@@ -1135,6 +1135,7 @@ function UserRolePanel({
   const [selectedModule, setSelectedModule] = useState("all");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const hasLoadedPermissions = details !== null && loadedIdentity === identity;
 
   useEffect(() => {
     if (!token || !userId) return;
@@ -1178,7 +1179,7 @@ function UserRolePanel({
   }, [identity, loadAttempt, userId, token]);
 
   async function saveUserPermissions() {
-    if (!selectedUser || loadedIdentity !== identity || savePending.current) return;
+    if (!selectedUser || !hasLoadedPermissions || savePending.current) return;
     if (!token) {
       setMessage(t("admin.permissionLoginRequired"));
       return;
@@ -1281,8 +1282,10 @@ function UserRolePanel({
               }`}
               type="button"
               onClick={() => {
+                if (user.id === userId) return;
                 selectionVersion.current += 1;
                 setSelectedUserId(user.id);
+                setLoadedIdentity(undefined);
                 setDetails(null);
                 setDraft([]);
                 setMessage("");
@@ -1313,13 +1316,13 @@ function UserRolePanel({
               <p className="mt-2 text-sm text-[var(--muted)]">{t("admin.noRoleAssigned")}</p>
             )}
           </div>
-          <button className="button-primary focus-ring" disabled={!selectedUser || loadedIdentity !== identity || saving} type="button" onClick={saveUserPermissions}>
+          <button className="button-primary focus-ring" disabled={!selectedUser || !hasLoadedPermissions || saving} type="button" onClick={saveUserPermissions}>
             {saving ? t("admin.saving") : t("admin.saveUserPermissions")}
           </button>
         </div>
         {message ? <div className="px-4"><InlineMessage text={message} /></div> : null}
-        {loadedIdentity !== identity && selectedUser ? <div className="p-4" role="status"><p>{message || t("common.loading")}</p>{message ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => { setMessage(""); setLoadAttempt((value) => value + 1); }}>{t("common.retry")}</button> : null}</div> : null}
-        <fieldset disabled={loadedIdentity !== identity || saving} className="contents">
+        {!hasLoadedPermissions && selectedUser ? <div className="p-4" role="status"><p>{message || t("common.loading")}</p>{message ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => { setMessage(""); setLoadAttempt((value) => value + 1); }}>{t("common.retry")}</button> : null}</div> : null}
+        <fieldset disabled={!hasLoadedPermissions || saving} className="contents">
       {users.length === 0 ? (
         <EmptyState text={t("admin.noUsers")} />
       ) : (
