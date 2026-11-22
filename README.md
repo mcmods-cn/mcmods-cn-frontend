@@ -46,6 +46,8 @@ npm run dev
 
 例如 API 根地址配置为 `https://gateway.example.test/service` 时，浏览器、站点标题和 Logo 访问均使用 `/service/api/v1/...`。反向代理应转发该前缀下的请求到对应 API 路由，并保留请求方法、授权头及响应状态。
 
+后端为 `mcmods_session` 设置 `Path=/api/`。使用 `/service` 前缀时，代理需将该 Cookie 的路径调整为 `/service/api/`，并保留 `Secure`、`HttpOnly` 和 `SameSite`。验收时使用实际代理完成登录、`/auth/me` 与退出，确认 Cookie 只发往对应 API 路径。
+
 使用图标 Symbol 时填写形如 `https://at.alicdn.com/t/c/font_*.js` 的精确地址，以及对应文件的 SHA-384 SRI 摘要。只配置其中一项会导致配置校验失败。Symbol 加载前页面保留文字回退。
 
 CSP 允许的来源使用逗号分隔的精确 origin，例如 `https://bucket.oss-cn-beijing.aliyuncs.com`。生产环境只接受 HTTPS。默认连接范围含本站、API 和 Turnstile，OSS 单段与分片签名使用的 origin 都要加入 `NEXT_PUBLIC_CSP_CONNECT_ORIGINS`。默认图片来源含本站、API、`oss.mcmods.cn`、GitHub 头像与原始资源、Modrinth、Forge CDN 和 Minecraft 纹理。额外 CDN、外部媒体和字体使用表中的专用配置。[CSP 实现](app/_lib/csp-policy.mts)
