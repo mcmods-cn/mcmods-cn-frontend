@@ -237,6 +237,56 @@ test("FP056 loot advanced JSON rejects primitive/array roots without erasing its
   }finally{await browser.close();}
 });
 
+for (const draft of ["none", "legacy", "clear-summary"] as const) test(`project resource field edits preserve locale summaries (${draft})`, { timeout: 30_000 }, async () => {
+  const englishSummary = "Existing English summary";
+  const importedSummary = "Resumo existente";
+  const resource = resourceSnapshot("minecraft.item", { syntheticRange: [1, 10] });
+  resource.details[0].localizations[0].summary = englishSummary;
+  resource.details[0].localizations.push({
+    locale: "pt-BR", name: "Recurso de teste", summary: importedSummary, contentMarkdown: "Existing content", provenance: "import",
+  });
+  const write = Promise.withResolvers<Record<string, unknown>>();
+  const browser = await controlled(({ path, method, body }) => {
+    if (path === "/api/v1/mods/fixture-mod/content-sections") return { data: { items: [rootSection] } };
+    if (path === "/api/v1/mods/fixture-mod/content-templates") return { data: { items: [rangeTemplate] } };
+    if (path === "/api/v1/users/me/drafts/restore01") return { data: {
+      draftKey: "mod-resource:fixture-mod:edit:resource01", updatedAt: stamp, payload: {
+        activeVersionId: "version01", canonicalId: "fixture:resource", defaultLocale: "en-US", definition: {}, entryTypeCode: "default",
+        iconFilePublicId: "", iconSmallFilePublicId: "", kindCode: "minecraft.item", reason: "", renderFilePublicId: "", selectedSectionId: "section01",
+        localizations: [
+          { locale: "en-US", provenance: "human", reviewStatus: "draft", editable: true,
+            fields: { name: "Restored English name", contentMarkdown: "", ...(draft === "clear-summary" ? { summary: "" } : {}) } },
+          { locale: "pt-BR", provenance: "import", reviewStatus: "approved", editable: false,
+            fields: { name: "Recurso de teste", contentMarkdown: "Existing content" } },
+        ],
+      },
+    } };
+    if (path === "/api/v1/mods/fixture-mod/content-resources/resource01") {
+      if (method === "PUT") {
+        write.resolve(JSON.parse(body));
+        return { status: 409, error: "Controlled publication boundary" };
+      }
+      return { data: resource };
+    }
+  });
+  try {
+    const { page } = browser;
+    const query = draft === "none" ? "" : "&draft=restore01";
+    await page.goto(`${fixture.origin}/mods/fixture-mod/resources/resource01/edit?version=version01&section=section01${query}`);
+    if (draft !== "none") await page.locator('input[value="Restored English name"]').waitFor();
+    await page.getByRole("spinbutton", { name: "Synthetic range maximum", exact: true }).fill("9");
+    await page.getByRole("button", { name: "Save", exact: true }).first().click();
+    await page.getByText("Controlled publication boundary", { exact: true }).waitFor();
+    const submitted = await write.promise;
+    assert.deepEqual(submitted.definition, { syntheticRange: [1, 9] });
+    const summaries = (submitted.localizations as Array<{ locale: string; summary: string }>).map(({ locale, summary }) => ({ locale, summary }));
+    assert.deepEqual(summaries, [
+      { locale: "en-US", summary: draft === "clear-summary" ? "" : englishSummary },
+      { locale: "pt-BR", summary: importedSummary },
+    ]);
+  } finally { await browser.close(); }
+});
+
 test("BUG148 category selects and native drag reject cycles and a subtree deeper than four levels",{timeout:30_000},async()=>{
   const categories=[{id:"catA0001",parent:"section01",name:"A"},{id:"catA0002",parent:"catA0001",name:"A child"},{id:"catA0003",parent:"catA0002",name:"A grandchild"},{id:"catX0001",parent:"section01",name:"X"},{id:"catY0001",parent:"catX0001",name:"Y"}].map((value,index)=>({...rootSection,publicId:value.id,parentPublicId:value.parent,ordinal:index,localizations:[{locale:"en-US",name:value.name,summary:"",contentMarkdown:""}],resourceCount:0}));
   const writes:Array<Record<string,unknown>>=[];

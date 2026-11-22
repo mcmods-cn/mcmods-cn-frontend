@@ -43,7 +43,7 @@ import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { OSSUploadBatchStatus } from "./oss-upload-batch-status";
 
 type EditorMode = "create" | "edit";
-type LocalizedFields = { name: string; contentMarkdown: string };
+type LocalizedFields = { name: string; summary?: string; contentMarkdown: string };
 type EditorLocalization = LocalizationVersion<LocalizedFields>;
 type DefinitionFieldKind = "number" | "range" | "text" | "boolean" | "list" | "json" | "reference" | "reference-list";
 type DefinitionPath = readonly string[];
@@ -320,7 +320,11 @@ function ModContentResourceEditorSession({
       setIconFilePublicId(payload.iconFilePublicId);
       setIconSmallFilePublicId(payload.iconSmallFilePublicId);
       setKindCode(payload.kindCode);
-      setLocalizations(payload.localizations);
+      setLocalizations((current) => payload.localizations.map((version) => {
+        if (version.fields.summary !== undefined) return version;
+        const summary = findLocalization(current, version.locale)?.fields.summary;
+        return { ...version, fields: { ...version.fields, summary } };
+      }));
       setReason(payload.reason);
       setRenderFilePublicId(payload.renderFilePublicId);
       setSelectedSectionId(payload.selectedSectionId);
@@ -1216,7 +1220,7 @@ function editorLocalization(value: ModContentLocalization & { provenance?: strin
     : "human";
   return {
     locale: normalizeContentLanguage(value.locale),
-    fields: { name: value.name, contentMarkdown: value.contentMarkdown },
+    fields: { name: value.name, summary: value.summary, contentMarkdown: value.contentMarkdown },
     provenance,
     reviewStatus: "approved",
     editable: true,
@@ -1251,11 +1255,11 @@ function upsertLocalization(values: EditorLocalization[], locale: Locale, patch:
 
 function localizationPayload(values: EditorLocalization[]): ModContentLocalization[] {
   return values
-    .filter((item) => item.fields.name.trim() || item.fields.contentMarkdown.trim())
+    .filter((item) => item.fields.name.trim() || item.fields.summary || item.fields.contentMarkdown.trim())
     .map((item) => ({
       locale: normalizeContentLanguage(item.locale),
       name: item.fields.name.trim(),
-      summary: "",
+      summary: item.fields.summary ?? "",
       contentMarkdown: item.fields.contentMarkdown,
     }));
 }
