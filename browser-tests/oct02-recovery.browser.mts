@@ -422,6 +422,49 @@ test("OCT02 mod import recovery failures block new uploads and offer a read-only
   } finally { pending.resolve({ status: 503, error: "Controlled recovery read failure" }); await browser.close(); }
 });
 
+test("a recovered import unlocks its current version workspace when it finishes", { timeout: 30_000 }, async () => {
+  const pollStarted = Promise.withResolvers<void>();
+  const finishJob = Promise.withResolvers<APIReply>();
+  const reloaded = Promise.withResolvers<void>();
+  const job = {
+    id: "job-one", modSiteId: "fixture-mod", packageId: "package-one", targetVersionPublicId: "version01", overwriteExistingImportData: false,
+    status: "queued", progress: 0, currentStage: "queued", errorCode: "", errorDetail: {}, reviewRequired: false,
+    configuredModids: [], detectedModids: [], primaryDetectedModid: "", modidConfirmationRequired: false,
+  };
+  let versionReads = 0;
+  let mutations = 0;
+  const browser = await controlled(({ path, method }) => {
+    if (path === "/api/v1/mods/fixture-mod/editor") return { data: { uniqueId: "fixturemod", siteId: "fixture-mod", primaryName: "Fixture mod", compatibilities: [] } };
+    if (path === "/api/v1/mods/fixture-mod/content-versions") {
+      if (++versionReads > 1) reloaded.resolve();
+      return { data: { items: [{ publicId: "version01", label: "Fixture version", minecraftVersions: ["1.21"], loaders: [], modVersion: "1", status: "active" }] } };
+    }
+    if (path === "/api/v1/mods/fixture-mod/content-templates" || path === "/api/v1/mods/fixture-mod/content-sections") return { data: { items: [] } };
+    if (path === "/api/v1/mods/fixture-mod/export-imports/active") return { data: { job } };
+    if (path === "/api/v1/mods/fixture-mod/export-imports/job-one") {
+      pollStarted.resolve();
+      return finishJob.promise;
+    }
+    if (path.includes("/export-imports") && method !== "GET") {
+      mutations++;
+      return { status: 503, error: "Unexpected import mutation" };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/mods/fixture-mod/data/edit?version=version01&import=exporter`);
+    await pollStarted.promise;
+    const input = page.locator('input[accept=".zip,application/zip"]').first();
+    assert.equal(await input.isDisabled(), true);
+    finishJob.resolve({ data: { ...job, status: "ready", currentStage: "ready", progress: 100 } });
+    await page.getByText("Import complete", { exact: true }).waitFor();
+    await reloaded.promise;
+    await page.waitForFunction(() => document.querySelector<HTMLInputElement>('input[accept=".zip,application/zip"]')?.disabled === false);
+    assert.equal(await page.getByText(/Other importers, data editing, and version switching are unavailable/).count(), 0);
+    assert.equal(mutations, 0);
+  } finally { finishJob.resolve({ data: job }); await browser.close(); }
+});
+
 test("OCT02 own-profile language changes keep private settings input without remounting", { timeout: 30_000 }, async () => {
   let profiles = 0;
   const browser = await controlled(({ path }) => {

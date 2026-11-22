@@ -397,10 +397,13 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
       }).catch((reason) => {
         if (!cancelled) {
           setRecoveryFailed(true);
-          setBusy(false);
           setError(errorText(reason, t("mods.exportImport.errors.upload")));
         }
-      }).finally(() => { if (!cancelled) setCheckingRecovery(false); });
+      }).finally(() => {
+        if (cancelled) return;
+        setCheckingRecovery(false);
+        if (!cancelling.current) setBusy(false);
+      });
     }, 0);
     return () => {
       cancelled = true;
