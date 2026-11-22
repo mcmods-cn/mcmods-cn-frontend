@@ -1,7 +1,7 @@
 import { reportBackendAvailability } from "./backend-status";
 import { readBrowserStorage, writeBrowserStorage } from "./browser-storage.mts";
 import { ApiError } from "./api-error.mts";
-import { resolvePublicAPIBaseURL } from "./deployment-env.mts";
+import { publicAPIURL, resolvePublicAPIBaseURL } from "./deployment-env.mts";
 export { ApiError } from "./api-error.mts";
 
 export const API_BASE_URL = resolvePublicAPIBaseURL(
@@ -42,7 +42,7 @@ export async function apiRequest<T>(
     if (!headers.has("X-Request-ID")) headers.set("X-Request-ID", globalThis.crypto?.randomUUID?.() ?? `request-${Date.now()}`);
   }
 
-  const response = await backendFetch(`${API_BASE_URL}${path}`, {
+  const response = await backendFetch(publicAPIURL(path, API_BASE_URL), {
     ...options,
     credentials: options.credentials ?? "include",
     headers,

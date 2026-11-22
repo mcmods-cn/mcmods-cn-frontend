@@ -1,3 +1,4 @@
+import { publicAPIURL } from "../../_lib/deployment-env.mts";
 import {
   createSafeSiteLogo,
   maximumLogoBytes,
@@ -5,8 +6,6 @@ import {
 } from "../../_lib/site-logo-image.mts";
 
 export const runtime = "nodejs";
-
-const apiBaseURL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 export async function POST(request: Request) {
   const credentials = logoCredentials(request);
@@ -38,9 +37,10 @@ export async function POST(request: Request) {
     return Response.json({ error: "logo must be a safe PNG, JPEG, WebP, or GIF image" }, { status: 422 });
   }
   try {
-    const response = await fetch(new URL("/api/v1/admin/config/general/logo", apiBaseURL), {
+    const response = await fetch(publicAPIURL("/api/v1/admin/config/general/logo"), {
       method: "POST",
       cache: "no-store",
+      redirect: "error",
       signal: AbortSignal.timeout(15_000),
       headers: new Headers([...credentials, ["Content-Type", "image/webp"]]),
       body: Uint8Array.from(safeLogo).buffer,
@@ -78,13 +78,14 @@ function logoCredentials(request: Request): Headers | null {
 
 async function canWriteSiteSettings(credentials: Headers) {
   try {
-    const response = await fetch(`${apiBaseURL}/api/v1/admin/config/general/logo-upload-access`, {
+    const response = await fetch(publicAPIURL("/api/v1/admin/config/general/logo-upload-access"), {
       cache: "no-store",
+      redirect: "error",
       signal: AbortSignal.timeout(5_000),
       headers: credentials,
     });
     await response.body?.cancel();
-    return response.ok;
+    return response.status === 204;
   } catch {
     return false;
   }

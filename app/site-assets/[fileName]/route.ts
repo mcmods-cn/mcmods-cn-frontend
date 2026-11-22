@@ -1,14 +1,15 @@
+import { publicAPIURL } from "../../_lib/deployment-env.mts";
+
 export const runtime = "nodejs";
 
 const logoNamePattern = /^site-logo-([a-z0-9]{9})\.png$/;
-const apiBaseURL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
 export async function GET(_request: Request, context: { params: Promise<{ fileName: string }> }) {
   const { fileName } = await context.params;
   const identity = logoNamePattern.exec(fileName)?.[1];
   if (!identity) return new Response(null, { status: 404 });
   try {
-    const response = await fetch(new URL(`/api/v1/site/logo/${identity}`, apiBaseURL), {
+    const response = await fetch(publicAPIURL(`/api/v1/site/logo/${identity}`), {
       cache: "no-store", redirect: "manual", signal: AbortSignal.timeout(10_000),
     });
     await response.body?.cancel();

@@ -24,7 +24,7 @@ npm run dev
 | 新 API、权限显示和会话 | 在 `app/_lib/*-api.ts` 中定义领域类型和操作，调用 [apiRequest / backendFetch](app/_lib/api.ts)。登录用户和有效权限来自 [auth](app/_lib/auth.ts)。实际读写及项目范围检查由 Go API 执行 |
 | 资料与批量导入 | [资料工作区](app/_components/mod-content-workspace.tsx) → [导入面板](app/_components/mod-catalog-data.tsx) → [ZIP 预检、上传、任务](app/_lib/mod-export-api.ts)。复用 [上传器](app/_lib/oss-upload.ts)、[按账号和版本恢复](app/_lib/mod-export-upload-store.ts)、[可取消轮询](app/_lib/job-polling.mts)。使用 exporter 仓库的 schema 和样例协调字段变更 |
 | 编辑与展示 | [编辑器外壳](app/_components/editor/editor-shell.tsx)、[文件选择与拖放](app/_components/file-drop-zone.tsx)、[共享配方卡](app/_components/unified-recipe-card.tsx)、[Markdown](app/_components/markdown-renderer.tsx)。Three.js 模型与皮肤视图位于 `components/` |
-| 后台与翻译 | 从 [面板导航](app/_components/admin-console.tsx) 注册入口，按面板权限和领域 API 取数。界面词条在 [八套词典](app/_locales)，支持简单 `{name}` 插值。[后台数据保护](docs/admin-data-integrity.md) · [表单、缓存和失败恢复](docs/frontend-state-recovery.md) |
+| 后台与翻译 | 在 [面板定义](app/_components/admin-panels.tsx) 注册入口、可见条件和编辑能力，按权限和领域 API 取数。界面词条在 [八套词典](app/_locales)，支持简单 `{name}` 插值。[后台数据保护](docs/admin-data-integrity.md) · [表单、缓存和失败恢复](docs/frontend-state-recovery.md) |
 
 ## 浏览器可见的构建配置
 
@@ -43,6 +43,8 @@ npm run dev
 | `NEXT_PUBLIC_CSP_FONT_ORIGINS` | 可选 | 允许的外部字体 origin，默认无外部来源 |
 
 生产构建需要绝对 HTTPS 地址。站点地址只接受 origin。API 和可选 Yggdrasil 地址允许路径，均禁止凭据、查询参数和 fragment。配置错误会终止构建。
+
+例如 API 根地址配置为 `https://gateway.example.test/service` 时，浏览器、站点标题和 Logo 访问均使用 `/service/api/v1/...`。反向代理应转发该前缀下的请求到对应 API 路由，并保留请求方法、授权头及响应状态。
 
 使用图标 Symbol 时填写形如 `https://at.alicdn.com/t/c/font_*.js` 的精确地址，以及对应文件的 SHA-384 SRI 摘要。只配置其中一项会导致配置校验失败。Symbol 加载前页面保留文字回退。
 

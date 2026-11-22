@@ -3,11 +3,13 @@ import { after, before, test } from "node:test";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import sharp from "sharp";
+import { loadMetadataSiteName } from "./site-brand-metadata.mts";
 
 let uploadRoute: typeof import("../api/site-logo/route.ts");
 let assetRoute: typeof import("../site-assets/[fileName]/route.ts");
 const oldAPIBase = process.env.NEXT_PUBLIC_API_BASE_URL;
-let allow = true;
+const apiPrefix = "/service";
+let accessStatus = 204;
 let uploadStatus = 201;
 let returnedURL = "/site-assets/site-logo-abc123xyz.png";
 let assetStatus = 307;
@@ -15,11 +17,11 @@ let assetLocation = "https://storage.example.test/immutable-logo.png?signature=t
 const uploads: Array<{ authorization: string; cookie: string; contentType: string; bytes: Buffer }> = [];
 let assetReads = 0;
 const backend = createServer(async (request, response) => {
-  if (request.url === "/api/v1/admin/config/general/logo-upload-access") {
-    response.writeHead(allow ? 204 : 403).end();
+  if (request.url === `${apiPrefix}/api/v1/admin/config/general/logo-upload-access`) {
+    response.writeHead(accessStatus).end();
     return;
   }
-  if (request.method === "POST" && request.url === "/api/v1/admin/config/general/logo") {
+  if (request.method === "POST" && request.url === `${apiPrefix}/api/v1/admin/config/general/logo`) {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     uploads.push({ authorization: String(request.headers.authorization ?? ""), cookie: String(request.headers.cookie ?? ""), contentType: String(request.headers["content-type"]), bytes: Buffer.concat(chunks) });
@@ -28,9 +30,13 @@ const backend = createServer(async (request, response) => {
     ));
     return;
   }
-  if (request.url === "/api/v1/site/logo/abc123xyz") {
+  if (request.url === `${apiPrefix}/api/v1/site/logo/abc123xyz`) {
     assetReads += 1;
     response.writeHead(assetStatus, { ...(assetStatus === 307 ? { Location: assetLocation } : {}) }).end();
+    return;
+  }
+  if (request.url === `${apiPrefix}/api/v1/site/config`) {
+    response.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify({ data: { siteName: "Fixture Site" } }));
     return;
   }
   response.writeHead(500).end("unexpected test API");
@@ -38,7 +44,7 @@ const backend = createServer(async (request, response) => {
 
 before(async () => {
   await new Promise<void>((resolve, reject) => { backend.once("error", reject); backend.listen(0, "127.0.0.1", resolve); });
-  process.env.NEXT_PUBLIC_API_BASE_URL = `http://127.0.0.1:${(backend.address() as AddressInfo).port}`;
+  process.env.NEXT_PUBLIC_API_BASE_URL = `http://127.0.0.1:${(backend.address() as AddressInfo).port}${apiPrefix}`;
   uploadRoute = await import("../api/site-logo/route.ts");
   assetRoute = await import("../site-assets/[fileName]/route.ts");
 });
@@ -57,10 +63,10 @@ test("actual logo route sanitizes before shared upload, preserves failures, and 
     form.set("file", new File([Uint8Array.from(bytes).buffer], "logo.jpg", { type: mime }));
     return new Request("https://frontend.example.test/api/site-logo", { method: "POST", headers: { Authorization: "Bearer logo-test-only" }, body: form });
   };
-  allow = false;
+  accessStatus = 403;
   assert.equal((await uploadRoute.POST(request())).status, 403);
   assert.equal(uploads.length, 0);
-  allow = true;
+  accessStatus = 204;
   const accepted = await uploadRoute.POST(request());
   assert.equal(accepted.status, 201);
   assert.deepEqual(await accepted.json(), { url: returnedURL });
@@ -83,6 +89,20 @@ test("actual logo route sanitizes before shared upload, preserves failures, and 
   returnedURL = "https://untrusted.example.test/arbitrary.svg";
   assert.equal((await uploadRoute.POST(request())).status, 502);
   returnedURL = "/site-assets/site-logo-abc123xyz.png";
+});
+
+test("the logo authorization probe requires the backend's exact 204 response", async () => {
+  const originalUploadCount = uploads.length;
+  accessStatus = 200;
+  try {
+    const result = await uploadRoute.POST(new Request("https://frontend.example.test/api/site-logo", {
+      method: "POST", headers: { Authorization: "SiteLogo controlled-scope" },
+    }));
+    assert.equal(result.status, 403);
+    assert.equal(uploads.length, originalUploadCount);
+  } finally {
+    accessStatus = 204;
+  }
 });
 
 test("actual asset route reads the shared identity without following or caching short signatures", async () => {
@@ -131,4 +151,8 @@ test("TEST024 actual logo BFF accepts a real cookie session without exposing its
   }))).status, 201);
   assert.equal(uploads.at(-1)?.authorization, "SiteLogo test024-opaque-delegation");
   assert.equal(uploads.at(-1)?.cookie, "");
+});
+
+test("site metadata uses the same deployment prefix as the browser API", async () => {
+  assert.equal(await loadMetadataSiteName(), "Fixture Site");
 });

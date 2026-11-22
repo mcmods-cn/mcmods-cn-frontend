@@ -58,6 +58,14 @@ export function resolvePublicAPIBaseURL(value?: string, nodeEnvironment = "devel
   );
 }
 
+export function publicAPIURL(path: string, apiBaseURL = resolvePublicAPIBaseURL(
+  process.env.NEXT_PUBLIC_API_BASE_URL,
+  process.env.NODE_ENV,
+)) {
+  // Endpoint paths have a leading slash and extend the configured proxy prefix.
+  return `${apiBaseURL}${path}`;
+}
+
 function resolveRequiredPublicURL(
   name: string,
   value: string | undefined,
