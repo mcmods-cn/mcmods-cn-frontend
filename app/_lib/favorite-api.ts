@@ -191,7 +191,7 @@ export function rebuildFavoriteModpackExportPreview(token: string, taskId: strin
   }, token);
 }
 
-export function favoriteModpackExportDownloadURL(taskId: string) {
+function favoriteModpackExportDownloadURL(taskId: string) {
   return `${API_BASE_URL}/api/v1/users/me/modpack-exports/${taskId}/download`;
 }
 
@@ -249,13 +249,6 @@ export function saveFavoriteMembershipChanges(token: string, entityType: string,
   return apiRequest<{ saved: boolean; selected: boolean }>("/api/v1/users/me/favorites", {
     method: "PATCH",
     body: JSON.stringify({ entityType, entityPublicId, addCollectionIds, removeCollectionIds }),
-  }, token);
-}
-
-export async function saveFavoriteMembership(token: string, entityType: string, entityPublicId: string, collectionIds: string[]) {
-  return apiRequest<{ collectionIds: string[] }>("/api/v1/users/me/favorites", {
-    method: "PUT",
-    body: JSON.stringify({ entityType, entityPublicId, collectionIds }),
   }, token);
 }
 
