@@ -22,6 +22,8 @@ test("AI configuration validates all settings before saving, clears returned sec
     assert.throws(()=>aiConfigWrite(legacy));
   }
   assert.throws(()=>aiConfigSnapshot({...raw,quotas:[{...raw.quotas[0],tokenLimit:Number.MAX_SAFE_INTEGER+1}]}));
+  const missingCost = JSON.parse(JSON.stringify({ ...raw, quotas: [{ ...raw.quotas[0], costLimitCny: null }] }));
+  assert.throws(() => aiConfigSnapshot(missingCost));
   assert.throws(()=>aiConfigSnapshot({...raw,quotas:[{}] as AIConfig["quotas"]}));
 });
 

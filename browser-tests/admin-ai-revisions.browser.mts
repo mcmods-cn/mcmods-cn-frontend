@@ -56,6 +56,7 @@ test("AI readers on desktop light and mobile dark can inspect credentials metada
       await openProviders(page);
       await page.getByRole("status").filter({hasText:"You have read-only access."}).waitFor();
       assert(await save(page).isDisabled());
+      assert.equal(await save(page).evaluate(button => getComputedStyle(button).cursor), "not-allowed");
       assert(await password(page).isDisabled());
       assert.equal(await password(page).inputValue(), "");
       assert.equal(await page.locator("fieldset :enabled").count(), 0);
@@ -221,4 +222,72 @@ test("Conflict review never carries a local replacement key to a destination cha
     assert.equal(await owned.page.getByPlaceholder("Base URL").inputValue(),current.providers[0].baseUrl);
     assert.equal(writes,1);
   } finally {await owned.close();}
+});
+
+test("A denied save removes the current user's pending credential before another operation", async () => {
+  let writes = 0;
+  const owned = await fixture.page(request => {
+    if (request.path === "/api/v1/auth/me") return { data: actor("writer0001", ["ai.read", "ai.write"]) };
+    if (request.path !== path) return;
+    if (request.method === "GET") return { data: settings() };
+    writes++;
+    return { status: 403, error: "Write permission was revoked" };
+  });
+  try {
+    const { page } = owned;
+    await openProviders(page);
+    await password(page).fill("synthetic-unsaved-key");
+    await save(page).click();
+    await closeNotice(page, "Permission required");
+    await page.getByRole("status").filter({ hasText: "Your account does not have permission" }).waitFor();
+    assert.equal(await password(page).count(), 0);
+    assert.equal(await page.getByPlaceholder("Name", { exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Retry", exact: true }).count(), 0);
+    assert(await save(page).isDisabled());
+    await save(page).dispatchEvent("click");
+    assert.equal(writes, 1);
+  } finally {
+    await owned.close();
+  }
+});
+
+test("Mixed-version responses preserve the revision on every PUT and lock edits after a revisionless reread", async () => {
+  let reads = 0;
+  const writes: AIConfig[] = [];
+  const owned = await fixture.page(request => {
+    if (request.path === "/api/v1/auth/me") return { data: actor("writer0001", ["ai.read", "ai.write"]) };
+    if (request.path !== path) return;
+    if (request.method === "GET") {
+      const snapshot = settings();
+      if (++reads > 1) delete snapshot.revision;
+      return { data: snapshot };
+    }
+    writes.push(JSON.parse(request.body) as AIConfig);
+    if (writes.length === 1) return { status: 400, error: "Unknown field revision" };
+    return { status: 428, code: "AI_CONFIG_REVISION_REQUIRED", error: "Read a current revision" };
+  });
+  try {
+    const { page } = owned;
+    await openProviders(page);
+    await password(page).fill("synthetic-pending-key");
+    await save(page).click();
+    await closeNotice(page, "Settings could not be saved. Your draft is preserved.");
+    assert.equal(writes.length, 1);
+    assert.equal(await password(page).inputValue(), "synthetic-pending-key");
+    await save(page).click();
+    await page.getByRole("button", { name: "Compare with the latest settings" }).click();
+    const comparison = page.getByRole("alert");
+    await comparison.getByText("This server does not provide a revision", { exact: false }).first().waitFor();
+    assert.equal(await comparison.getByRole("button", { name: "Apply my edited fields to the latest settings" }).count(), 0);
+    assert(await save(page).isDisabled());
+    const draft = page.getByRole("group", { name: "Your unsaved changes" });
+    assert.equal(await draft.locator('input[type="password"]').inputValue(), "synthetic-pending-key");
+    await comparison.getByRole("button", { name: "Discard my draft and use the latest settings" }).click();
+    assert(await save(page).isDisabled());
+    assert.equal(await password(page).inputValue(), "");
+    assert.equal(reads, 2);
+    assert.deepEqual(writes.map(request => request.revision), [rev(1), rev(1)]);
+  } finally {
+    await owned.close();
+  }
 });

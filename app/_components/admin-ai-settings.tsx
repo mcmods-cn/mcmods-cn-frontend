@@ -259,7 +259,7 @@ export function AISettingsPanel({ section, token, canWrite }: { section: AISecti
   return <div className="grid min-w-0 gap-4">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-sm text-[var(--muted)]">{t(`admin.ai.${section}Desc`)}</p>
-      <button className="button-primary focus-ring" disabled={!canEdit} onClick={save} type="button">{busy === "save" ? t("admin.saving") : t("admin.ai.saveConfig")}</button>
+      <button className="button-primary focus-ring disabled:cursor-not-allowed disabled:opacity-50" disabled={!canEdit} onClick={save} type="button">{busy === "save" ? t("admin.saving") : t("admin.ai.saveConfig")}</button>
     </div>
     {busy === "load" && <p role="status" className="text-sm text-[var(--muted)]">{t("common.loading")}</p>}
     {loadError !== null && <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-[var(--danger)]">
