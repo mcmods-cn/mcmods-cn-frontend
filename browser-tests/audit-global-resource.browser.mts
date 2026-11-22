@@ -95,7 +95,7 @@ test("an active binding opens its exact project version and incomplete bindings 
     await page.getByRole("heading", { name: localization.name, exact: true }).waitFor();
     const version = page.getByRole("link", { name: binding.versionLabel, exact: true });
     await version.waitFor();
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 390);
+    assert.equal(await page.evaluate(() => globalThis.document.documentElement.scrollWidth), 390);
     assert.equal(await version.getAttribute("href"), "/mods/fixture-mod/resources/numeric123?version=version02");
     assert.equal(await page.getByRole("link", { name: "Unknown project", exact: true }).count(), 0);
     assert.equal(await page.getByRole("link", { name: "Edit global resource" }).count(), 0);
