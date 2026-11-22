@@ -43,6 +43,7 @@ for (const [name, viewport] of Object.entries({ desktop: { width: 1280, height: 
         await page.screenshot({ path: join(artifact, name + ".png") });
       }
       const missingValue = await input.inputValue();
+      const missingHint = await input.getAttribute("placeholder");
       await language.selectOption("en-US");
       await input.fill("Workbench tools");
       const submit = page.getByRole("button", { name: "Submit layout for review", exact: true }).first();
@@ -51,6 +52,7 @@ for (const [name, viewport] of Object.entries({ desktop: { width: 1280, height: 
       assert.equal(await input.inputValue(), "Workbench tools");
       assert.deepEqual(patches[0].categories[0].localizations, [{ ...english, name: "Workbench tools" }, chinese]);
       assert.equal(missingValue, "", "an absent German translation must remain empty");
+      assert.equal(missingHint, "Localized name · Tools");
       await language.selectOption("de-DE");
       assert.equal(await input.inputValue(), "");
       await input.fill("Werkzeuge");
@@ -62,3 +64,42 @@ for (const [name, viewport] of Object.entries({ desktop: { width: 1280, height: 
     } finally { await browser.close(); }
   });
 }
+
+test("the parent selector and drag tree apply the same allowed category moves", async () => {
+  const shelf = { ...category, publicId: "category2", ordinal: 11, localizations: [{ ...english, name: "Shelf" }] };
+  const patches: { categories: typeof category[] }[] = [];
+  const browser = await fixture.page(({ path, method, body }) => {
+    if (path !== "/api/v1/mods/workshop/content-sections/section01/layout") return;
+    if (method === "PATCH") {
+      patches.push(JSON.parse(body));
+      return { status: 503, error: "Layout review service unavailable" };
+    }
+    return { data: { section, categories: [category, shelf], items: [], total: 0, limit: 500, hasMore: false, nextCursor: "", capabilities: {} } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/mods/workshop/data/sections/section01/arrange");
+    const row = (name: string) => page.locator("section").filter({ has: page.getByRole("textbox", { name: "Localized name: " + name, exact: true }) }).last();
+    const parent = (name: string) => row(name).getByRole("combobox", { name: "Parent category", exact: true });
+    await parent("Tools").selectOption(shelf.publicId);
+    assert.deepEqual(await parent("Shelf").locator("option").evaluateAll(options => options.map(item => (item as HTMLOptionElement).value)), [section.publicId]);
+    const article = (text: string) => page.getByRole("article").filter({ has: page.getByText(text, { exact: true }) });
+    await article("Shelf").dragTo(article("Tools"));
+    assert.equal(await parent("Shelf").inputValue(), section.publicId);
+    assert.equal(await parent("Tools").inputValue(), shelf.publicId);
+    await article("Tools").dragTo(article("Uncategorized / page root"));
+    assert.equal(await parent("Tools").inputValue(), section.publicId);
+    await page.getByRole("combobox", { name: "Parent category", exact: true }).first().selectOption(category.publicId);
+    await row("Tools").getByRole("button", { name: "Delete", exact: true }).click();
+    await page.getByRole("textbox", { name: "New category name", exact: true }).fill("New bin");
+    await page.getByRole("button", { name: "Create category", exact: true }).click();
+    await Promise.all([
+      page.waitForResponse(response => response.request().method() === "PATCH"),
+      page.getByRole("button", { name: "Submit layout for review", exact: true }).first().click(),
+    ]);
+    const items = patches[0].categories;
+    assert.deepEqual(items.map(item => [item.localizations[0].name, item.parentPublicId, item.ordinal]), [
+      ["Shelf", section.publicId, 0], ["New bin", section.publicId, 1],
+    ]);
+  } finally { await browser.close(); }
+});

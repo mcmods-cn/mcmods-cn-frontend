@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
-  createModContentCategoryReparentPolicy,
+  createModContentCategoryTree,
   MAX_MOD_CONTENT_CATEGORY_DEPTH,
 } from "./mod-content-category-tree.mts";
 
@@ -18,7 +17,7 @@ const categories: Category[] = [
 ];
 
 test("category reparent policy rejects a shallow parent when the moved subtree would exceed depth four", () => {
-  const policy = createModContentCategoryReparentPolicy(rootID, categories);
+  const policy = createModContentCategoryTree(rootID, categories);
 
   assert.equal(MAX_MOD_CONTENT_CATEGORY_DEPTH, 4);
   assert.equal(policy.canReparent("moving", "target-2"), false);
@@ -31,12 +30,12 @@ test("category reparent policy rejects a shallow parent when the moved subtree w
 });
 
 test("category reparent policy rejects self, descendants, missing parents and malformed current trees", () => {
-  const policy = createModContentCategoryReparentPolicy(rootID, categories);
+  const policy = createModContentCategoryTree(rootID, categories);
   assert.equal(policy.canReparent("moving", "moving"), false);
   assert.equal(policy.canReparent("moving", "moving-grandchild"), false);
   assert.equal(policy.canReparent("moving", "missing"), false);
 
-  const malformed = createModContentCategoryReparentPolicy(rootID, [
+  const malformed = createModContentCategoryTree(rootID, [
     { publicId: "a", parentPublicId: "b", ordinal: 0 },
     { publicId: "b", parentPublicId: "a", ordinal: 0 },
   ]);
@@ -44,11 +43,30 @@ test("category reparent policy rejects self, descendants, missing parents and ma
   assert.equal(malformed.reparent("a", rootID), null);
 });
 
-test("parent dropdown and drag relationship editor call the same reparent function and filter with the same policy", async () => {
-  const source = await readFile(new URL("../_components/mod-content-layout-editor.tsx", import.meta.url), "utf8");
-  assert.match(source, /const categoryReparentPolicy = useMemo\(\(\) => createModContentCategoryReparentPolicy/);
-  assert.match(source, /onReparent=\{reparentCategory\}/);
-  assert.match(source, /onChange=\{\(event\) => reparentCategory\(category\.publicId, event\.target\.value\)\}/);
-  assert.match(source, /categoryReparentPolicy\.canReparent\(category\.publicId, item\.publicId\)/);
-  assert.doesNotMatch(source, /onChange=\{\(event\) => onCategoriesChange\(normalizeCategoryOrdinals\(categories\.map/);
+test("both views use ordered siblings and depths even when the input contains an unreachable cycle", () => {
+  const tree = createModContentCategoryTree(rootID, categories);
+  assert.deepEqual(tree.ordered.map((node) => node.publicId), ["target-1", "target-2", "moving", "moving-child", "moving-grandchild"]);
+  assert.deepEqual(tree.childrenByParent.get(rootID)?.map((node) => node.publicId), ["target-1", "moving"]);
+  assert.equal(tree.depths.get("moving-grandchild"), 3);
+  assert.equal(tree.canAddChild("moving-grandchild"), true);
+  const broken = createModContentCategoryTree(rootID, [...categories, { publicId: "orphan", parentPublicId: "orphan", ordinal: 0 }]);
+  assert.deepEqual(broken.ordered, tree.ordered);
+  assert.equal(broken.canAddChild(rootID), false);
+  assert.equal(broken.reparent("moving", "target-1"), null);
+});
+
+test("moving tied siblings updates only their order and preserves nested data", () => {
+  const siblings = [
+    { publicId: "b", parentPublicId: rootID, ordinal: 10, name: "B" },
+    { publicId: "a", parentPublicId: rootID, ordinal: 10, name: "A" },
+    { publicId: "child", parentPublicId: "a", ordinal: 7, name: "Child" },
+  ];
+  const tree = createModContentCategoryTree(rootID, siblings);
+  assert.deepEqual(tree.ordered.map((node) => node.name), ["A", "Child", "B"]);
+  assert.equal(tree.moveSibling("a", -1), null);
+  const moved = tree.moveSibling("b", -1);
+  assert.ok(moved);
+  assert.deepEqual(moved.map((node) => node.ordinal), [0, 1, 7]);
+  assert.equal(moved[2], siblings[2]);
+  assert.deepEqual(siblings.map((node) => node.ordinal), [10, 10, 7]);
 });

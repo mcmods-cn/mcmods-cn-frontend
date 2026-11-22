@@ -13,7 +13,7 @@ import {
 import { advancementConnectedGroups } from "../_lib/advancement-graph";
 import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage } from "../_lib/content-language";
-import { createModContentCategoryReparentPolicy } from "../_lib/mod-content-category-tree.mts";
+import { createModContentCategoryTree, normalizeCategoryOrdinals } from "../_lib/mod-content-category-tree.mts";
 import { normalizeSimilarResourceGroups } from "../_lib/mod-content-layout-groups.mts";
 import { buildModContentLayoutRenderIndex } from "../_lib/mod-content-layout-render-index.mts";
 import {
@@ -148,10 +148,6 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
   }, [initialLocale, sectionId, siteId, token]);
 
   const isAdvancement = section?.templateCode === "advancement";
-  const depthByID = useMemo(
-    () => categoryDepths(section?.publicId || sectionId, categories),
-    [categories, section?.publicId, sectionId],
-  );
 
   function closeEditor(afterSave = false) {
     if (!afterSave && (busy || dirty && !window.confirm(t("common.discardChangesConfirm")))) return;
@@ -298,7 +294,6 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
             categories={categories}
             completeResourcePage={!hasMore && !pageCursor}
             categoryLocale={categoryLocale}
-            depthByID={depthByID}
             draggedResource={draggedResource}
             locale={locale}
             newCategoryName={newCategoryName}
@@ -336,7 +331,6 @@ function CategoryLayoutEditor({
   newCategoryName,
   newCategoryParent,
   draggedResource,
-  depthByID,
   onCategoriesChange,
   onResourcesChange,
   onCategoryLocaleChange,
@@ -353,7 +347,6 @@ function CategoryLayoutEditor({
   newCategoryName: string;
   newCategoryParent: string;
   draggedResource: string;
-  depthByID: Map<string, number>;
   onCategoriesChange: (value: ModContentSection[]) => void;
   onResourcesChange: (value: ModContentLayoutSummary[]) => void;
   onCategoryLocaleChange: (value: string) => void;
@@ -366,23 +359,24 @@ function CategoryLayoutEditor({
   const [batchTargetSectionID, setBatchTargetSectionID] = useState(root.publicId);
   const [keywordByCategory, setKeywordByCategory] = useState<Record<string, string>>({});
   const [draggedCategoryID, setDraggedCategoryID] = useState("");
-  const orderedSections = useMemo(() => [root, ...flattenCategoryTree(root.publicId, categories)], [root, categories]);
-  const categoryReparentPolicy = useMemo(() => createModContentCategoryReparentPolicy(root.publicId, categories), [root.publicId, categories]);
+  const tree = useMemo(() => createModContentCategoryTree(root.publicId, categories), [root.publicId, categories]);
+  const orderedSections = [root, ...tree.ordered];
+  const addParentID = tree.canAddChild(newCategoryParent) ? newCategoryParent : root.publicId;
   const layoutRenderIndex = useMemo(() => buildModContentLayoutRenderIndex(resources, root.publicId), [resources, root.publicId]);
 
   const normalizeGroups = (value: ModContentLayoutSummary[]) => normalizeSimilarResourceGroups(value, completeResourcePage);
 
   function addCategory() {
     const name = newCategoryName.trim();
-    if (!name) return;
+    if (!name || !tree.canAddChild(addParentID)) return;
     const publicId = `new_${crypto.randomUUID()}`;
-    const siblings = categories.filter((item) => item.parentPublicId === newCategoryParent);
+    const lastSibling = tree.childrenByParent.get(addParentID)?.at(-1);
     onCategoriesChange([...categories, {
       ...root,
       publicId,
-      parentPublicId: newCategoryParent,
+      parentPublicId: addParentID,
       defaultLocale: categoryLocale,
-      ordinal: siblings.length,
+      ordinal: (lastSibling?.ordinal ?? -1) + 1,
       localizations: [{ locale: categoryLocale, name, summary: "", contentMarkdown: "" }],
       resourceCount: 0,
       publishedRevisionId: undefined,
@@ -411,20 +405,15 @@ function CategoryLayoutEditor({
   }
 
   function reparentCategory(categoryID: string, parentID: string) {
-    const next = categoryReparentPolicy.reparent(categoryID, parentID);
+    const next = tree.reparent(categoryID, parentID);
     if (!next) return;
     onCategoriesChange(next);
     setDraggedCategoryID("");
   }
 
   function moveCategory(category: ModContentSection, delta: number) {
-    const siblings = categories.filter((item) => item.parentPublicId === category.parentPublicId).sort((a, b) => a.ordinal - b.ordinal);
-    const index = siblings.findIndex((item) => item.publicId === category.publicId);
-    const target = siblings[index + delta];
-    if (!target) return;
-    onCategoriesChange(normalizeCategoryOrdinals(categories.map((item) => item.publicId === category.publicId
-      ? { ...item, ordinal: target.ordinal }
-      : item.publicId === target.publicId ? { ...item, ordinal: category.ordinal } : item)));
+    const next = tree.moveSibling(category.publicId, delta);
+    if (next) onCategoriesChange(next);
   }
 
   function dropResource(targetSectionID: string) {
@@ -509,11 +498,11 @@ function CategoryLayoutEditor({
     <div className="mt-5 grid gap-3 rounded-xl border border-[var(--line)] bg-[var(--panel-subtle)] p-4 lg:grid-cols-[220px_minmax(0,1fr)_260px]">
       <label className="grid gap-2 text-sm font-bold"><span>{t("modContent.sectionActions.language")}</span><select className="field" value={categoryLocale} onChange={(event) => onCategoryLocaleChange(event.target.value)}>{supportedLocales.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
       <label className="grid gap-2 text-sm font-bold"><span>{t("modContent.sectionActions.newCategoryName")}</span><input className="field" value={newCategoryName} onChange={(event) => onNewCategoryNameChange(event.target.value)} /></label>
-      <label className="grid gap-2 text-sm font-bold"><span>{t("modContent.sectionActions.parentCategory")}</span><select className="field" value={newCategoryParent} onChange={(event) => onNewCategoryParentChange(event.target.value)}><option value={root.publicId}>{t("modContent.sectionActions.rootCategory")}</option>{categories.filter((item) => (depthByID.get(item.publicId) || 0) < 4).map((item) => <option key={item.publicId} value={item.publicId}>{categoryName(item, categoryLocale)}</option>)}</select></label>
-      <button className="button-primary lg:col-span-3" disabled={!newCategoryName.trim()} type="button" onClick={addCategory}>{t("modContent.sectionActions.createCategory")}</button>
+      <label className="grid gap-2 text-sm font-bold"><span>{t("modContent.sectionActions.parentCategory")}</span><select className="field" value={addParentID} onChange={(event) => onNewCategoryParentChange(event.target.value)}><option value={root.publicId}>{t("modContent.sectionActions.rootCategory")}</option>{categories.filter((item) => tree.canAddChild(item.publicId)).map((item) => <option key={item.publicId} value={item.publicId}>{categoryName(item, categoryLocale)}</option>)}</select></label>
+      <button className="button-primary lg:col-span-3" disabled={!newCategoryName.trim() || !tree.canAddChild(addParentID)} type="button" onClick={addCategory}>{t("modContent.sectionActions.createCategory")}</button>
     </div>
     <CategoryRelationshipEditor
-      categories={categories}
+      childrenByParent={tree.childrenByParent}
       draggedCategoryID={draggedCategoryID}
       locale={categoryLocale}
       root={root}
@@ -532,10 +521,17 @@ function CategoryLayoutEditor({
         const sectionIndex = layoutRenderIndex.sections.get(category.publicId);
         const entries = sectionIndex?.entries || [];
         const isRoot = category.publicId === root.publicId;
-        const possibleParents = isRoot ? [] : [root, ...categories].filter((item) => categoryReparentPolicy.canReparent(category.publicId, item.publicId));
-        return <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3" key={category.publicId} style={{ marginInlineStart: `${isRoot ? 0 : Math.min(4, depthByID.get(category.publicId) || 1) * 18}px` }} onDragOver={(event) => event.preventDefault()} onDrop={() => dropResource(category.publicId)}>
+        const possibleParents = isRoot ? [] : [root, ...categories].filter((item) => tree.canReparent(category.publicId, item.publicId));
+        return <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-3" key={category.publicId} style={{ marginInlineStart: `${isRoot ? 0 : Math.min(4, tree.depths.get(category.publicId) || 1) * 18}px` }} onDragOver={(event) => event.preventDefault()} onDrop={() => dropResource(category.publicId)}>
           <header className="flex flex-wrap items-center gap-2">
-            {isRoot ? <strong className="min-w-0 flex-1">{t("modContent.sectionActions.rootCategory")}</strong> : <input aria-label={`${t("modContent.sectionActions.name")}: ${categoryName(category, categoryLocale)}`} className="field min-w-44 flex-1 py-2 font-bold" lang={categoryLocale} placeholder={t("modContent.sectionActions.name")} value={categoryLocalization(category, categoryLocale)?.name ?? ""} onChange={(event) => updateCategoryName(category, event.target.value)} />}
+            {isRoot ? <strong className="min-w-0 flex-1">{t("modContent.sectionActions.rootCategory")}</strong> : <input
+              aria-label={`${t("modContent.sectionActions.name")}: ${categoryName(category, categoryLocale)}`}
+              className="field min-w-44 flex-1 py-2 font-bold"
+              lang={categoryLocale}
+              placeholder={`${t("modContent.sectionActions.name")} · ${categoryName(category, categoryLocale)}`}
+              value={categoryLocalization(category, categoryLocale)?.name ?? ""}
+              onChange={(event) => updateCategoryName(category, event.target.value)}
+            />}
             {!isRoot ? <><select aria-label={t("modContent.sectionActions.parentCategory")} className="field w-auto py-2 text-sm" value={category.parentPublicId} onChange={(event) => reparentCategory(category.publicId, event.target.value)}>{possibleParents.map((item) => <option key={item.publicId} value={item.publicId}>{item.publicId === root.publicId ? t("modContent.sectionActions.rootCategory") : categoryName(item, categoryLocale)}</option>)}</select><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, -1)}>↑</button><button className="button-secondary px-3" type="button" onClick={() => moveCategory(category, 1)}>↓</button><button className="button-secondary px-3 text-[var(--red)]" type="button" onClick={() => deleteCategory(category)}>{t("common.delete")}</button></> : null}
           </header>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -584,23 +580,15 @@ function CategoryLayoutEditor({
   </>;
 }
 
-function CategoryRelationshipEditor({ root, categories, locale, draggedCategoryID, onDragChange, onReparent }: {
+function CategoryRelationshipEditor({ root, childrenByParent, locale, draggedCategoryID, onDragChange, onReparent }: {
   root: ModContentSection;
-  categories: ModContentSection[];
+  childrenByParent: ReadonlyMap<string, ModContentSection[]>;
   locale: string;
   draggedCategoryID: string;
   onDragChange: (value: string) => void;
   onReparent: (categoryID: string, parentID: string) => void;
 }) {
   const { t } = useI18n();
-  const childrenByParent = new Map<string, ModContentSection[]>();
-  for (const category of categories) {
-    childrenByParent.set(category.parentPublicId, [...(childrenByParent.get(category.parentPublicId) || []), category]);
-  }
-  for (const children of childrenByParent.values()) {
-    children.sort((left, right) => left.ordinal - right.ordinal || left.publicId.localeCompare(right.publicId));
-  }
-
   const renderChildren = (parentID: string, depth: number): ReactNode => (childrenByParent.get(parentID) || []).map((category) => {
     const childCount = childrenByParent.get(category.publicId)?.length || 0;
     return <div className="relative ml-5 border-l border-[var(--line)] pl-5" key={category.publicId}>
@@ -1215,17 +1203,6 @@ function advancementScreenLinkPath(link: DraggedAdvancementLink) {
   return `M ${link.startClientX} ${link.startClientY} C ${link.startClientX + direction * distance} ${link.startClientY}, ${link.currentClientX - direction * distance} ${link.currentClientY}, ${link.currentClientX} ${link.currentClientY}`;
 }
 
-function normalizeCategoryOrdinals(categories: ModContentSection[]) {
-  const grouped = new Map<string, ModContentSection[]>();
-  for (const category of categories) grouped.set(category.parentPublicId, [...(grouped.get(category.parentPublicId) || []), category]);
-  const ordinals = new Map<string, number>();
-  for (const siblings of grouped.values()) {
-    siblings.sort((a, b) => a.ordinal - b.ordinal || a.publicId.localeCompare(b.publicId));
-    siblings.forEach((item, index) => ordinals.set(item.publicId, index));
-  }
-  return categories.map((item) => ({ ...item, ordinal: ordinals.get(item.publicId) || 0 }));
-}
-
 function normalizeResourceOrdinals(resources: ModContentLayoutSummary[]) {
   const grouped = new Map<string, ModContentLayoutSummary[]>();
   for (const resource of resources) grouped.set(resource.sectionPublicId, [...(grouped.get(resource.sectionPublicId) || []), resource]);
@@ -1238,37 +1215,6 @@ function normalizeResourceOrdinals(resources: ModContentLayoutSummary[]) {
   return resources.map((item) => ({ ...item, ordinal: ordinals.get(item.resourcePublicId) || 0 }));
 }
 
-
-function categoryDepths(rootID: string, categories: ModContentSection[]) {
-  const byID = new Map(categories.map((item) => [item.publicId, item]));
-  const result = new Map<string, number>([[rootID, 0]]);
-  const resolve = (publicID: string, seen = new Set<string>()): number => {
-    if (result.has(publicID)) return result.get(publicID) || 0;
-    if (seen.has(publicID)) return 5;
-    seen.add(publicID);
-    const category = byID.get(publicID);
-    const value = category ? resolve(category.parentPublicId, seen) + 1 : 0;
-    result.set(publicID, value);
-    return value;
-  };
-  categories.forEach((item) => resolve(item.publicId));
-  return result;
-}
-
-function flattenCategoryTree(rootID: string, categories: ModContentSection[]) {
-  const result: ModContentSection[] = [];
-  const appendChildren = (parentID: string) => {
-    categories
-      .filter((item) => item.parentPublicId === parentID)
-      .sort((a, b) => a.ordinal - b.ordinal || a.publicId.localeCompare(b.publicId))
-      .forEach((item) => {
-        result.push(item);
-        appendChildren(item.publicId);
-      });
-  };
-  appendChildren(rootID);
-  return result;
-}
 
 function categoryLocalization(category: ModContentSection, locale: string) {
   const normalized = normalizeContentLanguage(locale);
