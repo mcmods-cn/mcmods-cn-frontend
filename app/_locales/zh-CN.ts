@@ -1081,7 +1081,6 @@ const zhCN = {
   },
   catalogEditor: {
     resourceCreate: "创建全局资源",
-    resourceEdit: "编辑全局资源",
     resourceDescription: "提交资源标识、本地化介绍和技术定义，经过独立审核后公开。",
     resourceDefinition: "资源定义（JSON）",
     definitionObjectRequired: "资源定义必须是有效的 JSON 对象。",
@@ -1219,7 +1218,8 @@ const zhCN = {
   resourceEditor: {
     catalogShort: "资源",
     catalogTitle: "全局资源目录",
-    catalogDescription: "浏览并人工维护可复用的物品、方块、流体、化学品及其他游戏资源。导入只用于辅助，不会取代人工维护。",
+    catalogDescription: "按名称、ID 或类型查找可复用的游戏资源。",
+    versionedDefinition: "请在关联的模组资料版本中编辑资源定义。",
     search: "搜索资源",
     searchPlaceholder: "本地化名称或资源 ID",
     allKinds: "全部类型",

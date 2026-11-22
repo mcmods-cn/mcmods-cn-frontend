@@ -32,7 +32,7 @@ export const catalogResourceKindCodes = [
   "import.document",
 ] as const;
 
-export type CatalogResourceEditorDocument = {
+type CatalogResourceDocument = {
   publicId: string;
   kindCode: string;
   canonicalId: string;
@@ -49,12 +49,12 @@ export type CatalogResourceEditorDocument = {
 
 const resourcesPath = "/api/v1/catalog/resources";
 
-export async function loadCatalogResourceForEditing(publicId: string, token: string) {
-  const value = await apiRequest<unknown>(`${resourcesPath}/${encodeURIComponent(publicId)}`, {}, token);
+export async function loadCatalogResource(publicId: string, token: string, signal?: AbortSignal) {
+  const value = await apiRequest<unknown>(`${resourcesPath}/${encodeURIComponent(publicId)}`, { signal }, token);
   return normalizeResourceDocument(value);
 }
 
-function normalizeResourceDocument(value: unknown): CatalogResourceEditorDocument {
+function normalizeResourceDocument(value: unknown): CatalogResourceDocument {
   const source = record(value);
   const publicId = text(source.publicId);
   const iconFileId = text(source.iconFileId) || undefined;
@@ -101,8 +101,7 @@ export function loadGlobalResourceBindings(publicId: string, token: string, opti
 }
 
 
-export type CatalogResourceMutation = {
-  baseRevisionId?: string;
+type CatalogResourceCreate = {
   reason: string;
   defaultLocale: string;
   localizations: CatalogLocalizationPayload[];
@@ -113,14 +112,7 @@ export type CatalogResourceMutation = {
   renderFileId?: string;
 };
 
-export async function saveCatalogResource(publicId: string | undefined, payload: CatalogResourceMutation, token: string) {
-  const result = await apiRequest<EditResult>(publicId ? `${resourcesPath}/${encodeURIComponent(publicId)}` : resourcesPath,
-    { method: publicId ? "PUT" : "POST", body: JSON.stringify(payload) }, token);
-  return normalizeEditResult(result);
-}
-
-export async function archiveCatalogResource(publicId: string, baseRevisionId: string | undefined, reason: string, token: string) {
-  const result = await apiRequest<EditResult>(`${resourcesPath}/${encodeURIComponent(publicId)}`,
-    { method: "DELETE", body: JSON.stringify({ baseRevisionId, reason }) }, token);
+export async function createCatalogResource(payload: CatalogResourceCreate, token: string) {
+  const result = await apiRequest<EditResult>(resourcesPath, { method: "POST", body: JSON.stringify(payload) }, token);
   return normalizeEditResult(result);
 }

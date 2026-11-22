@@ -125,7 +125,8 @@ const ja = {
   modContent: { ...en.modContent, managerBack: "{name} に戻る", templates: { ...en.modContent.templates, loot_table: "戦利品テーブル", game_setting: "ゲーム設定" } },
   resourceEditor: {
     ...en.resourceEditor,
-    catalogShort: "リソース", catalogTitle: "グローバルリソースカタログ", catalogDescription: "アイテム、ブロック、流体、化学物質などのゲームリソースを閲覧し、手動で管理します。インポートは補助機能です。",
+    catalogShort: "リソース", catalogTitle: "グローバルリソースカタログ", catalogDescription: "名前、ID、種類で再利用できるゲームリソースを検索します。",
+    versionedDefinition: "リソース定義は、関連する Mod の資料バージョンで編集します。",
     search: "リソースを検索", searchPlaceholder: "ローカライズ名またはリソース ID", allKinds: "すべての種類", allRegistries: "すべての名前空間", empty: "一致するリソースはありません。", globalResource: "グローバルリソース",
     create: "リソースを作成", edit: "リソースを編集", back: "リソース一覧へ", description: "固定 ID、多言語コンテンツ、非公開 OSS 画像、構造化されたゲーム属性を管理します。すべての変更は審査とユーザー履歴に記録されます。",
     validationRequired: "種類、正規 ID、既定言語のローカライズ名を入力してください。", archiveConfirm: "このリソースをアーカイブしますか？", imageOnly: "アイコンまたはレンダー画像には画像ファイルを選択してください。", uploadFailed: "画像をアップロードできませんでした。",

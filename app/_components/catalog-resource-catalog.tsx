@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { localizedCatalogResourceName, resolveAvailableLocalization } from "../_lib/content-language";
-import { catalogResourceKindCodes, loadCatalogResourceForEditing, loadGlobalResourceBindings, type GlobalResourceBinding } from "../_lib/catalog-resource-api";
+import { catalogResourceKindCodes, loadCatalogResource, loadGlobalResourceBindings, type GlobalResourceBinding } from "../_lib/catalog-resource-api";
 import { catalogResourceIconURL, loadCatalogResources } from "../_lib/editor-api";
 import type { CatalogResourcePage, CatalogResourceRef, LocalizedContentFields, LocalizationVersion } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
@@ -14,7 +14,7 @@ import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { ContentTranslationControl } from "./editor/content-translation-control";
 import { LocalizationStatusBadge } from "./editor/localization-status-badge";
 import { MarkdownRenderer } from "./markdown-renderer";
-import { CatalogResourceEditor } from "./catalog-manual-editors";
+import { CatalogResourceCreateEditor } from "./catalog-manual-editors";
 
 const pageSize = 36;
 
@@ -23,7 +23,7 @@ export function CatalogResourceCatalog({ basePath = "/admin/global-resources" }:
   const publicId = searchParams.get("publicId") ?? "";
   const { user, token } = useAuthSnapshot();
   const editor = searchParams.get("editor");
-  if (editor === "create" || editor === "edit" && publicId) return <CatalogResourceEditor basePath={basePath} mode={editor} publicId={publicId} />;
+  if (editor === "create") return <CatalogResourceCreateEditor basePath={basePath} />;
   if (publicId) return <CatalogResourceDetail key={`${publicId}:${user?.id || "guest"}:${token || "guest"}`} basePath={basePath} publicId={publicId} />;
   return <CatalogResourceList basePath={basePath} />;
 }
@@ -31,7 +31,7 @@ export function CatalogResourceCatalog({ basePath = "/admin/global-resources" }:
 function CatalogResourceDetail({ basePath, publicId }: { basePath: string; publicId: string }) {
   const { locale, t } = useI18n();
   const { token, user } = useAuthSnapshot();
-  const [detail, setDetail] = useState<Awaited<ReturnType<typeof loadCatalogResourceForEditing>>>();
+  const [detail, setDetail] = useState<Awaited<ReturnType<typeof loadCatalogResource>>>();
   const [resolvedLocalization, setResolvedLocalization] = useState<LocalizationVersion<LocalizedContentFields>>();
   const [error, setError] = useState("");
   const canViewBindings = hasPermission(user, "global_resource.binding.view");
@@ -43,14 +43,13 @@ function CatalogResourceDetail({ basePath, publicId }: { basePath: string; publi
   const [bindingStatus, setBindingStatus] = useState("");
   const [bindingOffset, setBindingOffset] = useState(0);
   useEffect(() => {
-    let cancelled = false;
     const controller = new AbortController();
-    loadCatalogResourceForEditing(publicId, token).then((value) => {
-      if (!cancelled) { setDetail(value); setError(""); }
+    loadCatalogResource(publicId, token, controller.signal).then((value) => {
+      if (!controller.signal.aborted) { setDetail(value); setError(""); }
     }).catch((reason: unknown) => {
-      if (!cancelled && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
+      if (!controller.signal.aborted) setError(errorText(reason));
     });
-    return () => { cancelled = true; controller.abort(); };
+    return () => controller.abort();
   }, [publicId, token]);
   useEffect(() => {
     if (!token || !canViewBindings) return;
@@ -70,7 +69,6 @@ function CatalogResourceDetail({ basePath, publicId }: { basePath: string; publi
   return <CatalogResourceFrame>
     <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-b border-[var(--line)] pb-3">
       <Link className="font-bold text-[var(--accent)] hover:underline" href={basePath}>{t("resourceEditor.back")}</Link>
-      {hasPermission(user, "content.write") ? <Link className="button-secondary" href={`${basePath}?editor=edit&publicId=${encodeURIComponent(publicId)}`}>{t("catalogEditor.resourceEdit")}</Link> : null}
     </div>
     <article className="mt-5 grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div>
@@ -83,12 +81,37 @@ function CatalogResourceDetail({ basePath, publicId }: { basePath: string; publi
         <ContentTranslationControl publicId={publicId} onResolved={setResolvedLocalization} />
         {localization?.fields.summary ? <p className="mt-5 text-base leading-7 text-[var(--muted)]">{localization.fields.summary}</p> : null}
         {localization?.fields.contentMarkdown ? <div className="markdown-preview mt-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={localization.fields.contentMarkdown} /></div> : null}
-        <section className="mt-7"><h2 className="text-xl font-black">{t("catalogEditor.resourceDefinition")}</h2><pre className="mt-3 max-h-[32rem] overflow-auto rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4 text-xs">{JSON.stringify(detail.definition, null, 2)}</pre></section>
+        <section className="mt-7">
+          <h2 className="text-xl font-black">{t("catalogEditor.resourceDefinition")}</h2>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("resourceEditor.versionedDefinition")}</p>
+          <pre className="mt-3 max-h-[32rem] overflow-auto rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4 text-xs">{JSON.stringify(detail.definition, null, 2)}</pre>
+        </section>
         {canViewBindings ? <section className="mt-7">
           {bindingError ? <p role="alert" className="text-[var(--red)]">{bindingError}</p> : null}
           <div className="flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-xl font-black">绑定的普通资源</h2><p className="mt-1 text-sm text-[var(--muted)]">共 {bindingTotal} 条绑定，仅具备技术关系查看权限的管理员可见。</p></div></div>
           <form className="mt-3 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); setBindingOffset(0); setBindingQuery(bindingQueryInput.trim()); }}><input className="field min-w-56 flex-1" placeholder="搜索所属模组或资料版本" type="search" value={bindingQueryInput} onChange={(event) => setBindingQueryInput(event.target.value)} /><select className="field min-w-36" value={bindingStatus} onChange={(event) => { setBindingStatus(event.target.value); setBindingOffset(0); }}><option value="">全部状态</option><option value="active">有效</option><option value="pending">待审核</option><option value="archived">已归档</option></select><button className="button-secondary" type="submit">筛选</button></form>
-          {bindings.length ? <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--line)]"><table className="w-full min-w-[760px] text-left text-sm"><thead className="bg-[var(--panel-subtle)]"><tr><th className="p-3">资源</th><th className="p-3">所属模组</th><th className="p-3">资料版本</th><th className="p-3">Minecraft 版本</th><th className="p-3">状态</th></tr></thead><tbody>{bindings.map((binding) => <tr className="border-t border-[var(--line)]" key={`${binding.projectId}:${binding.versionId}`}><td className="p-3 font-bold">{binding.resourceName || detail.canonicalId}</td><td className="p-3"><Link className="text-[var(--accent)] hover:underline" href={`/mods/${encodeURIComponent(binding.projectSiteId || binding.projectId)}`}>{binding.projectName || binding.projectId}</Link></td><td className="p-3">{binding.versionLabel}</td><td className="p-3">{binding.minecraftVersions.join(" / ") || "-"}</td><td className="p-3">{binding.status}</td></tr>)}</tbody></table></div> : <p className="mt-3 rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">未绑定普通资源</p>}
+          {bindings.length ? <div className="mt-3 overflow-x-auto rounded-lg border border-[var(--line)]">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-[var(--panel-subtle)]"><tr><th className="p-3">资源</th><th className="p-3">所属模组</th><th className="p-3">资料版本</th><th className="p-3">Minecraft 版本</th><th className="p-3">状态</th></tr></thead>
+              <tbody>{bindings.map((binding) => {
+                const projectName = binding.projectName || binding.projectId;
+                const projectHref = binding.projectType === "mod" && binding.projectSiteId
+                  ? `/mods/${encodeURIComponent(binding.projectSiteId)}`
+                  : "";
+                const versionHref = projectHref && binding.versionId && binding.status === "active"
+                  ? `${projectHref}/resources/${encodeURIComponent(publicId)}?version=${encodeURIComponent(binding.versionId)}`
+                  : "";
+                const versionLabel = binding.versionLabel || binding.versionId;
+                return <tr className="border-t border-[var(--line)]" key={`${binding.projectId}:${binding.versionId}`}>
+                  <td className="p-3 font-bold">{binding.resourceName || detail.canonicalId}</td>
+                  <td className="p-3">{projectHref ? <Link className="text-[var(--accent)] hover:underline" href={projectHref}>{projectName}</Link> : projectName}</td>
+                  <td className="p-3">{versionHref ? <Link className="focus-ring text-[var(--accent)] underline" href={versionHref}>{versionLabel}</Link> : versionLabel}</td>
+                  <td className="p-3">{binding.minecraftVersions.join(" / ") || "-"}</td>
+                  <td className="p-3">{binding.status}</td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div> : <p className="mt-3 rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">未绑定普通资源</p>}
           {bindingTotal > 50 ? <div className="mt-3 flex items-center justify-end gap-2"><button className="button-secondary" disabled={bindingOffset === 0} type="button" onClick={() => setBindingOffset(Math.max(0, bindingOffset - 50))}>上一页</button><span className="text-sm font-bold text-[var(--muted)]">{Math.floor(bindingOffset / 50) + 1} / {Math.ceil(bindingTotal / 50)}</span><button className="button-secondary" disabled={bindingOffset + 50 >= bindingTotal} type="button" onClick={() => setBindingOffset(bindingOffset + 50)}>下一页</button></div> : null}
         </section> : null}
       </div>

@@ -1081,7 +1081,6 @@ const en = {
   },
   catalogEditor: {
     resourceCreate: "Create global resource",
-    resourceEdit: "Edit global resource",
     resourceDescription: "Submit the resource identity, localized introduction, and technical definition for independent review.",
     resourceDefinition: "Resource definition (JSON)",
     definitionObjectRequired: "Enter a valid JSON object for the resource definition.",
@@ -1219,7 +1218,8 @@ const en = {
   resourceEditor: {
     catalogShort: "Resources",
     catalogTitle: "Global resource catalog",
-    catalogDescription: "Browse and manually maintain reusable items, blocks, fluids, chemicals, and other game resources. Imports only assist this catalog; they do not own it.",
+    catalogDescription: "Browse reusable game resources by name, ID, or kind.",
+    versionedDefinition: "Edit resource definitions in a linked mod version.",
     search: "Search resources",
     searchPlaceholder: "Localized name or resource ID",
     allKinds: "All kinds",

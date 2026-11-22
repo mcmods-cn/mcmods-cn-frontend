@@ -125,7 +125,8 @@ const fr = {
   modContent: { ...en.modContent, managerBack: "Retour à {name}", templates: { ...en.modContent.templates, loot_table: "Tables de butin", game_setting: "Paramètres du jeu" } },
   resourceEditor: {
     ...en.resourceEditor,
-    catalogShort: "Ressources", catalogTitle: "Catalogue global des ressources", catalogDescription: "Parcourez et gérez manuellement les objets, blocs, fluides, produits chimiques et autres ressources du jeu. L’importation reste une aide.",
+    catalogShort: "Ressources", catalogTitle: "Catalogue global des ressources", catalogDescription: "Recherchez les ressources de jeu réutilisables par nom, identifiant ou type.",
+    versionedDefinition: "Modifiez la définition dans une version liée du mod.",
     search: "Rechercher des ressources", searchPlaceholder: "Nom localisé ou ID de ressource", allKinds: "Tous les types", allRegistries: "Tous les espaces de noms", empty: "Aucune ressource correspondante.", globalResource: "Ressource globale",
     create: "Créer une ressource", edit: "Modifier la ressource", back: "Retour aux ressources", description: "Gérez l’identité stable, les contenus multilingues, les images OSS privées et les propriétés structurées. Chaque modification est contrôlée et journalisée.",
     validationRequired: "Saisissez le type, l’ID canonique et un nom dans la langue par défaut.", archiveConfirm: "Archiver cette ressource ?", imageOnly: "Sélectionnez une image pour l’icône ou l’aperçu.", uploadFailed: "Échec de l’envoi de l’image.",

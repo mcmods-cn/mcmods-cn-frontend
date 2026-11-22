@@ -125,7 +125,8 @@ const de = {
   modContent: { ...en.modContent, managerBack: "Zurück zu {name}", templates: { ...en.modContent.templates, loot_table: "Beutetabellen", game_setting: "Spieleinstellungen" } },
   resourceEditor: {
     ...en.resourceEditor,
-    catalogShort: "Ressourcen", catalogTitle: "Globaler Ressourcenkatalog", catalogDescription: "Gegenstände, Blöcke, Flüssigkeiten, Chemikalien und weitere Spielressourcen durchsuchen und manuell pflegen. Importe dienen nur als Hilfe.",
+    catalogShort: "Ressourcen", catalogTitle: "Globaler Ressourcenkatalog", catalogDescription: "Durchsuche wiederverwendbare Spielressourcen nach Name, ID oder Typ.",
+    versionedDefinition: "Bearbeite Ressourcendefinitionen in einer verknüpften Mod-Version.",
     search: "Ressourcen suchen", searchPlaceholder: "Lokalisierter Name oder Ressourcen-ID", allKinds: "Alle Typen", allRegistries: "Alle Namensräume", empty: "Keine passenden Ressourcen.", globalResource: "Globale Ressource",
     create: "Ressource erstellen", edit: "Ressource bearbeiten", back: "Zurück zu den Ressourcen", description: "Stabile Identität, mehrsprachige Inhalte, private OSS-Bilder und strukturierte Spieleigenschaften pflegen. Jede Änderung wird geprüft und im Benutzerverlauf erfasst.",
     validationRequired: "Ressourcentyp, kanonische ID und einen Namen in der Standardsprache eingeben.", archiveConfirm: "Diese Ressource archivieren?", imageOnly: "Für Symbol und Render-Vorschau muss eine Bilddatei gewählt werden.", uploadFailed: "Das Bild konnte nicht hochgeladen werden.",

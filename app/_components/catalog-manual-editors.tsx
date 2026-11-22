@@ -13,7 +13,7 @@ import {
   updateCatalogRecipeType,
   updateCatalogTag,
 } from "../_lib/catalog-editor-api";
-import { archiveCatalogResource, catalogResourceKindCodes, loadCatalogResourceForEditing, saveCatalogResource } from "../_lib/catalog-resource-api";
+import { catalogResourceKindCodes, createCatalogResource } from "../_lib/catalog-resource-api";
 import { editableContentLanguages, findLocalizationVersion, toEditableContentLanguage } from "../_lib/content-language";
 import type { CatalogResourceRef, EditResult, LocalizedContentFields, ReviewStatus } from "../_lib/editor-types";
 import { useAuthSnapshot } from "../_lib/auth";
@@ -305,71 +305,48 @@ function CatalogRecipeTypeEditorSession({ mode, publicId = "" }: { mode: EditorM
   </>;
 }
 
-export function CatalogResourceEditor(props: { mode: EditorMode; publicId?: string; basePath?: string }) {
-  const { token, user } = useAuthSnapshot();
-  return <CatalogResourceEditorSession key={`${user?.id || "guest"}:${token || "guest"}:${props.mode}:${props.publicId || ""}`} {...props} />;
+export function CatalogResourceCreateEditor(props: { basePath: string }) {
+  const { generation, user } = useAuthSnapshot();
+  return <CatalogResourceCreateSession key={`${generation}:${user?.id || "guest"}`} {...props} />;
 }
 
-function CatalogResourceEditorSession({ mode, publicId = "", basePath = "/admin/global-resources" }: { mode: EditorMode; publicId?: string; basePath?: string }) {
+function CatalogResourceCreateSession({ basePath }: { basePath: string }) {
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const [initialLocale] = useState<Locale>(() => toEditableContentLanguage(locale) ?? "zh-CN");
-  const [loaded, setLoaded] = useState(mode === "create");
-  const [loadAttempt, setLoadAttempt] = useState(0);
-  const state = useCatalogEditorState(mode, initialLocale);
-  const { loadDocument, setError, setLoading } = state;
+  const state = useCatalogEditorState("create", initialLocale);
   const [kindCode, setKindCode] = useState("minecraft.item");
   const [canonicalId, setCanonicalId] = useState("");
   const [definition, setDefinition] = useState("{}");
   const [iconFileId, setIconFileId] = useState("");
   const [renderFileId, setRenderFileId] = useState("");
 
-  useEffect(() => {
-    if (mode !== "edit" || !publicId || !token) return;
-    let cancelled = false;
-    loadCatalogResourceForEditing(publicId, token).then((document) => {
-      if (cancelled) return;
-      setKindCode(document.kindCode);
-      setCanonicalId(document.canonicalId);
-      setDefinition(JSON.stringify(document.definition, null, 2));
-      setIconFileId(document.iconFileId ?? "");
-      setRenderFileId(document.renderFileId ?? "");
-      loadDocument({ ...document, reviewStatus: document.reviewStatus ?? "approved" }, toEditableContentLanguage(document.defaultLocale) ?? initialLocale);
-      setLoaded(true);
-    }).catch((reason: unknown) => { if (!cancelled) setError(errorText(reason)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [initialLocale, loadAttempt, loadDocument, mode, publicId, setError, setLoading, token]);
-
   const valid = Boolean(token && kindCode.trim() && canonicalId.trim() && state.canSubmit);
   async function save() {
     if (!valid) return;
     let parsed: unknown;
-    try { parsed = JSON.parse(definition); } catch { setError(t("catalogEditor.definitionObjectRequired")); return; }
-    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") { setError(t("catalogEditor.definitionObjectRequired")); return; }
-    await state.runSave(() => saveCatalogResource(mode === "edit" ? publicId : undefined, {
-      ...(mode === "edit" ? { baseRevisionId: state.publishedRevisionId } : {}),
+    try { parsed = JSON.parse(definition); } catch { state.setError(t("catalogEditor.definitionObjectRequired")); return; }
+    if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") { state.setError(t("catalogEditor.definitionObjectRequired")); return; }
+    await state.runSave(() => createCatalogResource({
       reason: state.reason.trim(), defaultLocale: state.defaultLocale, localizations: state.buildLocalizationPayload(),
       kindCode: kindCode.trim(), canonicalId: canonicalId.trim(), definition: parsed as Record<string, unknown>,
       ...(iconFileId.trim() ? { iconFileId: iconFileId.trim() } : {}), ...(renderFileId.trim() ? { renderFileId: renderFileId.trim() } : {}),
     }, token));
   }
-  const nextPath = `${basePath}?editor=${mode}${publicId ? `&publicId=${encodeURIComponent(publicId)}` : ""}`;
-  if (!ready || state.loading) return <CatalogEditorGate loading nextPath={nextPath} />;
+  const nextPath = `${basePath}?editor=create`;
+  if (!ready) return <CatalogEditorGate loading nextPath={nextPath} />;
   if (!user) return <CatalogEditorGate nextPath={nextPath} />;
-  if (!loaded) return <PageFeedback title={t("catalogEditor.loadFailed")} description={state.error} tone="danger" action={<button className="button-secondary" type="button" onClick={() => { setLoading(true); setLoadAttempt(value => value + 1); }}>{t("common.retry")}</button>} />;
-  return <EditorShell mode={mode} title={t(mode === "create" ? "catalogEditor.resourceCreate" : "catalogEditor.resourceEdit")} description={t("catalogEditor.resourceDescription")}
-    backHref={basePath} busy={state.busy} deleting={state.deleting} canSubmit={valid && !state.markdownUploading}
-    canDelete={mode === "edit" && !state.finished && state.reviewStatus !== "pending" && !state.markdownUploading}
+  return <EditorShell mode="create" title={t("catalogEditor.resourceCreate")} description={t("catalogEditor.resourceDescription")}
+    backHref={basePath} busy={state.busy} canSubmit={valid && !state.markdownUploading}
     languageSwitcher={<ContentLanguageSwitcher value={state.selectedLocale} versions={state.versions} onChange={state.setSelectedLocale} labels={{ title: t("catalogEditor.editLanguage") }} />}
     reviewPanel={<ReviewStatusPanel result={state.result} status={state.result ? undefined : state.reviewStatus} note={state.result ? reviewMessage(state.result, t) : state.reviewStatus === "pending" ? t("catalogEditor.existingReviewPending") : undefined} />}
     statusMessage={state.error ? <CatalogEditorError text={state.error} /> : null}
     aside={<CatalogEditorAside defaultLocale={state.defaultLocale} reason={state.reason} resourceCount={undefined} resourceLabel="" onDefaultLocale={state.chooseDefaultLocale} onReason={state.setReason} />}
-    labels={{ back: t("resourceEditor.back"), delete: t("catalogEditor.archive"), deleting: t("catalogEditor.archiving") }}
-    onSubmit={save} onDelete={() => state.runArchive(t("catalogEditor.archiveConfirm"), () => archiveCatalogResource(publicId, state.publishedRevisionId, state.reason.trim(), token))}>
+    labels={{ back: t("resourceEditor.back") }}
+    onSubmit={save}>
     <InvariantPanel>
-      <label className="grid gap-2 font-bold"><span>{t("resourceEditor.kind")}</span><input className="field font-mono" list="manual-resource-kinds" disabled={mode === "edit"} value={kindCode} onChange={event => setKindCode(event.target.value)} /><datalist id="manual-resource-kinds">{catalogResourceKindCodes.map(code => <option key={code} value={code} />)}</datalist></label>
-      <label className="grid gap-2 font-bold"><span>{t("catalogEditor.canonicalId")}</span><input className="field font-mono" disabled={mode === "edit"} value={canonicalId} onChange={event => setCanonicalId(event.target.value)} /></label>
+      <label className="grid gap-2 font-bold"><span>{t("resourceEditor.kind")}</span><input className="field font-mono" list="manual-resource-kinds" value={kindCode} onChange={event => setKindCode(event.target.value)} /><datalist id="manual-resource-kinds">{catalogResourceKindCodes.map(code => <option key={code} value={code} />)}</datalist></label>
+      <label className="grid gap-2 font-bold"><span>{t("catalogEditor.canonicalId")}</span><input className="field font-mono" value={canonicalId} onChange={event => setCanonicalId(event.target.value)} /></label>
     </InvariantPanel>
     <LocalizedFieldsPanel fields={state.fields} locale={state.selectedLocale} onChange={state.updateFields} />
     <section className="rounded-lg border border-[var(--line)] p-5"><label className="grid gap-2 font-bold"><span>{t("catalogEditor.resourceDefinition")}</span><textarea aria-label={t("catalogEditor.resourceDefinition")} className="field min-h-40 font-mono" value={definition} onChange={event => setDefinition(event.target.value)} /></label></section>
@@ -377,7 +354,7 @@ function CatalogResourceEditorSession({ mode, publicId = "", basePath = "/admin/
       <label className="grid gap-2 font-bold"><span>{t("catalogEditor.iconFileId")}</span><input className="field font-mono" value={iconFileId} onChange={event => setIconFileId(event.target.value)} /></label>
       <label className="grid gap-2 font-bold"><span>{t("catalogEditor.renderFileId")}</span><input className="field font-mono" value={renderFileId} onChange={event => setRenderFileId(event.target.value)} /></label>
     </section>
-    <MarkdownContentPanel documentId={`catalog-resource:${publicId || "draft"}:${state.selectedLocale}:content`} fields={state.fields} locale={state.selectedLocale} onChange={state.updateFields} onBusyChange={state.setMarkdownUploading} />
+    <MarkdownContentPanel documentId={`catalog-resource:draft:${state.selectedLocale}:content`} fields={state.fields} locale={state.selectedLocale} onChange={state.updateFields} onBusyChange={state.setMarkdownUploading} />
   </EditorShell>;
 }
 

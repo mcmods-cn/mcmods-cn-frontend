@@ -5,7 +5,7 @@ const fixture = new ProductionBrowserFixture();
 before(async () => { await fixture.start(); });
 after(async () => { await fixture.close(); });
 const localization = { locale: "en-US", name: "Published manual resource", summary: "Preserved summary", contentMarkdown: "", provenance: "human", reviewStatus: "approved", editable: true };
-const document = { publicId: "numeric123", kindCode: "minecraft.item", canonicalId: "audit:manual", defaultLocale: "en-US", publishedRevisionId: "published-baseline", reviewStatus: "approved", localizations: [localization], definition: { stackSize: 32, auditExtension: { registeredValue: "keep" } }, iconFileId: "", renderFileId: "" };
+const document = { publicId: "numeric123", kindCode: "minecraft.item", canonicalId: "audit:manual", defaultLocale: "en-US", publishedRevisionId: "published-baseline", reviewStatus: "approved", localizations: [localization], definition: { maxStackSize: 32 }, iconFileId: "", renderFileId: "" };
 const common: APIHandler = ({ path }) => {
   if (path === "/api/v1/markdown/config") return { data: {} };
   if (path === "/api/v1/location") return { data: { isMainlandChina: false } };
@@ -30,7 +30,7 @@ test("CONT001 global resource form rejects non-object JSON without writing and c
     await page.getByRole("button", { name: "Create", exact: true }).first().click();
     await page.getByText("Enter a valid JSON object for the resource definition.", { exact: true }).waitFor();
     assert.equal(writes.length, 0);
-    await page.getByLabel("Resource definition (JSON)", { exact: true }).fill('{"stackSize":32,"auditExtension":{"registeredValue":"keep"}}');
+    await page.getByLabel("Resource definition (JSON)", { exact: true }).fill(JSON.stringify(document.definition));
     await page.getByRole("button", { name: "Create", exact: true }).first().click();
     await page.getByText("review1", { exact: true }).waitFor();
     assert.equal(writes.length, 1);
@@ -42,27 +42,65 @@ test("CONT001 global resource form rejects non-object JSON without writing and c
   } finally { await browser.close(); }
 });
 
-test("CONT001 global resource edit preserves technical fields and submits the published baseline", async () => {
-  let write: Record<string, unknown> | undefined;
+test("an old global editor URL displays a read-only record without a bound version", async () => {
+  const writes: string[] = [];
   const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/admin/global-resources/numeric123/bindings") return { data: { items: [], total: 0, limit: 50, offset: 0 } };
     if (request.path === "/api/v1/catalog/resources/numeric123") {
       if (request.method === "GET") return { data: document };
-      if (request.method === "PUT") { write = JSON.parse(request.body); return { status: 409, error: "Specific stale baseline conflict" }; }
+      writes.push(request.method);
+      return { status: 405, error: "Method Not Allowed" };
     }
     return common(request);
   });
   try {
     const page = browser.page;
     await page.goto(`${fixture.origin}/admin/global-resources?editor=edit&publicId=numeric123`);
-    await page.getByRole("heading", { name: "Edit global resource", exact: true }).waitFor();
-    assert.equal(await page.getByLabel("Canonical ID", { exact: true }).isDisabled(), true);
-    await page.getByLabel("Localized name", { exact: true }).fill("Updated manual introduction");
-    await page.getByRole("button", { name: "Save", exact: true }).first().click();
-    await page.getByText("Specific stale baseline conflict", { exact: true }).waitFor();
-    assert(write);
-    assert.equal(write.baseRevisionId, "published-baseline");
-    assert.deepEqual(write.definition, document.definition);
-    assert.equal(await page.getByLabel("Localized name", { exact: true }).inputValue(), "Updated manual introduction");
+    await page.getByRole("heading", { name: localization.name, exact: true }).waitFor();
+    await page.getByText("Edit resource definitions in a linked mod version.", { exact: true }).waitFor();
+    assert.equal(await page.getByRole("button", { name: /^(Save|Archive)$/ }).count(), 0);
+    assert.equal(await page.getByRole("link", { name: "Edit global resource" }).count(), 0);
+    assert.deepEqual(writes, []);
+  } finally { await browser.close(); }
+});
+
+test("an active binding opens its exact project version and incomplete bindings stay text", async () => {
+  const writes: string[] = [];
+  const binding = { resourceName: "Fixture item", projectId: "project01", projectSiteId: "fixture-mod",
+    projectName: "Fixture mod", projectType: "mod", versionId: "version02", versionLabel: "Fixture version two",
+    minecraftVersions: ["1.20.1"], status: "active" };
+  const resourcePath = "/api/v1/mods/fixture-mod/content-resources/numeric123";
+  const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/admin/global-resources/numeric123/bindings") return { data: { total: 2, limit: 50, offset: 0, items: [
+      binding, { ...binding, projectId: "project02", projectSiteId: "", versionLabel: "Unknown project" },
+    ] } };
+    if (request.path === "/api/v1/catalog/resources/numeric123") {
+      if (request.method === "GET") return { data: document };
+      writes.push(request.method);
+      return { status: 405, error: "Method Not Allowed" };
+    }
+    if (request.path === resourcePath) return { data: {
+      publicId: document.publicId, canonicalId: document.canonicalId, kindCode: document.kindCode,
+      versions: [{ publicId: "version01", label: "First version", hasDetail: false }, { publicId: binding.versionId, label: binding.versionLabel, hasDetail: false }],
+      details: [], capabilities: { editResource: false },
+    } };
+    if (request.path === resourcePath + "/similar") return { data: { items: [] } };
+    if (request.path.startsWith("/api/v1/content-metrics/numeric123")) return { status: 404, error: "No metrics in this fixture" };
+    return common(request);
+  });
+  try {
+    const page = browser.page;
+    await page.goto(`${fixture.origin}/admin/global-resources?publicId=numeric123`);
+    await page.getByRole("heading", { name: localization.name, exact: true }).waitFor();
+    const version = page.getByRole("link", { name: binding.versionLabel, exact: true });
+    await version.waitFor();
+    assert.equal(await version.getAttribute("href"), "/mods/fixture-mod/resources/numeric123?version=version02");
+    assert.equal(await page.getByRole("link", { name: "Unknown project", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("link", { name: "Edit global resource" }).count(), 0);
+    await version.click();
+    await page.waitForURL("**/mods/fixture-mod/resources/numeric123?version=version02");
+    await page.getByRole("heading", { name: binding.versionLabel, exact: true }).waitFor();
+    assert.deepEqual(writes, []);
   } finally { await browser.close(); }
 });
 

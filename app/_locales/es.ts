@@ -125,7 +125,8 @@ const es = {
   modContent: { ...en.modContent, managerBack: "Volver a {name}", templates: { ...en.modContent.templates, loot_table: "Tablas de botín", game_setting: "Ajustes del juego" } },
   resourceEditor: {
     ...en.resourceEditor,
-    catalogShort: "Recursos", catalogTitle: "Catálogo global de recursos", catalogDescription: "Explora y mantiene manualmente objetos, bloques, fluidos, sustancias químicas y otros recursos del juego. La importación solo sirve de ayuda.",
+    catalogShort: "Recursos", catalogTitle: "Catálogo global de recursos", catalogDescription: "Busca recursos reutilizables del juego por nombre, ID o tipo.",
+    versionedDefinition: "Edita la definición en una versión vinculada del mod.",
     search: "Buscar recursos", searchPlaceholder: "Nombre localizado o ID del recurso", allKinds: "Todos los tipos", allRegistries: "Todos los espacios de nombres", empty: "No hay recursos coincidentes.", globalResource: "Recurso global",
     create: "Crear recurso", edit: "Editar recurso", back: "Volver a recursos", description: "Mantén la identidad estable, el contenido multilingüe, las imágenes OSS privadas y las propiedades estructuradas. Cada cambio se revisa y registra.",
     validationRequired: "Introduce el tipo, el ID canónico y un nombre en el idioma predeterminado.", archiveConfirm: "¿Archivar este recurso?", imageOnly: "Selecciona una imagen para el icono o la vista renderizada.", uploadFailed: "No se pudo subir la imagen.",

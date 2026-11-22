@@ -126,7 +126,8 @@ const zhTW = {
   modContent: { ...zhCN.modContent, managerBack: "返回{name}", templates: { ...zhCN.modContent.templates, loot_table: "戰利品表", game_setting: "遊戲設定" } },
   resourceEditor: {
     ...zhCN.resourceEditor,
-    catalogShort: "資源", catalogTitle: "全域資源目錄", catalogDescription: "瀏覽並人工維護可重複使用的物品、方塊、流體、化學品及其他遊戲資源。匯入只用於輔助，不會取代人工維護。",
+    catalogShort: "資源", catalogTitle: "全域資源目錄", catalogDescription: "依名稱、ID 或類型尋找可重複使用的遊戲資源。",
+    versionedDefinition: "請在關聯的模組資料版本中編輯資源定義。",
     search: "搜尋資源", searchPlaceholder: "本地化名稱或資源 ID", allKinds: "全部類型", allRegistries: "全部命名空間", empty: "找不到符合條件的資源。", globalResource: "全域資源",
     create: "新增資源", edit: "編輯資源", back: "返回資源目錄", description: "維護資源的固定識別、多語言內容、私有 OSS 圖片與結構化遊戲屬性。每次提交都會接入審核與使用者行為記錄。",
     validationRequired: "請填寫資源類型、規範 ID，並在預設內容語言中填寫本地化名稱。", archiveConfirm: "確定封存此資源嗎？刪除修改審核通過後，它將從公開目錄中隱藏。", imageOnly: "圖示或渲染預覽只能選擇圖片檔案。", uploadFailed: "圖片上傳失敗，請重試。",
