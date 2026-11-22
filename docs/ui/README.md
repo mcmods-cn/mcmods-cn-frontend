@@ -38,6 +38,21 @@ node --test --test-concurrency=1 browser-tests/home-search.browser.mts browser-t
 node --test --test-name-pattern=FP068 browser-tests/specific-journeys.browser.mts
 ```
 
+## AI 设置的只读权限
+
+同一合成账号具有 `admin.access` 和 `ai.read`。在 `8cdc617` 使用的旧版界面中，桌面和手机均显示可用的保存按钮，各发出一个被拒绝的 PUT。改后页面说明当前账号可以查看设置，禁用保存、添加、删除与表单编辑。密钥输入保持空白。两个视口各读取一次配置，均产生零个 PUT，宽度均未超出视口。
+
+| 供应商设置 | 桌面亮色，1440 × 900 | 手机深色，390 × 844 |
+| --- | --- | --- |
+| 修改前 | [桌面](ai-readonly-before-desktop.png) | [手机](ai-readonly-before-mobile.png) |
+| 修改后 | [桌面](ai-readonly-after-desktop.png) | [手机](ai-readonly-after-mobile.png) |
+
+截图使用生产构建、真实 Chromium 和本机合成 HTTP 数据。完成根 README 中的生产构建后，可用以下命令重拍当前版本。写入权限、跨管理员冲突、主动清除密钥和撤权同属这个测试文件。[保存与冲突处理](../admin-data-integrity.md)
+
+```bash
+MCMODS_ADMIN_AI_SCREENSHOTS=/tmp/mcmods-ai-ui node --test --test-name-pattern='AI readers on desktop' browser-tests/admin-ai-revisions.browser.mts
+```
+
 ## 后台词条编辑的挂载成本
 
 进入多语言管理时，原界面同时生成 5,103 个可编辑文本框。分页后，默认每页挂载 50 个。搜索与“只看缺失”遍历完整词典，AI 补全继续从所有匹配项选取最多 100 条。翻页后回到原键可读回本地修改。回归也覆盖 AI 处理期间人工修改优先的情形。

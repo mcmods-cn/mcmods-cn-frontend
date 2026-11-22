@@ -84,7 +84,7 @@ cp -r .next/static .next/standalone/.next/
 HOSTNAME=127.0.0.1 PORT=3000 node .next/standalone/server.js
 ```
 
-生产发布与回滚均按**完整镜像与对应构建配置**切换。本轮前端变更无需迁移数据库。先将所有 API 实例升级到支持后台面板独立读取、OAuth 按字段 PATCH、条件退出和当前导入状态的版本，再更新前端。检查 `/authentication-write-config` 指向目标 API。回滚至旧 API 时，条件退出路由返回 404/405，页面允许检查当前账号。OAuth 设置保留未保存的草稿，支持 PATCH 的实例恢复后可重试。登录不保持时核对后端允许的前端 origin 与 Cookie 设置。浏览器上传失败时核对签名地址的 CSP origin。缺少样式或出现静态资源 404 时检查 `public`、`.next/static` 是否和同一次构建的 server.js 一同部署。
+生产发布与回滚均按**完整镜像与对应构建配置**切换。本轮前端变更无需迁移数据库。先将所有 API 实例升级到支持后台面板独立读取、OAuth 按字段 PATCH、AI 配置修订号和显式密钥清除、条件退出和当前导入状态的版本，再更新前端。检查 `/authentication-write-config` 指向目标 API。回滚至旧 API 时，条件退出路由返回 404/405，页面允许检查当前账号。OAuth 设置保留未保存的草稿，支持 PATCH 的实例恢复后可重试。登录不保持时核对后端允许的前端 origin 与 Cookie 设置。浏览器上传失败时核对签名地址的 CSP origin。缺少样式或出现静态资源 404 时检查 `public`、`.next/static` 是否和同一次构建的 server.js 一同部署。
 
 ## 依赖审查
 
