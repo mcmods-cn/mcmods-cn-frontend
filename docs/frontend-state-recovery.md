@@ -14,6 +14,19 @@
 
 主内容写入成功、自动草稿完成标记失败时，提示“内容已保存，但草稿完成状态更新失败”；这不是重新创建内容的依据。社区和更新日志在进入保存结果前明确显示该提示。原记录校验或保存失败保留输入。
 
+## 资料目录的分类名称与层级
+
+在“整理资料和分类”中，类别关系图和列表可以用默认译名识别同一分类。名称输入绑定当前编辑语言。缺少翻译时，输入留空并显示名称提示。修改已有译名只更新该语言的 `name`，同时保留原有语言标签、说明、其他语言和列表顺序。保存失败，输入与移动结果留在当前页面，可重试提交审核。[布局编辑器](../app/_components/mod-content-layout-editor.tsx)
+
+分类关系图、父分类选项、深度和移动操作共用按父节点组织的分类树。同级按 `ordinal` 和公开 ID 排序，移动时只重排该组兄弟。新增分类接在当前父节点的末尾。在最多四层的分类树中，拖动和选择父分类都要检查整棵被移动子树的深度，并拒绝环。资源位置及相似资源组继续走既有分页规则。[分类树与移动规则](../app/_lib/mod-content-category-tree.mts) · [目录布局 API](../app/_lib/mod-content-api.ts)
+
+生产构建完成后运行 `node --test browser-tests/catalog-category-rename.browser.mts`。如需重拍，将 `MCMODS_CATEGORY_LAYOUT_ARTIFACTS` 指向独立输出目录。测试使用实际 Chromium 页面对接合成 API，模拟提交失败，核对两次 PATCH 的语言、说明和分类归属。下图使用同一数据、英文界面、德文编辑语言和相同窗口尺寸。[浏览器场景](../browser-tests/catalog-category-rename.browser.mts)
+
+| 窗口 | 修改前 | 修改后 |
+| --- | --- | --- |
+| 桌面 1280 × 900 | [修改前](ui/category-name-before-desktop.png) | [修改后](ui/category-name-after-desktop.png) |
+| 手机 390 × 844 | [修改前](ui/category-name-before-mobile.png) | [修改后](ui/category-name-after-mobile.png) |
+
 ## 消息、评论与上传
 
 私信发送期间可以继续输入。响应只清空与已提交正文相同的输入，新输入保留；并发提交有即时守卫，收到的相同消息 ID 不重复追加。通知译文以消息 ID 与目标语言关联，避免语言切换后展示其他语言的迟到结果。
