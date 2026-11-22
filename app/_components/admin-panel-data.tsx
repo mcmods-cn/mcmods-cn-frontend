@@ -146,8 +146,9 @@ export function AdminSettingsEditor({ panel, token, canWrite }: { panel: Setting
 
 type AccessPanel = "roles" | "user-roles" | "role-tracks" | "permission-list" | "permission-settings" | "users";
 
-export function AdminAccessEditor({ panel, token, canReadUsers, canReadCatalog, canTranslate = false }: {
+export function AdminAccessEditor({ panel, token, canReadUsers, canReadCatalog, canTranslate = false, canCreateUsers = false, canAssignInitialRoles = false }: {
   panel: AccessPanel; token: string; canTranslate?: boolean; canReadUsers: boolean; canReadCatalog: boolean;
+  canCreateUsers?: boolean; canAssignInitialRoles?: boolean;
 }) {
   const needsUsers = panel === "user-roles" || panel === "users";
   const catalog = usePanelRead<PermissionCatalog>("/api/v1/admin/permissions", canReadCatalog ? token : undefined, normalizePermissionCatalog);
@@ -164,7 +165,14 @@ export function AdminAccessEditor({ panel, token, canReadUsers, canReadCatalog, 
     case "role-tracks": editor = <RoleTracksPanel catalog={permissions} token={token} users={list} refreshUsers={users.refresh} />; break;
     case "permission-list": editor = <PermissionCatalogEditor canTranslate={canTranslate} key={JSON.stringify(permissions.permissions)} catalog={permissions} token={token} refreshCatalog={catalog.refresh} />; break;
     case "permission-settings": editor = <PermissionSettingsPanel catalog={permissions} token={token} />; break;
-    case "users": editor = <UsersPanelV2 catalog={permissions} token={token} users={list} refreshUsers={users.refresh} />; break;
+    case "users": editor = <UsersPanelV2
+      catalog={permissions}
+      token={token}
+      users={list}
+      refreshUsers={users.refresh}
+      canCreateUsers={canCreateUsers}
+      canAssignInitialRoles={canAssignInitialRoles}
+    />; break;
   }
   return <>
     {catalog.error ? <ReadStatus error={catalog.error} retry={catalog.refresh} /> : null}

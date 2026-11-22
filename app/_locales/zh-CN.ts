@@ -3925,7 +3925,6 @@ const zhCN = {
     addManual: "手动添加",
     userList: "用户列表",
     createUser: "创建用户",
-    createUserHint: "管理员创建的账号会直接写入后端数据库。",
     username: "用户名",
     email: "邮箱",
     initialPassword: "初始密码",

@@ -3926,7 +3926,6 @@ const en = {
     addManual: "Manual add",
     userList: "User list",
     createUser: "Create user",
-    createUserHint: "Admin-created accounts are written directly to the backend database.",
     username: "Username",
     email: "Email",
     initialPassword: "Initial password",

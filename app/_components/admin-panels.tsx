@@ -318,8 +318,15 @@ const definitions = {
   },
   "users": {
     group: "users", title: "admin.userList", description: "admin.usersDesc",
-    read: "user.read",
-    render: ({ token, user }) => <AdminAccessEditor canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} panel="users" token={token} />,
+    read: "user.read", write: "user.write",
+    render: ({ token, user, access }) => <AdminAccessEditor
+      panel="users"
+      token={token}
+      canReadCatalog={hasPermission(user, "permission.read")}
+      canReadUsers={access.read}
+      canCreateUsers={access.write}
+      canAssignInitialRoles={hasPermission(user, "permission.write")}
+    />,
   },
   "notifications": {
     group: "notifications", title: "admin.notifications.title", description: "admin.notifications.navDescription",

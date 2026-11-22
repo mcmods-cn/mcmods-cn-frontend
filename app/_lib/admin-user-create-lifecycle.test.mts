@@ -6,6 +6,7 @@ import ts from "typescript";
 type Form = { reset(): void; values: Map<string, string> };
 type SubmitEvent = { preventDefault(): void; currentTarget: Form | null };
 type Element = { type: unknown; props: { children?: unknown; onSubmit?: (event: SubmitEvent) => Promise<void> } };
+type CreateRequest = { path: string; body: Record<string, unknown> };
 const moduleURL = (source: string) => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 function findForm(node: unknown): Element | undefined {
   if (Array.isArray(node)) return node.map(findForm).find(Boolean);
@@ -14,19 +15,22 @@ function findForm(node: unknown): Element | undefined {
   return element.type === "form" ? element : findForm(element.props.children);
 }
 
-async function harness(refreshFails: boolean) {
+async function harness({ refreshFails = false, canCreateUsers = true, canAssignInitialRoles = false } = {}) {
   const key = `admin-user-create-${crypto.randomUUID()}`;
   const pending = Promise.withResolvers<unknown>();
-  let requests = 0;
+  const requests: CreateRequest[] = [];
   const messages: unknown[] = [];
-  Reflect.set(globalThis, key, { request: () => { requests++; return pending.promise; }, messages });
+  Reflect.set(globalThis, key, { request: (path: string, init: { body: string }) => {
+    requests.push({ path, body: JSON.parse(init.body) });
+    return pending.promise;
+  }, messages });
   const source = await readFile(new URL("../_components/admin-console-users.tsx", import.meta.url), "utf8");
   const file = ts.createSourceFile("admin-console-users.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const component = file.statements.find((statement): statement is ts.FunctionDeclaration => ts.isFunctionDeclaration(statement) && statement.name?.text === "UsersPanelV2");
   assert(component, "test must exercise the real user creation handler");
   const hooks = moduleURL(`const f=globalThis[${JSON.stringify(key)}];export const useState=(v)=>[v,(n)=>f.messages.push(n)];export const useRef=(v)=>({current:v});export const useEffect=()=>{};`);
   const program = `import {useState,useRef,useEffect} from ${JSON.stringify(hooks)};
-    const f=globalThis[${JSON.stringify(key)}];const apiRequest=()=>f.request();
+    const f=globalThis[${JSON.stringify(key)}];const apiRequest=(path,init)=>f.request(path,init);
     const useI18n=()=>({t:(key)=>key});const cleanError=(error)=>error.message;
     const PanelShell='fixture-panel',InlineMessage='fixture-message',EmptyState='fixture-empty';
     export ${component.getText(file)}`;
@@ -34,25 +38,44 @@ async function harness(refreshFails: boolean) {
   const original = Reflect.get(globalThis, "FormData");
   Reflect.set(globalThis, "FormData", class { private form: Form; constructor(form: Form) { this.form = form; } get(name: string) { return this.form.values.get(name) ?? null; } });
   const { UsersPanelV2 } = await import(moduleURL(compiled));
-  const form = findForm(UsersPanelV2({ users: [], catalog: { roles: [], permissions: [] }, token: "synthetic", refreshUsers: async () => { if (refreshFails) throw new Error("Synthetic refresh failure"); } }));
-  assert(form?.props.onSubmit);
-  return { handler: form.props.onSubmit, pending, messages, requests: () => requests, close() { Reflect.set(globalThis, "FormData", original); Reflect.deleteProperty(globalThis, key); } };
+  const form = findForm(UsersPanelV2({ users: [], catalog: { roles: [], permissions: [] }, token: "synthetic", canCreateUsers, canAssignInitialRoles, refreshUsers: async () => { if (refreshFails) throw new Error("Synthetic refresh failure"); } }));
+  return { handler: form?.props.onSubmit, pending, messages, requests, close() { Reflect.set(globalThis, "FormData", original); Reflect.deleteProperty(globalThis, key); } };
 }
 
 for (const refreshFails of [false, true]) test(`administrator creation captures the event form and ${refreshFails ? "reports saved content despite refresh failure" : "prevents duplicate writes"}`, async () => {
-  const fixture = await harness(refreshFails);
+  const fixture = await harness({ refreshFails });
   let resets = 0;
   const form: Form = { reset() { resets++; }, values: new Map([["username", "synthetic"], ["email", "fixture@example.invalid"], ["password", "test-only-password"]]) };
   try {
+    assert(fixture.handler);
     const event: SubmitEvent = { preventDefault() {}, currentTarget: form };
     const operation = fixture.handler(event);
     event.currentTarget = null;
     await fixture.handler({ preventDefault() {}, currentTarget: form });
-    assert.equal(fixture.requests(), 1);
+    assert.equal(fixture.requests.length, 1);
     fixture.pending.resolve({ id: "oct02usr1" });
     await operation;
     assert.equal(resets, 1);
     assert.ok(fixture.messages.includes("admin.userCreated"));
     if (refreshFails) assert.ok(fixture.messages.includes("admin.userCreated Synthetic refresh failure"));
   } finally { fixture.close(); }
+});
+
+for (const canAssignInitialRoles of [false, true]) test(`account creation includes explicit roles only when permitted (${canAssignInitialRoles})`, async () => {
+  const fixture = await harness({ canAssignInitialRoles });
+  const form: Form = { reset() {}, values: new Map([["username", "synthetic"], ["email", "fixture@example.invalid"], ["password", "test-only-password"], ["roles", "editor,  contributor "]]) };
+  try {
+    assert(fixture.handler);
+    fixture.pending.resolve({ id: "oct02usr1" });
+    await fixture.handler({ preventDefault() {}, currentTarget: form });
+    assert.deepEqual(fixture.requests, [{ path: "/api/v1/admin/users", body: {
+      username: "synthetic", email: "fixture@example.invalid", password: "test-only-password", status: "active",
+      ...(canAssignInitialRoles ? { roles: ["editor", "contributor"] } : {}),
+    } }]);
+  } finally { fixture.close(); }
+});
+
+test("user readers cannot open an account creation form", async () => {
+  const fixture = await harness({ canCreateUsers: false });
+  try { assert.equal(fixture.handler, undefined); } finally { fixture.close(); }
 });

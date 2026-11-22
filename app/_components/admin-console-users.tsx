@@ -13,11 +13,15 @@ function UsersPanelV2({
   token,
   users,
   refreshUsers,
+  canCreateUsers,
+  canAssignInitialRoles,
 }: {
   catalog: PermissionCatalog;
   token: string;
   users: User[];
   refreshUsers: () => Promise<void>;
+  canCreateUsers: boolean;
+  canAssignInitialRoles: boolean;
 }) {
   const { t } = useI18n();
   const [creating, setCreating] = useState(false);
@@ -66,22 +70,21 @@ function UsersPanelV2({
 
   async function createUser(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (createPending.current) return;
+    if (!canCreateUsers || createPending.current) return;
     createPending.current = true;
     setCreating(true);
     setMessage("");
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
-    const roles = String(form.get("roles") ?? "")
-      .split(",")
-      .map((role) => role.trim())
-      .filter(Boolean);
+    const roles = canAssignInitialRoles
+      ? String(form.get("roles") ?? "").split(",").map((role) => role.trim()).filter(Boolean)
+      : [];
     const payload = {
       username: String(form.get("username") ?? "").trim(),
       email: String(form.get("email") ?? "").trim(),
       password: String(form.get("password") ?? ""),
       status: String(form.get("status") ?? "active"),
-      roles,
+      ...(roles.length ? { roles } : {}),
     };
     try {
       await apiRequest<User>("/api/v1/admin/users", { method: "POST", body: JSON.stringify(payload) }, token);
@@ -100,12 +103,9 @@ function UsersPanelV2({
 
   return (
     <PanelShell title={t("admin.userList")}>
-      <form className="mb-5 grid gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4" onSubmit={createUser}>
+      {canCreateUsers ? <form className="mb-5 grid gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4" onSubmit={createUser}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 className="font-bold">{t("admin.createUser")}</h3>
-            <p className="text-sm text-[var(--muted)]">{t("admin.createUserHint")}</p>
-          </div>
+          <h3 className="font-bold">{t("admin.createUser")}</h3>
           <button className="button-primary focus-ring" disabled={creating} type="submit">
             {creating ? t("admin.saving") : t("admin.createUser")}
           </button>
@@ -133,18 +133,18 @@ function UsersPanelV2({
               <option value="deleted">{t("admin.deleted")}</option>
             </select>
           </label>
-          <label className="text-sm font-semibold">
+          {canAssignInitialRoles ? <label className="text-sm font-semibold">
             {t("admin.roleList")}
             <input className="field mt-2" list="create-user-role-options" name="roles" />
-          </label>
+          </label> : null}
         </div>
-        <datalist id="create-user-role-options">
+        {canAssignInitialRoles ? <datalist id="create-user-role-options">
           {catalog.roles.map((role) => (
             <option key={role.code} value={role.code} />
           ))}
-        </datalist>
+        </datalist> : null}
         {message ? <InlineMessage text={message} /> : null}
-      </form>
+      </form> : null}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <label className="min-w-64 flex-1">
           <span className="sr-only">{t("admin.searchUsers")}</span>
