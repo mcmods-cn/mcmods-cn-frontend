@@ -52,23 +52,46 @@ export function loadPublicUserProfile(userId: string, token?: string) {
   return apiRequest<PublicUserProfile>(`/api/v1/users/${userId}/profile`, {}, token);
 }
 
-const userCardCache = new Map<string, { expiresAt: number; value: PublicUserCard }>();
-const maximumUserCardCacheEntries = 200;
+type PendingUserCard = {
+  controller: AbortController;
+  result: Promise<PublicUserCard>;
+  subscribers: number;
+};
 
-export async function loadPublicUserCard(userId: string, token?: string) {
-  const key = userId.toLowerCase();
-  const cached = userCardCache.get(key);
-  if (cached && cached.expiresAt > Date.now()) return cached.value;
-  const value = await apiRequest<PublicUserCard>(`/api/v1/users/${encodeURIComponent(userId)}/card`, {}, token);
-  userCardCache.set(key, { expiresAt: Date.now() + 60_000, value });
-  while (userCardCache.size > maximumUserCardCacheEntries) {
-    const oldest = userCardCache.keys().next().value;
-    if (!oldest) break;
-    userCardCache.delete(oldest);
+const pendingUserCards = new Map<string, PendingUserCard>();
+
+export async function loadPublicUserCard(userId: string, viewerScope: string, signal: AbortSignal, token?: string) {
+  signal.throwIfAborted();
+  const key = JSON.stringify([viewerScope, token, userId.toLowerCase()]);
+  let pending = pendingUserCards.get(key);
+  if (!pending) {
+    const controller = new AbortController();
+    const result = apiRequest<PublicUserCard>(`/api/v1/users/${encodeURIComponent(userId)}/card`, {
+      cache: "no-store",
+      signal: controller.signal,
+    }, token);
+    pending = { controller, result, subscribers: 0 };
+    pendingUserCards.set(key, pending);
   }
-  return value;
-}
 
-export function invalidatePublicUserCard(userId: string) {
-  userCardCache.delete(userId.toLowerCase());
+  const request = pending;
+  request.subscribers++;
+  let subscribed = true;
+  function release() {
+    if (!subscribed) return;
+    subscribed = false;
+    request.subscribers--;
+    if (request.subscribers > 0 || pendingUserCards.get(key) !== request) return;
+    pendingUserCards.delete(key);
+    request.controller.abort();
+  }
+  signal.addEventListener("abort", release, { once: true });
+  try {
+    const card = await request.result;
+    signal.throwIfAborted();
+    return card;
+  } finally {
+    signal.removeEventListener("abort", release);
+    release();
+  }
 }

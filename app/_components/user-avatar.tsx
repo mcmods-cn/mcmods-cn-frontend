@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { loadPublicUserCard, type OnlineStatus, type PublicUserCard } from "../_lib/user-api";
@@ -60,9 +60,18 @@ export function UserAvatar({
   );
 }
 
-export function UserCardAvatar(props: Parameters<typeof UserCardAvatarSession>[0]) {
-  const { token, user } = useAuthSnapshot();
-  return <UserCardAvatarSession key={`${user?.id || "guest"}:${token || "guest"}:${props.userId}`} {...props} />;
+type UserCardAvatarProps = {
+  userId: string;
+  username: string;
+  avatarUrl?: string;
+  onlineStatus: OnlineStatus;
+  size?: number;
+};
+
+export function UserCardAvatar(props: UserCardAvatarProps) {
+  const { generation, ready, token, user } = useAuthSnapshot();
+  const viewerScope = `${generation}:${user?.id || "guest"}`;
+  return <UserCardAvatarSession key={JSON.stringify([viewerScope, ready, token, props.userId])} {...props} ready={ready} token={token} viewerScope={viewerScope} />;
 }
 
 function UserCardAvatarSession({
@@ -71,14 +80,10 @@ function UserCardAvatarSession({
   avatarUrl,
   onlineStatus,
   size = 40,
-}: {
-  userId: string;
-  username: string;
-  avatarUrl?: string;
-  onlineStatus: OnlineStatus;
-  size?: number;
-}) {
-  const { token } = useAuthSnapshot();
+  ready,
+  token,
+  viewerScope,
+}: UserCardAvatarProps & { ready: boolean; token: string; viewerScope: string }) {
   const { t } = useI18n();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const openTimer = useRef<number | null>(null);
@@ -87,13 +92,14 @@ function UserCardAvatarSession({
   const [card, setCard] = useState<PublicUserCard | null>(null);
   const [error, setError] = useState("");
   const [position, setPosition] = useState({ left: 16, top: 16 });
+  const describeError = useEffectEvent((reason: unknown) => reason instanceof Error ? reason.message : t("user.userCardLoadFailed"));
 
-  function clearTimers() {
+  const clearTimers = useCallback(() => {
     if (openTimer.current !== null) window.clearTimeout(openTimer.current);
     if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
     openTimer.current = null;
     closeTimer.current = null;
-  }
+  }, []);
 
   function placeCard() {
     const rectangle = triggerRef.current?.getBoundingClientRect();
@@ -116,25 +122,32 @@ function UserCardAvatarSession({
     }, delay);
   }
 
+  const dismiss = useCallback(() => {
+    clearTimers();
+    setOpen(false);
+    setCard(null);
+    setError("");
+  }, [clearTimers]);
+
   function hide(delay = 150) {
     clearTimers();
-    closeTimer.current = window.setTimeout(() => setOpen(false), delay);
+    closeTimer.current = window.setTimeout(dismiss, delay);
   }
 
   useEffect(() => {
-    if (!open || card || error) return;
-    let cancelled = false;
-    loadPublicUserCard(userId, token || undefined)
-      .then((value) => { if (!cancelled) setCard(value); })
-      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : t("user.userCardLoadFailed")); });
-    return () => { cancelled = true; };
-  }, [card, error, open, t, token, userId]);
+    if (!ready || !open) return;
+    const controller = new AbortController();
+    void loadPublicUserCard(userId, viewerScope, controller.signal, token || undefined)
+      .then((value) => { if (!controller.signal.aborted) setCard(value); })
+      .catch((reason) => { if (!controller.signal.aborted) setError(describeError(reason)); });
+    return () => controller.abort();
+  }, [open, ready, token, userId, viewerScope]);
 
   useEffect(() => {
     if (!open) return;
     const close = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!triggerRef.current?.parentElement?.contains(target)) setOpen(false);
+      if (!triggerRef.current?.parentElement?.contains(target)) dismiss();
     };
     const reposition = () => placeCard();
     document.addEventListener("pointerdown", close);
@@ -145,9 +158,9 @@ function UserCardAvatarSession({
       window.removeEventListener("resize", reposition);
       window.removeEventListener("scroll", reposition, true);
     };
-  }, [open]);
+  }, [dismiss, open]);
 
-  useEffect(() => () => clearTimers(), []);
+  useEffect(() => clearTimers, [clearTimers]);
 
   return (
     <span
@@ -164,9 +177,9 @@ function UserCardAvatarSession({
         aria-label={t("user.openUserCard", { name: username })}
         className="focus-ring rounded-full"
         type="button"
-        onClick={() => open ? setOpen(false) : show(0)}
+        onClick={() => open ? dismiss() : show(0)}
       >
-        <UserAvatar avatarUrl={avatarUrl} onlineStatus={card?.onlineStatus ?? onlineStatus} size={size} username={username} />
+        <UserAvatar avatarUrl={avatarUrl} onlineStatus={open ? card?.onlineStatus ?? "hidden" : onlineStatus} size={size} username={username} />
       </button>
       {open ? (
         <span

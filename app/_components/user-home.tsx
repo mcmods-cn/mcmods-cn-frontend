@@ -6,7 +6,7 @@ import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react"
 import { apiRequest } from "../_lib/api";
 import { updateAuthProfile, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
-import { invalidatePublicUserCard, type AITokenBalance, type OnlineStatus } from "../_lib/user-api";
+import type { AITokenBalance, OnlineStatus } from "../_lib/user-api";
 import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { createFavoriteCollection, deleteFavoriteCollection, FavoriteCollection, favoriteItemHref, FavoriteCollectionItem, FavoritePage, loadFavoriteCollections, loadFavoriteItems, updateFavoriteCollection } from "../_lib/favorite-api";
 import { UserEconomyPanel } from "./user-economy-panel";
@@ -138,7 +138,6 @@ function UserHomeSession() {
     if ("signature" in payload) setSignature((current) => current === payload.signature ? nextProfile.signature : current);
     if ("timezone" in payload) setTimezone((current) => current === payload.timezone ? nextProfile.timezone : current);
     if ("publicCardStatSlots" in payload) setCardSlots((current) => current === payload.publicCardStatSlots ? nextProfile.publicCardStatSlots : current);
-    invalidatePublicUserCard(nextProfile.publicId);
     if (user) {
       updateAuthProfile(user, { username: nextProfile.username, avatarUrl: nextProfile.avatarUrl, signature: nextProfile.signature });
     }
