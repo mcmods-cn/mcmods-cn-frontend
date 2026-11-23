@@ -7,7 +7,7 @@ export type MinecraftLanguage = {
   searchText: string;
 };
 
-// Minecraft 1.21.1 language metadata, read from Mojang's asset index 17.
+// Minecraft 1.21.1 asset index 17, plus US English bundled in the client JAR.
 const minecraftLanguageEntries = [
   ["af_za","Afrikaans","Suid-Afrika"],
   ["ar_sa","العربية","العالم العربي"],
@@ -36,6 +36,7 @@ const minecraftLanguageEntries = [
   ["en_nz","English","New Zealand"],
   ["en_pt","Pirate Speak","The Seven Seas"],
   ["en_ud","ɥsᴉꞁᵷuƎ","uʍoᗡ ǝpᴉsd∩"],
+  ["en_us","English","United States"],
   ["enp","Anglish","Oned Riches"],
   ["enws","Shakespearean English","Kingdom of England"],
   ["eo_uy","Esperanto","Esperantujo"],

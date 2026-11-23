@@ -120,3 +120,36 @@ test("a read-only server detail retries transient failure without opening a prev
     await browser.close();
   }
 });
+
+test("server editing can select Minecraft's bundled US English language", { timeout: 30_000 }, async () => {
+  let languages = ["fr-FR"];
+  const writes: string[][] = [];
+  const browser = await fixture.page(request => {
+    if (request.path === serverPath && request.method === "PATCH") {
+      languages = JSON.parse(request.body).languages;
+      writes.push(languages);
+      return { data: { id: serverID } };
+    }
+    if (request.path === serverPath) return { data: { ...record(), languages } };
+    if (request.path === "/api/v1/users/me/drafts/complete") return { data: { completed: true } };
+    return relatedEndpoints(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/servers/${serverID}`);
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    const editor = page.getByRole("dialog", { name: "Edit Minecraft server" });
+    await editor.locator("button.field").filter({ hasText: "Français (France)" }).click();
+    const picker = page.getByRole("dialog").filter({ has: page.getByPlaceholder("Search language name or region") });
+    await picker.getByPlaceholder("Search language name or region").fill("en_us");
+    await picker.getByRole("button", { name: "Search", exact: true }).click();
+    const option = picker.getByRole("button", { name: "English (United States)", exact: true });
+    await option.or(picker.getByText("No matching languages.", { exact: true })).waitFor();
+    assert.equal(await option.count(), 1);
+    await option.click();
+    await picker.getByRole("button", { name: "Confirm", exact: true }).click();
+    await editor.getByRole("button", { name: "Save server", exact: true }).click();
+    await editor.waitFor({ state: "detached" });
+    assert.deepEqual(writes, [["fr-FR", "en-US"]]);
+  } finally { await browser.close(); }
+});
