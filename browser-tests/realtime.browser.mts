@@ -240,3 +240,77 @@ test("TEST023 actual realtime lifecycle closes on error/hidden/logout and cancel
     assert.equal(await page.evaluate(() => window.__test023.sources.every(source => source.closed)), true);
   } finally { await browser.close(); }
 });
+
+test("reselecting the current notification category keeps its loaded rows", { timeout: 30_000 }, async () => {
+  let reads = 0;
+  const browser = await fixture.page(({ path }) => {
+    if (path === "/api/v1/notifications") {
+      reads++;
+      return { data: pageOf([{ id: "n1", kind: "system", title: "Synthetic system notice", body: "Notice body", sourceLocale: "en-US", read: true, data: {}, actors: [], createdAt: timestamp, updatedAt: timestamp, translationAllowed: false }], 50) };
+    }
+    if (path === "/api/v1/messages/conversations") return { data: pageOf([], 30) };
+  });
+  try {
+    const { page } = browser;
+    await controlEventSource(page);
+    await page.goto(`${fixture.origin}/messages`);
+    const notice = page.getByRole("heading", { name: "Synthetic system notice", exact: true });
+    await notice.waitFor();
+    await page.getByRole("button", { name: "System", exact: true }).click();
+    await settledFrames(page);
+    assert.equal(await notice.count(), 1);
+    assert.equal(reads, 1);
+  } finally { await browser.close(); }
+});
+
+test("an acknowledged reply does not skip an earlier unread message or disturb history", { timeout: 30_000 }, async () => {
+  const earlier = message("b0", "conv-b", "Older chat history");
+  const loaded = message("b1", "conv-b", "First loaded message");
+  const incoming = message("b2", "conv-b", "Earlier incoming message");
+  const outgoing = { ...message("b3", "conv-b", "My acknowledged reply"), senderId: "test048u1", recipientId: "partner-b" };
+  const firstRead = Promise.withResolvers<string>();
+  const olderStarted = Promise.withResolvers<void>();
+  const releaseOlder = Promise.withResolvers<void>();
+  let writes = 0;
+  const browser = await fixture.page(async ({ path, method, url, body }) => {
+    if (path === "/api/v1/notifications") return { data: pageOf([], 50) };
+    if (path === "/api/v1/messages/conversations") return { data: pageOf(conversations, 30) };
+    if (method === "PUT" && path.endsWith("/presence")) return { data: { active: true } };
+    if (!path.endsWith("/conv-b")) return;
+    if (method === "POST") {
+      writes++;
+      assert.equal(JSON.parse(body).body, outgoing.body);
+      return { status: 201, data: { message: outgoing } };
+    }
+    if (url.searchParams.has("cursor")) {
+      assert.equal(url.searchParams.get("cursor"), "older-history");
+      olderStarted.resolve();
+      await releaseOlder.promise;
+      return { data: pageOf([earlier]) };
+    }
+    const anchor = url.searchParams.get("after");
+    if (!anchor) return { data: { ...pageOf([loaded]), hasMore: true, nextCursor: "older-history" } };
+    firstRead.resolve(anchor);
+    return { data: pageOf(anchor === loaded.id ? [incoming, outgoing] : []) };
+  });
+  try {
+    const { page } = browser;
+    await controlEventSource(page);
+    await page.goto(`${fixture.origin}/messages`);
+    await page.getByRole("button", { name: "Private chats", exact: true }).click();
+    await page.getByRole("button", { name: /Partner B/ }).click();
+    await page.getByText(loaded.body, { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Load older messages", exact: true }).click();
+    await olderStarted.promise;
+    await page.getByPlaceholder("Write a private message").fill(outgoing.body);
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    await page.getByText(outgoing.body, { exact: true }).waitFor();
+    await emit(page, [{ id: "incoming-before-acknowledgement", type: "message.created", data: { conversationId: "conv-b" } }]);
+    assert.equal(await firstRead.promise, loaded.id);
+    await page.getByText(incoming.body, { exact: true }).waitFor();
+    releaseOlder.resolve();
+    await page.getByText(earlier.body, { exact: true }).waitFor();
+    assert.deepEqual(await page.getByText(/^(Older chat history|First loaded message|Earlier incoming message|My acknowledged reply)$/).allTextContents(), [earlier.body, loaded.body, incoming.body, outgoing.body]);
+    assert.equal(writes, 1);
+  } finally { releaseOlder.resolve(); await browser.close(); }
+});

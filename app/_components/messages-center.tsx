@@ -71,6 +71,8 @@ type DirectMessagePage = {
   nextCursor: string;
 };
 
+type MessageTimeline = { loaded: DirectMessage[]; acknowledged: DirectMessage[] };
+
 type Translation = { title: string; body: string };
 type NotificationTarget = { href: string; label: string };
 
@@ -78,6 +80,18 @@ const notificationKinds: NotificationKind[] = ["system", "reply_mention", "comme
 const emptyNotificationPage = (): NotificationPage => ({ items: [], limit: 50, hasMore: false, nextCursor: "" });
 const emptyConversationPage = (): ConversationPage => ({ items: [], limit: 30, hasMore: false, nextCursor: "" });
 const emptyDirectMessagePage = (): DirectMessagePage => ({ items: [], limit: 100, hasMore: false, nextCursor: "" });
+const emptyTimeline = (): MessageTimeline => ({ loaded: [], acknowledged: [] });
+
+function mergeMessagePage(current: MessageTimeline, items: DirectMessage[], placement: "latest" | "older" | "newer"): MessageTimeline {
+  let loaded = items;
+  if (placement !== "latest") {
+    const existing = new Set(current.loaded.map((item) => item.id));
+    const additions = items.filter((item) => !existing.has(item.id));
+    loaded = placement === "older" ? [...additions, ...current.loaded] : [...current.loaded, ...additions];
+  }
+  const received = new Set(items.map((item) => item.id));
+  return { loaded, acknowledged: current.acknowledged.filter((item) => !received.has(item.id)) };
+}
 
 export function MessagesCenter() {
   const { token, user } = useAuthSnapshot();
@@ -96,7 +110,7 @@ function MessagesCenterSession() {
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [conversationPage, setConversationPage] = useState<ConversationPage>(emptyConversationPage);
   const [selectedConversationID, setSelectedConversationID] = useState<string | null>(null);
-  const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [timeline, setTimeline] = useState<MessageTimeline>(emptyTimeline);
   const [messageHistory, setMessageHistory] = useState<DirectMessagePage>(emptyDirectMessagePage);
   const [messageDraft, setMessageDraft] = useState("");
   const [sendingMessage, setSendingMessage] = useState(false);
@@ -106,7 +120,7 @@ function MessagesCenterSession() {
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [aiBalanceSnapshot, setAIBalanceSnapshot] = useState<{ token: string; balance: AITokenBalance } | null>(null);
   const [status, setStatus] = useState("");
-  const lastMessageIDRef = useRef("");
+  const lastLoadedMessageID = useRef("");
   const selectedConversationIDRef = useRef<string | null>(null);
   const messagesLoadingConversationRef = useRef("");
   const messageRefreshSequenceRef = useRef(0);
@@ -146,8 +160,8 @@ function MessagesCenterSession() {
     if (selectedConversationIDRef.current === conversationID) return;
     invalidateMessageRequests();
     selectedConversationIDRef.current = conversationID;
-    lastMessageIDRef.current = "";
-    setMessages([]);
+    lastLoadedMessageID.current = "";
+    setTimeline(emptyTimeline());
     setMessageHistory(emptyDirectMessagePage());
     setMessageDraft("");
     setLoadingOlderMessages(false);
@@ -261,14 +275,14 @@ function MessagesCenterSession() {
       let observedRefreshSequence = refreshSequence;
       let loadInitialPage = initial;
       do {
-        let afterID = loadInitialPage ? "" : lastMessageIDRef.current;
+        let afterID = loadInitialPage ? "" : lastLoadedMessageID.current;
         loadInitialPage = false;
         if (!afterID) {
           const page = await apiRequest<DirectMessagePage>(`/api/v1/messages/conversations/${conversationID}?limit=100`, { signal: requestController.signal }, token);
           if (requestController.signal.aborted || selectedConversationIDRef.current !== conversationID || requestVersion !== messageRequestVersionRef.current) return;
-          setMessages(page.items);
+          setTimeline((current) => mergeMessagePage(current, page.items, "latest"));
           setMessageHistory(page);
-          lastMessageIDRef.current = page.items.at(-1)?.id ?? "";
+          lastLoadedMessageID.current = page.items.at(-1)?.id ?? "";
         } else {
           let page: DirectMessagePage;
           do {
@@ -276,11 +290,8 @@ function MessagesCenterSession() {
             if (requestController.signal.aborted || selectedConversationIDRef.current !== conversationID || requestVersion !== messageRequestVersionRef.current) return;
             if (page.items.length > 0) {
               afterID = page.items.at(-1)!.id;
-              lastMessageIDRef.current = afterID;
-              setMessages((current) => {
-                const existing = new Set(current.map((item) => item.id));
-                return [...current, ...page.items.filter((item) => !existing.has(item.id))];
-              });
+              lastLoadedMessageID.current = afterID;
+              setTimeline((current) => mergeMessagePage(current, page.items, "newer"));
             }
           } while (page.hasMore && page.items.length > 0);
         }
@@ -299,18 +310,14 @@ function MessagesCenterSession() {
   async function loadOlderMessages() {
     if (!token || !selectedConversationID || !messageHistory.hasMore || !messageHistory.nextCursor || loadingOlderMessages) return;
     const conversationID = selectedConversationID;
-    const requestVersion = messageRequestVersionRef.current;
     olderMessageRequestAbortRef.current?.abort();
     const requestController = new AbortController();
     olderMessageRequestAbortRef.current = requestController;
     setLoadingOlderMessages(true);
     try {
       const result = await apiRequest<DirectMessagePage>(`/api/v1/messages/conversations/${conversationID}?limit=${messageHistory.limit}&cursor=${encodeURIComponent(messageHistory.nextCursor)}`, { signal: requestController.signal }, token);
-      if (requestController.signal.aborted || selectedConversationIDRef.current !== conversationID || requestVersion !== messageRequestVersionRef.current) return;
-      setMessages((current) => {
-        const existing = new Set(current.map((item) => item.id));
-        return [...result.items.filter((item) => !existing.has(item.id)), ...current];
-      });
+      if (requestController.signal.aborted || selectedConversationIDRef.current !== conversationID) return;
+      setTimeline((current) => mergeMessagePage(current, result.items, "older"));
       setMessageHistory(result);
     } catch (error) {
       if (requestController.signal.aborted) return;
@@ -509,10 +516,12 @@ function MessagesCenterSession() {
         token,
       );
       if (selectedConversationIDRef.current !== conversationID) return;
-      setMessages((current) => current.some((item) => item.id === result.message.id) ? current : [...current, result.message]);
-      lastMessageIDRef.current = result.message.id;
+      setTimeline((current) => current.loaded.some((item) => item.id === result.message.id) || current.acknowledged.some((item) => item.id === result.message.id)
+        ? current
+        : { ...current, acknowledged: [...current.acknowledged, result.message] });
       setMessageDraft((current) => current === submittedBody ? "" : current);
       realtimeQueryCoordinator.invalidate(realtimeQueryKeys.conversations(user.id));
+      void loadMessages(conversationID).catch(reportLoadError);
       await loadConversations();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : t("messages.sendFailed"));
@@ -545,7 +554,7 @@ function MessagesCenterSession() {
             <aside className="surface h-fit p-3">
               <nav className="grid gap-1">
                 {notificationKinds.map((item) => (
-                  <button key={item} className={`focus-ring rounded-md px-3 py-3 text-left text-sm font-bold ${kind === item ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => { notificationRequestVersionRef.current++; setNotifications(emptyNotificationPage()); setTranslations({}); setKind(item); }}>
+                  <button key={item} aria-pressed={kind === item} className={`focus-ring rounded-md px-3 py-3 text-left text-sm font-bold ${kind === item ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => { if (item === kind) return; notificationRequestVersionRef.current++; setNotifications(emptyNotificationPage()); setTranslations({}); setKind(item); }}>
                     {t(`messages.kinds.${item}`)}
                   </button>
                 ))}
@@ -637,7 +646,7 @@ function MessagesCenterSession() {
                   </div>
                   <div className="flex-1 space-y-3 overflow-y-auto bg-[var(--background)] p-4">
                     {messageHistory.hasMore ? <div className="flex justify-center"><button className="button-secondary focus-ring" disabled={loadingOlderMessages} type="button" onClick={() => void loadOlderMessages()}>{loadingOlderMessages ? t("messages.loadingOlderMessages") : t("messages.loadOlderMessages")}</button></div> : null}
-                    {messages.map((item) => <MessageBubble key={item.id} item={item} own={item.senderId === user.id} />)}
+                    {[...timeline.loaded, ...timeline.acknowledged].map((item) => <MessageBubble key={item.id} item={item} own={item.senderId === user.id} />)}
                   </div>
                   {selectedConversation.canMessage ? (
                     <form className="flex gap-3 border-t border-[var(--line)] p-4" onSubmit={sendMessage}>
