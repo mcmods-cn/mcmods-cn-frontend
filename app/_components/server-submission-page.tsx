@@ -9,7 +9,7 @@ import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
 export function ServerSubmissionPage() {
   const { t } = useI18n();
-  const { ready, token, user } = useAuthSnapshot();
+  const { generation, ready, token, user } = useAuthSnapshot();
   const router = useRouter();
 
   function leaveSubmission() {
@@ -31,6 +31,7 @@ export function ServerSubmissionPage() {
 
   return (
     <ServerSubmissionWizard
+      key={`${user.id}:${generation}`}
       presentation="page"
       token={token}
       onClose={leaveSubmission}

@@ -89,9 +89,15 @@ export function ServerSubmissionWizard({
   const [editorBusy, setEditorBusy] = useState(false);
   const operationInFlight = useRef(false);
   const editorInFlight = useRef(false);
+  const mounted = useRef(false);
   const busy = operationBusy || editorBusy;
   const [message, setMessage] = useState("");
   const proofFileRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   const autoDraft = useAutoDraft({
     token,
@@ -197,6 +203,7 @@ export function ServerSubmissionWizard({
     setMessage("");
     try {
       for (const file of files) {
+        if (!mounted.current) return;
         const uploaded = await uploadUserFileToOSS(file, token, "server-proof");
         setProofFiles((current) => current.some((item) => item.id === uploaded.id) ? current : [...current, uploaded]);
       }
@@ -262,32 +269,26 @@ export function ServerSubmissionWizard({
         links: draft.links.map((link) => ({ ...link, label: link.label.trim(), url: link.url.trim() })),
         mods,
       };
-      if (initialServer) {
-        await updateServer(initialServer.id, metadata, token);
-        await autoDraft.completeDraft({
-          projectKey: `server:${initialServer.id}`,
-          projectTitle: draft.name.trim(),
-          targetUrl: `/servers/${initialServer.id}`,
-          reviewTargetType: "server",
-          reviewTargetPublicId: initialServer.id,
-        }).catch(() => { setMessage(t("drafts.completionFailed")); });
-        onSubmitted(initialServer.id, initialServer.reviewStatus === "approved");
-        return;
-      }
-      const result = await submitServer({
-        address: address.trim(),
-        ...metadata,
-        proofText: reviewRequired ? draft.proofText.trim() : "",
-        proofFileIds: reviewRequired ? proofFiles.map((file) => file.id) : [],
-      }, token);
+      const result = initialServer
+        ? await updateServer(initialServer.id, metadata, token).then(() => ({
+          id: initialServer.id,
+          published: initialServer.reviewStatus === "approved",
+        }))
+        : await submitServer({
+          address: address.trim(),
+          ...metadata,
+          proofText: reviewRequired ? draft.proofText.trim() : "",
+          proofFileIds: reviewRequired ? proofFiles.map((file) => file.id) : [],
+        }, token);
+      if (!mounted.current) return;
       await autoDraft.completeDraft({
         projectKey: `server:${result.id}`,
         projectTitle: draft.name.trim(),
         targetUrl: `/servers/${result.id}`,
         reviewTargetType: "server",
         reviewTargetPublicId: result.id,
-      }).catch(() => { setMessage(t("drafts.completionFailed")); });
-      onSubmitted(result.id, result.published);
+      }).catch(() => { if (mounted.current) window.alert(t("drafts.completionFailed")); });
+      if (mounted.current) onSubmitted(result.id, result.published);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t(editing ? "servers.wizard.updateFailed" : "servers.wizard.submitFailed"));
     } finally {

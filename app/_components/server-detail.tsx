@@ -2,10 +2,10 @@
 
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
-import { PointerEvent, useEffect, useMemo, useState } from "react";
+import { PointerEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiRequest } from "../_lib/api";
-import { useAuthSnapshot } from "../_lib/auth";
+import { type AuthSnapshot, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatMinecraftLanguages } from "../_lib/minecraft-languages";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
@@ -18,57 +18,44 @@ import { ProjectChangelog } from "./project-changelog";
 import { UnifiedReportButton } from "./unified-report-dialog";
 import { ProjectFollowButton } from "./project-follow-button";
 import { ProjectEditorApplicationButton } from "./project-editor-application";
+import { ProjectDetailLoadFeedback, useProjectDetailQuery } from "./project-detail-load-boundary";
 
 type HistoryRange = ServerHistory["range"];
 const ranges: HistoryRange[] = ["24h", "7d", "30d", "90d"];
 
 export function ServerDetail(props: { serverId: string }) {
-  const { token, user } = useAuthSnapshot();
-  return <ServerDetailSession key={`${user?.id || "guest"}:${token || "guest"}:${props.serverId}`} {...props} />;
+  const auth = useAuthSnapshot();
+  return <ServerDetailSession auth={auth} key={`${auth.generation}:${auth.user?.id || "guest"}:${props.serverId}`} {...props} />;
 }
 
-function ServerDetailSession({ serverId }: { serverId: string }) {
+function ServerDetailSession({ auth, serverId }: { auth: AuthSnapshot; serverId: string }) {
   const { locale, t } = useI18n();
-  const { token } = useAuthSnapshot();
+  const { token } = auth;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const rawRange = searchParams.get("range");
   const range: HistoryRange = ranges.includes(rawRange as HistoryRange) ? rawRange as HistoryRange : "24h";
-  const [record, setRecord] = useState<ServerDetailRecord | null>(null);
   const [history, setHistory] = useState<ServerHistory | null>(null);
-  const [historyError, setHistoryError] = useState("");
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyAttempt, setHistoryAttempt] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [editOpen, setEditOpen] = useState(() => searchParams.has("draft"));
-  const [reloadKey, setReloadKey] = useState(0);
+  const load = useCallback((signal: AbortSignal) => (
+    apiRequest<ServerDetailRecord>(`/api/v1/servers/${encodeURIComponent(serverId)}`, { signal }, token)
+  ), [serverId, token]);
+  const { state, retry } = useProjectDetailQuery(auth, serverId, load);
+  const canReadHistory = state.status === "ready";
 
   useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) {
-        setLoading(true);
-        setError("");
-      }
-    });
-    apiRequest<ServerDetailRecord>(`/api/v1/servers/${encodeURIComponent(serverId)}`, {}, token)
-      .then((result) => { if (!cancelled) setRecord(result); })
-      .catch((reason) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : t("servers.detail.loadFailed"));
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [reloadKey, serverId, t, token]);
-
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => { if (!cancelled) { setHistory(null); setHistoryError(""); } });
-    apiRequest<ServerHistory>(`/api/v1/servers/${encodeURIComponent(serverId)}/history?range=${range}`, {}, token)
-      .then((result) => { if (!cancelled) setHistory(result); })
-      .catch((reason) => { if (!cancelled) setHistoryError(reason instanceof Error ? reason.message : t("servers.detail.loadFailed")); });
-    return () => { cancelled = true; };
-  }, [historyAttempt, range, serverId, t, token]);
+    if (!canReadHistory) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    queueMicrotask(() => { if (!signal.aborted) { setHistory(null); setHistoryError(null); } });
+    apiRequest<ServerHistory>(`/api/v1/servers/${encodeURIComponent(serverId)}/history?range=${range}`, { signal }, token)
+      .then((result) => { if (!signal.aborted) setHistory(result); })
+      .catch((reason) => { if (!signal.aborted) setHistoryError(reason instanceof Error ? reason.message : ""); });
+    return () => controller.abort();
+  }, [canReadHistory, historyAttempt, range, serverId, token]);
 
   function changeRange(nextRange: HistoryRange) {
     const next = new URLSearchParams(searchParams.toString());
@@ -77,8 +64,9 @@ function ServerDetailSession({ serverId }: { serverId: string }) {
     router.replace(next.size ? `${pathname}?${next.toString()}` : pathname, { scroll: false });
   }
 
-  if (loading) return <main className="mx-auto min-h-screen max-w-7xl px-4 py-10"><div className="h-80 animate-pulse rounded-xl bg-[var(--panel-subtle)]" /></main>;
-  if (error || !record) return <main className="mx-auto min-h-screen max-w-4xl px-4 py-16"><div className="rounded-xl border border-[var(--danger)] bg-[var(--danger-soft)] p-6 font-bold text-[var(--danger)]">{error || t("servers.detail.notFound")}</div></main>;
+  if (state.status !== "ready") return <ProjectDetailLoadFeedback errorTitle={t("servers.detail.loadFailed")} notFoundTitle={t("servers.detail.notFound")} onRetry={retry} state={state} />;
+  const record = state.data;
+  const canEdit = Boolean(token && record.canEdit);
 
   return (
     <main className="min-h-screen bg-[var(--background)]">
@@ -104,8 +92,8 @@ function ServerDetailSession({ serverId }: { serverId: string }) {
           <div>
             <ProjectFollowButton publicId={record.id} />
             <UnifiedReportButton className="button-secondary focus-ring mb-3 w-full" targetId={record.id} targetSummary={record.name} targetType="server" />
-            <ProjectEditorApplicationButton canEdit={record.canEdit} projectId={record.id} projectName={record.name} projectType="minecraft_server" returnPath={`/servers/${serverId}`} />
-            {record.canEdit ? <button className="button-secondary focus-ring mb-3 w-full" type="button" onClick={() => setEditOpen(true)}>{t("common.edit")}</button> : null}
+            <ProjectEditorApplicationButton canEdit={canEdit} projectId={record.id} projectName={record.name} projectType="minecraft_server" returnPath={`/servers/${serverId}`} />
+            {canEdit ? <button className="button-secondary focus-ring mb-3 w-full" type="button" onClick={() => setEditOpen(true)}>{t("common.edit")}</button> : null}
             <div className="grid grid-cols-2 gap-5 text-center sm:grid-cols-1 sm:text-right">
             <span><strong className="block text-2xl">{record.online ? `${record.playersOnline}/${record.playersMax}` : "—"}</strong><small className="text-[var(--muted)]">{t("servers.players")}</small></span>
             <span><strong className="block text-2xl">{typeof record.latencyMs === "number" ? `${record.latencyMs} ms` : "—"}</strong><small className="text-[var(--muted)]">{t("servers.latency")}</small></span>
@@ -125,7 +113,7 @@ function ServerDetailSession({ serverId }: { serverId: string }) {
                   {ranges.map((value) => <button key={value} className={`focus-ring rounded-md border px-3 py-2 text-sm font-black ${range === value ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]" : "border-[var(--line)]"}`} type="button" onClick={() => changeRange(value)}>{t(`servers.ranges.${value}`)}</button>)}
                 </div>
               </div>
-              {historyError ? <div className="mt-4 flex flex-wrap items-center gap-3"><p role="alert" className="text-sm font-bold text-[var(--red)]">{historyError}</p><button className="button-secondary focus-ring" type="button" onClick={() => setHistoryAttempt((attempt) => attempt + 1)}>{t("common.retry")}</button></div> : <PlayerHistoryChart history={history} locale={locale} />}
+              {historyError !== null ? <div className="mt-4 flex flex-wrap items-center gap-3"><p role="alert" className="text-sm font-bold text-[var(--red)]">{historyError || t("servers.detail.loadFailed")}</p><button className="button-secondary focus-ring" type="button" onClick={() => setHistoryAttempt((attempt) => attempt + 1)}>{t("common.retry")}</button></div> : <PlayerHistoryChart history={history} locale={locale} />}
             </section>
 
             <section>
@@ -176,14 +164,14 @@ function ServerDetailSession({ serverId }: { serverId: string }) {
         <ContentMetricsPanel publicId={record.id} />
         <RatingPanel targetId={record.id} targetName={record.name} targetType="minecraft_server" />
       </div>
-      {editOpen ? (
+      {editOpen && canEdit ? (
         <ServerSubmissionWizard
           initialServer={record}
           token={token}
           onClose={() => setEditOpen(false)}
           onSubmitted={() => {
             setEditOpen(false);
-            setReloadKey((current) => current + 1);
+            retry();
           }}
         />
       ) : null}
