@@ -64,9 +64,22 @@ async function scenario(legacy = false) {
   await context.addCookies([{ name: "mcmods-ui-locale", value: "en-US", url: origin }]);
   // Use one secure browser origin for the real pages, API and HttpOnly cookie.
   // Every document/asset comes from the isolated standalone server on loopback.
+  let closing = false;
+  const forwardedDocuments = new Set<Promise<void>>();
   await context.route(url => url.origin === origin && !url.pathname.startsWith("/api/") && url.pathname !== "/ready", async route => {
+    if (closing) {
+      await route.abort();
+      return;
+    }
     const url = new URL(route.request().url());
-    await route.fulfill({ response: await route.fetch({ url: fixture.origin + url.pathname + url.search, maxRedirects: 0 }) });
+    const forwarded = route.fetch({ url: fixture.origin + url.pathname + url.search, maxRedirects: 0 })
+      .then(response => route.fulfill({ response }));
+    forwardedDocuments.add(forwarded);
+    try {
+      await forwarded;
+    } finally {
+      forwardedDocuments.delete(forwarded);
+    }
   });
   async function current() {
     const cookie = (await context.cookies(origin + "/api/v1/auth/me")).find(item => item.name === cookieName);
@@ -76,9 +89,14 @@ async function scenario(legacy = false) {
   return {
     page: run.page, mode, writes, reads: () => reads, current,
     async close() {
-      // A Next link may have an RSC prefetch in flight after the assertion.
-      await context.unrouteAll({ behavior: "wait" });
-      await run.close();
+      // Keep routes installed until the owned document and RSC forwards settle.
+      closing = true;
+      try {
+        await Promise.all(forwardedDocuments);
+        await context.unrouteAll({ behavior: "wait" });
+      } finally {
+        await run.close();
+      }
     },
   };
 }
