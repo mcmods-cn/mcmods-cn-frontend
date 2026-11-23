@@ -2616,6 +2616,7 @@ const zhCN = {
     heatBoostApplied: "热度提升道具已生效，效果会随时间衰减。",
     itemUseFailed: "使用道具失败。",
     profileBackgroundUpdated: "用户主页背景已更新。",
+    profileBackgroundPreviewUnavailable: "主页背景已保存。重新加载即可查看预览。",
     shopPermissionRequired: "当前账号没有购买此道具的权限。",
     noShopItems: "当前没有可购买的道具。",
     transactionHistory: "资金收支明细",

@@ -2616,6 +2616,7 @@ const en = {
     heatBoostApplied: "The heat boost is active and will decay over time.",
     itemUseFailed: "Failed to use this item.",
     profileBackgroundUpdated: "Profile background updated.",
+    profileBackgroundPreviewUnavailable: "Your background was saved. Reload the preview to see it.",
     shopPermissionRequired: "Your account does not have permission to purchase this item.",
     noShopItems: "No shop items are currently available.",
     transactionHistory: "Currency transaction history",

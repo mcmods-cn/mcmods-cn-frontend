@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useCallback, useEffect, useId, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ApiError, apiRequest } from "../_lib/api";
 import {
@@ -71,8 +71,24 @@ export function UserEconomyPanel({
   const [transferCurrency, setTransferCurrency] = useState("");
   const [transferAmount, setTransferAmount] = useState(1);
   const [heatBoostItem, setHeatBoostItem] = useState<ShopItem | null>(null);
+  const [usingBackground, setUsingBackground] = useState(false);
+  const [refreshingBackground, setRefreshingBackground] = useState(false);
+  const [backgroundRefreshFailed, setBackgroundRefreshFailed] = useState(false);
+  const mounted = useRef(false);
+  const backgroundUseInFlight = useRef(false);
+  const backgroundPreviewRequest = useRef<AbortController | null>(null);
+  const backgroundUseVersion = useRef(0);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      backgroundPreviewRequest.current?.abort();
+    };
+  }, []);
 
   const load = useCallback(async () => {
+    const shopVersion = backgroundUseVersion.current;
     setLoading(true);
     try {
       const [nextOverview, currencyResponse, shopResponse, taskResponse, currencyHistory, experienceHistory] = await Promise.all([
@@ -85,7 +101,7 @@ export function UserEconomyPanel({
       ]);
       setOverview(nextOverview);
       setCurrencies(currencyResponse.items);
-      setShopItems(shopResponse.items);
+      if (backgroundUseVersion.current === shopVersion) setShopItems(shopResponse.items);
       setTasks(taskResponse.items);
       setCurrencyTransactions(currencyHistory.items);
       setExperienceTransactions(experienceHistory.items);
@@ -218,23 +234,48 @@ export function UserEconomyPanel({
     }
   }
 
+  async function refreshProfileBackground() {
+    if (!mounted.current || backgroundPreviewRequest.current) return;
+    const controller = new AbortController();
+    backgroundPreviewRequest.current = controller;
+    setRefreshingBackground(true);
+    try {
+      const settings = await apiRequest<ProfileSettingsResult>("/api/v1/users/me/profile-settings", { signal: controller.signal }, token);
+      if (controller.signal.aborted) return;
+      onBackgroundChange(settings.profileBackgroundUrl);
+      setBackgroundRefreshFailed(false);
+    } catch {
+      if (!controller.signal.aborted) setBackgroundRefreshFailed(true);
+    } finally {
+      backgroundPreviewRequest.current = null;
+      if (!controller.signal.aborted) setRefreshingBackground(false);
+    }
+  }
+
   async function applyProfileBackground(item: ShopItem, file: File) {
-    setBusy(`use:${item.code}`);
+    if (backgroundUseInFlight.current || backgroundPreviewRequest.current || busy || loading || !item.canUse) return;
+    backgroundUseInFlight.current = true;
+    setUsingBackground(true);
     try {
       const uploaded = await uploadUserFileToOSS(file, token, "profile_background");
-      await apiRequest(
+      if (!mounted.current) return;
+      const receipt = await apiRequest<{ remaining: number }>(
         "/api/v1/users/me/shop/use",
         { method: "POST", body: JSON.stringify({ itemCode: item.code, fileId: uploaded.id }) },
         token,
       );
-      const settings = await apiRequest<ProfileSettingsResult>("/api/v1/users/me/profile-settings", {}, token);
-      onBackgroundChange(settings.profileBackgroundUrl);
+      if (!mounted.current) return;
+      backgroundUseVersion.current++;
+      setShopItems((current) => current.map((entry) => entry.publicId === item.publicId
+        ? { ...entry, inventoryQuantity: receipt.remaining }
+        : entry));
       notifySite(t("user.profileBackgroundUpdated"), t("user.shop"), "success");
-      await load();
+      await refreshProfileBackground();
     } catch (error) {
-      notifySite(errorMessage(error, t("user.itemUseFailed")), t("user.shop"), "danger");
+      if (mounted.current) notifySite(errorMessage(error, t("user.itemUseFailed")), t("user.shop"), "danger");
     } finally {
-      setBusy("");
+      backgroundUseInFlight.current = false;
+      if (mounted.current) setUsingBackground(false);
     }
   }
 
@@ -288,7 +329,7 @@ export function UserEconomyPanel({
               {t("user.economyDescription", { timezone: overview?.timezone || "UTC" })}
             </p>
           </div>
-          <button className="button-secondary focus-ring" disabled={loading} type="button" onClick={() => void load()}>
+          <button className="button-secondary focus-ring" disabled={loading || usingBackground} type="button" onClick={() => void load()}>
             {t("common.refresh")}
           </button>
         </div>
@@ -480,6 +521,10 @@ export function UserEconomyPanel({
       <section className="surface rounded-lg p-5">
         <h3 className="text-lg font-black">{t("user.shop")}</h3>
         <p className="mt-1 text-sm text-[var(--muted)]">{t("user.shopDescription")}</p>
+        {backgroundRefreshFailed ? <div className="mt-3 flex flex-wrap items-center gap-3" role="alert">
+          <p>{t("user.profileBackgroundPreviewUnavailable")}</p>
+          <button className="button-secondary focus-ring" disabled={usingBackground || refreshingBackground} type="button" onClick={() => void refreshProfileBackground()}>{t("common.retry")}</button>
+        </div> : null}
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {shopItems.map((item) => {
             const quantity = item.inventoryQuantity ?? 0;
@@ -515,7 +560,7 @@ export function UserEconomyPanel({
                         <input
                           accept="image/png,image/jpeg,image/webp"
                           className="sr-only"
-                          disabled={!item.canUse || busy === `use:${item.code}`}
+                          disabled={!item.canUse || Boolean(busy) || loading || usingBackground || refreshingBackground}
                           type="file"
                           onChange={(event) => {
                             const file = event.target.files?.[0];
