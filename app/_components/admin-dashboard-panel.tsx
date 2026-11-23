@@ -268,6 +268,12 @@ export function AdminProjectWorkbenchPanel({ token }: { token: string }) {
   const projectDetail = visibleAdminProjectDetail(projectDetailState, selectedID, days);
   const detailStateMatchesSelection = adminProjectDetailStateMatches(projectDetailState, selectedID, days);
 
+  function selectProject(projectID: string) {
+    if (projectID === selectedID) return;
+    setProjectDetailState(beginAdminProjectDetailLoad(projectID, days));
+    setSelectedID(projectID);
+  }
+
   return (
       <section className="grid min-h-[560px] gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
         <div className="surface min-w-0 rounded-xl p-4">
@@ -280,7 +286,7 @@ export function AdminProjectWorkbenchPanel({ token }: { token: string }) {
           <div className="mt-3 max-h-[470px] space-y-2 overflow-y-auto pr-1">
             {loadingProjects ? <p className="py-12 text-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
             {!loadingProjects && projects.items.length === 0 ? <p className="py-12 text-center text-sm font-bold text-[var(--muted)]">{t("admin.dashboard.noProjects")}</p> : null}
-            {projects.items.map((project) => <button className={`focus-ring w-full rounded-lg border p-3 text-left transition ${selectedID === project.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] hover:bg-[var(--panel-subtle)]"}`} key={project.id} type="button" onClick={() => { setProjectDetailState(beginAdminProjectDetailLoad(project.id, days)); setSelectedID(project.id); }}><div className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate">{project.name}</strong><span className="mt-1 block truncate font-mono text-xs text-[var(--muted)]">{t(`admin.dashboard.projectTypes.${project.type}`)} · {project.id}</span></span><span className="shrink-0 text-right"><strong className="block text-[var(--accent)]">{formatNumber(project.heat, locale)}</strong><span className="text-[10px] text-[var(--muted)]">{t("admin.dashboard.heat")}</span></span></div></button>)}
+            {projects.items.map((project) => <button className={`focus-ring w-full rounded-lg border p-3 text-left transition ${selectedID === project.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] hover:bg-[var(--panel-subtle)]"}`} key={project.id} type="button" onClick={() => selectProject(project.id)}><div className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate">{project.name}</strong><span className="mt-1 block truncate font-mono text-xs text-[var(--muted)]">{t(`admin.dashboard.projectTypes.${project.type}`)} · {project.id}</span></span><span className="shrink-0 text-right"><strong className="block text-[var(--accent)]">{formatNumber(project.heat, locale)}</strong><span className="text-[10px] text-[var(--muted)]">{t("admin.dashboard.heat")}</span></span></div></button>)}
           </div>
           <div className="mt-3 flex items-center justify-between gap-2 border-t border-[var(--line)] pt-3">
             <button className="button-secondary focus-ring" disabled={projectCursorHistory.length === 0 || loadingProjects} type="button" onClick={() => { const previousCursor = projectCursorHistory.at(-1) ?? ""; setProjectDetailState({ status: "idle" }); setSelectedID(""); setProjectCursorHistory((current) => current.slice(0, -1)); setProjectCursor(previousCursor); }}>{t("common.previous")}</button>
