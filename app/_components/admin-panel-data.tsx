@@ -5,8 +5,10 @@ import { useI18n } from "../_lib/i18n-provider";
 import { hasCompleteOAuthConfig } from "../_lib/oauth-settings.mts";
 import type { NATSConfig } from "../_lib/nats-config.mts";
 import { defaultMarkdownConfig, type MarkdownRendererConfig } from "../_lib/markdown-config";
+import type { ServerCatalogSettings } from "../_lib/server-api";
 import { AdminDeadLetterPanel } from "./admin-dead-letter-panel";
 import { AdminDashboardPanel, type AdminDashboardData } from "./admin-dashboard-panel";
+import { ServerSettingsPanel } from "./admin-server-panels";
 import { AdminYggdrasilPanel, defaultAdminYggdrasilConfig, type AdminYggdrasilConfig } from "./admin-yggdrasil-panel";
 import { AuthPanelV2, GeneralSettingsPanel, MailPanelV2, MarkdownConfigPanel, NATSConfigPanel, PermissionSettingsPanel, ProfileSettingsPanel, RoleTracksPanel } from "./admin-console-infrastructure";
 import { PermissionCatalogEditor, PermissionGroupEditor, UserRolePanel } from "./admin-console-permissions";
@@ -84,7 +86,7 @@ export function AdminOverview({ token, canReadConfig }: { token: string; canRead
   return <AdminDashboardPanel initialData={dashboard.value} token={token} featureStatus={canReadConfig && <DashboardFeatures token={token} />} />;
 }
 
-type SettingsPanel = "general-settings" | "mail" | "auth" | "profile-settings" | "yggdrasil" | "markdown" | "nats";
+type SettingsPanel = "general-settings" | "mail" | "auth" | "profile-settings" | "server-settings" | "yggdrasil" | "markdown" | "nats";
 type AuthConfig = Pick<AdminConfig, "auth" | "oauth">;
 
 function readSettings<T>(valid: (value: T) => boolean) {
@@ -101,6 +103,9 @@ const readAuth = readSettings((config: AuthConfig) => hasCompleteOAuthConfig(con
   && ["allowRegistration", "emailPasswordLogin", "usernamePasswordLogin", "userIDPasswordLogin", "emailCodeLogin", "requireEmailVerification"].every(key => typeof config.auth?.[key] === "boolean")
   && Number.isFinite(config.auth?.passwordMinLength) && Number.isFinite(config.auth?.tokenTTLHours));
 const readProfile = readSettings((config: AdminConfig["profile"]) => Number.isFinite(config.signatureMaxBytes));
+const readServer = readSettings((config: ServerCatalogSettings) => [
+  config.maxProofFiles, config.maxProofTotalBytes, config.nameMaxLength, config.summaryMaxLength, config.historyDays,
+].every(Number.isSafeInteger));
 const readMarkdown = readSettings((config: MarkdownRendererConfig) =>
   (Object.keys(defaultMarkdownConfig) as (keyof MarkdownRendererConfig)[]).every(key => typeof config[key] === typeof defaultMarkdownConfig[key]));
 const readYggdrasil = readSettings((config: AdminYggdrasilConfig) => Array.isArray(config.trustedProxyCidrs)
@@ -128,6 +133,9 @@ export function AdminSettingsEditor({ panel, token, canWrite }: { panel: Setting
     </SettingsRead>;
     case "profile-settings": return <SettingsRead path="/api/v1/admin/config/profile" token={token} validate={readProfile} editable={canWrite}>
       {profile => <ProfileSettingsPanel initialConfig={profile} token={token} />}
+    </SettingsRead>;
+    case "server-settings": return <SettingsRead path="/api/v1/admin/server-settings" token={token} validate={readServer} editable={canWrite}>
+      {settings => <ServerSettingsPanel initialConfig={settings} token={token} canWrite={canWrite} />}
     </SettingsRead>;
     case "yggdrasil": return <SettingsRead path="/api/v1/admin/config/yggdrasil" token={token} validate={readYggdrasil} editable={canWrite}>
       {settings => <AdminYggdrasilPanel initialConfig={settings} token={token} />}

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { type AuthUser, canAccessReviewQueue, hasPermission } from "../_lib/auth";
 import { ActivityMonitorPanel, CreatorClaimsPanel, CurrencyManagementPanel, EconomyConfigPanel, LevelConfigPanel, ShopManagementPanel, TaskManagementPanel } from "./admin-community-panels";
 import { MinecraftVersionConfigPanel, ModReviewQueuePanel } from "./admin-mod-panels";
-import { ServerReviewQueuePanel, ServerSettingsPanel } from "./admin-server-panels";
+import { ServerReviewQueuePanel } from "./admin-server-panels";
 import { AdminUnresolvedReferences } from "./admin-unresolved-references";
 import { AdminContentAttributePanel } from "./admin-content-attribute-panel";
 import { AdminAccessEditor, AdminOverview, AdminSettingsEditor } from "./admin-panel-data";
@@ -118,8 +118,8 @@ const definitions = {
   },
   "server-settings": {
     group: "reviews", title: "admin.serverSettings.title", description: "admin.serverSettings.navDescription",
-    read: "admin.config.read",
-    render: ({ token }) => <ServerSettingsPanel token={token} />,
+    read: "admin.config.read", write: "admin.config.write",
+    render: ({ token, access }) => <AdminSettingsEditor panel="server-settings" token={token} canWrite={access.write} />,
   },
   "seed-crawler": {
     group: "automation", title: "admin.automation.seedCrawler", description: "admin.automation.seedCrawlerDescription",

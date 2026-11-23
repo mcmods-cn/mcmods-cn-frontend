@@ -58,6 +58,9 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
   const [details, setDetails] = useState<Record<string, ServerReviewDetail>>({});
   const [detailErrors, setDetailErrors] = useState<Record<string, string>>({});
   const [detailLoadingID, setDetailLoadingID] = useState("");
+  const [reload, setReload] = useState(0);
+  const mounted = useRef(false);
+  const mutationInFlight = useRef(false);
   const requestGeneration = useRef(0);
   const requestController = useRef<AbortController | null>(null);
   const detailControllers = useRef(new Map<string, AbortController>());
@@ -102,6 +105,11 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
   }, [status, t, token]);
 
   useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  useEffect(() => {
     const controllers = detailControllers.current;
     const timer = window.setTimeout(() => void load(), 0);
     return () => {
@@ -111,7 +119,7 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
       for (const controller of controllers.values()) controller.abort();
       controllers.clear();
     };
-  }, [load]);
+  }, [load, reload]);
 
   async function loadDetail(item: ServerReviewSummary) {
     detailControllers.current.get(item.id)?.abort();
@@ -150,6 +158,8 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
   }
 
   async function review(item: ServerReviewSummary, nextStatus: "approved" | "rejected") {
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setBusyID(item.id);
     setMessage("");
     try {
@@ -157,11 +167,14 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
         method: "PATCH",
         body: JSON.stringify({ status: nextStatus, note: notes[item.id] ?? "" }),
       }, token);
-      await load();
+      if (!mounted.current) return;
+      setItems((current) => current.filter((row) => row.id !== item.id));
+      setReload((value) => value + 1);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("admin.serverReviews.reviewFailed"));
+      if (mounted.current) setMessage(error instanceof Error ? error.message : t("admin.serverReviews.reviewFailed"));
     } finally {
-      setBusyID("");
+      mutationInFlight.current = false;
+      if (mounted.current) setBusyID("");
     }
   }
 
@@ -178,7 +191,15 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
     <section>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm leading-6 text-[var(--muted)]">{t("admin.serverReviews.description")}</p>
-        <select className="field min-w-40" value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>
+        <select aria-label={t("admin.status")} className="field min-w-40" value={status} onChange={(event) => {
+          requestGeneration.current += 1;
+          requestController.current?.abort();
+          setItems([]);
+          setNextCursor("");
+          setMessage("");
+          setLoading(true);
+          setStatus(event.target.value as typeof status);
+        }}>
           <option value="pending">{t("admin.serverReviews.pending")}</option>
           <option value="approved">{t("admin.serverReviews.approved")}</option>
           <option value="rejected">{t("admin.serverReviews.rejected")}</option>
@@ -251,10 +272,10 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
             </section> : null}
             {status === "pending" ? (
               <>
-                <textarea className="field mt-4 min-h-20 w-full resize-y" placeholder={t("admin.serverReviews.notePlaceholder")} value={notes[item.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} />
+                <textarea className="field mt-4 min-h-20 w-full resize-y" disabled={Boolean(busyID)} placeholder={t("admin.serverReviews.notePlaceholder")} value={notes[item.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} />
                 <div className="mt-3 flex justify-end gap-2">
-                  <button className="button-secondary focus-ring text-[var(--danger)]" disabled={busyID === item.id} type="button" onClick={() => void review(item, "rejected")}>{t("admin.serverReviews.reject")}</button>
-                  <button className="button-primary focus-ring" disabled={busyID === item.id} type="button" onClick={() => void review(item, "approved")}>{t("admin.serverReviews.approve")}</button>
+                  <button className="button-secondary focus-ring text-[var(--danger)]" disabled={Boolean(busyID)} type="button" onClick={() => void review(item, "rejected")}>{t("admin.serverReviews.reject")}</button>
+                  <button className="button-primary focus-ring" disabled={Boolean(busyID)} type="button" onClick={() => void review(item, "approved")}>{t("admin.serverReviews.approve")}</button>
                 </div>
               </>
             ) : item.reviewNote ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm">{item.reviewNote}</p> : null}
@@ -268,22 +289,16 @@ export function ServerReviewQueuePanel({ token }: { token: string }) {
   );
 }
 
-export function ServerSettingsPanel({ token }: { token: string }) {
+export function ServerSettingsPanel({ canWrite, initialConfig, token }: { canWrite: boolean; initialConfig: ServerCatalogSettings; token: string }) {
   const { t } = useI18n();
-  const [settings, setSettings] = useState<ServerCatalogSettings | null>(null);
+  const [settings, setSettings] = useState(initialConfig);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    apiRequest<ServerCatalogSettings>("/api/v1/admin/server-settings", {}, token)
-      .then((result) => { if (!cancelled) setSettings(result); })
-      .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("admin.serverSettings.loadFailed")); });
-    return () => { cancelled = true; };
-  }, [t, token]);
+  const saveInFlight = useRef(false);
 
   async function save() {
-    if (!settings) return;
+    if (!canWrite || saveInFlight.current) return;
+    saveInFlight.current = true;
     setBusy(true);
     setMessage("");
     try {
@@ -296,23 +311,24 @@ export function ServerSettingsPanel({ token }: { token: string }) {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.serverSettings.saveFailed"));
     } finally {
+      saveInFlight.current = false;
       setBusy(false);
     }
   }
 
-  if (!settings) return <section className="surface min-h-52 p-5">{message || t("common.loading")}</section>;
   return (
     <section className="surface max-w-3xl p-5">
       <p className="text-sm leading-6 text-[var(--muted)]">{t("admin.serverSettings.description")}</p>
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <NumberField label={t("admin.serverSettings.maxFiles")} max={20} min={1} value={settings.maxProofFiles} onChange={(maxProofFiles) => setSettings({ ...settings, maxProofFiles })} />
-        <NumberField label={t("admin.serverSettings.maxMegabytes")} max={100} min={1} value={settings.maxProofTotalBytes / 1024 / 1024} onChange={(value) => setSettings({ ...settings, maxProofTotalBytes: Math.round(value * 1024 * 1024) })} />
-        <NumberField label={t("admin.serverSettings.nameLength")} max={160} min={20} value={settings.nameMaxLength} onChange={(nameMaxLength) => setSettings({ ...settings, nameMaxLength })} />
-        <NumberField label={t("admin.serverSettings.summaryLength")} max={1000} min={80} value={settings.summaryMaxLength} onChange={(summaryMaxLength) => setSettings({ ...settings, summaryMaxLength })} />
-        <NumberField label={t("admin.serverSettings.historyDays")} max={90} min={7} value={settings.historyDays} onChange={(historyDays) => setSettings({ ...settings, historyDays })} />
-      </div>
-      {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
-      <div className="mt-5 flex justify-end"><button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void save()}>{busy ? t("common.saving") : t("common.save")}</button></div>
+      {!canWrite ? <p className="mt-2 text-sm font-bold text-[var(--muted)]">{t("admin.ai.readOnly")}</p> : null}
+      <fieldset className="mt-5 grid min-w-0 gap-4 sm:grid-cols-2" disabled={!canWrite || busy}>
+        <NumberField label={t("admin.serverSettings.maxFiles")} max={20} min={1} value={settings.maxProofFiles} onChange={(maxProofFiles) => setSettings((current) => ({ ...current, maxProofFiles }))} />
+        <NumberField label={t("admin.serverSettings.maxMegabytes")} max={100} min={1} value={settings.maxProofTotalBytes / 1024 / 1024} onChange={(value) => setSettings((current) => ({ ...current, maxProofTotalBytes: Math.round(value * 1024 * 1024) }))} />
+        <NumberField label={t("admin.serverSettings.nameLength")} max={160} min={20} value={settings.nameMaxLength} onChange={(nameMaxLength) => setSettings((current) => ({ ...current, nameMaxLength }))} />
+        <NumberField label={t("admin.serverSettings.summaryLength")} max={1000} min={80} value={settings.summaryMaxLength} onChange={(summaryMaxLength) => setSettings((current) => ({ ...current, summaryMaxLength }))} />
+        <NumberField label={t("admin.serverSettings.historyDays")} max={90} min={7} value={settings.historyDays} onChange={(historyDays) => setSettings((current) => ({ ...current, historyDays }))} />
+      </fieldset>
+      {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold" role="status">{message}</p> : null}
+      {canWrite ? <div className="mt-5 flex justify-end"><button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void save()}>{busy ? t("common.saving") : t("common.save")}</button></div> : null}
     </section>
   );
 }
