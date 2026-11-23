@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
 import {
@@ -48,7 +48,7 @@ const emptySeedCrawlerPage = <T,>(): SeedCrawlerPage<T> => ({
   nextCursor: "",
 });
 
-export function SeedCrawlerAdminPanel({ token }: { token: string }) {
+export function SeedCrawlerAdminPanel({ token, canWrite, canRun }: { token: string; canWrite: boolean; canRun: boolean }) {
   const { t } = useI18n();
   const [config, setConfig] = useState<SeedConfig>();
   const [runs, setRuns] =
@@ -62,6 +62,8 @@ export function SeedCrawlerAdminPanel({ token }: { token: string }) {
   const [loadingMoreRuns, setLoadingMoreRuns] = useState(false);
   const [loadingMoreCandidates, setLoadingMoreCandidates] = useState(false);
   const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const mutationInFlight = useRef(false);
   const load = useCallback(async () => {
     try {
       const [cfg, runData, candidateData] = await Promise.all([
@@ -94,7 +96,9 @@ export function SeedCrawlerAdminPanel({ token }: { token: string }) {
     queueMicrotask(() => void load());
   }, [load]);
   async function save() {
-    if (!config) return;
+    if (!canWrite || !config || mutationInFlight.current) return;
+    mutationInFlight.current = true;
+    setBusy(true);
     try {
       await apiRequest(
         "/api/v1/admin/seed-crawler",
@@ -105,9 +109,15 @@ export function SeedCrawlerAdminPanel({ token }: { token: string }) {
       setMessage(t("admin.governance.saved"));
     } catch (error) {
       setMessage(errorMessage(error));
+    } finally {
+      mutationInFlight.current = false;
+      setBusy(false);
     }
   }
   async function run(dryRun: boolean) {
+    if (!canRun || mutationInFlight.current) return;
+    mutationInFlight.current = true;
+    setBusy(true);
     try {
       await apiRequest(
         "/api/v1/admin/seed-crawler/runs",
@@ -117,6 +127,9 @@ export function SeedCrawlerAdminPanel({ token }: { token: string }) {
       await load();
     } catch (error) {
       setMessage(errorMessage(error));
+    } finally {
+      mutationInFlight.current = false;
+      setBusy(false);
     }
   }
   async function loadMoreSeedRuns() {
@@ -181,7 +194,7 @@ export function SeedCrawlerAdminPanel({ token }: { token: string }) {
         description={t("admin.automation.seedCrawlerDescription")}
       />
       {message ? <Notice text={message} /> : null}
-      <div className="mt-5 grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 sm:grid-cols-2 lg:grid-cols-4">
+      <fieldset className="mt-5 grid min-w-0 gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 sm:grid-cols-2 lg:grid-cols-4" disabled={!canWrite || busy}>
         <Toggle
           label={t("common.enabled")}
           checked={config.enabled}
@@ -239,16 +252,21 @@ export function SeedCrawlerAdminPanel({ token }: { token: string }) {
             ))}
           </span>
         </label>
-        <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
+        {canWrite ? (
           <button
-            className="button-primary focus-ring"
+            className="button-primary focus-ring justify-self-start"
             type="button"
             onClick={() => void save()}
           >
             {t("common.save")}
           </button>
+        ) : null}
+      </fieldset>
+      {canRun ? (
+        <div className="mt-3 flex flex-wrap gap-2">
           <button
             className="button-secondary focus-ring"
+            disabled={busy}
             type="button"
             onClick={() => void run(true)}
           >
@@ -256,13 +274,14 @@ export function SeedCrawlerAdminPanel({ token }: { token: string }) {
           </button>
           <button
             className="button-secondary focus-ring"
+            disabled={busy}
             type="button"
             onClick={() => void run(false)}
           >
             {t("admin.automation.run")}
           </button>
         </div>
-      </div>
+      ) : null}
       <RecordTable title={t("admin.automation.runs")} items={runs.items} />
       {runs.hasMore ? (
         <button

@@ -56,7 +56,7 @@ function loaderSyncSourceURLs(status: NonNullable<MinecraftVersionConfig["loader
     .filter((sourceUrl, index, sourceUrls) => sourceUrl !== "" && sourceUrls.indexOf(sourceUrl) === index);
 }
 
-export function MinecraftVersionConfigPanel({ token }: { token: string }) {
+export function MinecraftVersionConfigPanel({ token, canWrite }: { token: string; canWrite: boolean }) {
   const { t } = useI18n();
   const [config, setConfig] = useState<MinecraftVersionConfig | null>(null);
   const [versionCode, setVersionCode] = useState("");
@@ -103,6 +103,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
   }
 
   async function save() {
+    if (!canWrite || saving || syncing) return;
     setSaving(true);
     setMessage("");
     try {
@@ -118,6 +119,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
   }
 
   async function syncVersions() {
+    if (!canWrite || saving || syncing) return;
     setSyncing(true);
     setMessage("");
     try {
@@ -136,7 +138,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
   return <section className="space-y-5">
     <header className="flex flex-wrap items-end justify-between gap-3">
       <div><h2 className="text-2xl font-black">{t("admin.minecraftVersions.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.minecraftVersions.description")}</p></div>
-      <div className="flex flex-wrap gap-2"><button className="button-secondary focus-ring" disabled={saving || syncing} type="button" onClick={() => void syncVersions()}>{syncing ? t("admin.minecraftVersions.syncing") : t("admin.minecraftVersions.sync")}</button><button className="button-primary focus-ring" disabled={saving || syncing} type="button" onClick={() => void save()}>{saving ? t("admin.minecraftVersions.saving") : t("common.save")}</button></div>
+      {canWrite ? <div className="flex flex-wrap gap-2"><button className="button-secondary focus-ring" disabled={saving || syncing} type="button" onClick={() => void syncVersions()}>{syncing ? t("admin.minecraftVersions.syncing") : t("admin.minecraftVersions.sync")}</button><button className="button-primary focus-ring" disabled={saving || syncing} type="button" onClick={() => void save()}>{saving ? t("admin.minecraftVersions.saving") : t("common.save")}</button></div> : null}
     </header>
     <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-[var(--muted)]">
       <span>{t("admin.minecraftVersions.source")}: {config.sourceUrl ? <a className="text-[var(--accent)] hover:underline" href={config.sourceUrl} rel="noopener noreferrer" target="_blank">{versionSourceName(config.sourceUrl)}</a> : "-"}</span>
@@ -145,6 +147,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
       {config.latestSnapshot ? <span>{t("admin.minecraftVersions.latestSnapshot", { version: config.latestSnapshot })}</span> : null}
     </div>
     {message ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-sm font-bold">{message}</p> : null}
+    <fieldset className="grid min-w-0 gap-5" disabled={!canWrite || saving || syncing}>
     <section className="surface p-5"><h3 className="text-lg font-black">{t("admin.minecraftVersions.versionList")}</h3><div className="mt-3 flex flex-wrap gap-2"><input className="field max-w-xs" value={versionCode} placeholder="1.21.1" onChange={(event) => setVersionCode(event.target.value)} /><select className="field w-auto" value={versionType} onChange={(event) => setVersionType(event.target.value as typeof versionType)}>{(["release", "snapshot", "april_fools", "legacy"] as const).map((type) => <option key={type} value={type}>{t(`admin.minecraftVersions.types.${type}`)}</option>)}</select><button className="button-secondary focus-ring" type="button" onClick={addVersion}>+ {t("common.create")}</button></div><div className="mt-4 flex max-h-80 flex-wrap gap-2 overflow-auto">{config.versions.map((version) => <span key={version.code} className="inline-flex items-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm font-bold">{version.code}<small className="text-[var(--muted)]">{t(`admin.minecraftVersions.types.${version.type}`)}</small><button className="text-[var(--red)]" type="button" onClick={() => removeVersion(version.code)}>×</button></span>)}</div></section>
     <section className="surface p-5">
       <h3 className="text-lg font-black">{t("admin.minecraftVersions.loaderList")}</h3>
@@ -177,6 +180,7 @@ export function MinecraftVersionConfigPanel({ token }: { token: string }) {
         })}
       </div>
     </section>
+    </fieldset>
   </section>;
 }
 

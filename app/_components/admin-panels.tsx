@@ -123,8 +123,8 @@ const definitions = {
   },
   "seed-crawler": {
     group: "automation", title: "admin.automation.seedCrawler", description: "admin.automation.seedCrawlerDescription",
-    read: "seed_crawler.view",
-    render: ({ token }) => <SeedCrawlerAdminPanel token={token} />,
+    read: "seed_crawler.view", write: "seed_crawler.configure", execute: "seed_crawler.run",
+    render: ({ token, access }) => <SeedCrawlerAdminPanel token={token} canWrite={access.write} canRun={access.execute} />,
   },
   "project-auto-updates": {
     group: "automation", title: "admin.automation.projectUpdates", description: "admin.automation.projectUpdatesDescription",
@@ -370,8 +370,8 @@ const definitions = {
   },
   "minecraft-versions": {
     group: "system", title: "admin.minecraftVersions.title", description: "admin.minecraftVersions.description",
-    read: "admin.config.read",
-    render: ({ token }) => <MinecraftVersionConfigPanel token={token} />,
+    read: "admin.config.read", write: "admin.config.write",
+    render: ({ token, access }) => <MinecraftVersionConfigPanel token={token} canWrite={access.write} />,
   },
   "i18n": {
     group: "system", title: "admin.i18n", description: "admin.i18nDesc",
