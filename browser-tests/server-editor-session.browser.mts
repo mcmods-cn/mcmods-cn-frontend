@@ -153,3 +153,37 @@ test("server editing can select Minecraft's bundled US English language", { time
     assert.deepEqual(writes, [["fr-FR", "en-US"]]);
   } finally { await browser.close(); }
 });
+
+test("server editing requires a settings snapshot and retries unavailable limits", { timeout: 30_000 }, async () => {
+  let reads = 0;
+  let writes = 0;
+  const browser = await fixture.page(request => {
+    if (request.path === serverPath) {
+      if (request.method === "PATCH") writes++;
+      return { data: record() };
+    }
+    if (request.path === "/api/v1/servers/settings") {
+      if (++reads === 1) return { status: 503, code: "HTTP_503", error: "Synthetic settings unavailable" };
+      return { data: { maxProofFiles: 8, maxProofTotalBytes: 10485760, nameMaxLength: 160, summaryMaxLength: 1000, historyDays: 90, reviewRequired: true } };
+    }
+    return relatedEndpoints(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/servers/${serverID}`);
+    const failedRead = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/servers/settings" && response.status() === 503);
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await failedRead;
+    const editor = page.getByRole("dialog", { name: "Edit Minecraft server" });
+    assert.equal(await editor.getByRole("button", { name: "Save server", exact: true }).count(), 0);
+    const failure = editor.getByRole("alert");
+    await failure.getByText("This service is temporarily unavailable. Try again later.", { exact: true }).waitFor();
+    await failure.getByRole("button", { name: "Retry", exact: true }).click();
+    const name = editor.getByRole("textbox", { name: "Server name", exact: true });
+    await name.waitFor();
+    assert.equal(await name.inputValue(), serverName);
+    assert.equal(await name.getAttribute("maxlength"), "160");
+    assert.equal(await editor.getByRole("button", { name: "Save server", exact: true }).count(), 1);
+    assert.deepEqual({ reads, writes }, { reads: 2, writes: 0 });
+  } finally { await browser.close(); }
+});

@@ -6,7 +6,7 @@ import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatMinecraftLanguages } from "../_lib/minecraft-languages";
 import { formatBytes } from "../_lib/oss-upload";
-import { ServerCatalogSettings, ServerLink, ServerMod } from "../_lib/server-api";
+import { ServerCatalogSettings, ServerLink, ServerMod, validateServerCatalogSettings } from "../_lib/server-api";
 import { mergeServerReviewPage, serverReviewPagePath } from "../_lib/server-review-pagination.mts";
 import { MarkdownRenderer } from "./markdown-renderer";
 
@@ -306,7 +306,7 @@ export function ServerSettingsPanel({ canWrite, initialConfig, token }: { canWri
         method: "PUT",
         body: JSON.stringify(settings),
       }, token);
-      setSettings(saved);
+      setSettings(validateServerCatalogSettings(saved));
       setMessage(t("admin.serverSettings.saved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.serverSettings.saveFailed"));

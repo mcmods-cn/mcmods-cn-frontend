@@ -2,6 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element */
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
+import { apiErrorMessage } from "../_lib/api-error.mts";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { useI18n } from "../_lib/i18n-provider";
 import { formatBytes, OSSFileRecord, uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -11,13 +12,13 @@ import {
   loadServerSettings,
   probeServer,
   serverPrimaryTags,
-  ServerCatalogSettings,
   ServerDetail,
   ServerLink,
   ServerMod,
   ServerModDeclaration,
   ServerPrimaryTag,
   ServerProbeResult,
+  ServerSubmissionSettings,
   submitServer,
   suggestedMinecraftVersionFromProbe,
   updateServer,
@@ -40,15 +41,6 @@ type Props = {
   presentation?: "dialog" | "page";
   onClose: () => void;
   onSubmitted: (id: string, published: boolean) => void;
-};
-
-const fallbackSettings: ServerCatalogSettings = {
-  maxProofFiles: 5,
-  maxProofTotalBytes: 10 * 1024 * 1024,
-  nameMaxLength: 80,
-  summaryMaxLength: 240,
-  historyDays: 90,
-  reviewRequired: true,
 };
 
 type Draft = Omit<CreateServerRequest, "address" | "mods" | "proofFileIds">;
@@ -76,10 +68,12 @@ export function ServerSubmissionWizard({
 }: Props) {
   const { t } = useI18n();
   const editing = Boolean(initialServer);
-  const [step, setStep] = useState(editing ? 2 : 1);
+  const [requestedStep, setStep] = useState(editing ? 2 : 1);
   const [address, setAddress] = useState(initialServer?.address ?? "");
   const [probe, setProbe] = useState<ServerProbeResult | null>(null);
-  const [settings, setSettings] = useState(fallbackSettings);
+  const [settings, setSettings] = useState<ServerSubmissionSettings | null>(null);
+  const [settingsError, setSettingsError] = useState<unknown>(null);
+  const [settingsAttempt, setSettingsAttempt] = useState(0);
   const [draft, setDraft] = useState<Draft>(() => initialServer ? draftFromServer(initialServer) : emptyDraft);
   const [selectedMods, setSelectedMods] = useState<CatalogResourceRef[]>(
     () => initialServer?.mods.map(serverModResource) ?? [],
@@ -93,6 +87,8 @@ export function ServerSubmissionWizard({
   const busy = operationBusy || editorBusy;
   const [message, setMessage] = useState("");
   const proofFileRef = useRef<HTMLInputElement | null>(null);
+  const reviewRequired = !editing && settings?.reviewRequired === true;
+  const step = editing || (requestedStep === 3 && settings?.reviewRequired === false) ? 2 : requestedStep;
 
   useEffect(() => {
     mounted.current = true;
@@ -119,18 +115,13 @@ export function ServerSubmissionWizard({
   });
 
   useEffect(() => {
-    let cancelled = false;
-    loadServerSettings(token).then((next) => {
-      if (cancelled) return;
-      setSettings(next);
-      if (!editing && next.reviewRequired === false) {
-        setStep((current) => current === 3 ? 2 : current);
-      }
-    }).catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [editing, token]);
-
-  const reviewRequired = !editing && settings.reviewRequired !== false;
+    const controller = new AbortController();
+    const { signal } = controller;
+    loadServerSettings(token, signal)
+      .then((next) => { if (!signal.aborted) setSettings(next); })
+      .catch((error: unknown) => { if (!signal.aborted) setSettingsError(error); });
+    return () => controller.abort();
+  }, [settingsAttempt, token]);
 
   const proofTotal = useMemo(
     () => proofFiles.reduce((sum, file) => sum + Math.max(file.sizeBytes, file.sourceSizeBytes ?? 0), 0),
@@ -142,7 +133,7 @@ export function ServerSubmissionWizard({
   }
 
   async function runProbe() {
-    if (operationInFlight.current || editorInFlight.current || !address.trim()) return;
+    if (!settings || operationInFlight.current || editorInFlight.current || !address.trim()) return;
     operationInFlight.current = true;
     setOperationBusy(true);
     setMessage("");
@@ -189,7 +180,7 @@ export function ServerSubmissionWizard({
   async function uploadProofFiles(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (!files.length || operationInFlight.current || editorInFlight.current) return;
+    if (!settings || !files.length || operationInFlight.current || editorInFlight.current) return;
     if (proofFiles.length + files.length > settings.maxProofFiles) {
       setMessage(t("servers.wizard.proofCountError", { count: settings.maxProofFiles }));
       return;
@@ -216,6 +207,7 @@ export function ServerSubmissionWizard({
   }
 
   function validateStepTwo() {
+    if (!settings) return t("common.loadFailed");
     if (!draft.name.trim()) return t("servers.wizard.nameRequired");
     if (Array.from(draft.name.trim()).length > settings.nameMaxLength) {
       return t("servers.wizard.nameTooLong", { count: settings.nameMaxLength });
@@ -241,7 +233,7 @@ export function ServerSubmissionWizard({
   }
 
   async function submit() {
-    if (operationInFlight.current || editorInFlight.current || !editing && !probe) return;
+    if (!settings || operationInFlight.current || editorInFlight.current || (!editing && !probe)) return;
     const validationError = validateStepTwo();
     if (validationError) {
       setMessage(validationError);
@@ -309,14 +301,14 @@ export function ServerSubmissionWizard({
           <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-black" id="server-submission-title">{t(editing ? "servers.wizard.editTitle" : "servers.wizard.title")}</h2>
-              <p className="mt-1 text-sm text-[var(--muted)]">{t(editing ? "servers.wizard.editHint" : `servers.wizard.step${step}Hint`)}</p>
+              {settings ? <p className="mt-1 text-sm text-[var(--muted)]">{t(editing ? "servers.wizard.editHint" : `servers.wizard.step${step}Hint`)}</p> : null}
               <DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} />
             </div>
             <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={close}>
               {t(presentation === "page" ? "common.cancel" : "common.close")}
             </button>
           </div>
-          {!editing ? <ol className={`mt-4 grid gap-2 ${reviewRequired ? "grid-cols-3" : "grid-cols-2"}`} aria-label={t("servers.wizard.progress")}>
+          {settings && !editing ? <ol className={`mt-4 grid gap-2 ${reviewRequired ? "grid-cols-3" : "grid-cols-2"}`} aria-label={t("servers.wizard.progress")}>
             {(reviewRequired ? [1, 2, 3] : [1, 2]).map((value) => (
               <li key={value} className={`rounded-md px-3 py-2 text-center text-xs font-black sm:text-sm ${step === value ? "bg-[var(--accent)] text-[var(--on-accent)]" : step > value ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "bg-[var(--panel-subtle)] text-[var(--muted)]"}`}>
                 {t(`servers.wizard.step${value}`)}
@@ -325,7 +317,7 @@ export function ServerSubmissionWizard({
           </ol> : null}
         </header>
 
-        <fieldset className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6" disabled={busy}>
+        {settings ? <fieldset className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6" disabled={busy}>
           {step === 1 ? (
             <div className="mx-auto max-w-2xl">
               <label className="text-sm font-black" htmlFor="server-address">{t("servers.wizard.address")}</label>
@@ -468,16 +460,24 @@ export function ServerSubmissionWizard({
           ) : null}
 
           {message ? <p aria-live="polite" className="mt-5 rounded-md border border-[var(--danger)] bg-[var(--danger-soft)] p-3 text-sm font-bold text-[var(--danger)]">{message}</p> : null}
-        </fieldset>
+        </fieldset> : <div className="p-4 sm:p-6">
+          {settingsError ? <div className="flex flex-wrap items-center gap-3" role="alert">
+            <p className="text-sm font-bold text-[var(--danger)]">{apiErrorMessage(settingsError, t, t("common.loadFailed"))}</p>
+            <button className="button-secondary focus-ring" type="button" onClick={() => {
+              setSettingsError(null);
+              setSettingsAttempt((value) => value + 1);
+            }}>{t("common.retry")}</button>
+          </div> : <p className="text-sm text-[var(--muted)]" role="status">{t("common.loading")}</p>}
+        </div>}
 
-        <footer className="flex items-center justify-between gap-3 border-t border-[var(--line)] px-4 py-4 sm:px-6">
+        {settings ? <footer className="flex items-center justify-between gap-3 border-t border-[var(--line)] px-4 py-4 sm:px-6">
           <button className="button-secondary focus-ring" disabled={busy || step === 1 || editing} type="button" onClick={() => { setMessage(""); setStep((current) => Math.max(1, current - 1)); }}>{t("common.previous")}</button>
           {step === 2 && !editing && reviewRequired ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={goToProof}>{t("common.next")}</button> : null}
           {step === 2 && !editing && !reviewRequired ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.submitting") : t("servers.wizard.submit")}</button> : null}
           {step === 2 && editing ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.saving") : t("servers.wizard.save")}</button> : null}
           {step === 3 ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.submitting") : t("servers.wizard.submit")}</button> : null}
           {step === 1 ? <span /> : null}
-        </footer>
+        </footer> : null}
     </section>
   );
 

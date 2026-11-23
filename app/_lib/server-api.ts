@@ -6,8 +6,9 @@ export type ServerCatalogSettings = {
   nameMaxLength: number;
   summaryMaxLength: number;
   historyDays: number;
-  reviewRequired?: boolean;
 };
+
+export type ServerSubmissionSettings = ServerCatalogSettings & { reviewRequired: boolean };
 
 export type DetectedServerMod = {
   id: string;
@@ -160,8 +161,19 @@ export const serverPrimaryTags: ServerPrimaryTag[] = [
   "technology",
 ];
 
-export function loadServerSettings(token?: string) {
-  return apiRequest<ServerCatalogSettings>("/api/v1/servers/settings", {}, token);
+export function validateServerCatalogSettings(settings: ServerCatalogSettings) {
+  if (!settings || ![
+    settings.maxProofFiles, settings.maxProofTotalBytes, settings.nameMaxLength, settings.summaryMaxLength, settings.historyDays,
+  ].every(Number.isSafeInteger)) throw new Error("Incomplete server settings");
+  return settings;
+}
+
+export function loadServerSettings(token: string, signal: AbortSignal) {
+  return apiRequest<ServerSubmissionSettings>("/api/v1/servers/settings", { signal }, token).then((settings) => {
+    validateServerCatalogSettings(settings);
+    if (typeof settings.reviewRequired !== "boolean") throw new Error("Missing server submission review policy");
+    return settings;
+  });
 }
 
 export function probeServer(address: string, token: string) {
