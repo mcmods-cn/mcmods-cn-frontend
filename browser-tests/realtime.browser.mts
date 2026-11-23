@@ -207,7 +207,12 @@ test("TEST023 actual notification view loads one AI balance before any translati
   const { page } = browser;
   try {
     await controlEventSource(page);
+    const initialReads = ["/api/v1/me/unread-summary", "/api/v1/notifications"].map((path) =>
+      page.waitForResponse((response) =>
+        response.request().method() === "GET" && new URL(response.url()).pathname === path)
+    );
     await page.goto(`${fixture.origin}/messages`);
+    await Promise.all(initialReads.map(async (read) => (await read).finished()));
     await page.getByText("No notifications in this category.", { exact: true }).waitFor();
     await settledFrames(page);
     assert.equal(calls.balance, 0);
