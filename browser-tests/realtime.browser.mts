@@ -82,12 +82,15 @@ const conversations = ["a", "b"].map(name => ({
 const pageOf = (items: unknown[], limit = 100) => ({ items, limit, hasMore: false, nextCursor: "" });
 const message = (id: string, conversationId: string, body: string) => ({ id, conversationId, body, senderId: "partner-b", recipientId: "test048u1", createdAt: timestamp });
 
-test("TEST023 actual React clears A and its draft, aborts A, and rejects a late A body after switching to B", { timeout: 30_000 }, async () => {
+test("TEST023 actual React clears A and its draft, aborts both A reads, and rejects late A pages after switching to B", { timeout: 30_000 }, async () => {
   let callsA = 0;
   const callsB: string[] = [];
   const requests: string[] = [];
   const lateA = Promise.withResolvers<APIReply>();
   const aStarted = Promise.withResolvers<void>();
+  const olderA = Promise.withResolvers<APIReply>();
+  const olderStarted = Promise.withResolvers<void>();
+  const firstB = Promise.withResolvers<APIReply>();
   const browser = await fixture.page(({ path, method, url }) => {
     requests.push(`${method} ${url.pathname}${url.search}`);
     if (path === "/api/v1/notifications") return { data: pageOf([], 50) };
@@ -95,13 +98,17 @@ test("TEST023 actual React clears A and its draft, aborts A, and rejects a late 
     if (method === "PUT" && path.endsWith("/presence")) return { data: { online: true } };
     if (path.endsWith("/conv-a") && method === "GET") {
       callsA++;
-      if (callsA === 1) return { data: pageOf([message("a1", "conv-a", "A private body")]) };
+      if (callsA === 1) return { data: { ...pageOf([message("a1", "conv-a", "A private body")]), hasMore: true, nextCursor: "older-a" } };
+      if (url.searchParams.get("cursor") === "older-a") {
+        olderStarted.resolve();
+        return olderA.promise;
+      }
       aStarted.resolve();
       return lateA.promise;
     }
     if (path.endsWith("/conv-b") && method === "GET") {
       callsB.push(url.search);
-      return { data: pageOf([message("b1", "conv-b", "B private body")]) };
+      return firstB.promise;
     }
   });
   const { page } = browser;
@@ -113,27 +120,36 @@ test("TEST023 actual React clears A and its draft, aborts A, and rejects a late 
     await page.getByRole("button", { name: /Partner A/ }).click();
     await page.getByText("A private body", { exact: true }).waitFor();
     await page.getByPlaceholder("Write a private message").fill("A unsent draft");
+    await page.getByRole("button", { name: "Load older messages", exact: true }).click();
+    await olderStarted.promise;
     await emit(page, [{ id: "late-a", type: "message.created", data: { conversationId: "conv-a" } }]);
     await aStarted.promise;
     await page.getByRole("button", { name: /Partner B/ }).click();
     assert.equal(await page.getByText("A private body", { exact: true }).count(), 0);
-    await page.getByText("B private body", { exact: true }).waitFor();
     assert.equal(await page.getByPlaceholder("Write a private message").inputValue(), "");
-    assert.equal(await page.evaluate(() => window.__test023.aborted.length), 1);
+    assert.equal(await page.evaluate(() => window.__test023.aborted.length), 2);
     const response = page.waitForResponse(response => response.url().includes("/conv-a?") && response.url().includes("after=a1"));
+    const olderResponse = page.waitForResponse(response => response.url().includes("/conv-a?") && response.url().includes("cursor=older-a"));
     lateA.resolve({ data: pageOf([message("a2", "conv-a", "Late A secret must never show")]) });
+    olderA.resolve({ data: pageOf([message("a0", "conv-a", "Older A body must never show")]) });
     await (await response).finished();
+    await (await olderResponse).finished();
     await settledFrames(page);
     assert.equal(await page.getByText("Late A secret must never show", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("Older A body must never show", { exact: true }).count(), 0);
+    firstB.resolve({ data: pageOf([message("b1", "conv-b", "B private body")]) });
+    await page.getByText("B private body", { exact: true }).waitFor();
     assert.equal(await page.getByText("B private body", { exact: true }).count(), 1);
     assert.deepEqual(callsB, ["?limit=100"]);
-    assert.equal(callsA, 2);
+    assert.equal(callsA, 3);
   } catch (error) {
     console.error("TEST023 failed conversation navigation diagnostic", { callsA, callsB, requests, url: page.url() });
     if (process.env.MCMODS_BROWSER_TRACE) await page.context().tracing.stop({ path: process.env.MCMODS_BROWSER_TRACE });
     throw error;
   } finally {
     lateA.resolve({ data: pageOf([]) });
+    olderA.resolve({ data: pageOf([]) });
+    firstB.resolve({ data: pageOf([]) });
     await browser.close();
   }
 });
