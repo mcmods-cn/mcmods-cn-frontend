@@ -335,3 +335,42 @@ test("TEST047 seven unresolved source producers retain diagnostics and an extern
     emptyContinuation=true;await page.getByRole("button",{name:"Next",exact:true}).click();await page.getByText("No references match the current filters.").waitFor();assert.equal(await page.getByRole("button",{name:"Previous",exact:true}).isDisabled(),false);await page.getByRole("button",{name:"Previous",exact:true}).click();await page.getByText("unresolved-6",{exact:true}).waitFor();assert.equal(reads.at(-1)?.cursor,"");
   }finally{await browser.close();}
 });
+
+test("custom template changes retain body-only translations and retry only the post-save refresh", { timeout: 30_000 }, async () => {
+  const primary = { locale: "en-US", name: "Tools", summary: "", contentMarkdown: "Existing English body" };
+  const other = { locale: "de-DE", name: "", summary: "", contentMarkdown: "Bestehender Text" };
+  const template = { publicId: "template01", code: "tools", builtin: false, i18nKey: "", defaultLocale: "en-US", defaultDisplayMode: "compact",
+    definition: { resourceKinds: ["minecraft.item"] }, status: "active", publishedRevisionId: "revision01", localizations: [primary, other] };
+  const section = { publicId: "section01", versionPublicId: "version01", templatePublicId: template.publicId, templateCode: template.code,
+    templateBuiltin: false, templateI18nKey: "", parentPublicId: "", defaultLocale: "en-US", localizations: [primary], displayMode: "compact", resourceCount: 0, status: "active" };
+  const writes: Array<{ localizations: typeof template.localizations; baseRevisionId: string }> = [];
+  let postSaveReads = 0;
+  const browser = await controlled(request => {
+    const root = "/api/v1/mods/fixture-mod";
+    if (request.path === `${root}/content-templates/${template.publicId}` && request.method === "PUT") {
+      writes.push(JSON.parse(request.body)); return { data: { publicId: template.publicId, reviewStatus: "pending" } };
+    }
+    if (request.path === `${root}/content-templates`) {
+      if (writes.length && ++postSaveReads === 1) return { status: 503, error: "Synthetic post-save template refresh failure" };
+      return { data: { items: [template] } };
+    }
+    if (request.path === `${root}/content-sections`) return { data: { items: [section] } };
+    return baseWorkspace(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/mods/fixture-mod/data/edit?version=version01`);
+    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "" }).filter({ has: page.getByRole("heading", { name: "Custom data page settings" }) });
+    await dialog.getByRole("textbox", { name: "Localized name", exact: true }).fill("Named tools");
+    await dialog.getByRole("button", { name: "Save", exact: true }).evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+    await dialog.getByText("Synthetic post-save template refresh failure", { exact: true }).waitFor();
+    assert.deepEqual(writes.map(write => write.localizations), [[{ ...primary, name: "Named tools" }, other]]);
+    assert.equal(writes[0].baseRevisionId, template.publishedRevisionId);
+    assert.equal(await dialog.getByRole("textbox", { name: "Localized name", exact: true }).isDisabled(), true);
+    await dialog.getByRole("button", { name: "Refresh", exact: true }).click();
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(postSaveReads, 2);
+    assert.equal(writes.length, 1);
+  } finally { await browser.close(); }
+});
