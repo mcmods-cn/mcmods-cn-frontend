@@ -1030,6 +1030,7 @@ const zhCN = {
     addVersionDetail: "新增版本资料",
     selectDataVersion: "选择一个资料版本",
     versionDetailHint: "选择一个资料版本并编辑它的完整内容；这里不会从其他版本继承任何字段。",
+    versionNotListed: "该资源没有所请求版本的记录。",
     versionContentMissing: "当前版本存在这个资源身份，但还没有该版本的详情内容。请在上方选择其他版本查看其独立资料。",
     invalidDefinition: "结构化属性不是有效的 JSON。",
     localizedContent: "详细介绍（Markdown）",

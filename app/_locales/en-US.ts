@@ -1030,6 +1030,7 @@ const en = {
     addVersionDetail: "Add version detail",
     selectDataVersion: "Select a data version",
     versionDetailHint: "Select one data version and edit its complete content. Nothing here is inherited from another version.",
+    versionNotListed: "This resource has no entry for the requested version.",
     versionContentMissing: "This resource identity exists in the selected version, but that version has no detail content. Select another version above to view its independent content.",
     invalidDefinition: "The structured properties JSON is invalid.",
     localizedContent: "Detailed introduction (Markdown)",

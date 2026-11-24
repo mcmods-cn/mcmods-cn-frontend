@@ -52,7 +52,8 @@ function ModContentResourceDetailSession({ siteId, resourceId, versionId, sectio
   const capabilityRequestKey = `${siteId}\u0000${resourceId}\u0000${token}`;
   const [detail, setDetail] = useState<ModContentResource>();
   const [detailCapabilityKey, setDetailCapabilityKey] = useState("");
-  const [similarResources, setSimilarResources] = useState<ModContentSimilarResource[]>([]);
+  const [similar, setSimilar] = useState<{ versionId: string; locale: string; items: ModContentSimilarResource[] }>();
+  const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -62,31 +63,29 @@ function ModContentResourceDetailSession({ siteId, resourceId, versionId, sectio
         if (controller.signal.aborted) return;
         setDetail(value);
         setDetailCapabilityKey(capabilityRequestKey);
-        setSimilarResources([]);
       })
       .catch((reason) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => controller.abort();
-  }, [capabilityRequestKey, resourceId, siteId, token]);
+  }, [attempt, capabilityRequestKey, resourceId, siteId, token]);
+
+  const versions = detail?.versions ?? [];
+  const currentIndex = versionId
+    ? versions.findIndex(item => item.publicId === versionId)
+    : Math.max(0, versions.findIndex(item => item.hasDetail));
+  const current = versions[currentIndex];
+  const currentVersionId = current?.publicId;
+  const similarResources = similar && similar.versionId === currentVersionId && similar.locale === locale ? similar.items : [];
 
   useEffect(() => {
-    if (!detail) return;
-    const requestedIndex = detail.versions.findIndex((item) => item.publicId === versionId);
-    const firstDetailedIndex = detail.versions.findIndex((item) => item.hasDetail);
-    const currentVersionId = detail.versions[requestedIndex >= 0 ? requestedIndex : Math.max(0, firstDetailedIndex)]?.publicId;
     if (!currentVersionId) return;
     const controller = new AbortController();
     loadModContentSimilarResources(siteId, resourceId, currentVersionId, locale, token, controller.signal)
-      .then((result) => { if (!controller.signal.aborted) setSimilarResources(result.items); })
-      .catch(() => { if (!controller.signal.aborted) setSimilarResources([]); });
+      .then((result) => { if (!controller.signal.aborted) setSimilar({ versionId: currentVersionId, locale, items: result.items }); })
+      .catch(() => { if (!controller.signal.aborted) setSimilar(undefined); });
     return () => controller.abort();
-  }, [detail, locale, resourceId, siteId, token, versionId]);
+  }, [currentVersionId, locale, resourceId, siteId, token]);
 
-  if (!detail) return <main className="grid min-h-[65vh] place-items-center p-6">{error || t("common.loading")}</main>;
-
-  const requestedIndex = detail.versions.findIndex((item) => item.publicId === versionId);
-  const firstDetailedIndex = detail.versions.findIndex((item) => item.hasDetail);
-  const currentIndex = requestedIndex >= 0 ? requestedIndex : Math.max(0, firstDetailedIndex);
-  const current = detail.versions[currentIndex];
+  if (!detail) return <main className="grid min-h-[65vh] place-items-center p-6"><div role="status">{error || t("common.loading")}{error ? <button className="button-secondary focus-ring ml-3" type="button" onClick={() => { setError(""); setAttempt(value => value + 1); }}>{t("common.retry")}</button> : null}</div></main>;
   const versionDetail = detail.details.find((item) => item.versionPublicId === current?.publicId);
   const canEditResource = detailCapabilityKey === capabilityRequestKey && detail.capabilities.editResource;
   const localization = resolveVersionLocalization(versionDetail?.localizations || [], locale, versionDetail?.defaultLocale || "en-US");
@@ -101,7 +100,7 @@ function ModContentResourceDetailSession({ siteId, resourceId, versionId, sectio
       })}</div>
     </header>
     {current && similarResources.length > 1 ? <SimilarResourceStrip currentResourceId={resourceId} locale={locale} resources={similarResources} sectionId={sectionId} siteId={siteId} versionId={current.publicId} /> : null}
-    {!current || !versionDetail ? <section className="mt-8 rounded-lg border border-dashed border-[var(--red)] bg-[var(--panel)] p-8 text-center"><h2 className="text-xl font-black">{current?.label}</h2><p className="mt-3 text-sm leading-6 text-[var(--muted)]">{t("modContent.versionContentMissing")}</p></section> : <ResourcePresentation canonicalId={detail.canonicalId} current={current} definition={versionDetail.definition} entryTypeCode={versionDetail.entryTypeCode} key={current.publicId} kindCode={detail.kindCode} name={localization?.name || detail.canonicalId} resourceId={resourceId} schemaDefinition={versionDetail.schemaDefinition} token={token}>
+    {!current || !versionDetail ? <section className="mt-8 rounded-lg border border-dashed border-[var(--red)] bg-[var(--panel)] p-8 text-center"><h2 className="text-xl font-black">{current?.label}</h2><p className="mt-3 text-sm leading-6 text-[var(--muted)]">{t(!current && versionId ? "modContent.versionNotListed" : "modContent.versionContentMissing")}</p></section> : <ResourcePresentation canonicalId={detail.canonicalId} current={current} definition={versionDetail.definition} entryTypeCode={versionDetail.entryTypeCode} key={current.publicId} kindCode={detail.kindCode} name={localization?.name || detail.canonicalId} resourceId={resourceId} schemaDefinition={versionDetail.schemaDefinition} token={token}>
       {localization?.contentMarkdown ? <div className="markdown-preview mt-5"><MarkdownRenderer config={defaultMarkdownConfig} emptyText="" markdown={localization.contentMarkdown} /></div> : <p className="mt-5 text-[var(--muted)]">{t("mods.exportImport.entry.noIntroduction")}</p>}
     </ResourcePresentation>}
     <ContentMetricsPanel pageKey={current ? `version:${current.publicId}` : "detail"} publicId={resourceId} />
@@ -234,7 +233,7 @@ function ResourcePresentation({
       <dl className="mt-4 grid gap-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4 text-sm">
         <dt className="font-bold text-[var(--muted)]">{t("resourceEditor.kind")}</dt><dd>{kindCode}</dd>
         <dt className="font-bold text-[var(--muted)]">ID</dt><dd className="break-all font-mono">{canonicalId}</dd>
-        {hasPermission(user, "global_resource.view") ? <><dt className="font-bold text-[var(--muted)]">全局资源</dt><dd><Link className="font-bold text-[var(--accent)] hover:underline" href={`/admin/global-resources?publicId=${encodeURIComponent(resourceId)}`}>查看绑定的全局资源</Link></dd></> : null}
+        {hasPermission(user, "global_resource.view") ? <><dt className="font-bold text-[var(--muted)]">{t("resourceEditor.globalResource")}</dt><dd><Link className="font-bold text-[var(--accent)] hover:underline" href={`/admin/global-resources?publicId=${encodeURIComponent(resourceId)}`}>{t("resourceEditor.catalogTitle")}</Link></dd></> : null}
       </dl>
       <CollapsibleResourceProperties data={definition} entryType={schemaEntryType} registry={registry} />
     </aside>

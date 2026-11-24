@@ -582,6 +582,7 @@ test("changing resource editors cancels the previous write before draft completi
 });
 
 test("resource properties display reported zero, fractional and missing values distinctly", async () => {
+  const similarVersions: string[] = [];
   const browser = await controlled(({ path, url }) => {
     if (path.startsWith("/api/v1/mods/fixture-mod/content-resources/") && !path.endsWith("/similar")) {
       const numeric = path.endsWith("/resource01");
@@ -596,14 +597,18 @@ test("resource properties display reported zero, fractional and missing values d
       }] }] } });
       return { data: resource };
     }
-    if (path.endsWith("/similar")) return { data: { items: [] } };
+    if (path.endsWith("/similar")) { similarVersions.push(url.searchParams.get("version") || ""); return { data: { items: [] } }; }
     if (path.startsWith("/api/v1/content-metrics/")) return { status: 404, error: "No metrics" };
     if (path.startsWith("/api/v1/comment-targets/")) return { data: { items: [], capabilities: { canCreate: false }, total: 0, nextCursor: "" } };
     if (path === "/api/v1/projects/follows" || url.pathname.endsWith("/follow")) return { data: { following: false } };
   });
   try {
     const { page } = browser;
-    await page.goto(fixture.origin + "/mods/fixture-mod/resources/resource01");
+    await page.goto(fixture.origin + "/mods/fixture-mod/resources/resource01?version=absent01");
+    await page.getByText("This resource has no entry for the requested version.", { exact: true }).waitFor();
+    assert.deepEqual(similarVersions, []);
+    assert.equal(await page.getByRole("heading", { name: "Reported numbers" }).count(), 0);
+    await page.getByRole("link", { name: /Fixture version/ }).click();
     await page.getByRole("heading", { name: "Reported numbers", exact: true }).waitFor();
     assert.equal(await page.getByText("Reported health", { exact: true }).locator("+ dd").innerText(), "0");
     assert.equal(await page.getByText("Reported armor", { exact: true }).locator("+ dd").innerText(), "0.5");
