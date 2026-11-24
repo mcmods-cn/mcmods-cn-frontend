@@ -3753,6 +3753,8 @@ const zhCN = {
       token: "Token",
       tokenHint: "Token 认证优先于用户名和密码",
       secretSaved: "已保存；留空则保持不变",
+      credentialDecision: "连接目标或账号已变更。请重新输入每个受影响的已保存凭据，或明确选择清除，再保存设置。",
+      reviewSecrets: "采用最新配置后，待提交的口令和令牌改动将被清除。如需更新，请重新输入或再次勾选清除。",
       secretWillClear: "已保存的凭据将在本次保存时清除",
       clearPassword: "清除已保存的密码",
       clearToken: "清除已保存的 Token",
@@ -4368,6 +4370,7 @@ const zhCN = {
       scopeHint: "这里只保留当前后端进程最近的有界日志；后端重启后会从新进程重新开始。敏感 Token、密码、连接串和个人信息会在返回前自动脱敏。",
     },
     logCleanup: {
+      inheritDays: "分类留空时，使用默认保留天数。",
       title: "日志清理系统",
       description: "统一设置系统、管理、安全、API、文件和 AI 日志的保留周期。",
       category: "日志类别",

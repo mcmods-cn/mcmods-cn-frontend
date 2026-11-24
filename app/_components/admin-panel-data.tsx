@@ -3,7 +3,7 @@ import { apiRequest } from "../_lib/api";
 import { apiErrorMessage } from "../_lib/api-error.mts";
 import { useI18n } from "../_lib/i18n-provider";
 import { hasCompleteOAuthConfig } from "../_lib/oauth-settings.mts";
-import type { NATSConfig } from "../_lib/nats-config.mts";
+import { hasNATSSettings, type NATSConfig } from "../_lib/nats-config.mts";
 import { defaultMarkdownConfig, type MarkdownRendererConfig } from "../_lib/markdown-config";
 import { validateServerCatalogSettings } from "../_lib/server-api";
 import { AdminDeadLetterPanel } from "./admin-dead-letter-panel";
@@ -105,7 +105,7 @@ const readAuth = readSettings((config: AuthConfig) => hasCompleteOAuthConfig(con
 const readProfile = readSettings((config: AdminConfig["profile"]) => Number.isFinite(config.signatureMaxBytes));
 const readMarkdown = readSettings((config: MarkdownRendererConfig) =>
   (Object.keys(defaultMarkdownConfig) as (keyof MarkdownRendererConfig)[]).every(key => typeof config[key] === typeof defaultMarkdownConfig[key]));
-const readNATS = readSettings((config: NATSConfig) => Boolean(config.status && config.jetStream && Array.isArray(config.tasks)));
+const readNATS = readSettings<NATSConfig>(hasNATSSettings);
 
 function SettingsRead<T>({ path, token, validate, editable, children }: {
   path: string; token: string; validate: (value: T) => T; editable: boolean; children: (value: T) => ReactNode;

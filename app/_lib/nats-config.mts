@@ -27,6 +27,7 @@ export type NATSStatus = {
 };
 
 export type NATSConfig = {
+  revision?: string;
   enabled: boolean;
   url: string;
   username: string;
@@ -44,9 +45,14 @@ export type NATSConfig = {
   status: NATSStatus;
 };
 
+export function hasNATSSettings(value: NATSConfig): boolean {
+  return Boolean(value?.status && value.jetStream && Array.isArray(value.tasks) && typeof value.url === "string" &&
+    typeof value.username === "string" && typeof value.hasPassword === "boolean" && typeof value.hasToken === "boolean");
+}
+
 export type NATSUpdatePayload = Pick<
   NATSConfig,
-  "enabled" | "url" | "username" | "subjectPrefix" | "tasks" | "outboxEnabled" | "realtime" | "jetStream"
+  "revision" | "enabled" | "url" | "username" | "subjectPrefix" | "tasks" | "outboxEnabled" | "realtime" | "jetStream"
 > & {
   password: string;
   clearPassword: boolean;
@@ -68,6 +74,7 @@ export function buildNATSUpdatePayload(draft: NATSConfig, newStreamMaxBytes?: nu
   if (newStreamMaxBytes === undefined) delete jetStream.newStreamMaxBytes;
   else jetStream.newStreamMaxBytes = newStreamMaxBytes;
   return {
+    revision: draft.revision,
     enabled: draft.enabled,
     url: draft.url,
     username: draft.username,

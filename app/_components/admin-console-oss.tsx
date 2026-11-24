@@ -758,8 +758,11 @@ function LogCleanupPanel({ token, canWrite }: { token: string; canWrite: boolean
 
   const categories = useMemo(() => retention ? Object.keys(retention.categoryDays).sort() : [], [retention]);
 
+  const validDays = retention && Number.isInteger(retention.defaultDays) && retention.defaultDays >= 1 && retention.defaultDays <= 3650
+    && Object.values(retention.categoryDays).every(days => Number.isInteger(days) && days >= 0 && days <= 3650);
+
   async function saveRetention() {
-    if (!canWrite || !retention || saving || cleaning) return;
+    if (!canWrite || !retention || !validDays || saving || cleaning) return;
     setSaving(true);
     setMessage("");
     try {
@@ -812,7 +815,7 @@ function LogCleanupPanel({ token, canWrite }: { token: string; canWrite: boolean
           <button className="button-secondary focus-ring" disabled={cleaning || saving} type="button" onClick={() => void runCleanup()}>
             {cleaning ? t("common.loading") : t("admin.logs.cleanupNow")}
           </button>
-          <button className="button-primary focus-ring" disabled={saving || cleaning} type="button" onClick={() => void saveRetention()}>
+          <button className="button-primary focus-ring" disabled={saving || cleaning || !validDays} type="button" onClick={() => void saveRetention()}>
             {saving ? t("common.saving") : t("common.save")}
           </button>
         </div>}
@@ -825,13 +828,21 @@ function LogCleanupPanel({ token, canWrite }: { token: string; canWrite: boolean
         </label>
         <label className="grid gap-1 text-sm font-semibold">
           {t("admin.logs.defaultRetentionDays")}
-          <input disabled={!canWrite || saving || cleaning} className="field" min={1} max={3650} type="number" value={retention.defaultDays} onChange={(event) => setRetention({ ...retention, defaultDays: Number(event.target.value) })} />
+          <input disabled={!canWrite || saving || cleaning} className="field" min={1} max={3650} type="number" value={retention.defaultDays || ""} onChange={(event) => setRetention({ ...retention, defaultDays: Number(event.target.value) })} />
         </label>
       </div>
       <div className="mt-5 overflow-x-auto">
         <table className="w-full min-w-[560px] text-left text-sm">
+          <caption className="mb-2 text-left text-sm text-[var(--muted)]">{t("admin.logCleanup.inheritDays")}</caption>
           <thead><tr className="text-[var(--muted)]"><th className="border-b border-[var(--line)] p-3">{t("admin.logCleanup.category")}</th><th className="border-b border-[var(--line)] p-3">{t("admin.logCleanup.retentionDays")}</th></tr></thead>
-          <tbody>{categories.map((category) => <tr key={category}><th className="border-b border-[var(--line)] p-3 font-semibold">{logCategoryTitle(category, t)}</th><td className="border-b border-[var(--line)] p-3"><input disabled={!canWrite || saving || cleaning} className="field max-w-52" min={1} max={3650} type="number" value={retention.categoryDays[category] ?? retention.defaultDays} onChange={(event) => setRetention({ ...retention, categoryDays: { ...retention.categoryDays, [category]: Number(event.target.value) } })} /></td></tr>)}</tbody>
+          <tbody>{categories.map(category => <tr key={category}>
+            <th scope="row" className="border-b border-[var(--line)] p-3 font-semibold">{logCategoryTitle(category, t)}</th>
+            <td className="border-b border-[var(--line)] p-3">
+              <input aria-label={logCategoryTitle(category, t)} disabled={!canWrite || saving || cleaning} className="field max-w-52"
+                min={0} max={3650} type="number" placeholder={String(retention.defaultDays || "")} value={retention.categoryDays[category] || ""}
+                onChange={event => setRetention({ ...retention, categoryDays: { ...retention.categoryDays, [category]: Number(event.target.value) } })} />
+            </td>
+          </tr>)}</tbody>
         </table>
       </div>
       {canWrite && <p className="mt-4 text-xs leading-5 text-[var(--muted)]">{t("admin.logCleanup.saveEffect")}</p>}

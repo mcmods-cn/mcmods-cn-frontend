@@ -7,40 +7,91 @@ import { ApiError, apiRequest } from "../_lib/api";
 import type { LevelConfig, RoleTrack } from "../_lib/community-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
-import { buildNATSUpdatePayload, bytesPerMiB, streamCapacityBytes, type NATSConfig, type NATSTaskConfig } from "../_lib/nats-config.mts";
+import { buildNATSUpdatePayload, bytesPerMiB, hasNATSSettings, streamCapacityBytes, type NATSConfig, type NATSTaskConfig } from "../_lib/nats-config.mts";
 import { OAuthSettingsPanel } from "./admin-oauth-config-panel";
 import { AdminConfig, ConfigBlock, ConfigLine, EmptyState, InlineMessage, MailConfig, ModImportConfig, ModImportProviderConfig, PanelShell, PermissionCatalog, PermissionDefaults, Role, User, cleanError, notifyAdminNotice, valueText } from "./admin-console-shared";
 
+const natsConfigPath = "/api/v1/admin/config/nats";
+const clearNATSSecretDraft = { password: "", token: "", clearPassword: false, clearToken: false };
+
+function readNATSSnapshot(value: NATSConfig, failure: string) {
+  if (!hasNATSSettings(value)) throw new Error(failure);
+  return { ...value, ...clearNATSSecretDraft };
+}
+
+function changedNATSFields<T extends object>(base: T, draft: T, keys: readonly (keyof T)[]): Partial<T> {
+  return Object.fromEntries(keys.filter(key => JSON.stringify(base[key]) !== JSON.stringify(draft[key])).map(key => [key, draft[key]])) as Partial<T>;
+}
+
 function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NATSConfig; token: string; canWrite: boolean }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState<NATSConfig>({ ...initialConfig, password: "", token: "", clearPassword: false, clearToken: false });
+  const [base, setBase] = useState(initialConfig);
+  const [draft, setDraft] = useState<NATSConfig>({ ...initialConfig, ...clearNATSSecretDraft });
+  const [latest, setLatest] = useState<NATSConfig>();
+  const [conflict, setConflict] = useState(false);
+  const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [capacityEdit, setCapacityEdit] = useState<string | null>(null);
+  const active = useRef<AbortController | null>(null);
+  useEffect(() => () => { active.current?.abort(); }, [token]);
+  const writable = canWrite && !conflict && validConfigRevision(base.revision);
   const configuredBytes = draft.jetStream.newStreamMaxBytes;
   const editableCapacity = typeof configuredBytes === "number" && Number.isSafeInteger(configuredBytes) && configuredBytes > 0;
   const newStreamMaxBytes = capacityEdit === null ? undefined : streamCapacityBytes(capacityEdit);
   const invalidCapacity = capacityEdit !== null && newStreamMaxBytes === undefined;
 
-  async function save() {
-    if (saving || !canWrite || invalidCapacity) return;
-    setSaving(true);
+  async function compare() {
+    if (active.current) return;
+    const controller = new AbortController();
+    active.current = controller; setSaving(true); setLatest(undefined); setMessage("");
     try {
-      const saved = await apiRequest<NATSConfig>(
-        "/api/v1/admin/config/nats",
-        {
-          method: "PUT",
-          body: JSON.stringify(buildNATSUpdatePayload(draft, newStreamMaxBytes)),
-        },
-        token,
-      );
-      setDraft({ ...saved, password: "", token: "", clearPassword: false, clearToken: false });
-      setCapacityEdit(null);
-      notifyAdminNotice(t("admin.nats.saved"));
+      const current = readNATSSnapshot(await apiRequest<NATSConfig>(natsConfigPath, { cache: "no-store", signal: controller.signal }, token), t("common.loadFailed"));
+      if (controller.signal.aborted) return;
+      if (validConfigRevision(current.revision)) setLatest(current);
+      else setMessage(t("admin.ai.noRevision"));
     } catch (error) {
-      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
-    } finally {
-      setSaving(false);
+      if (!controller.signal.aborted) setMessage(cleanError(error) || t("common.loadFailed"));
+    } finally { active.current = null; if (!controller.signal.aborted) setSaving(false); }
+  }
+
+  function acceptLatest(keep: boolean) {
+    if (!latest) return;
+    const next = { ...latest, ...clearNATSSecretDraft };
+    if (keep) {
+      Object.assign(next, changedNATSFields(base, draft, ["enabled", "url", "username", "subjectPrefix", "tasks", "realtime"]));
+      next.jetStream = { ...latest.jetStream, ...changedNATSFields(base.jetStream, draft.jetStream, ["enabled", "stream", "maxDeliver", "ackWaitSeconds", "publishTimeoutSeconds"]) };
     }
+    if (!keep || !Number.isSafeInteger(latest.jetStream.newStreamMaxBytes)) setCapacityEdit(null);
+    setBase(latest); setDraft(next); setLatest(undefined); setConflict(false);
+    setMessage(keep && (draft.password || draft.token || draft.clearPassword || draft.clearToken) ? t("admin.nats.reviewSecrets") : "");
+  }
+
+  async function save() {
+    if (active.current || !writable || invalidCapacity) return;
+    const controller = new AbortController();
+    active.current = controller; setSaving(true); setMessage("");
+    function consumeWrite() {
+      const consumed = { ...draft, ...clearNATSSecretDraft, revision: undefined };
+      setBase(consumed); setDraft(consumed); setLatest(undefined); setCapacityEdit(null);
+    }
+    try {
+      const saved = await apiRequest<NATSConfig>(natsConfigPath, {
+        method: "PUT", signal: controller.signal, body: JSON.stringify(buildNATSUpdatePayload(draft, newStreamMaxBytes)),
+      }, token);
+      if (controller.signal.aborted) return;
+      consumeWrite();
+      const snapshot = readNATSSnapshot(saved, t("common.loadFailed"));
+      setBase(snapshot); setDraft(snapshot); notifyAdminNotice(t("admin.nats.saved"));
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (error instanceof ApiError && ((error.status === 409 && error.code === "NATS_CONFIG_CONFLICT") || (error.status === 428 && error.code === "NATS_CONFIG_REVISION_REQUIRED"))) {
+        setConflict(true); setLatest(undefined);
+      } else if (error instanceof ApiError && error.code === "NATS_CREDENTIAL_DECISION_REQUIRED") {
+        setMessage(t("admin.nats.credentialDecision"));
+      } else if (error instanceof ApiError && error.status >= 200 && error.status < 300 && error.code === "API_RESPONSE_EMPTY") {
+        consumeWrite(); setMessage(t("admin.ai.noRevision"));
+      } else { setMessage(cleanError(error) || t("admin.ai.configSaveFailed")); }
+    } finally { active.current = null; if (!controller.signal.aborted) setSaving(false); }
   }
 
   function updateTask(index: number, patch: Partial<NATSTaskConfig>) {
@@ -56,6 +107,18 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
 
   return (
     <div className="grid gap-4">
+      {message && <p className="surface p-4" role="status">{message}</p>}
+      {canWrite && (conflict || !validConfigRevision(base.revision)) && <section className="surface grid gap-3 p-4" role="alert">
+        <strong>{t(conflict ? "admin.ai.configConflict" : "admin.ai.noRevision")}</strong>
+        <button className="button-secondary focus-ring w-fit" disabled={saving} type="button" onClick={() => void compare()}>{t("admin.ai.compareLatest")}</button>
+        {latest && <><h3 className="font-bold">{t("admin.ai.serverVersion")}</h3>
+          <dl><dt>{t("admin.nats.url")}</dt><dd>{latest.url}</dd><dt>{t("admin.nats.username")}</dt><dd>{latest.username}</dd></dl>
+          <pre className="max-h-64 overflow-auto text-xs">{JSON.stringify({ enabled: latest.enabled, subjectPrefix: latest.subjectPrefix, realtime: latest.realtime, jetStream: latest.jetStream, tasks: latest.tasks }, null, 2)}</pre>
+          <p>{t("admin.nats.reviewSecrets")}</p>
+          <div className="flex flex-wrap gap-2"><button className="button-secondary focus-ring" type="button" onClick={() => acceptLatest(true)}>{t("admin.ai.applyEdits")}</button>
+            <button className="button-secondary focus-ring" type="button" onClick={() => acceptLatest(false)}>{t("admin.ai.discardEdits")}</button></div>
+        </>}
+      </section>}
       <fieldset disabled={!canWrite || saving} className="grid min-w-0 gap-4">
       <section className="surface rounded-lg p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -66,7 +129,7 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
               {statusText}{draft.status.lastError ? ` / ${draft.status.lastError}` : ""}
             </p>
           </div>
-          <button className="button-primary focus-ring" disabled={saving || invalidCapacity} type="button" onClick={() => void save()}>
+          <button className="button-primary focus-ring" disabled={!writable || saving || invalidCapacity} type="button" onClick={() => void save()}>
             {saving ? t("admin.saving") : t("admin.nats.save")}
           </button>
         </div>
@@ -99,6 +162,7 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
             {t("admin.nats.password")}
             <input
               className="field mt-2"
+              aria-label={t("admin.nats.password")}
               value={draft.password ?? ""}
               autoComplete="new-password"
               disabled={draft.clearPassword}
@@ -115,6 +179,7 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
             {t("admin.nats.token")}
             <input
               className="field mt-2"
+              aria-label={t("admin.nats.token")}
               value={draft.token ?? ""}
               autoComplete="off"
               disabled={draft.clearToken}
@@ -221,7 +286,7 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
 
 const importProviders = ["modrinth", "curseforge", "github"] as const;
 const importConfigPath = "/api/v1/admin/config/mod-imports";
-const validImportRevision = (revision?: string) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision);
+const validConfigRevision = (revision?: string) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision);
 
 function readImportConfig(value: ModImportConfig, invalidMessage: string): ModImportConfig {
   if (!value || typeof value.userAgent !== "string" || !Number.isSafeInteger(value.requestTimeoutSeconds) ||
@@ -278,7 +343,7 @@ function ModImportConfigPanel({ token, canWrite }: { token: string; canWrite: bo
     inFlight.current = true; setSaving(true); setLatest(undefined); setMessage("");
     try {
       const config = readImportConfig(await apiRequest<ModImportConfig>(importConfigPath, { cache: "no-store" }, token), t("common.loadFailed"));
-      if (!validImportRevision(config.revision)) { setMessage(t("admin.ai.noRevision")); return; }
+      if (!validConfigRevision(config.revision)) { setMessage(t("admin.ai.noRevision")); return; }
       setLatest(config);
     } catch (error) { setMessage(cleanError(error) || t("common.loadFailed")); }
     finally { inFlight.current = false; setSaving(false); }
@@ -306,7 +371,7 @@ function ModImportConfigPanel({ token, canWrite }: { token: string; canWrite: bo
     setMessage(targetChanged ? t("admin.modImport.reviewCredential") : "");
   }
 
-  const writable = canWrite && validImportRevision(base?.revision) && !conflict;
+  const writable = canWrite && validConfigRevision(base?.revision) && !conflict;
   async function save() {
     if (!base || !draft || !writable || inFlight.current) return;
     inFlight.current = true; setSaving(true); setMessage("");
@@ -344,7 +409,7 @@ function ModImportConfigPanel({ token, canWrite }: { token: string; canWrite: bo
     <div className="grid gap-4">
       {!canWrite && <p className="surface p-4" role="status">{t("admin.ai.readOnly")}</p>}
       {message && <p className="surface p-4" role="status">{message}</p>}
-      {canWrite && !validImportRevision(base?.revision) && <section className="surface p-4">
+      {canWrite && !validConfigRevision(base?.revision) && <section className="surface p-4">
         <p>{t("admin.ai.noRevision")}</p><button className="button-secondary focus-ring mt-2" type="button" disabled={saving} onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button>
       </section>}
       {conflict && <section className="surface grid gap-3 p-5" role="alert">

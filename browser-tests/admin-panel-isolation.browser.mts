@@ -282,9 +282,9 @@ test("the collapsed mobile admin header leaves the failed panel and its retry di
 
 for (const supportsCapacity of [true, false]) {
   test(`the queue panel sends only explicitly edited stream budgets (server supports capacity=${supportsCapacity})`, { timeout: 25_000 }, async () => {
-    const writes: Array<{ jetStream: { newStreamMaxBytes?: number }; outboxEnabled: boolean }> = [];
+    const writes: Array<{ revision: string; jetStream: { newStreamMaxBytes?: number }; outboxEnabled: boolean }> = [];
     const settings = {
-      enabled: false, url: "nats://queue.example.invalid:4222", username: "", hasPassword: false, hasToken: false, subjectPrefix: "mcmods", tasks: [], outboxEnabled: true, realtime: false,
+      revision: "a".repeat(64), enabled: false, url: "nats://queue.example.invalid:4222", username: "", hasPassword: false, hasToken: false, subjectPrefix: "mcmods", tasks: [], outboxEnabled: true, realtime: false,
       jetStream: { enabled: false, stream: "MCMODS_TASKS", maxDeliver: 8, ackWaitSeconds: 300, publishTimeoutSeconds: 5, ...(supportsCapacity ? { newStreamMaxBytes: 256 * 1024 * 1024 } : {}) },
       status: { enabled: false, connected: false, jetStream: false, url: "", subjectPrefix: "mcmods", tasks: [] },
     };
@@ -318,6 +318,7 @@ for (const supportsCapacity of [true, false]) {
       assert.equal(writes.length, 1);
       assert.equal(writes[0].jetStream.newStreamMaxBytes, supportsCapacity ? 34_078_720 : undefined);
       assert.equal(writes[0].outboxEnabled, true);
+      assert.equal(writes[0].revision, settings.revision);
     } finally { await browser.close(); }
   });
 }
@@ -340,5 +341,140 @@ test("dead letters stay readable when queue settings fail and repeat searches re
     await page.getByRole("button", { name: "Search", exact: true }).click();
     await page.getByText("fixture / event-2", { exact: true }).waitFor();
     assert.equal(letterReads, 2);
+  } finally { await browser.close(); }
+});
+
+test("NATS configuration conflicts retain drafts and require a fresh credential decision", { timeout: 30_000 }, async () => {
+  const initial = {
+    revision: "a".repeat(64), enabled: false, url: "nats://old.example.invalid:4222", username: "worker",
+    hasPassword: true, hasToken: true, subjectPrefix: "previous", tasks: [], outboxEnabled: true, realtime: false,
+    jetStream: { enabled: false, stream: "MCMODS_TASKS", maxDeliver: 8, ackWaitSeconds: 300, publishTimeoutSeconds: 5 },
+    status: { enabled: false, connected: false, jetStream: false, url: "", subjectPrefix: "previous", tasks: [] },
+  };
+  const latest = { ...initial, revision: "b".repeat(64), subjectPrefix: "new-prefix" };
+  const writes: Array<Record<string, unknown>> = [];
+  let reads = 0;
+  const browser = await fixture.page(({ path, method, body }) => {
+    if (path === "/api/v1/admin/infrastructure/dead-letters") return { data: { items: [], hasMore: false, nextCursor: "", limit: 50 } };
+    if (path === "/api/v1/admin/config/nats") {
+      if (method === "GET") return { data: ++reads === 1 ? initial : latest };
+      const write = JSON.parse(body) as typeof writes[number];
+      writes.push(write);
+      if (writes.length === 1) return { status: 400, code: "NATS_CREDENTIAL_DECISION_REQUIRED", error: "Choose credentials" };
+      if (writes.length === 2) return { status: 409, code: "NATS_CONFIG_CONFLICT", error: "Changed" };
+      return { data: { ...latest, url: write.url, hasPassword: true, hasToken: false, revision: "c".repeat(64) } };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/admin");
+    await page.locator('[data-admin-group="infrastructure"]').click();
+    await page.locator('[data-admin-panel="nats"]').click();
+    const save = page.getByRole("button", { name: "Save NATS settings", exact: true });
+    const url = page.getByRole("textbox", { name: "Server URL", exact: true });
+    const password = page.getByLabel("Password", { exact: true });
+    const clearToken = page.getByRole("checkbox", { name: "Clear the saved token", exact: true });
+    await url.fill("nats://next.example.invalid:4222");
+    await save.click();
+    await page.getByText("The connection target or account changed.", { exact: false }).waitFor();
+    assert.equal(await url.inputValue(), "nats://next.example.invalid:4222");
+    await password.fill("fixture-first");
+    await clearToken.check();
+    await save.click();
+    const compare = page.getByRole("button", { name: "Compare with the latest settings", exact: true });
+    await compare.waitFor();
+    assert.equal(await save.isDisabled(), true);
+    assert.equal(await password.inputValue(), "fixture-first");
+    await compare.click();
+    await page.getByRole("button", { name: "Apply my edited fields to the latest settings", exact: true }).click();
+    assert.equal(await password.inputValue(), "");
+    assert.equal(await clearToken.isChecked(), false);
+    assert.equal(await url.inputValue(), "nats://next.example.invalid:4222");
+    await password.fill("fixture-reconfirmed");
+    await clearToken.check();
+    await save.click();
+    await page.getByRole("alertdialog").waitFor();
+    assert.equal(reads, 2);
+    assert.deepEqual(writes.map(write => write.revision), [initial.revision, initial.revision, latest.revision]);
+    assert.equal(writes[2].subjectPrefix, latest.subjectPrefix);
+    assert.equal(writes[2].password, "fixture-reconfirmed");
+    assert.equal(writes[2].clearToken, true);
+    assert.equal(await password.inputValue(), "");
+  } finally { await browser.close(); }
+});
+
+test("log category retention inherits the live global period until set explicitly", { timeout: 20_000 }, async () => {
+  const config = { enabled: true, defaultDays: 45, categoryDays: { download: 0, api_access: 120 } };
+  const writes: Array<typeof config> = [];
+  let cleans = 0;
+  const browser = await fixture.page(({ path, method, body }) => {
+    if (path === "/api/v1/admin/logs/config") {
+      if (method === "GET") return { data: config };
+      const next = JSON.parse(body) as typeof config; writes.push(next); return { data: { config: next } };
+    }
+    if (path === "/api/v1/admin/logs/cleanup") { cleans++; return { data: { config, deleted: {} } }; }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/admin");
+    await page.locator('[data-admin-group="logs"]').click();
+    await page.locator('[data-admin-panel="logs-cleanup"]').click();
+    const globalDays = page.getByRole("spinbutton", { name: "Default retention days" });
+    const download = page.getByRole("spinbutton", { name: /download/i });
+    const api = page.getByRole("spinbutton", { name: "API access logs", exact: true });
+    await download.waitFor();
+    assert.equal(await download.inputValue(), "");
+    assert.equal(await download.getAttribute("placeholder"), "45");
+    assert.equal(await api.inputValue(), "120");
+    await globalDays.fill("0");
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    assert.equal(await save.isDisabled(), true);
+    await globalDays.fill("15");
+    assert.equal(await download.getAttribute("placeholder"), "15");
+    await api.fill("");
+    await download.fill("30");
+    await save.click();
+    await page.getByText("Log cleanup policy saved.", { exact: true }).waitFor();
+    assert.deepEqual(writes, [{ enabled: true, defaultDays: 15, categoryDays: { download: 30, api_access: 0 } }]);
+    assert.equal(await api.getAttribute("placeholder"), "15");
+    assert.equal(await api.inputValue(), "");
+    assert.equal(cleans, 0);
+  } finally { await browser.close(); }
+});
+
+test("an unversioned NATS read or committed receipt cannot enable another save", { timeout: 25_000 }, async () => {
+  const initial = {
+    enabled: false, url: "nats://queue.example.invalid:4222", username: "", hasPassword: false, hasToken: false, subjectPrefix: "scope", tasks: [], outboxEnabled: true, realtime: false,
+    jetStream: { enabled: false, stream: "QUEUE", maxDeliver: 8, ackWaitSeconds: 300, publishTimeoutSeconds: 5 },
+    status: { enabled: false, connected: false, jetStream: false, url: "", subjectPrefix: "scope", tasks: [] },
+  };
+  let reads = 0;
+  const writes: string[] = [];
+  const browser = await fixture.page(({ path, method, body }) => {
+    if (path === "/api/v1/admin/infrastructure/dead-letters") return { data: { items: [], hasMore: false, nextCursor: "", limit: 50 } };
+    if (path === "/api/v1/admin/config/nats") {
+      if (method === "GET") return { data: ++reads === 1 ? initial : { ...initial, revision: String(reads).repeat(64) } };
+      writes.push(JSON.parse(body).revision);
+      if (writes.length === 1) return { status: 428, error: "Read expected", code: "NATS_CONFIG_REVISION_REQUIRED" };
+      return { status: 204 };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/admin");
+    await page.locator('[data-admin-group="infrastructure"]').click();
+    await page.locator('[data-admin-panel="nats"]').click();
+    const save = page.getByRole("button", { name: "Save NATS settings", exact: true });
+    const compare = page.getByRole("button", { name: "Compare with the latest settings", exact: true });
+    const discard = page.getByRole("button", { name: "Discard my draft and use the latest settings", exact: true });
+    await compare.waitFor();
+    assert.equal(await save.isDisabled(), true);
+    await compare.click(); await discard.click(); await save.click();
+    await page.getByText("The configuration changed. Your draft is preserved.", { exact: true }).waitFor();
+    assert.equal(await save.isDisabled(), true);
+    await compare.click(); await discard.click(); await save.click();
+    await compare.waitFor();
+    assert.equal(await save.isDisabled(), true);
+    assert.deepEqual(writes, ["2".repeat(64), "3".repeat(64)]);
   } finally { await browser.close(); }
 });

@@ -5,6 +5,7 @@ import { buildNATSUpdatePayload, bytesPerMiB, streamCapacityBytes, type NATSConf
 
 test("NATS update payload always includes reliability settings and explicit secret actions", () => {
   const draft: NATSConfig = {
+    revision: "a".repeat(64),
     enabled: true,
     url: "nats://127.0.0.1:4222",
     username: "worker",
@@ -23,6 +24,7 @@ test("NATS update payload always includes reliability settings and explicit secr
   };
 
   assert.deepEqual(buildNATSUpdatePayload(draft), {
+    revision: "a".repeat(64),
     enabled: true,
     url: "nats://127.0.0.1:4222",
     username: "worker",

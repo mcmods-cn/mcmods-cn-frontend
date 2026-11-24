@@ -3754,6 +3754,8 @@ const en = {
       token: "Token",
       tokenHint: "Token authentication takes precedence over username and password",
       secretSaved: "Saved; leave blank to keep unchanged",
+      credentialDecision: "The connection target or account changed. Replace or explicitly clear each affected saved credential before saving.",
+      reviewSecrets: "Adopting the latest settings clears pending password and token changes. Enter replacements or select the clear options again if needed.",
       secretWillClear: "The saved credential will be cleared",
       clearPassword: "Clear the saved password",
       clearToken: "Clear the saved token",
@@ -4369,6 +4371,7 @@ const en = {
       scopeHint: "This bounded view contains only the current backend process. It starts over after a backend restart. Sensitive tokens, passwords, connection strings, and personal data are redacted before delivery.",
     },
     logCleanup: {
+      inheritDays: "Leave a category blank to use the default retention period.",
       title: "Log cleanup",
       description: "Configure retention for system, administration, security, API, file, and AI logs in one place.",
       category: "Log category",
