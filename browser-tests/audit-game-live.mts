@@ -47,13 +47,21 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
   const backend = new URL(runtime.apiOrigin);
   const frontend = new URL(runtime.frontendOrigin);
   const oss = new URL(runtime.ossOrigin);
-  for (const origin of [backend, frontend, oss]) assert(origin.hostname === "127.0.0.1" && origin.protocol === "http:" && !origin.username && !origin.password && origin.pathname === "/" && !origin.search && !origin.hash, "Use only the owned local HTTP services");
+  for (const endpoint of [backend, frontend, oss]) {
+    assert(endpoint.hostname === "127.0.0.1" && endpoint.port && ["http:", "https:"].includes(endpoint.protocol) && !endpoint.username && !endpoint.password && !endpoint.search && !endpoint.hash, "Use only the declared loopback services");
+  }
+  assert(frontend.pathname === "/" && oss.pathname === "/", "Site and storage must be loopback roots");
+  assert(backend.pathname === "/" || (backend.protocol === "https:" && backend.origin === frontend.origin && backend.pathname === "/service"), "The API must be the declared loopback root or HTTPS service path");
+  if (frontend.protocol === "https:") assert(backend.origin === frontend.origin && oss.origin === frontend.origin, "The release uses its verified same-origin TLS gateway");
   const config = await fetch(new URL("/authentication-write-config", frontend), { redirect: "error", signal: AbortSignal.timeout(10_000) });
   assert.equal(config.status, 200);
   const { apiBaseURL } = await config.json();
   assert.equal(typeof apiBaseURL, "string");
   const api = new URL(apiBaseURL);
   assert([backend.href, frontend.href].includes(api.href), "The frontend must use the owned backend or its same-origin gateway");
+  const apiPrefix = api.pathname.replace(/\/$/, "");
+  const apiBase = api.origin + apiPrefix;
+  const apiPath = (path: string) => apiPrefix + path;
   const source = await readFile(runtime.samplePath);
   const sampleHash = createHash("sha256").update(source).digest("hex");
   assert.equal(sampleHash, runtime.sampleSha256);
@@ -70,14 +78,14 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
     const context = await browser.newContext({ locale: "en-US", serviceWorkers: "block" });
     contexts.push(context);
     await context.addCookies([{ name: "mcmods-ui-locale", value: "en-US", url: frontend.origin }]);
-    if (token) await context.addCookies([{ name: "mcmods_session", value: token, url: api.origin, httpOnly: true, sameSite: "Lax" }]);
+    if (token) await context.addCookies([{ name: "mcmods_session", value: token, url: api.origin, httpOnly: true, secure: api.protocol === "https:", sameSite: "Lax" }]);
     // No application/API/OSS transport is replaced. Unrelated external media
     // stays outside the owned acceptance environment.
     await context.route(url => ![api.origin, frontend.origin, oss.origin].includes(url.origin), route => route.abort());
     return context;
   }
   async function get(context: BrowserContext, path: string) {
-    const response = await context.request.get(`${api.origin}${path}`);
+    const response = await context.request.get(`${apiBase}${path}`);
     const json = await response.json();
     assert.equal(response.status(), 200, `${path}: ${json.code || json.error || response.status()}`);
     assert.notEqual(json.data, undefined, `${path} must return the actual API data envelope`);
@@ -93,14 +101,14 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
     page.on("pageerror", error => errors.push(error.message));
     page.on("response", response => {
       const url = new URL(response.url());
-      if (url.origin === api.origin && url.pathname.startsWith("/api/")) traffic.push({ method: response.request().method(), path: url.pathname, status: response.status() });
+      if (url.origin === api.origin && url.pathname.startsWith(apiPath("/api/"))) traffic.push({ method: response.request().method(), path: url.pathname.slice(apiPrefix.length), status: response.status() });
     });
     await page.goto(`${frontend.origin}/mods/${encodeURIComponent(runtime.projectSiteId)}/data/edit?import=exporter&version=${encodeURIComponent(runtime.targetVersionPublicId)}`);
     await page.getByRole("heading", { name: "Edit or import mod data", exact: true }).waitFor();
     const fileInput = page.locator('input[type="file"][accept=".zip,application/zip"]:visible').first();
     await fileInput.waitFor();
     const createJobPath = `/api/v1/mods/${encodeURIComponent(runtime.projectSiteId)}/export-imports`;
-    const created = page.waitForResponse(response => new URL(response.url()).pathname === createJobPath && response.request().method() === "POST", { timeout: 60_000 });
+    const created = page.waitForResponse(response => new URL(response.url()).pathname === apiPath(createJobPath) && response.request().method() === "POST", { timeout: 60_000 });
     await fileInput.setInputFiles(runtime.samplePath);
     const jobResponse = await created;
     const jobEnvelope = await jobResponse.json();
@@ -149,7 +157,7 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
     }
     report.reviewResourceCount = resources;
     const anonymous = await context();
-    assert.equal((await anonymous.request.get(`${api.origin}/api/v1/export-revisions/${encodeURIComponent(reviewItem.id)}`)).status(), 403, "Pending revision must remain unavailable anonymously");
+    assert.equal((await anonymous.request.get(`${apiBase}/api/v1/export-revisions/${encodeURIComponent(reviewItem.id)}`)).status(), 403, "Pending revision must remain unavailable anonymously");
     const reviewPage = await reviewer.newPage();
     reviewPage.setDefaultTimeout(20_000);
     reviewPage.on("pageerror", error => errors.push(error.message));
@@ -162,7 +170,7 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
     await reviewPage.goto(`${frontend.origin}/reviews`);
     const card = reviewPage.locator("article").filter({ has: reviewPage.locator(`a[href*="importRevisionId=${reviewItem.id}"]`) });
     const reviewPath = new URL(reviewItem.reviewUrl, api.origin).pathname;
-    const reviewed = reviewPage.waitForResponse(response => new URL(response.url()).pathname === reviewPath && response.request().method() === "PATCH");
+    const reviewed = reviewPage.waitForResponse(response => new URL(response.url()).pathname === apiPath(reviewPath) && response.request().method() === "PATCH");
     await card.getByRole("button", { name: "Approve", exact: true }).click();
     const reviewResponse = await reviewed;
     assert.equal(reviewResponse.status(), 200, "Independent browser review must commit successfully");
