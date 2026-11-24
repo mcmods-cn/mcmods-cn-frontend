@@ -10,6 +10,9 @@ const common: APIHandler = ({ path }) => {
   if (path === "/api/v1/markdown/config") return { data: {} };
   if (path === "/api/v1/minecraft/versions") return { data: { versions: [{ code: "1.21", type: "release" }], loaders: [] } };
 };
+function projectActor(id: string, permission: string) {
+  return { id, username: id, email: `${id}@example.invalid`, sessionMarker: "x".repeat(43), roleCodes: [], permissionVersion: 1, rbacVersion: 1, permissionRules: [{ code: permission, allow: true, priority: 100 }] };
+}
 const controlled = (handler: APIHandler) => fixture.page(async request => await handler(request) ?? common(request));
 before(async () => fixture.start());
 after(async () => fixture.close());
@@ -256,6 +259,7 @@ test("OCT02 rating mutations are exclusive, keep the pending dialog and recover 
   const started = Promise.withResolvers<void>();
   const pending = Promise.withResolvers<APIReply>();
   const browser = await controlled(({ path, method }) => {
+    if (path === "/api/v1/auth/me") return { data: projectActor("reviewer1", "rating.create") };
     if (path === "/api/v1/content-projects/plugin/fixture-plugin") return { data: {
       id: "ratingpr1", siteId: "fixture-plugin", projectType: "plugin", defaultLocale: "en-US",
       localizations: [{ locale: "en-US", name: "Rating fixture", summary: "", bodyMarkdown: "" }],
@@ -356,6 +360,7 @@ test("OCT02 release upload freezes file metadata and keeps it available after fa
   const started = Promise.withResolvers<void>();
   const pending = Promise.withResolvers<APIReply>();
   const browser = await controlled(({ path, method, url }) => {
+    if (path === "/api/v1/auth/me") return { data: projectActor("uploader1", "project.download.upload.download1") };
     if (path === "/api/v1/content-projects/plugin/upload-fixture") return { data: {
       id: "download1", siteId: "upload-fixture", projectType: "plugin", defaultLocale: "en-US",
       localizations: [{ locale: "en-US", name: "Release fixture", summary: "", bodyMarkdown: "" }],
@@ -367,7 +372,7 @@ test("OCT02 release upload freezes file metadata and keeps it available after fa
     if (path === "/api/v1/content-metrics/download1") return { status: 503, error: "Unrelated synthetic metrics unavailable" };
     if (path === "/api/v1/comment-targets/plugin/download1/comments") return { data: { items: [], total: 0, target: { type: "plugin", key: "download1", title: "Release fixture", url: "/plugins/upload-fixture" }, nextCursor: "", capabilities: { canCreate: false } } };
     if (path === "/api/v1/ratings/plugin/download1") return { data: { targetType: "plugin", targetId: "download1", ratingCount: 0, overallAverage: 0, dimensions: [], heatScore: 0, engagement: { views: 0, downloads: 0, favorites: 0, comments: 0 }, canRate: false, canViewReviews: false } };
-    if (path === "/api/v1/projects/plugin/download1/files" && method === "GET") return { data: { items: [], source: url.searchParams.get("source"), limit: 20, hasMore: false, nextCursor: "", versions: ["1.21"], loaders: ["paper"], providers: {}, warnings: {}, canUpload: true, uploadPermission: "project.file.upload" } };
+    if (path === "/api/v1/projects/plugin/download1/files" && method === "GET") return { data: { items: [], source: url.searchParams.get("source"), limit: 20, hasMore: false, nextCursor: "", versions: ["1.21"], loaders: ["paper"], providers: {}, warnings: {}, canUpload: true, uploadPermission: "project.download.upload.download1" } };
     if (path === "/api/v1/projects/plugin/download1/files/uploads/presign") { uploads++; started.resolve(); return pending.promise; }
   });
   try {
