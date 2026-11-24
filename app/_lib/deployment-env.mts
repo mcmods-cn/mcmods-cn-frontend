@@ -108,7 +108,8 @@ function parsePublicURL(name: string, value: string, production: boolean, policy
   if (parsed.username || parsed.password) {
     throw new Error(`${name} must not contain credentials`);
   }
-  if (parsed.search || parsed.hash) {
+  // URL.search and URL.hash hide bare delimiters that remain in the serialized URL.
+  if (/[?#]/.test(parsed.href)) {
     throw new Error(`${name} must not contain a query string or fragment`);
   }
   if (policy.originOnly && parsed.pathname !== "/") {
