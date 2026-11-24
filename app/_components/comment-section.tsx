@@ -404,16 +404,9 @@ function CommentTree(props: CommentTreeProps) {
         ? parseCommentEditConflict(error.details)
         : undefined;
       if (current) {
-        props.onItemsChange((items) => items.map((item) => item.id === comment.id ? {
-          ...item,
-          body: current.body,
-          updatedAt: current.updatedAt,
-          deleted: current.deleted,
-          ...(current.deleted ? {
-            attachments: [], canEdit: false, canDelete: false, canPin: false,
-            canReply: false, canReact: false, canReport: false,
-          } : {}),
-        } : item));
+        props.onItemsChange((items) => current.deleted
+          ? applyCommentDeletion(items, comment.id, current.updatedAt)
+          : items.map((item) => item.id === comment.id ? { ...item, body: current.body, updatedAt: current.updatedAt } : item));
         props.onMessage(t("mods.comments.editConflict"));
         return;
       }
@@ -425,7 +418,7 @@ function CommentTree(props: CommentTreeProps) {
     if (!props.token || !window.confirm(t("mods.comments.deleteConfirm"))) return;
     try {
       await deleteComment(comment.id, props.token);
-      props.onItemsChange((items) => items.map((item) => item.id === comment.id ? { ...item, body: "", deleted: true } : item));
+      props.onItemsChange((items) => applyCommentDeletion(items, comment.id));
     } catch (error) {
       props.onMessage(apiErrorMessage(error, t, t("mods.comments.deleteFailed")));
     }
@@ -515,7 +508,7 @@ function CommentTree(props: CommentTreeProps) {
               onAcceptAnswer={props.onAcceptAnswer ? () => void props.onAcceptAnswer?.(item.id) : undefined}
             />
             {item.hasMoreReplies ? <button className="mt-2 text-sm font-bold text-[var(--accent)] hover:underline" type="button" onClick={() => void loadChildren(item)}>{t("mods.comments.loadReplies", { count: item.childCount })}</button> : null}
-            {props.replyTo?.id === item.id ? (
+            {item.canReply && props.replyTo?.id === item.id ? (
               <form className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => props.onReplySubmit(event, item, replyAttachments.map((attachment) => attachment.id))}>
                 <p className="mb-2 text-sm font-bold text-[var(--muted)]">{t("mods.comments.replyingTo", { name: item.author.username })}</p>
                 <CommentMarkdownEditor attachments={replyAttachments} inputRef={replyInput} maxLength={10000} onAttachmentsChange={setReplyAttachments} onChange={props.onReplyBodyChange} onError={props.onMessage} onUploadingChange={setUploadingReplyAttachments} placeholder={t("mods.comments.placeholder")} token={props.token} value={props.replyBody} />
@@ -735,6 +728,22 @@ function mergeComments(current: CommentItem[], incoming: CommentItem[]) {
   const merged = new Map(current.map((item) => [item.id, item]));
   for (const item of incoming) merged.set(item.id, item);
   return [...merged.values()];
+}
+
+function applyCommentDeletion(items: CommentItem[], id: string, updatedAt?: string): CommentItem[] {
+  return items.map((item) => {
+    if (item.id === id) {
+      return {
+        ...item, body: "", deleted: true, pinned: false, pinnedAt: undefined, attachments: [],
+        canEdit: false, canDelete: false, canPin: false, canReply: false, canReact: false, canReport: false,
+        updatedAt: updatedAt ?? item.updatedAt,
+      };
+    }
+    if (item.parent?.id === id) {
+      return { ...item, parent: { ...item.parent, bodySummary: "", deleted: true } };
+    }
+    return item;
+  });
 }
 
 function appendPublishedComment(current: CommentItem[], incoming: CommentItem) {

@@ -580,3 +580,40 @@ test("a committed comment edit receipt preserves its author and advances the nex
     assert.deepEqual(edits.map(edit => edit.baseUpdatedAt), [stamp, versions[0]]);
   } finally { await browser.close(); }
 });
+
+test("a committed comment deletion clears attachments, actions and loaded reply previews", { timeout: 30_000 }, async () => {
+  const parentBody = "Deletion fixture parent";
+  const childBody = "Reply stays visible";
+  let deletes = 0;
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/comment-targets/community_post/post00001/comments") {
+      return { data: { ...comments(), items: [
+        { ...comment("comment01", parentBody), canDelete: true, canEdit: true, pinned: true, childCount: 1,
+          attachments: [{ fileId: "testfile1", fileName: "fixture.txt", contentType: "text/plain", sizeBytes: 7, kind: "file", status: "ready", url: "/test-file" }] },
+        { ...comment("comment02", childBody), parentId: "comment01", depth: 1, floorNumber: 2,
+          parent: { id: "comment01", authorName: "Other commenter", bodySummary: parentBody, deleted: false } },
+      ] } };
+    }
+    if (request.path === "/api/v1/comments/comment01" && request.method === "DELETE") {
+      deletes++;
+      return { data: { deleted: true } };
+    }
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/discussions/post00001`);
+    const parent = page.locator('[data-comment-id="comment01"]');
+    const child = page.locator('[data-comment-id="comment02"]');
+    await parent.getByRole("link", { name: /fixture\.txt/ }).waitFor();
+    await child.getByRole("button", { name: new RegExp(parentBody) }).waitFor();
+    page.once("dialog", dialog => dialog.accept());
+    await parent.getByRole("button", { name: "Delete", exact: true }).click();
+    await parent.getByText(parentBody, { exact: true }).waitFor({ state: "detached" });
+    assert.equal(await parent.getByRole("link", { name: /fixture\.txt/ }).count(), 0);
+    assert.equal(await parent.getByRole("button", { name: "Edit", exact: true }).count(), 0);
+    assert.equal(await child.getByRole("button", { name: new RegExp(parentBody) }).count(), 0);
+    await child.getByText(childBody, { exact: true }).waitFor();
+    assert.equal(deletes, 1);
+  } finally { await browser.close(); }
+});
