@@ -9,6 +9,7 @@ import { runAuthenticationMutation } from "../_lib/authentication-mutation.mts";
 import { oauthProviders, oauthProviderStartPath } from "../_lib/oauth-navigation.mts";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { normalizeInternalPath } from "../_lib/navigation";
+import { usernameValidationKey } from "../_lib/username-validation";
 import { MinecraftLanguagePicker } from "./minecraft-language-picker";
 import { TimezonePicker } from "./timezone-picker";
 
@@ -54,9 +55,9 @@ export function SiteLoginPanel() {
     event.preventDefault();
     setMessage("");
     if (mode === "register") {
-      const validation = validateUsername(username, t);
+      const validation = usernameValidationKey(username);
       if (validation) {
-        setMessage(validation);
+        setMessage(t(validation));
         return;
       }
     }
@@ -255,13 +256,6 @@ function LanguageSelect({ label, value, onChange }: { label: string; value: stri
       </select>
     </label>
   );
-}
-
-function validateUsername(username: string, t: (key: string) => string) {
-  const value = username.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
-  if ([...value].length < 1 || [...value].length > 32) return t("login.usernameLength");
-  if (/[\p{Cc}\p{White_Space}]/u.test(value)) return t("login.usernamePattern");
-  return "";
 }
 
 function PasswordStrength({ password }: { password: string }) {

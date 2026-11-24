@@ -19,6 +19,8 @@ import { UserProfileOverview } from "./user-profile-overview";
 import { UserAvatar } from "./user-avatar";
 import { UserStatisticsPanel } from "./user-statistics-panel";
 import { FavoriteModpackExport } from "./favorite-modpack-export";
+import { usernameValidationKey } from "../_lib/username-validation";
+import { useEditorWrite } from "./editor/use-editor-write";
 import { ProjectFollowsPanel } from "./project-follows-panel";
 
 type FileQuota = {
@@ -79,6 +81,7 @@ function UserHomeSession() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [notificationSettingsLoaded, setNotificationSettingsLoaded] = useState(false);
   const profileInitialized = useRef(false);
+  const avatarWrite = useEditorWrite();
   const notificationInitialized = useRef(false);
   const initialErrorText = useEffectEvent((reason: unknown) => reason instanceof Error ? reason.message : t("common.loadFailed"));
   const [emailNotifications, setEmailNotifications] = useState(false);
@@ -126,13 +129,14 @@ function UserHomeSession() {
     };
   }, [initialLoadAttempt, token]);
 
-  async function updateProfile(payload: Record<string, unknown>) {
+  async function updateProfile(payload: Record<string, unknown>, signal?: AbortSignal) {
     if (!token) return null;
     const nextProfile = await apiRequest<ProfileSettings>(
       "/api/v1/users/me/profile-settings",
-      { method: "PUT", body: JSON.stringify(payload) },
+      { method: "PUT", body: JSON.stringify(payload), signal },
       token,
     );
+    signal?.throwIfAborted();
     setProfile(nextProfile);
     if ("username" in payload) setUsername((current) => current === payload.username ? nextProfile.username : current);
     if ("signature" in payload) setSignature((current) => current === payload.signature ? nextProfile.signature : current);
@@ -163,7 +167,7 @@ function UserHomeSession() {
   }
 
   async function saveUsername() {
-    const validation = validateEditableUsername(username);
+    const validation = usernameValidationKey(username);
     if (validation) {
       setMessage(t(validation));
       return;
@@ -238,25 +242,30 @@ function UserHomeSession() {
 
   async function uploadAvatar(file: File) {
     if (!profile || !token) return;
-    const apng = await isAPNG(file);
-    const animated = apng || /\.(gif|apng)$/i.test(file.name) || file.type === "image/gif" || file.type === "image/apng";
-    if (animated && !profile.canUseAnimatedAvatar) {
-      setMessage(t("user.animatedAvatarPermissionRequired"));
-      return;
-    }
+    const operation = avatarWrite.beginWrite();
+    if (!operation) return;
     setSavingProfile(true);
     setMessage("");
     try {
+      const { signal } = operation;
+      const apng = await isAPNG(file);
+      signal.throwIfAborted();
+      const animated = apng || /\.(gif|apng)$/i.test(file.name) || file.type === "image/gif" || file.type === "image/apng";
+      if (animated && !profile.canUseAnimatedAvatar) {
+        setMessage(t("user.animatedAvatarPermissionRequired"));
+        return;
+      }
       const uploadFile = apng && file.type !== "image/apng"
         ? new File([file], file.name, { type: "image/apng", lastModified: file.lastModified })
         : file;
-      const uploaded = await uploadUserFileToOSS(uploadFile, token, "avatar");
-      await updateProfile({ avatarFileId: uploaded.id });
+      const uploaded = await uploadUserFileToOSS(uploadFile, token, "avatar", undefined, signal);
+      signal.throwIfAborted();
+      await updateProfile({ avatarFileId: uploaded.id }, signal);
       setMessage(t("user.avatarUpdated"));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("user.avatarUpdateFailed"));
+      if (!operation.signal.aborted) setMessage(error instanceof Error ? error.message : t("user.avatarUpdateFailed"));
     } finally {
-      setSavingProfile(false);
+      if (avatarWrite.finishWrite(operation)) setSavingProfile(false);
     }
   }
 
@@ -433,8 +442,8 @@ function UserHomeSession() {
                     <label className="font-semibold" htmlFor="profile-username">{t("user.username")}</label>
                     <p className="mt-1 text-sm text-[var(--muted)]">{t("user.usernameDescription")}</p>
                     <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                      <input id="profile-username" className="field min-w-0 flex-1" maxLength={32} value={username} onChange={(event) => setUsername(event.target.value)} />
-                      <button className="button-primary focus-ring shrink-0" disabled={savingProfile || Boolean(validateEditableUsername(username)) || username === profile.username} type="button" onClick={() => void saveUsername()}>{t("user.saveUsername")}</button>
+                      <input id="profile-username" className="field min-w-0 flex-1" value={username} onChange={(event) => setUsername(event.target.value)} />
+                      <button className="button-primary focus-ring shrink-0" disabled={savingProfile || Boolean(usernameValidationKey(username)) || username === profile.username} type="button" onClick={() => void saveUsername()}>{t("user.saveUsername")}</button>
                     </div>
                   </div>
                   <div className="rounded-lg border border-[var(--line)] p-4">
@@ -861,13 +870,6 @@ function formatTokenCount(value: number, locale: string) {
 
 function utf8Bytes(value: string) {
   return new TextEncoder().encode(value).length;
-}
-
-function validateEditableUsername(username: string) {
-  const value = username.trim();
-  if ([...value].length < 1 || [...value].length > 32) return "login.usernameLength";
-  if (value !== username || /[\p{C}\s]/u.test(value)) return "login.usernamePattern";
-  return "";
 }
 
 async function isAPNG(file: File) {

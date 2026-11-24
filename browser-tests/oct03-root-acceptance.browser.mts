@@ -144,11 +144,14 @@ test("OCT02-FP-018: saving one profile field preserves other drafts and edits ma
     assert.equal(await signature.inputValue(), "Newer signature during request");
     assert.equal(await name.inputValue(), "NewerNameDraft");
     assert.deepEqual(writes, [{ signature: "Submitted signature" }]);
+    const unicodeName = "🧑‍💻" + "😀".repeat(29);
+    assert.equal([...unicodeName].length, 32);
+    await name.fill(unicodeName);
     await page.getByRole("button", { name: "Save username", exact: true }).click();
     await page.getByRole("status").filter({ hasText: "Synthetic profile save unavailable" }).waitFor();
     assert.equal(await signature.inputValue(), "Newer signature during request");
-    assert.equal(await name.inputValue(), "NewerNameDraft");
-    assert.deepEqual(writes[1], { username: "NewerNameDraft" });
+    assert.equal(await name.inputValue(), unicodeName);
+    assert.deepEqual(writes[1], { username: unicodeName });
   } finally { firstWrite.resolve({ data: settings }); await browser.close(); }
 });
 
@@ -554,4 +557,40 @@ test("project automation viewers read configuration or history independently of 
       assert.equal(await panel.locator('input[name="url"]').count(), 0);
     } finally { await browser.close(); }
   }
+});
+
+test("account settings cancel an unfinished avatar upload when its owner changes", { timeout: 20_000 }, async () => {
+  let identity = "original";
+  const presign = "/api/v1/users/me/oss/uploads/presign";
+  const release = Promise.withResolvers<void>();
+  const writes: string[] = [];
+  const browser = await fixture.page(async ({ path, method }) => {
+    if (path === "/api/v1/auth/me") return { data: { ...reader, id: identity, username: identity } };
+    if (path === "/api/v1/users/me/profile-settings") {
+      if (method === "PUT") writes.push(identity);
+      return { data: { publicId: identity, username: identity, signature: "", signatureMaxBytes: 1000, avatarUrl: "", profileBackgroundUrl: "", timezone: "UTC", messageReceive: true, showOnlineStatus: false, onlineStatus: "hidden", publicCardStatSlots: [], cardStatisticOptions: [], canUpdateAvatar: true, canUseAnimatedAvatar: false } };
+    }
+    if (path === "/api/v1/users/me/overview") return { data: { followers: 0, following: 0, blocked: 0, aiBalance: null } };
+    if (path === "/api/v1/users/me/notification-settings") return { data: { emailEnabled: false, projectUpdatesEnabled: true } };
+    if (path === "/api/v1/users/me/content-languages") return { data: { primaryLocale: "en-US", secondaryLocale: "zh-CN", editableLocales: ["en-US","zh-CN"] } };
+    if (path === presign) {
+      await release.promise;
+      return { data: { uploadRequired: false, file: { id: "old-avatar", objectKey: "avatar/old.png", status: "active", scanStatus: "clean" } } };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/user?section=settings");
+    const submitted = page.waitForRequest(req => new URL(req.url()).pathname === presign);
+    await page.locator('input[type="file"]').setInputFiles({ name: "avatar.png", mimeType: "image/png", buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aIIcAAAAASUVORK5CYII=", "base64") });
+    await submitted;
+    const aborted = page.waitForEvent("requestfailed", { predicate: req => new URL(req.url()).pathname === presign, timeout: 4000 });
+    void aborted.catch(() => {});
+    identity = "next-account";
+    await page.evaluate(() => dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:avatar-owner" })));
+    await page.getByRole("heading", { name: identity, exact: true }).waitFor();
+    assert.equal((await aborted).failure()?.errorText, "net::ERR_ABORTED");
+    release.resolve();
+    assert.deepEqual(writes, []);
+  } finally { release.resolve(); await browser.close(); }
 });
