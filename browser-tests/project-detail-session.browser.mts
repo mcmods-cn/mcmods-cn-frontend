@@ -187,3 +187,37 @@ test("a changelog category link pages its project group and follows browser hist
     assert.ok(requests.some(([group, cursor]) => group === category.id && cursor === "opaque+/="));
   } finally { await browser.close(); }
 });
+
+test("view receipts survive reload only after success and apply to the current viewer", { timeout: 30_000 }, async () => {
+  const writes: string[] = [];
+  let viewer = "";
+  const root = "/api/v1/content-metrics/r3publicmod";
+  const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/auth/me") return viewer ? { data: syntheticActor(viewer) } : { status: 401, error: "Guest" };
+    if (request.path === `/api/v1/mods/${publicSlug}`) return { data: syntheticMod(false) };
+    if (request.path === "/api/v1/projects/r3publicmod/follow") return { data: { followed: false } };
+    if (request.path === root + "/view" && request.method === "POST") {
+      writes.push(viewer || "guest");
+      return writes.length === 1 ? { status: 503, error: "View not recorded" } : { data: {} };
+    }
+    return supportEndpoints(request);
+  });
+  try {
+    const { page } = browser;
+    async function visit(first = false) {
+      const read = page.waitForResponse(response => new URL(response.url()).pathname === root);
+      if (first) await page.goto(`${fixture.origin}/mods/${publicSlug}`); else await page.reload();
+      await read;
+    }
+    await visit(true);
+    await visit();
+    assert.deepEqual(writes, ["guest", "guest"], "a transient failed write should be attempted on the next visit");
+    await visit();
+    assert.deepEqual(writes, ["guest", "guest"]);
+    viewer = "memberA";
+    await visit();
+    viewer = "memberB";
+    await visit();
+    assert.deepEqual(writes, ["guest", "guest", "memberA", "memberB"]);
+  } finally { await browser.close(); }
+});

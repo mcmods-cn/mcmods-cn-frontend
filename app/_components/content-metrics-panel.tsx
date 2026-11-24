@@ -8,6 +8,23 @@ import { ContentMetricActor, ContentMetricReference, ContentMetrics, getContentM
 import { useI18n } from "../_lib/i18n-provider";
 
 const recordedViews = new Set<string>();
+const pendingViews = new Map<string, Promise<void>>();
+
+function recordViewOnce(publicId: string, pageKey: string, viewer: string, token: string) {
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `mcmods-content-view:${JSON.stringify([viewer, publicId, pageKey, day])}`;
+  if (recordedViews.has(key)) return;
+  try { if (window.sessionStorage.getItem(key) === "1") return; } catch { /* Storage is optional. */ }
+  const pending = pendingViews.get(key);
+  if (pending) return pending;
+  const request = recordContentMetricView(publicId, pageKey, token).then(() => {
+    if (recordedViews.size >= 512) recordedViews.delete(recordedViews.values().next().value!);
+    recordedViews.add(key);
+    try { window.sessionStorage.setItem(key, "1"); } catch { /* The tab still knows this view succeeded. */ }
+  }).catch(() => undefined).finally(() => pendingViews.delete(key));
+  pendingViews.set(key, request);
+  return request;
+}
 
 export function ContentMetricsPanel({ publicId, pageKey = "detail" }: { publicId: string; pageKey?: string }) {
   const { token, user } = useAuthSnapshot();
@@ -16,28 +33,21 @@ export function ContentMetricsPanel({ publicId, pageKey = "detail" }: { publicId
 
 function ContentMetricsPanelContent({ publicId, pageKey }: { publicId: string; pageKey: string }) {
   const { locale, t } = useI18n();
-  const { ready, token } = useAuthSnapshot();
+  const { ready, token, user } = useAuthSnapshot();
+  const viewer = user?.id || "guest";
   const [metrics, setMetrics] = useState<ContentMetrics>();
 
   useEffect(() => {
     if (!ready || !publicId) return;
     let cancelled = false;
-    const day = new Date().toISOString().slice(0, 10);
-    const viewKey = `mcmods-content-view:${publicId}:${pageKey}:${day}`;
-    let shouldRecord = !recordedViews.has(viewKey);
-    try { shouldRecord = shouldRecord && window.sessionStorage.getItem(viewKey) !== "1"; } catch { /* Browser storage may be denied. */ }
-    if (shouldRecord) {
-      if (recordedViews.size >= 512) recordedViews.delete(recordedViews.values().next().value!);
-      recordedViews.add(viewKey);
-      try { window.sessionStorage.setItem(viewKey, "1"); } catch { /* Retain in-tab deduplication. */ }
-    }
     void (async () => {
-      if (shouldRecord) await recordContentMetricView(publicId, pageKey, token).catch(() => undefined);
+      await recordViewOnce(publicId, pageKey, viewer, token);
+      if (cancelled) return;
       const value = await getContentMetrics(publicId, locale, token).catch(() => undefined);
       if (!cancelled && value) setMetrics(value);
     })();
     return () => { cancelled = true; };
-  }, [locale, pageKey, publicId, ready, token]);
+  }, [locale, pageKey, publicId, ready, token, viewer]);
 
   const labels = metricLabels(t);
   const formatMetricNumber = (value: number) => formatNumber(value, locale);
