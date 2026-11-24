@@ -181,7 +181,7 @@ test("a failed mod revision continuation keeps the confirmed page and comparison
     await page.getByText("Latest change", { exact: true }).waitFor();
     await page.getByRole("checkbox").check();
     await page.getByRole("button", { name: "Next", exact: true }).click();
-    await page.getByRole("alert").getByText("Revision continuation unavailable").waitFor();
+    await page.getByRole("alert").filter({ hasText: "Revision continuation unavailable" }).waitFor();
     assert.equal(await page.getByRole("checkbox").isChecked(), true);
     assert.equal(await page.getByText("Latest change", { exact: true }).count(), 1);
     await page.getByRole("button", { name: "Retry", exact: true }).click();
