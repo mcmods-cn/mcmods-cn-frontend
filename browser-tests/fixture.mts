@@ -182,12 +182,12 @@ export class ProductionBrowserFixture {
 
   async close() {
     await this.browser?.close();
-    if (this.application && this.application.exitCode === null) {
+    if (this.application && this.application.exitCode === null && this.application.signalCode === null) {
       const exited = once(this.application, "exit");
       this.application.kill();
       await exited;
     }
-    if (this.transportServer) {
+    if (this.transportServer?.listening) {
       this.transportServer.closeAllConnections();
       await new Promise<void>((resolve, reject) => this.transportServer!.close(error => error ? reject(error) : resolve()));
     }
