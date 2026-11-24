@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import { unresolvedPublicID } from "./resource-selection.mts";
 import { catalogRegistryForKind } from "./catalog-resource-identifiers";
 import { parseLocalizedContentVersions, parseOptionalPublishedReviewStatus, parsePublishedReviewStatus } from "./localization-boundary.mts";
 import type {
@@ -101,20 +102,22 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
         candidates: arrayValue(binding.candidates).map((candidate) => {
           const item = objectValue(candidate);
           const canonicalId = stringValue(item.canonicalId) || stringValue(item.id) || stringValue(item.rawResourceId) || stringValue(item.resourcePublicId);
-          const publicId = stringValue(item.resourcePublicId) || stringValue(item.publicId);
-          const unresolved = item.unresolved === true || Boolean(stringValue(item.rawResourceId));
+          const rawIdentifier = stringValue(item.rawResourceId);
+          const unresolved = item.unresolved === true || Boolean(rawIdentifier);
           const probability = optionalNumber(item.probability);
           const kind = stringValue(item.kindCode) || stringValue(item.kind);
+          const registry = stringValue(item.registry) || catalogRegistryForKind(kind) || "";
+          const publicId = stringValue(item.resourcePublicId) || stringValue(item.publicId);
           return {
             resource: {
-              publicId,
+              publicId: publicId || (unresolved && kind && rawIdentifier ? unresolvedPublicID(kind, rawIdentifier, registry) : ""),
               id: canonicalId,
-              registry: stringValue(item.registry) || catalogRegistryForKind(kind) || "",
+              registry,
               kind,
               names: stringValue(item.name) ? { [stringValue(row.defaultLocale) || "en-US"]: stringValue(item.name) } : {},
               iconUrl: stringValue(item.iconUrl) || undefined,
               unresolved,
-              rawIdentifier: unresolved ? canonicalId : undefined,
+              rawIdentifier: unresolved ? rawIdentifier || canonicalId : undefined,
             },
             amount: optionalNumber(item.amount),
             probability,
