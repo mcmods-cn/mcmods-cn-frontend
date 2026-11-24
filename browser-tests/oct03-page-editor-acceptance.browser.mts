@@ -97,9 +97,23 @@ test("Markdown line formatting keeps text outside partial selections and handles
     await page.getByRole("button", { name: "Bulleted list", exact: true }).click();
     assert.equal(await editor.inputValue(), "- alpha beta gamma\ndelta epsilon\ntrailing");
     await select(body, 6, body.indexOf("trailing"));
-    await page.getByRole("button", { name: "Numbered list", exact: true }).click();
+    const time = new Date("2026-11-24T12:00:00Z");
+    await page.clock.install({ time });
+    await page.clock.pauseAt(new Date(time.getTime() + 500));
+    const numbered = page.getByRole("button", { name: "Numbered list", exact: true });
+    await numbered.focus();
+    await page.keyboard.press("Enter");
     assert.equal(await editor.inputValue(), "1. alpha beta gamma\n2. delta epsilon\ntrailing");
-    await select("\nsecond line", 0, 0);
+    await editor.focus();
+    await page.keyboard.press("ControlOrMeta+a");
+    const selection = () => editor.evaluate((input: HTMLTextAreaElement) => [input.selectionStart, input.selectionEnd]);
+    const all = [0, (await editor.inputValue()).length];
+    assert.deepEqual(await selection(), all);
+    await page.clock.runFor(32);
+    assert.deepEqual(await selection(), all, "the next frame must preserve the newer keyboard selection");
+    await page.keyboard.insertText("\nsecond line");
+    assert.equal(await editor.inputValue(), "\nsecond line");
+    await editor.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(0, 0));
     await page.getByRole("combobox", { name: "Heading", exact: true }).selectOption("2");
     assert.match(await editor.inputValue(), /^## [^\n]+\nsecond line$/);
   } finally { await browser.close(); }

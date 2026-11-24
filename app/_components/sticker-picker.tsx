@@ -10,10 +10,11 @@ type StickerPickerProps = {
   inputRef: RefObject<HTMLTextAreaElement | null>;
   value: string;
   onChange: (value: string) => void;
+  selectAfterChange: (value: string, caret: number) => void;
   disabled?: boolean;
 };
 
-export function StickerPicker({ inputRef, value, onChange, disabled = false }: StickerPickerProps) {
+export function StickerPicker({ inputRef, value, onChange, selectAfterChange, disabled = false }: StickerPickerProps) {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
   const [packs, setPacks] = useState<StickerCatalogPack[]>([]);
@@ -46,12 +47,9 @@ export function StickerPicker({ inputRef, value, onChange, disabled = false }: S
     const end = input?.selectionEnd ?? start;
     const token = stickerToken(packCode, stickerCode);
     const next = `${value.slice(0, start)}${token}${value.slice(end)}`;
+    selectAfterChange(next, start + token.length);
     onChange(next);
     setOpen(false);
-    requestAnimationFrame(() => {
-      input?.focus();
-      input?.setSelectionRange(start + token.length, start + token.length);
-    });
   }
 
   const normalizedQuery = query.toLocaleLowerCase(locale);

@@ -21,6 +21,7 @@ import { createMarkdownEditorSession, editMarkdownEditorSession, synchronizeMark
 import { markdownForUploadedFile, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { StickerPicker } from "./sticker-picker";
+import { useTextareaSelection } from "../_lib/use-textarea-selection";
 
 type ViewMode = "edit" | "preview";
 type DrawioEditSession = {
@@ -108,6 +109,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
   const { locale, t } = useI18n();
   const { token, ready: authReady } = useAuthSnapshot();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const selectAfterChange = useTextareaSelection(textareaRef);
   const blueprintInputRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLElement | null>(null);
   const previewPositionFrameRef = useRef<number | null>(null);
@@ -361,13 +363,10 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
   }, [draftConflict, replaceMarkdownState, t]);
 
   const replaceSelection = useCallback((nextValue: string, selectionStart: number, selectionEnd: number) => {
+    selectAfterChange(nextValue, selectionStart, selectionEnd);
     commitMarkdown(nextValue);
     setCursorPosition(selectionStart);
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(selectionStart, selectionEnd);
-    });
-  }, [commitMarkdown]);
+  }, [commitMarkdown, selectAfterChange]);
 
   const closeDrawioEditor = useCallback(() => {
     setDrawioSession(null);
@@ -740,7 +739,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
               onUploadBlueprint={() => blueprintInputRef.current?.click()}
             />
             <div className="flex items-center border-b border-[var(--line)] px-3 py-2">
-              <StickerPicker inputRef={textareaRef} value={markdown} onChange={commitMarkdown} />
+              <StickerPicker selectAfterChange={selectAfterChange} inputRef={textareaRef} value={markdown} onChange={commitMarkdown} />
             </div>
             <input
               ref={blueprintInputRef}

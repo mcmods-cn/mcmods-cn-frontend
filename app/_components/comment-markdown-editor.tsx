@@ -2,6 +2,7 @@
 
 import { ChangeEvent, DragEvent, ReactNode, RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "../_lib/i18n-provider";
+import { useTextareaSelection } from "../_lib/use-textarea-selection";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { MarkdownRenderer } from "./markdown-renderer";
@@ -54,6 +55,7 @@ export function CommentMarkdownEditor({
   const { t } = useI18n();
   const localInputRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = inputRef ?? localInputRef;
+  const selectAfterChange = useTextareaSelection(textareaRef);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeAttachments = useRef(attachments);
   const uploadInFlight = useRef<AbortController | null>(null);
@@ -67,11 +69,9 @@ export function CommentMarkdownEditor({
   useEffect(() => onUploadingChange?.(uploading), [onUploadingChange, uploading]);
 
   function updateText(next: string, selectionStart: number, selectionEnd = selectionStart) {
-    onChange(next.slice(0, maxLength));
-    window.requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(Math.min(selectionStart, maxLength), Math.min(selectionEnd, maxLength));
-    });
+    const nextValue = next.slice(0, maxLength);
+    selectAfterChange(nextValue, Math.min(selectionStart, maxLength), Math.min(selectionEnd, maxLength));
+    onChange(nextValue);
   }
 
   function wrapSelection(prefix: string, suffix: string, fallback: string) {
@@ -156,7 +156,7 @@ export function CommentMarkdownEditor({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] p-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <StickerPicker disabled={disabled || mode === "preview"} inputRef={textareaRef} value={value} onChange={onChange} />
+          <StickerPicker selectAfterChange={selectAfterChange} disabled={disabled || mode === "preview"} inputRef={textareaRef} value={value} onChange={onChange} />
           <select
             aria-label={t("mods.comments.editor.fontSize")}
             className="field w-auto min-w-24 py-2 text-sm"
