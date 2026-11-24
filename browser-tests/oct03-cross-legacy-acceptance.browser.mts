@@ -481,6 +481,7 @@ test("OCT03 FP061 export preview is bound to version and loader, busy modal reta
   let creations = 0;
   let detailReads = 0;
   let history = false;
+  let historyReads = 0;
   const item = { sourceProjectType: "mod", sourceProjectName: "Synthetic export mod", resultType: "exported", selectedFileName: "synthetic.jar" };
   const preview = (loader: string) => ({ previewId: `preview-${loader}`, previewHash: `hash-${loader}`, expiresAt: "2027-01-01T00:00:00Z", collectionId: "collection01", collectionName: "Synthetic collection", minecraftVersion: "1.21", loader, loaderVersion: "1.0", allowCompatibleOnly: false, reportVersion: 1, rebuildSource: "current_collection", collectionItemCount: 1, exportedModCount: 1, autoDependencyCount: 0, skippedItemCount: 0, failedItemCount: 0, items: [item] });
   const task = (status: string) => ({ id: "task-one", collectionId: "collection01", packName: "Synthetic historical pack", packVersion: "1.0", minecraftVersion: "1.21", loader: "fabric", loaderVersion: "1.0", allowCompatibleOnly: false, reportVersion: 1, status, collectionItemCount: 1, exportedModCount: 1, autoDependencyCount: 0, skippedItemCount: 0, failedItemCount: 0, finalFileCount: 1, fileSize: 128, createdAt: stamp });
@@ -505,6 +506,7 @@ test("OCT03 FP061 export preview is bound to version and loader, busy modal reta
       if (detailReads === 1) return { status: 503, error: "First export receipt unavailable" };
       return detailReads === 2 ? { data: { task: task("pending"), items: [], downloadAvailable: false } } : { status: 503, error: "Controlled export status unavailable" };
     }
+    if (path === "/api/v1/users/me/modpack-exports" && ++historyReads === 1) return { status: 503, error: "First history read unavailable" };
     if (path === "/api/v1/users/me/modpack-exports") { history = true; return { data: { items: [task("ready")], limit: 30, hasMore: false, nextCursor: "" } }; }
   });
   try {
@@ -540,6 +542,8 @@ test("OCT03 FP061 export preview is bound to version and loader, busy modal reta
     await dialog.getByRole("button", { name: "Create modpack", exact: true }).click();
     await dialog.getByText("First export receipt unavailable", { exact: true }).waitFor();
     assert.equal(await dialog.getByRole("button", { name: "Create modpack", exact: true }).count(), 0);
+    await dialog.getByRole("button", { name: "Export history", exact: true }).click();
+    await dialog.getByText("First history read unavailable", { exact: true }).waitFor();
     await dialog.getByRole("button", { name: "Close", exact: true }).click(); await trigger.click();
     await dialog.getByText("Export task task-one is saved.", { exact: true }).waitFor();
     await dialog.getByRole("button", { name: "Retry", exact: true }).click();

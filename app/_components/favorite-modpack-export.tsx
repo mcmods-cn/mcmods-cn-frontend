@@ -148,7 +148,6 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
     setError("");
     setDetail(null);
     setShowHistory(true);
-    setUnreadTaskId("");
     try {
       const page = await loadFavoriteModpackExports(token, { status: historyStatus });
       setHistory(page.items);
@@ -212,6 +211,7 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
     setError("");
     try {
       setDetail(await loadFavoriteModpackExport(token, task.id));
+      setUnreadTaskId(current => current === task.id ? "" : current);
       setActiveCollectionId(task.collectionId);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -233,6 +233,7 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
       setLoader(next.loader);
       setActiveCollectionId(next.collectionId);
       setShowHistory(false);
+      setUnreadTaskId("");
       setDetail(null);
       setPreview(next);
     } catch (reason) {
@@ -368,6 +369,7 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
             {showHistory && !detail ? (
               <ExportHistory
                 busy={busy}
+                failed={Boolean(error)}
                 hasMore={historyHasMore}
                 history={history}
                 status={historyStatus}
@@ -398,6 +400,7 @@ type ExportHistoryProps = {
   busy: boolean;
   hasMore: boolean;
   history: FavoriteModpackExportTask[];
+  failed: boolean;
   status: FavoriteModpackExportStatus;
   onBack: () => void;
   onLoadMore: () => Promise<void>;
@@ -405,7 +408,7 @@ type ExportHistoryProps = {
   onStatusChange: (status: FavoriteModpackExportStatus) => Promise<void>;
 };
 
-function ExportHistory({ busy, hasMore, history, status, onBack, onLoadMore, onSelect, onStatusChange }: ExportHistoryProps) {
+function ExportHistory({ busy, hasMore, history, failed, status, onBack, onLoadMore, onSelect, onStatusChange }: ExportHistoryProps) {
   const { locale, t } = useI18n();
   const statuses: FavoriteModpackExportStatus[] = ["all", "pending", "processing", "ready", "failed", "expired", "cancelled"];
   return (
@@ -421,7 +424,7 @@ function ExportHistory({ busy, hasMore, history, status, onBack, onLoadMore, onS
         </select>
       </label>
       {busy && history.length === 0 ? <p>{t("common.loading")}</p> : null}
-      {!busy && history.length === 0 ? (
+      {!busy && !failed && history.length === 0 ? (
         <p className="py-10 text-center text-[var(--muted)]">{t("favorites.modpackExport.historyEmpty")}</p>
       ) : null}
       {history.map((task) => (
