@@ -136,3 +136,48 @@ test("BUG147 addon parent facets preserve an off-page selection and load more wi
     assert.deepEqual(calls, [{cursor:"",selected:["selected-last"]},{cursor:"parent-next",selected:["selected-last"]}]);
   } finally { await browser.close(); }
 });
+
+test("Leaving an existing recipe cancels its pending deletion and keeps the chosen page", { timeout: 30_000 }, async () => {
+  const typeId = "type00001", recipeId = "recipe001", recipePath = `/api/v1/catalog/recipes/${recipeId}`;
+  const started = Promise.withResolvers<void>();
+  const reply = Promise.withResolvers<{ data: unknown }>();
+  let writes = 0;
+  const browser = await controlled(({ path, method }) => {
+    if (path === recipePath && method === "DELETE") {
+      writes++;
+      started.resolve();
+      return reply.promise;
+    }
+    if (path === recipePath) return { data: { publicId: recipeId, recipeTypePublicId: typeId, publishedRevisionId: "rev000001", reviewStatus: "approved", bindings: {} } };
+    if (path === "/api/v1/recipe-types") return { data: { items: [{ publicId: typeId, canonicalId: "example:crafting", name: "Crafting" }], total: 1 } };
+    if (path === `/api/v1/recipe-types/${typeId}/catalog`) return { data: { publicId: typeId, canonicalId: "example:crafting", names: { en_us: "Crafting" }, recipeCount: 0, templateCount: 0, catalysts: [], recipes: [], total: 0, limit: 24, offset: 0 } };
+    if (path === `/api/v1/comment-targets/recipe_type/${typeId}/comments`) return { data: { items: [], total: 0, capabilities: { canCreate: false } } };
+    if (path === "/api/v1/catalog/recipe-source-versions" || path === `/api/v1/recipe-types/${typeId}/templates`) return { data: { items: [] } };
+  });
+  try {
+    const { page } = browser;
+    await page.addInitScript(path => {
+      const fetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (new URL(url, location.href).pathname === path && init?.method === "DELETE") {
+          init.signal?.addEventListener("abort", () => { document.documentElement.dataset.recipeDelete = "cancelled"; }, { once: true });
+        }
+        return fetch(input, init);
+      };
+    }, recipePath);
+    await page.goto(`${fixture.origin}/recipe-types?editor=recipe-edit&publicId=${typeId}&recipePublicId=${recipeId}`);
+    page.once("dialog", dialog => dialog.accept());
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await started.promise;
+    await page.getByRole("link", { name: "Back to recipe methods", exact: true }).click();
+    await page.waitForURL(url => url.search === `?publicId=${typeId}`);
+    await page.waitForFunction(() => document.documentElement.dataset.recipeDelete === "cancelled", undefined, { timeout: 5_000 });
+    reply.resolve({ data: { objectPublicId: recipeId, reviewStatus: "approved" } });
+    assert.equal(writes, 1);
+    assert.equal(new URL(page.url()).search, `?publicId=${typeId}`);
+  } finally {
+    reply.resolve({ data: {} });
+    await browser.close();
+  }
+});
