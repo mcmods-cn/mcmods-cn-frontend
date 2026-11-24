@@ -42,6 +42,7 @@ test("SEC-002 retains patched transitive dependency floors in package and lock f
     "brace-expansion@^5": "5.0.12",
     "browserslist": "4.28.7",
     "js-yaml": "4.3.2",
+    "katex": "$katex",
     "nanoid": "3.3.18",
     "postcss": "8.5.23",
     "sharp": "0.35.5",
@@ -52,6 +53,12 @@ test("SEC-002 retains patched transitive dependency floors in package and lock f
   assert.ok(braceVersions.includes("5.0.12"));
   assert.ok(braceVersions.includes("1.1.21"));
   assert.ok(braceVersions.every((version) => version === "1.1.21" || version === "5.0.12"));
+  const mathEngines = Object.entries(lockJSON.packages ?? {})
+    .filter(([path]) => path === "node_modules/katex" || path.endsWith("/node_modules/katex"))
+    .map(([path, entry]) => [path, entry.version]);
+  assert.equal(packageJSON.dependencies?.katex, "0.18.2");
+  assert.deepEqual(mathEngines, [["node_modules/katex", packageJSON.dependencies?.katex]],
+    "Markdown parsing and rendering must share one patched KaTeX installation");
   for (const [name, expected] of Object.entries({
     "baseline-browser-mapping": "2.11.0",
     "browserslist": "4.28.7",
