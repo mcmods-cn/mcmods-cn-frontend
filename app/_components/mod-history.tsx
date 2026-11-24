@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { BackendModRevision, BackendModRevisionComparison, BackendModRevisionList, CreateModPayload } from "../_lib/mod-api";
 import { modRevisionHistoryPagePath, toggleModRevisionSelection } from "../_lib/mod-history-pagination.mts";
+import { useHistoryPage } from "./use-history-page";
 import { useI18n } from "../_lib/i18n-provider";
 
 export function ModHistory({ siteId }: { siteId: string }) {
@@ -16,42 +17,17 @@ export function ModHistory({ siteId }: { siteId: string }) {
 function ModHistoryPage({ siteId }: { siteId: string }) {
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
-  const [page, setPage] = useState<BackendModRevisionList | null>(null);
-  const [attempt, setAttempt] = useState(0);
   const [selected, setSelected] = useState<BackendModRevision[]>([]);
-  const [cursorHistory, setCursorHistory] = useState<string[]>([""]);
-  const [message, setMessage] = useState("");
-  const currentCursor = cursorHistory[cursorHistory.length - 1] || "";
+  const read = useCallback((cursor: string, signal: AbortSignal) =>
+    apiRequest<BackendModRevisionList>(modRevisionHistoryPagePath(siteId, cursor), { signal }, token), [siteId, token]);
+  const { page, message, loading, retry, pageNumber, hasPagination, canGoNext, canGoBack, next, previous } = useHistoryPage(ready, read, t("mods.history.loadFailed"));
   const items = page?.items ?? [];
-
-  useEffect(() => {
-    if (!ready) return;
-    let cancelled = false;
-    const controller = new AbortController();
-    apiRequest<BackendModRevisionList>(modRevisionHistoryPagePath(siteId, currentCursor), { signal: controller.signal }, token)
-      .then((result) => {
-        if (!cancelled) {
-          setPage(result);
-          setMessage("");
-        }
-      })
-      .catch((error) => {
-        if (!cancelled && (!(error instanceof DOMException) || error.name !== "AbortError")) {
-          setMessage(error instanceof Error ? error.message : t("mods.history.loadFailed"));
-        }
-      });
-    return () => {
-      cancelled = true;
-      controller.abort();
-    };
-  }, [attempt, currentCursor, ready, siteId, t, token]);
 
   function toggle(item: BackendModRevision) {
     setSelected((current) => toggleModRevisionSelection(current, item));
   }
 
   const sortedSelection = [...selected].sort((left, right) => left.version - right.version);
-  const showPagination = cursorHistory.length > 1 || Boolean(page?.hasMore);
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-6 text-[var(--foreground)]">
       <div className="mx-auto max-w-6xl">
@@ -69,7 +45,7 @@ function ModHistoryPage({ siteId }: { siteId: string }) {
           </div>
         </header>
         {message ? <p role="alert" className="mt-5 rounded-lg border border-[var(--red)] p-3 text-[var(--red)]">{message}</p> : null}
-        {message ? <button className="button-secondary focus-ring mt-3" type="button" onClick={() => { setMessage(""); setAttempt(value => value + 1); }}>{t("common.retry")}</button> : null}
+        {message ? <button className="button-secondary focus-ring mt-3" type="button" disabled={loading} onClick={retry}>{t("common.retry")}</button> : null}
         {!page && !message ? <p className="mt-5 text-sm text-[var(--muted)]">{t("common.loading")}</p> : null}
         <div className="mt-6 overflow-x-auto rounded-lg border border-[var(--line)] bg-[var(--panel)]">
           <div className="min-w-[900px]">
@@ -88,11 +64,11 @@ function ModHistoryPage({ siteId }: { siteId: string }) {
             ))}
           </div>
         </div>
-        {showPagination ? (
+        {hasPagination ? (
           <div className="mt-5 flex items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
-            <button className="button-secondary focus-ring" disabled={!page || cursorHistory.length <= 1} type="button" onClick={() => { setPage(null); setCursorHistory((history) => history.slice(0, -1)); }}>{t("common.previous")}</button>
-            <span className="text-sm font-bold text-[var(--muted)]">{cursorHistory.length}</span>
-            <button className="button-secondary focus-ring" disabled={!page?.hasMore || !page.nextCursor} type="button" onClick={() => { setPage(null); setCursorHistory((history) => [...history, page?.nextCursor || ""]); }}>{t("common.next")}</button>
+            <button className="button-secondary focus-ring" disabled={!canGoBack} type="button" onClick={previous}>{t("common.previous")}</button>
+            <span className="text-sm font-bold text-[var(--muted)]">{pageNumber}</span>
+            <button className="button-secondary focus-ring" disabled={!canGoNext} type="button" onClick={next}>{t("common.next")}</button>
           </div>
         ) : null}
       </div>

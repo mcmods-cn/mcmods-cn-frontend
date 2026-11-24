@@ -22,8 +22,8 @@ test("Mod history selection survives page changes and remains bounded to two", (
 test("Mod history renders a bounded cursor page with previous and next controls", async () => {
   const source = await readFile(new URL("../_components/mod-history.tsx", import.meta.url), "utf8");
   assert.match(source, /modRevisionHistoryPagePath/);
-  assert.match(source, /nextCursor/);
-  assert.match(source, /cursorHistory/);
+  assert.match(source, /useHistoryPage/);
+  assert.match(source, /modRevisionHistoryPagePath\(siteId, cursor\), \{ signal \}/);
   assert.match(source, /common\.previous/);
   assert.match(source, /common\.next/);
   assert.doesNotMatch(source, /revisions`, \{\}, token/);

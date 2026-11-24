@@ -163,3 +163,31 @@ for (const locale of ["zh-CN", "zh-TW", "en-US", "ja-JP", "fr-FR", "de-DE", "es-
     } finally { await browser.close(); }
   });
 }
+
+test("a failed mod revision continuation keeps the confirmed page and comparison selection", { timeout: 30_000 }, async () => {
+  const reads: string[] = [];
+  let attempts = 0;
+  const browser = await fixture.page(({ path, url }) => {
+    if (path === "/api/v1/auth/me") return { data: ordinary() };
+    if (path !== "/api/v1/mods/historymod/revisions") return;
+    const cursor = url.searchParams.get("cursor") || ""; reads.push(cursor);
+    if (cursor && ++attempts === 1) return { status: 503, error: "Revision continuation unavailable" };
+    return { data: { items: [{ id: cursor ? "revision1" : "revision2", version: cursor ? 1 : 2, status: "approved",
+      submittedByName: "Reviewer", createdAt: stamp, changeReason: cursor ? "Earlier change" : "Latest change" }], limit: 50, hasMore: !cursor, nextCursor: cursor ? "" : "opaque+/=" } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/mods/historymod/history");
+    await page.getByText("Latest change", { exact: true }).waitFor();
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.getByRole("alert").getByText("Revision continuation unavailable").waitFor();
+    assert.equal(await page.getByRole("checkbox").isChecked(), true);
+    assert.equal(await page.getByText("Latest change", { exact: true }).count(), 1);
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await page.getByText("Earlier change", { exact: true }).waitFor();
+    await page.getByRole("checkbox").check();
+    await page.locator('a[href$="before=revision1&after=revision2"]').waitFor();
+    assert.deepEqual(reads, ["", "opaque+/=", "opaque+/="]);
+  } finally { await browser.close(); }
+});

@@ -15,7 +15,7 @@ test("content history API exposes a bounded cursor page", async () => {
 
 test("content history renders one page and navigates opaque cursors", async () => {
   const source = await readFile(componentPath, "utf8");
-  for (const required of ["cursorHistory", "page?.hasMore", "page.nextCursor", "common.previous", "common.next", "AbortController"]) {
+  for (const required of ["useHistoryPage", "loadContentHistory(endpoint, token, cursor, signal)", "common.previous", "common.next"]) {
     assert.match(source, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.doesNotMatch(source, /setItems\(\(current\).*\.\.\.result\.items/s);
