@@ -292,3 +292,38 @@ for (const canWrite of [false, true]) {
     } finally { await browser.close(); }
   });
 }
+
+test("Yggdrasil settings submit writable fields and keep multiline proxy edits and key intent", { timeout: 30_000 }, async () => {
+  const stored = { enabled: true, publicBaseUrl: "https://api.example.test/api/yggdrasil/", textureBaseUrl: "https://api.example.test/api/yggdrasil/textures/",
+    serverName: "Synthetic", trustedProxyCidrs: ["127.0.0.1"], tokenTtlHours: 80, maxTokens: 3, joinTtlSeconds: 20, textureMaxBytes: 65536 };
+  const health = { hasPrivateKey: true, persistentPrivateKey: true, available: true, disabledReason: "" };
+  const allowed = new Set([...Object.keys(stored), "privateKeyBase64", "rotatePrivateKey"]);
+  const writes: Record<string, unknown>[] = [];
+  const browser = await fixture.page(({ path, method, body }) => {
+    if (path !== "/api/v1/admin/config/yggdrasil") return;
+    if (method === "GET") return { data: { ...stored, ...health } };
+    const write = JSON.parse(body); writes.push(write);
+    if (Object.keys(write).some(key => !allowed.has(key))) return { status: 400, error: "Unrecognized configuration field" };
+    return { data: { ...stored, trustedProxyCidrs: write.trustedProxyCidrs, ...health } };
+  });
+  try {
+    const { page } = browser;
+    await panel(page, "yggdrasil", "system");
+    const proxies = page.getByPlaceholder(/One per line/);
+    await proxies.fill("127.0.0.1");
+    await proxies.press("End"); await proxies.press("Enter");
+    await proxies.pressSequentially("192.0.2.0/24");
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    await save.click();
+    await page.getByText("Yggdrasil settings saved and applied.").waitFor();
+    assert.deepEqual(writes[0], { ...stored, trustedProxyCidrs: ["127.0.0.1", "192.0.2.0/24"], privateKeyBase64: "", rotatePrivateKey: false });
+    const rotate = page.getByRole("checkbox", { name: /Generate and activate/ });
+    await rotate.check();
+    await save.evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
+    await page.waitForFunction(() => [...document.querySelectorAll('input[type="checkbox"]')].some(input =>
+      input.closest("label")?.textContent?.includes("Generate and activate") && !(input as HTMLInputElement).checked));
+    assert.equal(writes.length, 2);
+    assert.equal(writes[1].rotatePrivateKey, true);
+    assert.equal(writes[1].privateKeyBase64, "");
+  } finally { await browser.close(); }
+});

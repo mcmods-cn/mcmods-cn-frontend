@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
 
@@ -38,32 +38,44 @@ export const defaultAdminYggdrasilConfig: AdminYggdrasilConfig = {
 export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: AdminYggdrasilConfig; token: string }) {
   const { t } = useI18n();
   const [draft, setDraft] = useState(() => normalizeAdminYggdrasilConfig(initialConfig));
+  const [proxyList, setProxyList] = useState(() => initialConfig.trustedProxyCidrs.join("\n"));
+  const inFlight = useRef(false);
   const [privateKeyBase64, setPrivateKeyBase64] = useState("");
   const [rotatePrivateKey, setRotatePrivateKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
   async function save() {
-    if (saving) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSaving(true);
     setMessage("");
     try {
       const saved = await apiRequest<AdminYggdrasilConfig>("/api/v1/admin/config/yggdrasil", {
         method: "PUT",
         body: JSON.stringify({
-          ...draft,
-          trustedProxyCidrs: draft.trustedProxyCidrs,
+          enabled: draft.enabled,
+          publicBaseUrl: draft.publicBaseUrl,
+          textureBaseUrl: draft.textureBaseUrl,
+          serverName: draft.serverName,
+          tokenTtlHours: draft.tokenTtlHours,
+          maxTokens: draft.maxTokens,
+          joinTtlSeconds: draft.joinTtlSeconds,
+          textureMaxBytes: draft.textureMaxBytes,
+          trustedProxyCidrs: splitLines(proxyList),
           privateKeyBase64: privateKeyBase64.trim(),
           rotatePrivateKey,
         }),
       }, token);
       setDraft(normalizeAdminYggdrasilConfig(saved));
+      setProxyList(saved.trustedProxyCidrs.join("\n"));
       setPrivateKeyBase64("");
       setRotatePrivateKey(false);
       setMessage(t("admin.yggdrasil.saved"));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.yggdrasil.saveFailed"));
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   }
@@ -78,7 +90,7 @@ export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: A
         <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button>
       </header>
 
-      <div className="grid gap-5 p-5">
+      <fieldset className="grid min-w-0 gap-5 p-5" disabled={saving}>
         <section className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
           <span className={`rounded-full px-3 py-1 text-sm font-bold ${draft.available ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
             {draft.available ? t("admin.yggdrasil.available") : t("admin.yggdrasil.unavailable")}
@@ -102,7 +114,7 @@ export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: A
         </div>
 
         <label className="text-sm font-semibold">{t("admin.yggdrasil.trustedProxyCidrs")}
-          <textarea className="field mt-2 min-h-28 resize-y font-mono" value={draft.trustedProxyCidrs.join("\n")} placeholder={t("admin.yggdrasil.trustedProxyPlaceholder")} onChange={(event) => setDraft((current) => ({ ...current, trustedProxyCidrs: splitLines(event.target.value) }))} />
+          <textarea className="field mt-2 min-h-28 resize-y font-mono" value={proxyList} placeholder={t("admin.yggdrasil.trustedProxyPlaceholder")} onChange={(event) => setProxyList(event.target.value)} />
           <span className="mt-1 block font-normal text-[var(--muted)]">{t("admin.yggdrasil.trustedProxyDescription")}</span>
         </label>
 
@@ -117,7 +129,7 @@ export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: A
         </section>
 
         {message ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 text-sm font-bold">{message}</p> : null}
-      </div>
+      </fieldset>
     </section>
   );
 }
