@@ -103,3 +103,38 @@ test("the parent selector and drag tree apply the same allowed category moves", 
     ]);
   } finally { await browser.close(); }
 });
+
+test("a layout editor retries the first read and retires a pending review on account change", { timeout: 20_000 }, async () => {
+  let account = "owner-one", reads = 0, writes = 0;
+  const path = "/api/v1/mods/workshop/content-sections/section01/layout";
+  const pending = Promise.withResolvers<void>();
+  const browser = await fixture.page(async request => {
+    if (request.path === "/api/v1/auth/me") return { data: { id: account, username: account, roleCodes: [], permissionRules: [], permissionVersion: 1, rbacVersion: 1 } };
+    if (request.path !== path) return;
+    if (request.method === "PATCH") {
+      writes++;
+      await pending.promise;
+      return { data: { publicId: section.publicId, revisionId: "revision2", reviewStatus: "pending" } };
+    }
+    if (++reads === 1) return { status: 503, error: "Temporary layout read failure" };
+    return { data: { section, categories: [], items: [], total: 0, limit: 500, hasMore: false, nextCursor: "", capabilities: {} } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/mods/workshop/data/sections/section01/arrange");
+    await page.getByText("Temporary layout read failure", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    const started = page.waitForRequest(req => req.method() === "PATCH");
+    await page.getByRole("button", { name: "Submit layout for review", exact: true }).first().click();
+    await started;
+    const aborted = page.waitForEvent("requestfailed", { predicate: req => req.method() === "PATCH", timeout: 4000 });
+    void aborted.catch(() => {});
+    account = "owner-two";
+    await page.evaluate(() => dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:layout-owner" })));
+    assert.equal((await aborted).failure()?.errorText, "net::ERR_ABORTED");
+    pending.resolve();
+    await page.getByRole("button", { name: "Create category", exact: true }).waitFor();
+    assert.equal(new URL(page.url()).pathname, "/mods/workshop/data/sections/section01/arrange");
+    assert.equal(writes, 1);
+  } finally { pending.resolve(); await browser.close(); }
+});

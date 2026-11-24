@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { advancementConnectedGroups } from "../_lib/advancement-graph";
+import { useEditorWrite } from "./editor/use-editor-write";
 import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import { createModContentCategoryTree, normalizeCategoryOrdinals } from "../_lib/mod-content-category-tree.mts";
@@ -76,7 +76,10 @@ export function ModContentLayoutEditorPage(props: { siteId: string; sectionId: s
 function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; sectionId: string }) {
   const { locale, t } = useI18n();
   const { token } = useAuthSnapshot();
-  const tokenRef = useRef(token);
+  const operation = useEditorWrite();
+  const fallbackTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(fallbackTimer.current), []);
+  const [readAttempt, setReadAttempt] = useState(0);
   const [initialLocale] = useState(locale);
   const [section, setSection] = useState<ModContentSection>();
   const [categories, setCategories] = useState<ModContentSection[]>([]);
@@ -96,7 +99,6 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
   const [hasMore, setHasMore] = useState(false);
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
   const [dirty, setDirty] = useState(false);
-  const saveInFlight = useRef(false);
   const saved = useRef(false);
   useEffect(() => {
     if (!dirty) return;
@@ -111,20 +113,16 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
   const [error, setError] = useState("");
 
   useEffect(() => {
-    tokenRef.current = token;
-  }, [token]);
-
-  useEffect(() => {
-    let cancelled = false;
+    const request = new AbortController();
     queueMicrotask(() => {
-      if (cancelled) return;
+      if (request.signal.aborted) return;
       setBusy(true);
       setPageReady(false);
       setError("");
     });
-    void loadModContentLayoutSnapshot(siteId, sectionId, { locale: initialLocale, limit: 500 }, tokenRef.current)
+    void loadModContentLayoutSnapshot(siteId, sectionId, { locale: initialLocale, limit: 500 }, token, request.signal)
       .then((page) => {
-        if (cancelled) return;
+        if (request.signal.aborted) return;
         setSection(page.section);
         setCategories(page.categories || []);
         setResources(page.items);
@@ -140,12 +138,12 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
         setBusy(false);
       })
       .catch((cause) => {
-        if (cancelled) return;
+        if (request.signal.aborted) return;
         setError(errorText(cause));
         setBusy(false);
       });
-    return () => { cancelled = true; };
-  }, [initialLocale, sectionId, siteId, token]);
+    return () => request.abort();
+  }, [initialLocale, readAttempt, sectionId, siteId, token]);
 
   const isAdvancement = section?.templateCode === "advancement";
 
@@ -155,7 +153,7 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
       ? `/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(section.publicId)}`
       : `/mods/${encodeURIComponent(siteId)}`;
     window.close();
-    window.setTimeout(() => {
+    fallbackTimer.current = window.setTimeout(() => {
       if (!window.closed) window.location.assign(fallback);
     }, 120);
   }
@@ -183,12 +181,13 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
   }
 
   async function save() {
-    if (busy || saveInFlight.current) return;
+    if (busy) return;
     if (!section || !pageReady) {
       setError(t("modContent.sectionActions.incompleteLayout"));
       return;
     }
-    saveInFlight.current = true;
+    const request = operation.beginWrite();
+    if (!request) return;
     setBusy(true);
     setError("");
     try {
@@ -213,7 +212,8 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
         })),
         reason: reason.trim() || t("modContent.sectionActions.layoutReason"),
         baseRevisionId: section.publishedRevisionId,
-      }, token);
+      }, token, request.signal);
+      if (request.signal.aborted) return;
       window.opener?.postMessage({
         type: "mcmods:content-layout-saved",
         siteId,
@@ -224,18 +224,25 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
       setDirty(false);
       closeEditor(true);
     } catch (cause) {
+      if (request.signal.aborted) return;
       setError(errorText(cause));
       setBusy(false);
     } finally {
-      saveInFlight.current = false;
+      operation.finishWrite(request);
     }
   }
 
   function navigateLayoutPage(cursor: string, direction: "next" | "previous") {
+    if (busy || dirty) return;
+    const request = operation.beginWrite();
+    if (!request) return;
     setBusy(true);
     setError("");
-    void loadModContentLayoutSnapshot(siteId, sectionId, { locale: initialLocale, limit: 500, cursor }, tokenRef.current)
+    void loadModContentLayoutSnapshot(siteId, sectionId, { locale: initialLocale, limit: 500, cursor }, token, request.signal)
       .then((page) => {
+        if (request.signal.aborted) return;
+        setSection(page.section);
+        setCategories(page.categories || []);
         setResources(page.items);
         setAdvancementLayouts(createAdvancementLayouts(page.items));
         setAdvancementHistory([]);
@@ -246,8 +253,8 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
         setPageCursor(cursor);
         setDirty(false);
       })
-      .catch((cause) => setError(errorText(cause)))
-      .finally(() => setBusy(false));
+      .catch((cause) => { if (!request.signal.aborted) setError(errorText(cause)); })
+      .finally(() => { if (operation.finishWrite(request)) setBusy(false); });
   }
 
   if (!section && busy) {
@@ -269,6 +276,7 @@ function ModContentLayoutEditorSession({ siteId, sectionId }: { siteId: string; 
       </header>
 
       {error ? <p className="mt-5 rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{error}</p> : null}
+      {!section && error ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => setReadAttempt(value => value + 1)}>{t("common.retry")}</button> : null}
       {section ? <>
         <p className="mt-5 text-sm leading-6 text-[var(--muted)]">
           {t(isAdvancement ? "modContent.sectionActions.advancementArrangeHint" : "modContent.sectionActions.arrangeHint")}
@@ -877,6 +885,7 @@ function AdvancementLayoutBoard({
   const pointByID = new Map(group.map((item) => [item.resource.resourcePublicId, {
     x: (item.layout.x + offsetX) * advancementColumnWidth + 24,
     y: (item.layout.y + offsetY) * advancementRowHeight + 24,
+    name: resourceName(item.resource),
   }]));
   const width = Math.max(900, ...[...pointByID.values()].map((point) => point.x + advancementNodeWidth + 80));
   const height = Math.max(240, ...[...pointByID.values()].map((point) => point.y + advancementNodeHeight + 60));
@@ -966,7 +975,7 @@ function AdvancementLayoutBoard({
           const parent = pointByID.get(layout.parentResourcePublicId);
           if (!child || !parent) return null;
           const path = advancementBoardLinkPath(parent, child);
-          const parentName = resourceName(group.find((item) => item.resource.resourcePublicId === layout.parentResourcePublicId)!.resource);
+          const parentName = parent.name;
           const childName = resourceName(resource);
           const label = t("modContent.sectionActions.removeAdvancementLink", { parent: parentName, child: childName });
           return <g className="group" key={resource.resourcePublicId}>
@@ -1125,21 +1134,15 @@ function createAdvancementLayouts(resources: ModContentLayoutSummary[]): Advance
       y: advancement?.y ?? Math.floor(index / 5),
     };
   });
-  const positions = resources.map((resource) => ({ resource, layout: layouts[resource.resourcePublicId] }));
-  for (const group of advancementConnectedGroups(positions, (item) => item.resource.resourcePublicId, (item) => item.layout.parentResourcePublicId)) {
-    const storedGroupID = group.map((item) => item.layout.groupId).find(Boolean);
-    const derivedGroupID = `advancement:${group.map((item) => item.resource.resourcePublicId).sort()[0]}`;
-    for (const item of group) {
-      if (!item.layout.groupId) item.layout.groupId = storedGroupID || derivedGroupID;
-    }
-  }
   return layouts;
 }
 
 function advancementLayoutGroups(positions: AdvancementPosition[]) {
   const grouped = new Map<string, AdvancementPosition[]>();
   for (const position of positions) {
-    grouped.set(position.layout.groupId, [...(grouped.get(position.layout.groupId) || []), position]);
+    const group = grouped.get(position.layout.groupId);
+    if (group) group.push(position);
+    else grouped.set(position.layout.groupId, [position]);
   }
   return [...grouped.values()].sort((left, right) => (left[0]?.layout.groupId || "").localeCompare(right[0]?.layout.groupId || ""));
 }
@@ -1156,16 +1159,15 @@ function createsAdvancementCycle(layouts: AdvancementLayouts, parentResourcePubl
 }
 
 function advancementDescendantIDs(layouts: AdvancementLayouts, rootPublicID: string) {
-  const result = new Set<string>([rootPublicID]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const [publicID, layout] of Object.entries(layouts)) {
-      if (!result.has(publicID) && result.has(layout.parentResourcePublicId)) {
-        result.add(publicID);
-        changed = true;
-      }
-    }
+  const children = new Map<string, string[]>();
+  for (const [id, { parentResourcePublicId }] of Object.entries(layouts)) {
+    const siblings = children.get(parentResourcePublicId);
+    if (siblings) siblings.push(id);
+    else children.set(parentResourcePublicId, [id]);
+  }
+  const result = new Set([rootPublicID]);
+  for (const id of result) {
+    for (const child of children.get(id) ?? []) result.add(child);
   }
   return result;
 }
@@ -1205,7 +1207,11 @@ function advancementScreenLinkPath(link: DraggedAdvancementLink) {
 
 function normalizeResourceOrdinals(resources: ModContentLayoutSummary[]) {
   const grouped = new Map<string, ModContentLayoutSummary[]>();
-  for (const resource of resources) grouped.set(resource.sectionPublicId, [...(grouped.get(resource.sectionPublicId) || []), resource]);
+  for (const resource of resources) {
+    const group = grouped.get(resource.sectionPublicId);
+    if (group) group.push(resource);
+    else grouped.set(resource.sectionPublicId, [resource]);
+  }
   const ordinals = new Map<string, number>();
   for (const entries of grouped.values()) {
     entries.sort((a, b) => a.ordinal - b.ordinal || a.resourcePublicId.localeCompare(b.resourcePublicId));
