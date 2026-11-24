@@ -223,7 +223,7 @@ function ProjectAutoUpdateSettingsSession({ projectType, projectId, token, canRe
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="grid gap-1 text-sm font-bold">
             {t("projectAutomation.source")}
-            <select disabled={saving || !canWrite} className="field" value={item.sourceType} onChange={(event) => update(item.updateKind, { sourceType: event.target.value })}>
+            <select disabled={saving || !canWrite || (item.licenseOverride && !canOverride)} className="field" value={item.sourceType} onChange={(event) => update(item.updateKind, { sourceType: event.target.value })}>
               <option value="">—</option>
               {data.sources
                 .filter((source) => item.updateKind !== "minecraft_versions" || source.sourceType !== "github")
