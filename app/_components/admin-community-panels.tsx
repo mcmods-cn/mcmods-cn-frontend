@@ -307,8 +307,11 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal);
-    return () => controller.abort();
+    const timer = window.setTimeout(() => void load(controller.signal), 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [attempt, load]);
 
   function submit(event: FormEvent) {
