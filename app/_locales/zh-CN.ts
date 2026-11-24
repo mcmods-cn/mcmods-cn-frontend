@@ -230,6 +230,7 @@ const zhCN = {
     "next": "下一块"
   },
   "commentFeedback": {
+    unconfirmed: "暂时无法确认提交结果。草稿已保留，可以重试。",
     publishedWithoutDetails: "评论已发布，详情暂时无法显示。",
     noLongerVisible: "这条投稿已处理，评论目前不可见。",
     "moderation": "评论已提交并进入审核，通过后会公开显示。",

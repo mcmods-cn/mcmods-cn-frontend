@@ -648,3 +648,38 @@ test("comment submission receipts distinguish published, pending review and no l
     }
   } finally { await browser.close(); }
 });
+
+test("an unconfirmed comment response keeps the draft and its idempotency key for retry", { timeout: 30_000 }, async () => {
+  const keys: string[] = [];
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/comment-targets/community_post/post00001/comments" && request.method === "POST") {
+      const { idempotencyKey } = JSON.parse(request.body) as { idempotencyKey: string };
+      assert.ok(idempotencyKey);
+      assert.equal(request.headers["idempotency-key"], idempotencyKey);
+      keys.push(idempotencyKey);
+      return { status: 200, data: keys.length === 1 ? { moderation: true } : { id: "receipt02", status: "pending", moderation: true } };
+    }
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/discussions/post00001`);
+    const editor = page.getByPlaceholder("Write a comment. Markdown is supported.");
+    const submit = page.getByRole("button", { name: "Comment", exact: true });
+    await editor.fill("Synthetic retry draft");
+    await submit.click();
+    await page.getByText("The submission could not be confirmed. Your draft is still here. You can retry.", { exact: true }).waitFor();
+    assert.equal(await editor.inputValue(), "Synthetic retry draft");
+    assert.equal(keys.length, 1);
+    assert.equal(await page.locator("[data-comment-id]").count(), 1);
+    await submit.click();
+    await page.getByText("The comment was submitted for review and will be public after approval.", { exact: true }).waitFor();
+    assert.equal(await editor.inputValue(), "");
+    assert.deepEqual(keys, [keys[0], keys[0]]);
+    await editor.fill("Synthetic new submission");
+    await submit.click();
+    await page.waitForFunction(() => document.querySelector("textarea")?.value === "");
+    assert.equal(keys.length, 3);
+    assert.notEqual(keys[2], keys[0]);
+  } finally { await browser.close(); }
+});

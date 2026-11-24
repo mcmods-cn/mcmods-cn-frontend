@@ -115,7 +115,13 @@ export function loadCommentFloor(targetType: CommentTargetType, targetKey: strin
   );
 }
 
-export function createComment(
+type CommentSubmission =
+  | CommentItem
+  | { watchOnly: true; watch: CommentWatchState }
+  | { id: string; status: "pending"; moderation: true }
+  | { id: string; status: "published" | "hidden" | "deleted" | "spam"; moderation: false; detailsUnavailable: true };
+
+export async function createComment(
   targetType: CommentTargetType,
   targetKey: string,
   body: string,
@@ -124,12 +130,7 @@ export function createComment(
   antiAbuse: { idempotencyKey: string; formToken?: string; honeypot?: string; challengeProof?: string },
   attachmentFileIds: string[] = [],
 ) {
-  return apiRequest<
-    CommentItem
-    | { watchOnly: true; watch: CommentWatchState }
-    | { id: string; status: "pending"; moderation: true }
-    | { id: string; status: "published" | "hidden" | "deleted" | "spam"; moderation: false; detailsUnavailable: true }
-  >(
+  const result = await apiRequest<CommentSubmission | null>(
     targetCommentsPath(targetType, targetKey),
     {
       method: "POST",
@@ -143,6 +144,18 @@ export function createComment(
     },
     token,
   );
+  if (!result || typeof result !== "object") return null;
+  if ("watchOnly" in result) return result.watchOnly === true && result.watch?.active === true ? result : null;
+  if (typeof result.id !== "string" || !result.id) return null;
+  if ("status" in result) {
+    if (result.status === "pending") return result.moderation === true ? result : null;
+    return result.detailsUnavailable === true && result.moderation === false &&
+      ["published", "hidden", "deleted", "spam"].includes(result.status) ? result : null;
+  }
+  if (!result.author || typeof result.author.username !== "string" || typeof result.body !== "string" ||
+      typeof result.createdAt !== "string" || Number.isNaN(Date.parse(result.createdAt)) ||
+      !result.reactions || typeof result.reactions !== "object" || !Array.isArray(result.userReactions)) return null;
+  return result;
 }
 
 export function loadCommentReplies(commentId: string, cursor: string | undefined, token?: string) {

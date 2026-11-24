@@ -4,6 +4,7 @@ const zhTW = {
   importReceipt: { statusUnavailable: "匯入工作 {id} 已受理，暫時無法讀取狀態。", refresh: "查看匯入狀態" },
   commentFeedback: {
     ...zhCN.commentFeedback,
+    unconfirmed: "暫時無法確認提交結果。草稿已保留，可以重試。",
     publishedWithoutDetails: "留言已發布，暫時無法顯示詳細內容。",
     noLongerVisible: "這筆投稿已處理，留言目前無法顯示。",
   },

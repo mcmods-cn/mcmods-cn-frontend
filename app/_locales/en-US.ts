@@ -230,6 +230,7 @@ const en = {
     "next": "Next chunk"
   },
   "commentFeedback": {
+    unconfirmed: "The submission could not be confirmed. Your draft is still here. You can retry.",
     publishedWithoutDetails: "Comment published. Its details are temporarily unavailable.",
     noLongerVisible: "This submission has already been processed. The comment is no longer visible.",
     "moderation": "The comment was submitted for review and will be public after approval.",
