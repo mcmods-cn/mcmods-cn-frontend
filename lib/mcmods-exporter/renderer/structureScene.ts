@@ -216,7 +216,11 @@ function addPrototypeInstances(
     parts.push({ object, packed: packInstanceLayers(visibleBlockIndices, blockLayers, signal) })
     pendingInstanceCount += visibleBlockIndices.length
   })
-  if (!parts.length) throw new Error('方块模型没有可实例化 Mesh')
+  if (!parts.length) {
+    if (!culledFaceInstances) throw new Error('方块模型没有可实例化 Mesh')
+    disposeStructureGroup(prototype)
+    return instanceStats(cullableFaceInstances, 0, culledFaceInstances, [])
+  }
   const stats = instanceStats(cullableFaceInstances, renderedCullableFaceInstances, culledFaceInstances, parts.map((part) => part.packed))
   assertStructureSceneUsage(addInstanceUsage(usage, stats))
   for (let index = 0; index < parts.length; index++) {

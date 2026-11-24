@@ -588,9 +588,8 @@ async function createForgeObjGroup(bundle: AssetSource, model: ResolvedModel, si
   if (mtlPath) {
     const mtlText = await bundle.text(mtlPath, signal)
     throwIfAborted(signal)
-    const rewrittenMtl = rewriteMtlTexturePaths(bundle, mtlText, mtlPath, objLocation.namespace, model.textures)
-    materialCreator = new MTLLoader(manager).parse(rewrittenMtl, '')
-    materialCreator.preload()
+    materialCreator = new MTLLoader(manager).parse(mtlText, '')
+    bindMaterialTextures(manager, materialCreator, bundle, mtlPath, objLocation.namespace, model.textures)
   }
 
   const loader = new OBJLoader(manager)
@@ -650,27 +649,32 @@ function findMtlPath(
   return candidates.find((candidate) => bundle.has(candidate))
 }
 
-function rewriteMtlTexturePaths(
+function bindMaterialTextures(
+  manager: THREE.LoadingManager,
+  materials: MTLLoader.MaterialCreator,
   bundle: AssetSource,
-  source: string,
   mtlPath: string,
   namespace: string,
   textures: Record<string, string>,
-): string {
-  return source.split(/\r?\n/).map((line) => {
-    const trimmed = line.trim()
-    if (!/^(?:map_[a-z0-9_]+|bump|norm)\s+/i.test(trimmed)) return line
-    const parts = trimmed.split(/\s+/)
-    const reference = parts.at(-1)
-    if (!reference) return line
-    const resolvedReference = reference.startsWith('#') ? resolveTexture(reference, textures) : reference
-    if (!resolvedReference) return line
-    const texturePath = resolveTextureAssetPath(resolvedReference, mtlPath, namespace)
-    const url = bundle.url(texturePath)
-    if (!url) return line
-    parts[parts.length - 1] = url
-    return parts.join(' ')
-  }).join('\n')
+) {
+  const urls = new Map<string, string>()
+  for (const info of Object.values(materials.materialsInfo)) {
+    for (const key of ['map_kd', 'map_ks', 'map_ke', 'norm', 'map_bump', 'bump', 'disp', 'map_d'] as const) {
+      const value = info[key]
+      if (!value) continue
+      // MTLLoader owns option parsing and filenames containing spaces.
+      const reference = materials.getTextureParams(value, {}).url
+      const resolved = reference.startsWith('#') ? resolveTexture(reference, textures) : reference
+      const url = resolved && bundle.url(resolveTextureAssetPath(resolved, mtlPath, namespace))
+      if (url) urls.set(reference, url)
+      else delete info[key]
+    }
+  }
+  manager.setURLModifier((reference) => {
+    const url = urls.get(reference)
+    if (!url) throw new Error('OBJ material texture is absent from the resource index')
+    return url
+  })
 }
 
 function resolveTextureAssetPath(reference: string, basePath: string, namespace: string): string {
