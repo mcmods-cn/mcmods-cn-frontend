@@ -544,7 +544,7 @@ test("autosaving edits to separate versions of a resource keeps two recoverable 
       await page.waitForFunction(reason => document.querySelector<HTMLTextAreaElement>("aside textarea")?.value === reason, "Editing " + versionId);
     }
     await page.goto(fixture.origin + "/mods/fixture-mod/resources/resource01/edit?version=version02&section=section02&draft=other-version");
-    await page.getByText("draft editor does not match", { exact: false }).waitFor();
+    await page.getByTitle("draft editor does not match", { exact: true }).waitFor();
     assert.equal(await page.locator("aside textarea").inputValue(), "");
   } finally { await browser.close(); }
 });
