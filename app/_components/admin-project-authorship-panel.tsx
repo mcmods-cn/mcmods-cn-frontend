@@ -32,6 +32,9 @@ export function AdminProjectAuthorshipPanel({ token }: { token: string }) {
   const [nextCursor, setNextCursor] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const [reviewing, setReviewing] = useState(false);
+  const reviewInFlight = useRef(false);
   const requestGeneration = useRef(0);
   const requestController = useRef<AbortController | null>(null);
 
@@ -75,17 +78,23 @@ export function AdminProjectAuthorshipPanel({ token }: { token: string }) {
       requestGeneration.current += 1;
       requestController.current?.abort();
     };
-  }, [load]);
+  }, [load, refreshVersion]);
 
   async function review(item: ProjectAuthorshipRelation, nextStatus: "approved" | "rejected" | "revoked") {
+    if (reviewInFlight.current) return;
+    reviewInFlight.current = true;
+    setReviewing(true);
     try {
       await apiRequest(`/api/v1/admin/project-authorship-relations/${item.id}`, {
         method: "PATCH",
         body: JSON.stringify({ status: nextStatus, note: notes[item.id] ?? "" }),
       }, token);
-      await load();
+      setRefreshVersion(version => version + 1);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("admin.projectAuthorship.reviewFailed"));
+    } finally {
+      reviewInFlight.current = false;
+      setReviewing(false);
     }
   }
 
@@ -95,7 +104,7 @@ export function AdminProjectAuthorshipPanel({ token }: { token: string }) {
       <button className="button-secondary focus-ring" type="button" onClick={() => void load()}>{t("common.refresh")}</button>
     </div>
     <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label={t("admin.projectAuthorship.statusFilter")}>
-      {statuses.map((value) => <button key={value} className={value === status ? "button-primary focus-ring" : "button-secondary focus-ring"} type="button" onClick={() => setStatus(value)}>{t(`admin.projectAuthorship.statuses.${value}`)}</button>)}
+      {statuses.map((value) => <button key={value} className={value === status ? "button-primary focus-ring" : "button-secondary focus-ring"} type="button" aria-pressed={value === status} onClick={() => { if (value !== status) { setItems([]); setNextCursor(""); setLoading(true); setStatus(value); } }}>{t(`admin.projectAuthorship.statuses.${value}`)}</button>)}
     </div>
     {message ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{message}</p> : null}
     <div className="mt-5 grid gap-4">
@@ -108,10 +117,10 @@ export function AdminProjectAuthorshipPanel({ token }: { token: string }) {
           </div>
           <time className="text-sm text-[var(--muted)]">{new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.createdAt))}</time>
         </div>
-        {(status === "pending" || status === "approved") ? <>
+        {(item.status === "pending" || item.status === "approved") ? <>
           <textarea className="field mt-4 min-h-20 resize-y" value={notes[item.id] ?? ""} placeholder={t("admin.projectAuthorship.notePlaceholder")} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} />
           <div className="mt-3 flex justify-end gap-2">
-            {status === "pending" ? <><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></> : <button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void review(item, "revoked")}>{t("admin.projectAuthorship.revoke")}</button>}
+            {item.status === "pending" ? <><button className="button-secondary focus-ring text-[var(--red)]" disabled={reviewing} type="button" onClick={() => void review(item, "rejected")}>{t("admin.reviews.reject")}</button><button className="button-primary focus-ring" disabled={reviewing} type="button" onClick={() => void review(item, "approved")}>{t("admin.reviews.approve")}</button></> : <button className="button-secondary focus-ring text-[var(--red)]" disabled={reviewing} type="button" onClick={() => void review(item, "revoked")}>{t("admin.projectAuthorship.revoke")}</button>}
           </div>
         </> : null}
       </article>)}

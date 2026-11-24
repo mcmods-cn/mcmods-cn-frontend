@@ -99,3 +99,43 @@ test("TEST048 another claimant cannot submit and deleted evidence cannot be open
     assert.deepEqual(mutations, []);
   } finally { await browser.close(); }
 });
+
+test("authorship decisions refresh the selected queue after a filter change", { timeout: 30_000 }, async () => {
+  const started = Promise.withResolvers<void>();
+  const decision = Promise.withResolvers<void>();
+  const reads: string[] = [];
+  const writes: unknown[] = [];
+  let committed = false;
+  const relation = (name: string, status: string) => ({
+    id: status === "pending" ? "pending01" : "approved01", projectType: "mod", projectId: "fixturemod", creatorId: name, creatorKind: "author", creatorName: name,
+    roleName: "Maintainer", permissionGranting: true, status, createdAt: "2026-11-01T00:00:00Z",
+  });
+  const browser = await fixture.page(async ({ path, method, url, body }) => {
+    const root = "/api/v1/admin/project-authorship-relations";
+    if (path === root) {
+      const status = url.searchParams.get("status")!;
+      reads.push(status);
+      const items = status === "pending" ? [relation("Pending creator", status)] : [relation(committed ? "Newly approved creator" : "Existing creator", status)];
+      return { data: { items, nextCursor: "", hasMore: false } };
+    }
+    if (path === root + "/pending01" && method === "PATCH") {
+      writes.push(JSON.parse(body)); started.resolve(); await decision.promise; committed = true; return { data: { status: "approved" } };
+    }
+  });
+  try {
+    const { page } = browser;
+    await navigateAdminPanel(page, fixture.origin, "Project authorship relations");
+    await page.getByPlaceholder("Review reason or audit note").fill("Verified relation");
+    await page.getByRole("button", { name: "Approve", exact: true }).evaluate(button => {
+      (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click();
+    });
+    await started.promise;
+    await page.getByRole("button", { name: "Approved", exact: true }).click();
+    await page.getByRole("link", { name: "Existing creator" }).waitFor();
+    decision.resolve();
+    await page.getByRole("link", { name: "Newly approved creator" }).waitFor();
+    assert.equal(await page.getByRole("link", { name: "Pending creator" }).count(), 0);
+    assert.deepEqual(writes, [{ status: "approved", note: "Verified relation" }]);
+    assert.deepEqual(reads, ["pending", "approved", "approved"]);
+  } finally { decision.resolve(); await browser.close(); }
+});
