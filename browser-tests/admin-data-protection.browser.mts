@@ -178,6 +178,31 @@ test("OCT02 pending changelog previews are lazy, retry failures and render HTML 
   } finally { await browser.close(); }
 });
 
+test("a log reader can inspect retention policy without controls that write or clean activity", { timeout: 30_000 }, async () => {
+  const writes: string[] = [];
+  const browser = await fixture.page(({ path, method }) => {
+    if (path === "/api/v1/auth/me") return { data: {
+      id: "logread01", username: "Log reader", permissionVersion: 1, rbacVersion: 1, roleCodes: [],
+      permissionRules: ["admin.access", "activity.read", "log.read"].map(code => ({ code, allow: true, priority: 1 })),
+    } };
+    if (path === "/api/v1/admin/activity") return { data: { items: [] } };
+    if (path.startsWith("/api/v1/admin/activity-logs/") && method !== "GET") { writes.push(path); return { status: 403, error: "Read only" }; }
+    if (path === "/api/v1/admin/activity-logs/retention") return { data: {
+      config: { enabled: true, runIntervalMinutes: 60, default: { enabled: true, allowDelete: true, retentionDays: 90, batchSize: 1000 }, actions: {} },
+      actions: ["view"], objectTypes: ["mod"],
+    } };
+  });
+  try {
+    await panel(browser.page, "activity-monitor", "monitoring");
+    const policy = browser.page.locator("section").filter({ has: browser.page.locator('input[value="90"]') }).last();
+    await policy.locator('input[value="90"]').first().waitFor();
+    assert.equal(await policy.locator('input[value="90"]').first().isDisabled(), true);
+    assert.equal(await policy.getByRole("button", { name: "Save", exact: true }).count(), 0);
+    assert.equal(await policy.getByRole("button", { name: "Preview cleanup", exact: true }).count(), 0);
+    assert.deepEqual(writes, []);
+  } finally { await browser.close(); }
+});
+
 test("OCT02 invalid typed cleanup filters never request previews and changed filters invalidate confirmation", { timeout: 30_000 }, async () => {
   let previews = 0;
   let executions = 0;

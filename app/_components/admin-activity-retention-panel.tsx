@@ -26,7 +26,7 @@ type CleanupPreview = {
 
 const emptyPolicy: Policy = { enabled: false, allowDelete: false, retentionDays: 365, batchSize: 1000 };
 
-export function AdminActivityRetentionPanel({ token }: { token: string }) {
+export function AdminActivityRetentionPanel({ token, canWrite, canReadUsers }: { token: string; canWrite: boolean; canReadUsers: boolean }) {
   const { t } = useI18n();
   const [data, setData] = useState<RetentionResponse | null>(null);
   const [config, setConfig] = useState<RetentionConfig | null>(null);
@@ -58,7 +58,7 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
 
   useEffect(() => {
     const query = userQuery.trim();
-    if (query.length < 2) {
+    if (!canReadUsers || !canWrite || query.length < 2) {
       const timer = window.setTimeout(() => setUserResults([]), 0);
       return () => window.clearTimeout(timer);
     }
@@ -69,7 +69,7 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
         .catch(() => { if (!cancelled) setUserResults([]); });
     }, 250);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [token, userQuery]);
+  }, [canReadUsers, canWrite, token, userQuery]);
 
   const parsedObjects = useMemo(() => parseActivityCleanupObjects(objectsText), [objectsText]);
 
@@ -82,7 +82,7 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
   }
 
   async function saveConfig() {
-    if (!config) return;
+    if (!canWrite || !config || busy) return;
     setBusy(true);
     setMessage("");
     try {
@@ -97,7 +97,7 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
   }
 
   async function createPreview() {
-    if (!selectedActions.length) return;
+    if (!canWrite || !selectedActions.length || busy) return;
     if (parsedObjects.invalidEntries.length) {
       setMessage(t("admin.activityRetention.invalidObjects", { count: parsedObjects.invalidEntries.length }));
       return;
@@ -124,7 +124,7 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
   }
 
   async function executeCleanup() {
-    if (!currentPreview || confirmation !== currentPreview.confirmationText) return;
+    if (!canWrite || !currentPreview || confirmation !== currentPreview.confirmationText || busy) return;
     setBusy(true);
     setMessage("");
     try {
@@ -150,28 +150,28 @@ export function AdminActivityRetentionPanel({ token }: { token: string }) {
       <div><h2 className="text-xl font-black">{t("admin.activityRetention.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.activityRetention.description")}</p></div>
       {message ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm">{message}</p> : null}
 
-      <div className="rounded-lg border border-[var(--line)] p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-black">{t("admin.activityRetention.automatic")}</h3><p className="text-sm text-[var(--muted)]">{t("admin.activityRetention.automaticDescription")}</p></div><button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void saveConfig()}>{t("common.save")}</button></div>
+      <fieldset className="rounded-lg border border-[var(--line)] p-4" disabled={!canWrite || busy}>
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-black">{t("admin.activityRetention.automatic")}</h3><p className="text-sm text-[var(--muted)]">{t("admin.activityRetention.automaticDescription")}</p></div>{canWrite && <button className="button-primary focus-ring" type="button" onClick={() => void saveConfig()}>{t("common.save")}</button>}</div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="flex items-center gap-2 text-sm font-semibold"><input checked={config.enabled} type="checkbox" onChange={(event) => setConfig({ ...config, enabled: event.target.checked })} />{t("admin.activityRetention.enableAutomatic")}</label>
           <label className="text-sm font-semibold">{t("admin.activityRetention.interval")}<input className="field mt-1" min={10} max={1440} type="number" value={config.runIntervalMinutes} onChange={(event) => setConfig({ ...config, runIntervalMinutes: Number(event.target.value) })} /></label>
         </div>
         <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[720px] text-left text-sm"><thead><tr className="text-[var(--muted)]"><th className="border-b p-2">{t("admin.activityRetention.action")}</th><th>{t("admin.activityRetention.enabled")}</th><th>{t("admin.activityRetention.allowDelete")}</th><th>{t("admin.activityRetention.days")}</th><th>{t("admin.activityRetention.batch")}</th></tr></thead><tbody><PolicyRow action={t("admin.activityRetention.defaultPolicy")} policy={config.default} onChange={(patch) => setConfig({ ...config, default: { ...config.default, ...patch } })} />{data.actions.map((action) => <PolicyRow action={action} key={action} policy={policyFor(action)} onChange={(patch) => updatePolicy(action, patch)} />)}</tbody></table></div>
-      </div>
+      </fieldset>
 
-      <div className="rounded-lg border border-[var(--line)] p-4">
+      {canWrite && <div className="rounded-lg border border-[var(--line)] p-4">
         <h3 className="font-black">{t("admin.activityRetention.manual")}</h3><p className="text-sm text-[var(--muted)]">{t("admin.activityRetention.manualDescription")}</p>
         <fieldset className="mt-4"><legend className="text-sm font-black">{t("admin.activityRetention.actions")}</legend><div className="mt-2 flex flex-wrap gap-2">{data.actions.map((action) => <label className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${policyFor(action).allowDelete ? "border-[var(--line)]" : "border-[var(--line)] opacity-45"}`} key={action}><input className="mr-1.5" checked={selectedActions.includes(action)} disabled={!policyFor(action).allowDelete} type="checkbox" onChange={() => setSelectedActions((current) => toggleValue(current, action))} />{action}</label>)}</div></fieldset>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <div><label className="text-sm font-black">{t("admin.activityRetention.users")}<input className="field mt-1" value={userQuery} placeholder={t("admin.activityRetention.userSearch")} onChange={(event) => setUserQuery(event.target.value)} /></label>{userResults.length ? <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-[var(--line)]">{userResults.map((item) => <button className="focus-ring flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-[var(--panel-subtle)]" key={item.id} type="button" onClick={() => { setSelectedUsers((current) => current.some((value) => value.id === item.id) ? current : [...current, item]); setUserQuery(""); setUserResults([]); }}><span>{item.username}</span><code>{item.id}</code></button>)}</div> : null}<div className="mt-2 flex flex-wrap gap-2">{selectedUsers.map((item) => <button className="rounded-full border border-[var(--line)] px-3 py-1 text-xs" key={item.id} type="button" onClick={() => setSelectedUsers((current) => current.filter((value) => value.id !== item.id))}>{item.username} · {item.id} ×</button>)}</div></div>
+          <div><label className="text-sm font-black">{t("admin.activityRetention.users")}<input className="field mt-1" disabled={!canReadUsers} value={userQuery} placeholder={t("admin.activityRetention.userSearch")} onChange={(event) => setUserQuery(event.target.value)} /></label>{userResults.length ? <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-[var(--line)]">{userResults.map((item) => <button className="focus-ring flex w-full justify-between px-3 py-2 text-left text-sm hover:bg-[var(--panel-subtle)]" key={item.id} type="button" onClick={() => { setSelectedUsers((current) => current.some((value) => value.id === item.id) ? current : [...current, item]); setUserQuery(""); setUserResults([]); }}><span>{item.username}</span><code>{item.id}</code></button>)}</div> : null}<div className="mt-2 flex flex-wrap gap-2">{selectedUsers.map((item) => <button className="rounded-full border border-[var(--line)] px-3 py-1 text-xs" key={item.id} type="button" onClick={() => setSelectedUsers((current) => current.filter((value) => value.id !== item.id))}>{item.username} · {item.id} ×</button>)}</div></div>
           <label className="text-sm font-black">{t("admin.activityRetention.objects")}<textarea className="field mt-1 min-h-28 font-mono text-xs" value={objectsText} placeholder={t("admin.activityRetention.objectsPlaceholder")} onChange={(event) => setObjectsText(event.target.value)} /><span className="mt-1 block font-normal text-[var(--muted)]">{t("admin.activityRetention.objectsParsed", { count: parsedObjects.objects.length })}</span></label>
         </div>
         <fieldset className="mt-4"><legend className="text-sm font-black">{t("admin.activityRetention.objectTypes")}</legend><div className="mt-2 flex flex-wrap gap-2">{data.objectTypes.map((value) => <label className="rounded-full border border-[var(--line)] px-3 py-1.5 text-xs" key={value}><input className="mr-1.5" checked={selectedObjectTypes.includes(value)} type="checkbox" onChange={() => setSelectedObjectTypes((current) => toggleValue(current, value))} />{value}</label>)}</div></fieldset>
         <div className="mt-4 grid gap-3 sm:grid-cols-2"><label className="text-sm font-black">{t("admin.activityRetention.from")}<input className="field mt-1" type="datetime-local" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label className="text-sm font-black">{t("admin.activityRetention.to")}<input className="field mt-1" type="datetime-local" value={to} onChange={(event) => setTo(event.target.value)} /></label></div>
         <button className="button-secondary focus-ring mt-4" disabled={busy || !selectedActions.length} type="button" onClick={() => void createPreview()}>{t("admin.activityRetention.preview")}</button>
-      </div>
+      </div>}
 
-      {currentPreview ? <div className={`rounded-lg border p-4 ${currentPreview.dangerous ? "border-red-500" : "border-[var(--line)]"}`}><h3 className="font-black">{t("admin.activityRetention.previewResult")}</h3><p className="mt-2 text-3xl font-black">{currentPreview.matchedCount.toLocaleString()}</p><p className="text-sm text-[var(--muted)]">{t("admin.activityRetention.matched")}</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><CountGroup title={t("admin.activityRetention.byAction")} values={currentPreview.byAction} /><CountGroup title={t("admin.activityRetention.byObjectType")} values={currentPreview.byObjectType} /><CountGroup title={t("admin.activityRetention.byUser")} values={currentPreview.byUser} /></div>{currentPreview.samples.length ? <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-[var(--panel-subtle)] p-3 text-xs">{JSON.stringify(currentPreview.samples, null, 2)}</pre> : null}<label className="mt-4 block text-sm font-black">{t("admin.activityRetention.confirm", { text: currentPreview.confirmationText })}<input className="field mt-1" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label><button className="button-primary focus-ring mt-3 border-red-600 bg-red-600" disabled={busy || confirmation !== currentPreview.confirmationText} type="button" onClick={() => void executeCleanup()}>{t("admin.activityRetention.execute")}</button></div> : null}
+      {canWrite && currentPreview ? <div className={`rounded-lg border p-4 ${currentPreview.dangerous ? "border-red-500" : "border-[var(--line)]"}`}><h3 className="font-black">{t("admin.activityRetention.previewResult")}</h3><p className="mt-2 text-3xl font-black">{currentPreview.matchedCount.toLocaleString()}</p><p className="text-sm text-[var(--muted)]">{t("admin.activityRetention.matched")}</p><div className="mt-4 grid gap-3 sm:grid-cols-3"><CountGroup title={t("admin.activityRetention.byAction")} values={currentPreview.byAction} /><CountGroup title={t("admin.activityRetention.byObjectType")} values={currentPreview.byObjectType} /><CountGroup title={t("admin.activityRetention.byUser")} values={currentPreview.byUser} /></div>{currentPreview.samples.length ? <pre className="mt-4 max-h-64 overflow-auto rounded-lg bg-[var(--panel-subtle)] p-3 text-xs">{JSON.stringify(currentPreview.samples, null, 2)}</pre> : null}<label className="mt-4 block text-sm font-black">{t("admin.activityRetention.confirm", { text: currentPreview.confirmationText })}<input className="field mt-1" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label><button className="button-primary focus-ring mt-3 border-red-600 bg-red-600" disabled={busy || confirmation !== currentPreview.confirmationText} type="button" onClick={() => void executeCleanup()}>{t("admin.activityRetention.execute")}</button></div> : null}
     </section>
   );
 }

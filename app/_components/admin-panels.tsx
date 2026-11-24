@@ -213,8 +213,11 @@ const definitions = {
   },
   "activity-monitor": {
     group: "monitoring", title: "admin.community.activity", description: "admin.community.activityDescription",
-    read: "activity.read",
-    render: ({ token, user }) => <><ActivityMonitorPanel token={token} />{hasPermission(user, "log.read") ? <AdminActivityRetentionPanel token={token} /> : null}</>,
+    read: "activity.read", write: "log.write",
+    render: ({ token, user, access }) => <>
+      <ActivityMonitorPanel token={token} />
+      {hasPermission(user, "log.read") && <AdminActivityRetentionPanel token={token} canWrite={access.write} canReadUsers={hasPermission(user, "user.read")} />}
+    </>,
   },
   "anti-abuse": {
     group: "monitoring", title: "antiAbuse.navTitle", description: "antiAbuse.navDescription",
