@@ -206,3 +206,31 @@ test("FP084 GitHub-only automation preserves an empty compatibility source and r
     } finally { await browser.close(); }
   }
 });
+
+test("Minecraft language selection keeps keyboard focus and search within the registration picker", { timeout: 30_000 }, async () => {
+  let registrations = 0;
+  const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/auth/register") { registrations++; return { status: 400, error: "Unexpected registration" }; }
+    return editorAPI(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/login`);
+    await page.getByRole("button", { name: "Register", exact: true }).click();
+    const trigger = page.getByRole("button", { name: /^Select the first content language/ });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "Select the first content language", exact: true });
+    const search = dialog.getByRole("searchbox", { name: "Search language name or region" });
+    await search.fill("en_us"); await search.press("Enter");
+    const option = dialog.getByRole("button", { name: "English (United States)", exact: true });
+    await option.waitFor();
+    const close = dialog.getByRole("button", { name: "Close", exact: true });
+    await close.focus(); await page.keyboard.press("Shift+Tab");
+    assert.equal(await dialog.evaluate(element => element.contains(document.activeElement)), true);
+    await page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "detached" });
+    assert.equal(await trigger.evaluate(element => element === document.activeElement), true);
+    assert.equal(await page.getByText("Username must be 1 to 32 characters.", { exact: true }).count(), 0);
+    assert.equal(registrations, 0);
+  } finally { await browser.close(); }
+});

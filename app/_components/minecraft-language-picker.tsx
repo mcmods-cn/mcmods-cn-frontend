@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { keepFocusInDialog, usePickerDialog } from "./picker-dialog-focus";
 import {
   findMinecraftLanguage,
   minecraftLanguageLabel,
@@ -45,6 +46,9 @@ export function MinecraftLanguagePicker({
   return <div className={`min-w-0 ${className}`}>
     <button
       className="field focus-ring flex min-h-11 w-full items-center justify-between gap-3 text-left"
+      aria-expanded={open}
+      aria-haspopup="dialog"
+      aria-label={`${title ?? t("minecraftLanguagePicker.title")} · ${summary}`}
       disabled={disabled}
       type="button"
       onClick={() => setOpen(true)}
@@ -54,7 +58,7 @@ export function MinecraftLanguagePicker({
     </button>
     {multiple && normalizedValues.length ? <SelectedLanguages
       values={normalizedValues}
-      onRemove={disabled ? undefined : (code) => onChange(normalizedValues.filter((value) => value !== code))}
+      onRemove={disabled || (!allowEmpty && normalizedValues.length === 1) ? undefined : (code) => onChange(normalizedValues.filter((value) => value !== code))}
     /> : null}
     <MinecraftLanguagePickerDialog
       allowEmpty={allowEmpty}
@@ -121,6 +125,9 @@ function OpenMinecraftLanguagePickerDialog({
   onConfirm,
 }: Omit<Parameters<typeof MinecraftLanguagePickerDialog>[0], "open">) {
   const { t } = useI18n();
+  const dialogRef = usePickerDialog(true);
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { searchRef.current?.focus(); }, []);
   const [search, setSearch] = useState("");
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [selected, setSelected] = useState(() => uniqueLanguageCodes(values));
@@ -146,11 +153,11 @@ function OpenMinecraftLanguagePickerDialog({
     });
   }
 
-  return <div className="fixed inset-0 z-[100] grid place-items-center bg-black/55 p-3 sm:p-6" role="presentation" onMouseDown={onClose}>
+  return <dialog ref={dialogRef} aria-label={title ?? t("minecraftLanguagePicker.title")}
+    className="fixed inset-0 z-[100] m-0 grid h-dvh max-h-none w-screen max-w-none place-items-center overflow-hidden border-0 bg-black/55 p-3 text-[var(--foreground)] sm:p-6"
+    onCancel={(event) => { event.preventDefault(); onClose(); }} onKeyDown={keepFocusInDialog} onMouseDown={onClose}>
     <section
-      aria-modal="true"
       className="surface flex h-[min(780px,92dvh)] w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-[var(--line)] shadow-2xl"
-      role="dialog"
       onMouseDown={(event) => event.stopPropagation()}
     >
       <header className="border-b border-[var(--line)] p-4 sm:p-5">
@@ -167,11 +174,13 @@ function OpenMinecraftLanguagePickerDialog({
           className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
           onSubmit={(event) => {
             event.preventDefault();
+            event.stopPropagation();
             setSubmittedSearch(search.trim());
           }}
         >
           <input
-            autoFocus
+            ref={searchRef}
+            aria-label={t("minecraftLanguagePicker.search")}
             className="field"
             placeholder={t("minecraftLanguagePicker.search")}
             type="search"
@@ -217,7 +226,7 @@ function OpenMinecraftLanguagePickerDialog({
         <button className="button-primary focus-ring" disabled={!allowEmpty && selected.length === 0} type="button" onClick={() => onConfirm(selected)}>{t("common.confirm")}</button>
       </footer>
     </section>
-  </div>;
+  </dialog>;
 }
 
 function SelectedLanguages({ values, onRemove }: { values: readonly string[]; onRemove?: (code: string) => void }) {

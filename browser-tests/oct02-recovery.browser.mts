@@ -334,6 +334,9 @@ test("OCT02 server submission freezes its snapshot and retains it after a failed
     await page.getByRole("button", { name: "Connect and check", exact: true }).click();
     const submit = page.getByRole("button", { name: "Submit", exact: true });
     await submit.waitFor();
+    const lastLanguage = page.getByRole("button", { name: "简体中文 (中国大陆)", exact: true });
+    assert.equal(await lastLanguage.isDisabled(), true);
+
     await submit.evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
     await started.promise;
     const input = page.locator('input[maxlength="80"]');

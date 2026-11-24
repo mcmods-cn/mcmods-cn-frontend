@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { KeyboardEvent } from "react";
+import { keepFocusInDialog, usePickerDialog } from "./picker-dialog-focus";
 import { createPortal } from "react-dom";
 import { MinecraftVersionConfig } from "../_lib/mod-api";
 import { getCachedMinecraftVersionConfig, loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
@@ -52,21 +52,7 @@ export function MinecraftVersionPicker({
   const [showAprilFools, setShowAprilFools] = useState(false);
   const [search, setSearch] = useState("");
   const [pendingValues, setPendingValues] = useState<string[]>([]);
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const dialog = dialogRef.current;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    dialog?.showModal();
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      if (dialog?.open) dialog.close();
-      document.body.style.overflow = previousOverflow;
-      previousFocus?.focus();
-    };
-  }, [open]);
+  const dialogRef = usePickerDialog(open);
 
   const effectiveConfig = config ?? remoteConfig;
   const disabledSet = useMemo(() => new Set(disabledCodes), [disabledCodes]);
@@ -135,20 +121,6 @@ export function MinecraftVersionPicker({
   function confirmSelection() {
     onChange(pendingValues);
     setOpen(false);
-  }
-
-  function keepFocusInDialog(event: KeyboardEvent<HTMLDialogElement>) {
-    if (event.key !== "Tab") return;
-    const controls = [...event.currentTarget.querySelectorAll<HTMLElement>(
-      "button, input, select, textarea, a[href], [tabindex]",
-    )].filter((control) => control.tabIndex >= 0 && !control.matches(":disabled") && control.getClientRects().length > 0);
-    const first = controls[0];
-    const last = controls.at(-1);
-    if (!first || !last) return;
-    if (event.shiftKey ? document.activeElement === first : document.activeElement === last) {
-      event.preventDefault();
-      (event.shiftKey ? last : first).focus();
-    }
   }
 
   const compressedValues = compressMinecraftVersionSelection(values, selectableGroups, t);
