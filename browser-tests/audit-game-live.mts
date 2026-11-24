@@ -111,7 +111,11 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
     });
     await page.goto(`${frontend.origin}/mods/${encodeURIComponent(runtime.projectSiteId)}/data/edit?import=exporter&version=${encodeURIComponent(runtime.targetVersionPublicId)}`);
     await page.getByRole("heading", { name: "Edit or import mod data", exact: true }).waitFor();
-    const fileInput = page.locator('input[type="file"][accept=".zip,application/zip"]:visible').first();
+    const upload = page.locator('input[type="file"][accept=".zip,application/zip"]:visible').first();
+    await upload.waitFor();
+    report.uploadRecoveryPendingOnArrival = await upload.isDisabled();
+    // The editor checks for a resumable upload before it accepts new files.
+    const fileInput = page.locator('input[type="file"][accept=".zip,application/zip"]:visible:enabled').first();
     await fileInput.waitFor();
     const createJobPath = `/api/v1/mods/${encodeURIComponent(runtime.projectSiteId)}/export-imports`;
     const created = page.waitForResponse(response => new URL(response.url()).pathname === apiPath(createJobPath) && response.request().method() === "POST", { timeout: 60_000 });
