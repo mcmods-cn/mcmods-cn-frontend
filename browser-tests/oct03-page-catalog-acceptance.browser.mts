@@ -28,6 +28,7 @@ test("BUG144 FP057 PERF068 recipe edits preserve nested definitions and picker s
   const writes: Array<Record<string, unknown>> = [];
   const resourceReads: Array<{offset:number;locale:string}> = [];
   const batches: Array<Record<string, unknown>> = [];
+  let filteredAttempts = 0;
   const browser = await controlled(({ path, method, body, url }) => {
     if (path === `/api/v1/catalog/recipes/${recipeId}`) {
       if (method === "PUT") { writes.push(JSON.parse(body)); return { status: 503, error: "Controlled recipe save failure" }; }
@@ -41,6 +42,10 @@ test("BUG144 FP057 PERF068 recipe edits preserve nested definitions and picker s
     if (path === "/api/v1/catalog/resources") {
       const offset=Number(url.searchParams.get("offset")), locale=url.searchParams.get("locale") || "";
       assert.equal(url.searchParams.has("cursor"),false);resourceReads.push({offset,locale});
+      if (url.searchParams.get("q") === "filtered") {
+        if (++filteredAttempts === 1) return { status: 503, error: "Synthetic filtered picker unavailable" };
+        return { data: { items: [], total: 0, limit: 40, offset } };
+      }
       return {data:{items:[{...resource,names:{"en-US":"Hydrated item","zh-CN":"水合物品"}}],total:80,limit:40,offset}};
     }
   });
@@ -78,6 +83,17 @@ test("BUG144 FP057 PERF068 recipe edits preserve nested definitions and picker s
     assert.equal(resourceReads.at(-1)?.locale, "zh-CN");
     assert.equal(await dialog.locator('button[aria-pressed="true"]').count(), 1, "selected resource remains selected after the locale reset");
     assert.equal(batches.length, 2, "language change performs one further batch rather than per-resource reads");
+    assert.deepEqual(resourceReads.filter(read => read.locale === "zh-CN").map(read => read.offset), [0], "the previous page cursor is never issued under the new locale");
+    const search = dialog.getByRole("searchbox");
+    await search.fill("filtered");
+    await search.press("Enter");
+    await dialog.getByRole("alert").waitFor();
+    assert.equal(await dialog.locator('button[aria-pressed]').count(), 0, "a failed new query cannot expose an old result as selectable");
+    assert.equal(await dialog.getByRole("button", { name: "下一页", exact: true }).isDisabled(), true);
+    await dialog.getByRole("alert").getByRole("button").click();
+    await dialog.getByRole("alert").waitFor({ state: "hidden" });
+    assert.equal(filteredAttempts, 2);
+    assert.equal(writes.length, 1, "a picker search must not submit an edit");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
     assert.equal(await page.getByLabel("本地化名称", { exact: true }).inputValue(), "Changed recipe with imported extensions");
   } finally { await browser.close(); }
