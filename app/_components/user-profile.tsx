@@ -165,7 +165,7 @@ function UserProfileSession({ userId }: { userId: string }) {
             </div>
           </div>
           {blockNotice ? <p className="relative z-10 mt-4 text-sm font-bold" role="status">{blockNotice}</p> : null}
-          {message ? <p className="relative z-10 mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}{relationshipNeedsRefresh ? <button className="button-secondary focus-ring ml-3" type="button" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button> : null}</p> : null}
+          {message ? <p className="relative z-10 mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm"><span>{message}</span>{relationshipNeedsRefresh ? <button className="button-secondary focus-ring ml-3" type="button" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button> : null}</p> : null}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
