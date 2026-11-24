@@ -97,8 +97,15 @@ test("BUG144 FP057 PERF068 recipe edits preserve nested definitions and picker s
     await dialog.getByRole("alert").waitFor();
     assert.equal(await dialog.locator('button[aria-pressed]').count(), 0, "a failed new query cannot expose an old result as selectable");
     assert.equal(await dialog.getByRole("button", { name: "下一页", exact: true }).isDisabled(), true);
-    await dialog.getByRole("alert").getByRole("button").click();
-    await dialog.getByRole("alert").waitFor({ state: "hidden" });
+    const [retryResponse] = await Promise.all([
+      page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return response.request().method() === "GET" && url.pathname === "/api/v1/catalog/resources" && url.searchParams.get("q") === "filtered";
+      }),
+      dialog.getByRole("alert").getByRole("button").click(),
+    ]);
+    assert.equal(retryResponse.status(), 200);
+    await dialog.getByText("没有找到符合条件的资源。", { exact: true }).waitFor();
     assert.equal(filteredAttempts, 2);
     assert.equal(writes.length, 1, "a picker search must not submit an edit");
     await dialog.getByRole("button", { name: "关闭", exact: true }).click();
