@@ -1,6 +1,7 @@
 import en from "./en-US";
 const ru = {
   ...en,
+  importReceipt: { statusUnavailable: "Задача импорта {id} принята. Её статус временно недоступен.", refresh: "Проверить статус импорта" },
   commentFeedback: {
     ...en.commentFeedback,
     publishedWithoutDetails: "Комментарий опубликован. Подробности временно недоступны.",

@@ -1,4 +1,5 @@
 const zhCN = {
+  importReceipt: { statusUnavailable: "导入任务 {id} 已受理，暂时无法读取状态。", refresh: "查看导入状态" },
   "apiErrors": {
     "HTTP_400": "请求无效，请检查填写内容。",
     "HTTP_401": "请重新登录。",

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { type CSSProperties, useCallback, useEffect, useMemo, useId, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
+import { readBrowserStorage, writeBrowserStorage } from "../_lib/browser-storage.mts";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import type { BackendModCompatibility, BackendModRecord, MinecraftVersionConfig } from "../_lib/mod-api";
@@ -32,6 +33,7 @@ import {
   retryCatalogImportJob,
   type CatalogImportSource,
   type ModExportJob,
+  type SubmittedImportJob,
   type ModExportUploadProgress,
   uploadEmbeddedIconCatalog,
   waitForCatalogImportJob,
@@ -308,7 +310,7 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
         <div className="mt-6" hidden={editingVersion || importSource !== ""}><div className="mb-4"><h3 className="text-lg font-black">{t("modContent.versionEditor.contentTypes")}</h3><p className="mt-1 text-sm text-[var(--muted)]">{t("modContent.versionEditor.contentTypesHint")}</p></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{currentSections.map((section) => <ContentTypeCard busy={busy} key={section.publicId} locale={locale} section={section} siteId={siteId} templates={templates} token={token} onDelete={() => void archiveSection(section)} onDisplayModeChange={(displayMode) => void changeSectionDisplayMode(section, displayMode)} onTemplateSaved={async (result) => { setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved")); await reload(); }} />)}<AddContentPageCard disabled={selectedVersion.status !== "active" || importBusy || busy} onClick={() => setTypeDialogOpen(true)} /></div></div>
         <div hidden={editingVersion || importSource !== "exporter"}><ExporterImportPanel key={selectedVersion.publicId} blocked={importBusy && activeImportSource !== "exporter"} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} subjectId={subjectId} token={token} version={selectedVersion} /></div>
         <div hidden={editingVersion || importSource !== "icon"}><IconExportPanel key={selectedVersion.publicId} blocked={importBusy && activeImportSource !== "icon"} onBusyChange={updateImportBusy} siteId={siteId} token={token} version={selectedVersion} /></div>
-        {(["iconrenderer", "letmeseesee", "irr"] as CatalogImportSource[]).map((source) => <div hidden={editingVersion || importSource !== source} key={`${source}:${selectedVersion.publicId}`}><EmbeddedIconImportPanel blocked={importBusy && activeImportSource !== source} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} source={source} token={token} version={selectedVersion} /></div>)}
+        {(["iconrenderer", "letmeseesee", "irr"] as CatalogImportSource[]).map((source) => <div hidden={editingVersion || importSource !== source} key={`${source}:${selectedVersion.publicId}`}><EmbeddedIconImportPanel subjectId={subjectId} blocked={importBusy && activeImportSource !== source} onBusyChange={updateImportBusy} onImported={reload} siteId={siteId} source={source} token={token} version={selectedVersion} /></div>)}
       </>}
     </div>
     {typeDialogOpen && selectedVersion ? <AddContentTypeDialog busy={busy} message={message} locale={locale} templates={templates} onClose={() => { if (!busy && !sectionMutationInFlight.current) setTypeDialogOpen(false); }} onPreset={(template, displayMode) => void createSection(template, displayMode)} onCustom={(input) => void createCustomSection(input)} /> : null}
@@ -505,9 +507,11 @@ function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { si
   />{upload && busy ? <UploadProgressDetails progress={upload} /> : null}{message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}</section>;
 }
 
-function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onImported, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; source: CatalogImportSource; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
+function EmbeddedIconImportPanel({ siteId, subjectId, token, version, source, blocked, onImported, onBusyChange }: { siteId: string; subjectId: string; token: string; version: ModContentVersion; source: CatalogImportSource; blocked: boolean; onImported: () => Promise<unknown>; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
+  const receiptKey = JSON.stringify(["catalog-import", subjectId, siteId, version.publicId, source]);
+  const [acceptedId, setAcceptedId] = useState(() => readBrowserStorage(receiptKey, true) || "");
   const inFlight = useRef(false);
   const active = useRef(true);
   const [overwrite, setOverwrite] = useState(false);
@@ -530,26 +534,53 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
     return () => onBusyChange(source, false);
   }, [busy, onBusyChange, source]);
 
-  async function monitor(initialJob: ModExportJob) {
+  function clearReceipt(id: string) {
+    const saved = readBrowserStorage(receiptKey, true);
+    if (saved === id) writeBrowserStorage(receiptKey, "", true);
+    setAcceptedId(saved && saved !== id ? saved : "");
+  }
+
+  async function monitor(initialJob: SubmittedImportJob) {
     if (!active.current) return;
-    setJob(initialJob);
+    writeBrowserStorage(receiptKey, initialJob.id, true);
+    setAcceptedId(initialJob.id);
+    setJob("status" in initialJob ? initialJob : null);
+    setUpload(null);
     polling.current?.abort();
     polling.current = new AbortController();
-    const completed = await waitForCatalogImportJob(siteId, initialJob.id, token, value => { if (active.current) setJob(value); }, polling.current.signal);
+    const completed = await waitForCatalogImportJob(siteId, initialJob.id, token, value => { if (active.current) setJob(value); }, polling.current.signal).catch((reason: unknown) => {
+      if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
+      throw new Error(t("importReceipt.statusUnavailable", { id: initialJob.id }), { cause: reason });
+    });
     if (!active.current) return;
     if (completed.status === "confirmation_required") {
       setMessage("");
       return;
     }
+    clearReceipt(initialJob.id);
     if (completed.status === "failed") throw new Error(String(completed.errorDetail.message || completed.errorCode || t("modContent.catalogImport.failed")));
     if (completed.status === "cancelled") throw new Error(t("modContent.catalogImport.cancelled"));
-    await onImported();
-    setMessage(completed.reviewRequired ? t("modContent.catalogImport.reviewPending") : t("modContent.catalogImport.complete"));
+    const result = completed.status === "partial"
+      ? [t("mods.exportImport.stages.partial"), completed.reviewRequired && t("mods.exportImport.reviewNotice")].filter(Boolean).join(" ")
+      : t(completed.reviewRequired ? "modContent.catalogImport.reviewPending" : "modContent.catalogImport.complete");
+    try {
+      await onImported();
+      if (active.current) setMessage(result);
+    } catch (reason) {
+      if (active.current) setMessage(`${result} ${errorText(reason)}`);
+    }
   }
 
   async function uploadFile(files?: FileList | File[]) {
     const selectedFiles = Array.from(files || []);
-    if (!selectedFiles.length || inFlight.current || blocked || version.status !== "active") return;
+    if (!selectedFiles.length || inFlight.current || acceptedId || blocked || version.status !== "active") return;
+    const existingReceipt = readBrowserStorage(receiptKey, true);
+    if (existingReceipt) {
+      setJob(null);
+      setMessage("");
+      setAcceptedId(existingReceipt);
+      return;
+    }
     if (selectedFiles.some((file) => !file.name.toLowerCase().endsWith(".json"))) {
       setMessage(t("modContent.catalogImport.jsonOnly"));
       return;
@@ -575,12 +606,13 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
   }
 
   async function retry() {
-    if (!job || inFlight.current || blocked) return;
+    if ((!acceptedId && !job) || inFlight.current || blocked) return;
     inFlight.current = true;
     onBusyChange(source, true);
     setBusy(true); setMessage("");
     try {
-      await monitor(await retryCatalogImportJob(siteId, job.id, token));
+      if (acceptedId) await monitor({ id: acceptedId });
+      else if (job?.status === "failed") await monitor(await retryCatalogImportJob(siteId, job.id, token));
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setMessage(errorText(reason));
     } finally {
@@ -611,6 +643,7 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
     setBusy(true); setMessage("");
     try {
       await cancelModExportJob(siteId, job.id, token);
+      clearReceipt(job.id);
       setJob(null);
       setMessage(t("modContent.catalogImport.cancelled"));
     } catch (reason) {
@@ -626,18 +659,18 @@ function EmbeddedIconImportPanel({ siteId, token, version, source, blocked, onIm
   return <section className="mt-6">
     <h3 className="text-lg font-black">{t("modContent.catalogImport.title", { importer: importerName })}</h3>
     <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.catalogImport.description", { importer: importerName, version: version.label })}</p>
-    <ImportOverwriteChoice checked={overwrite} disabled={busy || blocked} onChange={setOverwrite} />
+    <ImportOverwriteChoice checked={overwrite} disabled={busy || blocked || !!acceptedId} onChange={setOverwrite} />
     <FileDropZone
       accept=".json,application/json,application/x-ndjson"
       className="mt-5 min-h-56 p-8"
-      disabled={busy || blocked || version.status !== "active"}
+      disabled={busy || blocked || !!acceptedId || version.status !== "active"}
       hint={t(hintKey, { importer: importerName })}
       multiple={supportsMultipleFiles}
       title={busy ? t("modContent.catalogImport.processing") : t("modContent.catalogImport.choose", { importer: importerName })}
       onFiles={(files) => void uploadFile(files)}
     />
     {job ? <div className="mt-4"><div className="flex justify-between text-sm font-bold"><span>{phase}</span><span>{progress}%</span></div><div className="mt-2 h-2 overflow-hidden rounded bg-[var(--panel-subtle)]"><div className="h-full bg-[var(--accent)] transition-[width]" style={{ width: `${progress}%` }} /></div>{job.status === "confirmation_required" ? <MODIDConfirmationCard busy={busy} job={job} onCancel={() => void cancelMODIDMismatch()} onConfirm={() => void confirmMODIDMismatch()} /> : null}</div> : upload ? <UploadProgressDetails progress={upload} /> : null}
-    {message ? <div className="mt-4 flex items-center gap-3 rounded-lg border border-[var(--line)] p-3 text-sm font-bold"><p className="min-w-0 flex-1">{message}</p>{job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retry()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
+    {(message || (acceptedId && !busy && !job)) ? <div className="mt-4 flex items-center gap-3 rounded-lg border border-[var(--line)] p-3 text-sm font-bold"><p className="min-w-0 flex-1">{message || t("importReceipt.statusUnavailable", { id: acceptedId })}</p>{acceptedId || job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retry()}>{t(acceptedId ? "importReceipt.refresh" : "mods.exportImport.retry")}</button> : null}</div> : null}
   </section>;
 }
 

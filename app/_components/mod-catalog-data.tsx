@@ -9,7 +9,7 @@ import {
   cancelModExportUpload,
   confirmModExportMODIDMismatch,
   getActiveModExportJob,
-  getModExportJob,
+  type SubmittedImportJob,
   ModExportJob,
   ModExportUploadProgress,
   retryModExportJob,
@@ -204,6 +204,7 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
   const cancelling = useRef(false);
   const [checkingRecovery, setCheckingRecovery] = useState(true);
   const [recoveryFailed, setRecoveryFailed] = useState(false);
+  const [statusReadFailed, setStatusReadFailed] = useState(false);
   const [recoveryAttempt, setRecoveryAttempt] = useState(0);
   const [error, setError] = useState("");
   const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
@@ -259,16 +260,23 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
     }
   }
 
-  async function monitorJob(initialJob: ModExportJob) {
+  async function monitorJob(initialJob: SubmittedImportJob) {
     assertCurrentSubject();
-    setJob(initialJob);
+    setRecoveryFailed(false);
+    setStatusReadFailed(false);
+    setJob("status" in initialJob ? initialJob : null);
+    setUpload(null);
     await persistTaskPatch({ phase: "importing", jobId: initialJob.id });
     assertCurrentSubject();
     polling.current?.abort();
     polling.current = new AbortController();
     const completed = await waitForModExportJob(siteId, initialJob.id, token, (nextJob) => {
       if (activeSubject.current === subjectId) setJob(nextJob);
-    }, polling.current.signal);
+    }, polling.current.signal).catch((reason: unknown) => {
+      if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
+      if (activeSubject.current === subjectId) setStatusReadFailed(true);
+      throw new Error(t("importReceipt.statusUnavailable", { id: initialJob.id }), { cause: reason });
+    });
     assertCurrentSubject();
     if (completed.status === "confirmation_required") {
       setError("");
@@ -332,9 +340,6 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
       },
     );
     assertCurrentSubject();
-    await persistenceQueue.current;
-    assertCurrentSubject();
-    await persistTaskPatch({ phase: "importing", jobId: importedJob.id });
     await monitorJob(importedJob);
   }
 
@@ -350,6 +355,7 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
       setHasActiveTask(false);
       setCheckingRecovery(true);
       setRecoveryFailed(false);
+      setStatusReadFailed(false);
       setBusy(false);
       setJob(null);
       setUpload(null);
@@ -388,9 +394,7 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
         setBusy(true);
         setError("");
         if (persisted.task.jobId) {
-          const restoredJob = await getModExportJob(siteId, persisted.task.jobId, token);
-          if (cancelled) return;
-          await monitorJob(restoredJob);
+          await monitorJob({ id: persisted.task.jobId });
           return;
         }
         await runPersistedUpload(persisted.task, persisted.file);
@@ -451,9 +455,15 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
     importStarting.current = true;
     setBusy(true); setError("");
     try {
+      const acceptedId = activeTask.current?.jobId;
+      if (acceptedId) {
+        await monitorJob({ id: acceptedId });
+        return;
+      }
       const persisted = await readPersistedModExportUploadTask(taskKey, subjectId);
       if (!persisted) throw new Error(t("mods.exportImport.errors.upload"));
-      await runPersistedUpload(persisted.task, persisted.file);
+      if (persisted.task.jobId) await monitorJob({ id: persisted.task.jobId });
+      else await runPersistedUpload(persisted.task, persisted.file);
     } catch (reason) {
       if (activeSubject.current === subjectId && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason, t("mods.exportImport.errors.upload")));
     } finally {
@@ -545,7 +555,7 @@ export function ModExportImportModal({ siteId, subjectId, token, targetVersionId
       {imported && job.reviewRequired && <p className="mt-3 text-sm text-[var(--warning)]">{t("mods.exportImport.reviewNotice")}</p>}
     </>}
     {(busy || hasActiveTask) && !["ready", "partial", "failed", "cancelled"].includes(job?.status || "") ? <div className="mt-4 flex justify-end"><button className="button-secondary focus-ring text-[var(--red)]" type="button" onClick={() => void cancelImport()}>{t("common.cancel")}</button></div> : null}
-    {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{recoveryFailed ? <button className="button-secondary focus-ring" disabled={busy || checkingRecovery} type="button" onClick={() => setRecoveryAttempt(value => value + 1)}>{t("common.retry")}</button> : job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : !job && hasActiveTask ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void resumeUpload()}>{t("mods.exportImport.retry")}</button> : null}</div> : null}
+    {error ? <div className="mt-4 flex flex-wrap items-center gap-3 rounded-md border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]"><p className="min-w-0 flex-1">{error}</p>{recoveryFailed && !statusReadFailed ? <button className="button-secondary focus-ring" disabled={busy || checkingRecovery} type="button" onClick={() => setRecoveryAttempt(value => value + 1)}>{t("common.retry")}</button> : job?.status === "failed" ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void retryImport()}>{t("mods.exportImport.retry")}</button> : hasActiveTask && (!job || running) ? <button className="button-secondary focus-ring" disabled={busy} type="button" onClick={() => void resumeUpload()}>{t(statusReadFailed ? "importReceipt.refresh" : "mods.exportImport.retry")}</button> : null}</div> : null}
   </>;
   if (inline) return <section className="mt-6"><h3 className="text-lg font-black">{t("mods.exportImport.modalTitle")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("mods.exportImport.targetDescription", { version: targetVersionLabel })}</p>{form}</section>;
   return <div className="fixed inset-0 z-[80] grid place-items-center bg-black/55 p-4" role="presentation" onMouseDown={closeModal}><div className="surface max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg border border-[var(--line)] p-5 shadow-2xl" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><header className="flex items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t("mods.exportImport.modalTitle")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("mods.exportImport.modalDescription")}</p></div><button className="button-secondary focus-ring" disabled={busy && !job} type="button" onClick={closeModal}>{t("common.close")}</button></header><p className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 text-sm"><strong>{t("mods.exportImport.dataVersion")}：</strong>{targetVersionLabel}</p>{form}</div></div>;

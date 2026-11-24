@@ -1,6 +1,7 @@
 import zhCN from "./zh-CN";
 const zhTW = {
   ...zhCN,
+  importReceipt: { statusUnavailable: "匯入工作 {id} 已受理，暫時無法讀取狀態。", refresh: "查看匯入狀態" },
   commentFeedback: {
     ...zhCN.commentFeedback,
     publishedWithoutDetails: "留言已發布，暫時無法顯示詳細內容。",

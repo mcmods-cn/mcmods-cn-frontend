@@ -1,6 +1,7 @@
 import en from "./en-US";
 const ja = {
   ...en,
+  importReceipt: { statusUnavailable: "インポート {id} は受け付けられました。現在、状態を取得できません。", refresh: "インポートの状態を確認" },
   commentFeedback: {
     ...en.commentFeedback,
     publishedWithoutDetails: "コメントを公開しました。現在、詳細を表示できません。",

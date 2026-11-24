@@ -1,4 +1,5 @@
 const en = {
+  importReceipt: { statusUnavailable: "Import {id} was accepted. Its status is temporarily unavailable.", refresh: "Check import status" },
   "apiErrors": {
     "HTTP_400": "The request is invalid. Check the entered values.",
     "HTTP_401": "Please sign in again.",

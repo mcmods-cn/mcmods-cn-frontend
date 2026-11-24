@@ -221,3 +221,53 @@ test("FP068 two native ZIP drops cannot start another import while the initial j
     assert.equal(creations.length, 1);
   } finally { initialJob.resolve({ data: job }); completed.resolve({ data: job }); await browser.close(); }
 });
+
+for (const [source, endpoint, fileName] of [
+  ["exporter", "export-imports", "test.zip"],
+  ["iconrenderer", "catalog-imports", "icons.json"],
+] as const) {
+  test(`committed ${source} imports recover status without creating or uploading again`, { timeout: 35_000 }, async () => {
+    const id = "8f5bb7b3-0541-4eb1-9471-77cc7e8a5d1f";
+    const root = `/api/v1/mods/fixture-mod/${endpoint}`;
+    const writes: string[] = [];
+    let statusReads = 0;
+    const browser = await controlled(({ path, method }) => {
+      if (path === "/api/v1/mods/fixture-mod/editor") return { data: { uniqueId: "fixturemod", siteId: "fixture-mod", primaryName: "Fixture mod", compatibilities: [] } };
+      if (path === "/api/v1/mods/fixture-mod/content-versions") return { data: { items: [{ publicId: "version01", label: "Fixture version", minecraftVersions: ["1.21"], loaders: [], modVersion: "1", status: "active" }] } };
+      if (path === "/api/v1/mods/fixture-mod/content-templates" || path === "/api/v1/mods/fixture-mod/content-sections") return { data: { items: [] } };
+      if (path === "/api/v1/mods/fixture-mod/export-imports/active") return { data: { job: null } };
+      if (method === "POST" && path.startsWith(root)) {
+        writes.push(path);
+        if (path === `${root}/uploads/presign`) return { data: { uploadRequired: false, file: { id: "file-receipt" } } };
+        if (path === root) return { status: 500, error: "Import accepted; status unavailable", code: "import_job_accepted_status_unavailable", details: { jobId: id } };
+      }
+      if (method === "GET" && path === `${root}/${id}`) {
+        statusReads++;
+        if (statusReads === 1) return { status: 503, error: "Temporary status outage" };
+        return { data: { id, status: "ready", progress: 100, currentStage: "ready", reviewRequired: true, errorDetail: {}, detectedModids: [], configuredModids: [] } };
+      }
+    });
+    try {
+      const { page } = browser;
+      await page.goto(`${fixture.origin}/mods/fixture-mod/data/edit?version=version01&import=${source}`);
+      const selector = source === "exporter" ? 'input[accept=".zip,application/zip"]' : 'input[accept=".json,application/json,application/x-ndjson"]';
+      const input = page.locator(selector).first();
+      await input.locator("..").waitFor({ state: "visible" });
+      await page.waitForFunction(selector => document.querySelector<HTMLInputElement>(selector)?.disabled === false, selector);
+      await input.setInputFiles({ name: fileName, mimeType: source === "exporter" ? "application/zip" : "application/json", buffer: Buffer.from(source === "exporter" ? "synthetic exporter bytes" : "[{}]") });
+      const notice = page.getByText(`Import ${id} was accepted. Its status is temporarily unavailable.`, { exact: true });
+      await notice.waitFor({ timeout: 8000 });
+      assert.equal(await input.isDisabled(), true);
+      if (source === "iconrenderer") {
+        await page.reload();
+        await notice.waitFor();
+        assert.equal(await input.isDisabled(), true);
+      }
+      await page.getByRole("button", { name: "Check import status", exact: true }).click();
+      await page.getByText(source === "exporter" ? /This import is awaiting review/ : /awaiting review|pending review|submitted for review/i).first().waitFor();
+      await page.waitForFunction(selector => document.querySelector<HTMLInputElement>(selector)?.disabled === false, selector);
+      assert.deepEqual(writes, [`${root}/uploads/presign`, root]);
+      assert.equal(statusReads, 2);
+    } finally { await browser.close(); }
+  });
+}

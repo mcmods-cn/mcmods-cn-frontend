@@ -1,6 +1,7 @@
 import en from "./en-US";
 const es = {
   ...en,
+  importReceipt: { statusUnavailable: "La importación {id} se ha aceptado. Su estado no está disponible por el momento.", refresh: "Consultar el estado de la importación" },
   commentFeedback: {
     ...en.commentFeedback,
     publishedWithoutDetails: "El comentario se ha publicado. Los detalles no están disponibles por el momento.",

@@ -1,5 +1,5 @@
 import { readExporterManifest, isAllNamespacesExport } from "./exporter-manifest-preflight.mts";
-import { API_BASE_URL, apiRequest } from "./api";
+import { API_BASE_URL, ApiError, apiRequest } from "./api";
 import {
   abortMultipartUpload,
   completeOSSUpload,
@@ -32,6 +32,22 @@ export type ModExportJob = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type SubmittedImportJob = ModExportJob | Pick<ModExportJob, "id">;
+
+async function submitImportJob(path: string, payload: object, token: string, signal?: AbortSignal): Promise<SubmittedImportJob> {
+  try {
+    return await apiRequest<ModExportJob>(path, { method: "POST", body: JSON.stringify(payload), signal }, token);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 500 && error.code === "import_job_accepted_status_unavailable") {
+      const details = error.details;
+      if (details && typeof details === "object" && "jobId" in details && typeof details.jobId === "string" && details.jobId.trim()) {
+        return { id: details.jobId };
+      }
+    }
+    throw error;
+  }
+}
 
 export type ModExportEntryDetail = {
   publicId: string;
@@ -165,21 +181,9 @@ export async function uploadModExportPackage(
     record = await completeOSSUpload<OSSFileRecord>(`${root}/uploads/complete`, ticket, token, control.signal);
   }
   if (!record?.id) throw new Error("mod export upload did not return a file record");
-  const job = await apiRequest<ModExportJob>(
-    root,
-    { method: "POST", body: JSON.stringify({ ossFileId: record.id, ...options }), signal: control.signal },
-    token,
-  );
+  const job = await submitImportJob(root, { ossFileId: record.id, ...options }, token, control.signal);
   onProgress?.({ phase: "importing", percent: 100 });
   return job;
-}
-
-export function getModExportJob(siteId: string, jobId: string, token: string, signal?: AbortSignal) {
-  return apiRequest<ModExportJob>(
-    `/api/v1/mods/${encodeURIComponent(siteId)}/export-imports/${encodeURIComponent(jobId)}`,
-    { signal },
-    token,
-  );
 }
 
 export function getActiveModExportJob(
@@ -268,10 +272,7 @@ export async function uploadEmbeddedIconCatalog(file: File, siteId: string, toke
     record = await completeOSSUpload<OSSFileRecord>(`${root}/uploads/complete`, ticket, token);
   }
   if (!record?.id) throw new Error("catalog import upload did not return a file record");
-  const job = await apiRequest<ModExportJob>(root, {
-    method: "POST",
-    body: JSON.stringify({ ossFileId: record.id, source, ...options }),
-  }, token);
+  const job = await submitImportJob(root, { ossFileId: record.id, source, ...options }, token);
   onProgress?.({ phase: "importing", percent: 100 });
   return job;
 }
