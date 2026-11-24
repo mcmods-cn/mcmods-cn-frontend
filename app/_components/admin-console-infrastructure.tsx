@@ -119,7 +119,7 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
             <button className="button-secondary focus-ring" type="button" onClick={() => acceptLatest(false)}>{t("admin.ai.discardEdits")}</button></div>
         </>}
       </section>}
-      <fieldset disabled={!canWrite || saving} className="grid min-w-0 gap-4">
+      <fieldset disabled={!canWrite || !validConfigRevision(base.revision) || saving} className="grid min-w-0 gap-4">
       <section className="surface rounded-lg p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

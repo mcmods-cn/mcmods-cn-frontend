@@ -469,6 +469,7 @@ test("an unversioned NATS read or committed receipt cannot enable another save",
     const discard = page.getByRole("button", { name: "Discard my draft and use the latest settings", exact: true });
     await compare.waitFor();
     assert.equal(await save.isDisabled(), true);
+    assert.equal(await page.getByRole("textbox", { name: "Server URL", exact: true }).isDisabled(), true);
     await compare.click(); await discard.click(); await save.click();
     await page.getByText("The configuration changed. Your draft is preserved.", { exact: true }).waitFor();
     assert.equal(await save.isDisabled(), true);
