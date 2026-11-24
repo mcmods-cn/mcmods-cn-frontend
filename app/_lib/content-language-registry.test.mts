@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
+import { localizedCatalogResourceName, normalizeContentLanguage, toEditableContentLanguage } from "./content-language.ts";
 import { supportedUILocales, uiLocaleCodes } from "./ui-locale.mts";
 
 test("editable content languages are derived from the UI locale registry", async () => {
@@ -11,4 +12,14 @@ test("editable content languages are derived from the UI locale registry", async
   assert.match(source, /from "\.\/ui-locale\.mts"/);
   assert.match(source, /editableContentLanguages\s*=\s*uiLocaleCodes/);
   assert.deepEqual(uiLocaleCodes, supportedUILocales.map(({ code }) => code));
+});
+
+test("unrecognized content language keys remain strings and do not prevent catalog display", () => {
+  const unknown = "constructor";
+  assert.equal(normalizeContentLanguage(unknown), unknown);
+  assert.equal(toEditableContentLanguage(unknown), undefined);
+  assert.equal(localizedCatalogResourceName({
+    id: "minecraft:stone",
+    names: { [unknown]: "Unrecognized source locale", en_us: "Stone" },
+  }, "en-US"), "Stone");
 });

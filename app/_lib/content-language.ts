@@ -33,8 +33,8 @@ const minecraftLocaleAliases: Record<Locale, readonly string[]> = {
 export function normalizeContentLanguage(value: ContentLanguageTag | null | undefined) {
   const candidate = value?.trim().replaceAll("_", "-") ?? "";
   if (!candidate) return "";
-  const aliased = contentLanguageAliasesByCode[candidate.toLowerCase()];
-  if (aliased) return aliased;
+  const key = candidate.toLowerCase();
+  if (Object.hasOwn(contentLanguageAliasesByCode, key)) return contentLanguageAliasesByCode[key];
   try {
     return Intl.getCanonicalLocales(candidate)[0] ?? candidate;
   } catch {
