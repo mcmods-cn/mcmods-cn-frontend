@@ -667,7 +667,7 @@ test("a failed comment edit keeps the latest corrected draft for its original ve
     }
     if (request.path === "/api/v1/comments/comment01" && request.method === "PATCH") {
       writes.push(JSON.parse(request.body).body);
-      return writes.length === 1 ? { status: 503, error: "Try editing again" }
+      return writes.length === 1 ? { status: 503, code: "HTTP_503", error: "Temporary failure" }
         : { data: { ...comment("comment01", corrected), canEdit: true, updatedAt: "2026-10-03T01:01:00Z" } };
     }
     return postReads(request);
@@ -691,7 +691,7 @@ test("a failed comment edit keeps the latest corrected draft for its original ve
     await page.getByText(/Comments can contain up to 10000/).waitFor();
     assert.deepEqual(writes, []);
     assert.equal(await edit(corrected), tooLong);
-    await page.getByText("Try editing again", { exact: true }).waitFor();
+    await page.getByText("This service is temporarily unavailable. Try again later.", { exact: true }).waitFor();
     assert.equal(await edit(corrected), corrected);
     await card.getByText(corrected, { exact: true }).waitFor();
     assert.deepEqual(writes, [corrected, corrected]);
