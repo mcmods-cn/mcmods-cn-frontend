@@ -395,7 +395,10 @@ function CommentTree(props: CommentTreeProps) {
     if (!nextBody?.trim() || nextBody.trim() === comment.body) return;
     try {
       const result = await updateComment(comment.id, nextBody.trim(), comment.updatedAt, props.token);
-      props.onItemsChange((items) => items.map((item) => item.id === result.id ? result : item));
+      props.onItemsChange((items) => items.map((item) => {
+        if (item.id !== result.id) return item;
+        return "detailsUnavailable" in result ? { ...item, body: result.body, updatedAt: result.updatedAt } : result;
+      }));
     } catch (error) {
       const current = error instanceof ApiError && error.status === 409 && error.code === "COMMENT_EDIT_CONFLICT"
         ? parseCommentEditConflict(error.details)

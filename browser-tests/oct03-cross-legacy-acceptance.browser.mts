@@ -552,3 +552,31 @@ test("OCT03 FP061 export preview is bound to version and loader, busy modal reta
     assert.equal(await trigger.evaluate(button => button === document.activeElement), true);
   } finally { firstPreview.resolve({ data: preview("neoforge") }); await browser.close(); }
 });
+
+test("a committed comment edit receipt preserves its author and advances the next edit version", { timeout: 30_000 }, async () => {
+  const edits: Array<{ baseUpdatedAt: string; body: string }> = [];
+  const versions = ["2026-10-03T01:01:00Z", "2026-10-03T01:02:00Z"];
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/comment-targets/community_post/post00001/comments") {
+      return { data: comments([{ ...comment("comment01", "Synthetic editable remark"), canEdit: true }]) };
+    }
+    if (request.path === "/api/v1/comments/comment01" && request.method === "PATCH") {
+      const edit = JSON.parse(request.body) as { baseUpdatedAt: string; body: string };
+      edits.push(edit);
+      return { data: { id: "comment01", body: edit.body, updatedAt: versions[edits.length - 1], detailsUnavailable: true } };
+    }
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/discussions/post00001`);
+    const card = page.locator('[data-comment-id="comment01"]');
+    for (const body of ["First saved remark", "Second saved remark"]) {
+      page.once("dialog", dialog => dialog.accept(body));
+      await card.getByRole("button", { name: "Edit", exact: true }).click();
+      await card.getByText(body, { exact: true }).waitFor();
+      await card.getByText("Other commenter", { exact: true }).first().waitFor();
+    }
+    assert.deepEqual(edits.map(edit => edit.baseUpdatedAt), [stamp, versions[0]]);
+  } finally { await browser.close(); }
+});

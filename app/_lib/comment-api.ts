@@ -180,8 +180,10 @@ export function deleteComment(commentId: string, token: string) {
   return apiRequest(`/api/v1/comments/${encodeURIComponent(commentId)}`, { method: "DELETE" }, token);
 }
 
+type CommentEditReceipt = Pick<CommentItem, "id" | "body" | "updatedAt"> & { detailsUnavailable: true };
+
 export function updateComment(commentId: string, body: string, baseUpdatedAt: string, token: string) {
-  return apiRequest<CommentItem>(
+  return apiRequest<CommentItem | CommentEditReceipt>(
     `/api/v1/comments/${encodeURIComponent(commentId)}`,
     { method: "PATCH", body: JSON.stringify({ body, baseUpdatedAt }) },
     token,
