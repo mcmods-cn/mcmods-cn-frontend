@@ -2,7 +2,7 @@ import { apiRequest } from "./api";
 import type { MinecraftVersionConfig } from "./mod-api";
 
 let cachedConfig: MinecraftVersionConfig | undefined;
-let pendingRequest: Promise<MinecraftVersionConfig> | undefined;
+let latestConfig: Promise<MinecraftVersionConfig> | undefined;
 
 export function getCachedMinecraftVersionConfig() {
   return cachedConfig;
@@ -10,19 +10,23 @@ export function getCachedMinecraftVersionConfig() {
 
 export function cacheMinecraftVersionConfig(config: MinecraftVersionConfig) {
   cachedConfig = config;
+  latestConfig = Promise.resolve(config);
 }
 
 export function loadMinecraftVersionConfig(options: { refresh?: boolean } = {}) {
   if (!options.refresh && cachedConfig) return Promise.resolve(cachedConfig);
-  if (!options.refresh && pendingRequest) return pendingRequest;
+  if (!options.refresh && latestConfig) return latestConfig;
 
-  const request = apiRequest<MinecraftVersionConfig>("/api/v1/minecraft/versions")
+  const request: Promise<MinecraftVersionConfig> = apiRequest<MinecraftVersionConfig>("/api/v1/minecraft/versions")
     .then((config) => {
+      if (latestConfig && latestConfig !== request) return latestConfig;
       cachedConfig = config;
       return config;
+    }, (error: unknown) => {
+      if (latestConfig && latestConfig !== request) return latestConfig;
+      latestConfig = cachedConfig && Promise.resolve(cachedConfig);
+      throw error;
     });
-  pendingRequest = request;
-  return request.finally(() => {
-    if (pendingRequest === request) pendingRequest = undefined;
-  });
+  latestConfig = request;
+  return request;
 }
