@@ -7,7 +7,6 @@ import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage, toEditableContentLanguage } from "../_lib/content-language";
 import {
   catalogRegistryForKind,
-  namespaceFromIdentifier,
   normalizeCatalogResourceKind,
 } from "../_lib/catalog-resource-identifiers";
 import type { LocalizationVersion } from "../_lib/editor-types";
@@ -1034,11 +1033,11 @@ function ReferenceListFieldEditor({
   const [open, setOpen] = useState(false);
   const tagPicker = field.referenceKind === "tag";
   const kind = normalizeCatalogResourceKind(field.referenceKind || "resource");
-  const registry = field.referenceRegistry || (tagPicker ? "minecraft:item" : catalogRegistryForKind(kind) || "items");
+  const registry = field.referenceRegistry || (tagPicker ? "minecraft:item" : catalogRegistryForKind(kind) || "");
   const pickerValue = values.map((identifier): CatalogResourceRef => ({
     publicId: `unresolved:${kind}:${identifier.toLowerCase()}`,
     id: identifier,
-    registry: tagPicker ? registry : namespaceFromIdentifier(identifier),
+    registry,
     kind,
     names: {},
     unresolved: true,

@@ -14,21 +14,25 @@ export function normalizeCatalogResourceKind(value: string) {
   return normalized;
 }
 
+const registryFamilies = new Map<string, string>([
+  ["minecraft.item", "items"],
+  ["minecraft.block", "blocks"],
+  ["minecraft.fluid", "fluids"],
+  ["minecraft.entity_type", "entity_types"],
+  ["minecraft.mob_effect", "mob_effects"],
+  ["minecraft.potion", "potions"],
+  ["minecraft.enchantment", "enchantments"],
+  ["minecraft.advancement", "advancements"],
+  ["minecraft.key_mapping", "key_mappings"],
+  ["minecraft.natural_generation", "natural_generation"],
+  ["minecraft.structure", "world_structures"],
+  ["minecraft.dimension", "dimensions"],
+  ["minecraft.biome", "biomes"],
+  ["minecraft.loot_table", "loot_tables"],
+  ["minecraft.game_setting", "game_settings"],
+]);
+
 export function catalogRegistryForKind(kindCode: string) {
-  const normalized = kindCode.trim().toLowerCase();
-  if (normalized.includes("block")) return "blocks";
-  if (normalized.includes("item")) return "items";
-  if (normalized.includes("entity")) return "entity_types";
-  if (normalized.includes("fluid")) return "fluids";
-  if (normalized.includes("mob_effect") || normalized.includes("effect")) return "mob_effects";
-  if (normalized.includes("potion")) return "potions";
-  if (normalized.includes("enchantment")) return "enchantments";
-  if (normalized.includes("advancement")) return "advancements";
-  if (normalized.includes("key_mapping")) return "key_mappings";
-  if (normalized.includes("natural_generation")) return "natural_generation";
-  if (normalized.includes("world_structure") || normalized.includes("structure")) return "world_structures";
-  if (normalized.includes("dimension")) return "dimensions";
-  if (normalized.includes("biome")) return "biomes";
-  if (normalized.includes("loot_table")) return "loot_tables";
-  return undefined;
+  const normalized = normalizeCatalogResourceKind(kindCode);
+  return registryFamilies.get(normalized.includes(".") ? normalized : "minecraft." + normalized);
 }

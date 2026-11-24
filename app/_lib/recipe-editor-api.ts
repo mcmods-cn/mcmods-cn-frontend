@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import { catalogRegistryForKind } from "./catalog-resource-identifiers";
 import { parseLocalizedContentVersions, parseOptionalPublishedReviewStatus, parsePublishedReviewStatus } from "./localization-boundary.mts";
 import type {
   CatalogEditResult,
@@ -103,12 +104,13 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
           const publicId = stringValue(item.resourcePublicId) || stringValue(item.publicId);
           const unresolved = item.unresolved === true || Boolean(stringValue(item.rawResourceId));
           const probability = optionalNumber(item.probability);
+          const kind = stringValue(item.kindCode) || stringValue(item.kind);
           return {
             resource: {
               publicId,
               id: canonicalId,
-              registry: canonicalId.includes(":") ? canonicalId.slice(0, canonicalId.indexOf(":")) : "",
-              kind: stringValue(item.kindCode) || stringValue(item.kind),
+              registry: stringValue(item.registry) || catalogRegistryForKind(kind) || "",
+              kind,
               names: stringValue(item.name) ? { [stringValue(row.defaultLocale) || "en-US"]: stringValue(item.name) } : {},
               iconUrl: stringValue(item.iconUrl) || undefined,
               unresolved,

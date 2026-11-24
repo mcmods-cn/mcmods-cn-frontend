@@ -14,6 +14,29 @@ const common: APIHandler = ({ path }) => {
   if (path === "/api/v1/content/numeric123") return { data: { publicId: "numeric123", sourceLocale: "en-US", resolvedLocale: "en-US", resolution: "exact", localization, translation: { status: "not_required" } } };
 };
 
+test("global resource directory filters the identifier namespace independently of the item registry", async () => {
+  const requests: URL[] = [];
+  const browser = await fixture.page(request => {
+    if (request.path !== "/api/v1/admin/global-resources") return common(request);
+    requests.push(request.url);
+    const filtered = request.url.searchParams.get("namespace") === "copperworks";
+    return { data: {
+      items: filtered ? [{ publicId: "copper001", id: "copperworks:plate", kind: "minecraft.item", registry: "items", namespace: "copperworks", name: "Copper plate" }] : [],
+      total: filtered ? 1 : 0, limit: 30, offset: 0,
+    } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/admin/global-resources");
+    const field = page.getByRole("textbox", { name: "Namespace", exact: true });
+    await field.fill("copperworks", { timeout: 5000 });
+    await field.press("Enter");
+    await page.getByText("Copper plate", { exact: true }).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get("namespace"), "copperworks");
+    assert.equal(requests.at(-1)?.searchParams.has("registry"), false);
+  } finally { await browser.close(); }
+});
+
 test("CONT001 global resource form rejects non-object JSON without writing and creates a pending revision", async () => {
   const writes: Record<string, unknown>[] = [];
   const browser = await fixture.page(request => {

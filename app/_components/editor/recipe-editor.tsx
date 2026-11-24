@@ -387,7 +387,7 @@ export function RecipeEditor({
       open={pickerOpen}
       token={token}
       unresolvedKind="minecraft.item"
-      unresolvedRegistry="minecraft"
+      unresolvedRegistry="items"
       value={pickerValue}
       onClose={() => setPickerOpen(false)}
       onConfirm={(resources) => setResources(selectedSlot, resources)}

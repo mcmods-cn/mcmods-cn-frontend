@@ -1,24 +1,5 @@
-import { namespaceFromIdentifier, normalizeCatalogResourceKind } from "./catalog-resource-identifiers.ts";
+import { catalogRegistryForKind, namespaceFromIdentifier, normalizeCatalogResourceKind } from "./catalog-resource-identifiers.ts";
 import type { CatalogResourceRef } from "./editor-types";
-
-// Only these canonical built-in kinds have a documented family/namespace
-// representation in picker DTOs. Substrings in extension kinds confer no scope.
-const identityRegistryFamilies = new Map<string, string>([
-  ["minecraft.item", "items"],
-  ["minecraft.block", "blocks"],
-  ["minecraft.fluid", "fluids"],
-  ["minecraft.entity_type", "entity_types"],
-  ["minecraft.mob_effect", "mob_effects"],
-  ["minecraft.potion", "potions"],
-  ["minecraft.enchantment", "enchantments"],
-  ["minecraft.advancement", "advancements"],
-  ["minecraft.key_mapping", "key_mappings"],
-  ["minecraft.natural_generation", "natural_generation"],
-  ["minecraft.structure", "world_structures"],
-  ["minecraft.dimension", "dimensions"],
-  ["minecraft.biome", "biomes"],
-  ["minecraft.loot_table", "loot_tables"],
-]);
 
 export function unresolvedPublicID(kind: string, identifier: string, registry: string) {
   return `unresolved:${kind.toLowerCase()}:${registry.toLowerCase()}:${identifier.toLowerCase()}`;
@@ -55,9 +36,9 @@ function identityRegistry(resource: CatalogResourceRef) {
   const registry = resource.registry.trim().toLowerCase();
   if (kind === "tag") return registry;
   const namespace = namespaceFromIdentifier(resource.id.trim()).toLowerCase();
-  const family = identityRegistryFamilies.get(kind);
-  // Catalog resource DTOs expose the canonical namespace here; manual entries
-  // and template fields may carry the known family (items/blocks/fluids).
+  const family = catalogRegistryForKind(kind);
+  // A restored editor draft can still have the canonical namespace in its
+  // registry field. New resource presentations use the registry family.
   // Normalize only those two representations of a fully qualified resource.
   // Tags, unknown families and other explicit registries remain distinct.
   return namespace && family && (registry === family || registry === namespace) ? namespace : registry;

@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CatalogResourceRef } from "./editor-types";
+import { catalogRegistryForKind } from "./catalog-resource-identifiers.ts";
 import { resolveSelectedResources, sameResourceIdentity } from "./resource-selection.mts";
 
 const ref = (kind: string, registry: string, publicId = "known"): CatalogResourceRef => ({
   kind, registry, publicId, id: "audit_rn:shared", names: { "en-US": "Known resource" },
 });
 
-test("RPH-004 real namespace DTO hydrates its manual family identity without deleting other kinds", () => {
+test("RPH-004 restored namespace draft matches its current registry family without deleting other kinds", () => {
   for (const [kind, family] of [["minecraft.item", "items"], ["minecraft.block", "blocks"], ["minecraft.fluid", "fluids"]]) {
     const manual = { ...ref(kind, family, "unresolved"), names: {}, unresolved: true };
     const known = ref(kind, "audit_rn");
@@ -45,3 +46,11 @@ for (const [kind, guessedFamily] of [
     assert.equal(resolved.has(candidate.publicId), false);
   });
 }
+
+test("manual resource registry defaults use exact built-in kinds and preserve unknown extensions", () => {
+  assert.equal(catalogRegistryForKind("minecraft.item"), "items");
+  assert.equal(catalogRegistryForKind("fluid"), "fluids");
+  assert.equal(catalogRegistryForKind("minecraft.game_setting"), "game_settings");
+  assert.equal(catalogRegistryForKind("my_namespace.item_bundle"), undefined);
+  assert.equal(catalogRegistryForKind("extension.structure_tool"), undefined);
+});

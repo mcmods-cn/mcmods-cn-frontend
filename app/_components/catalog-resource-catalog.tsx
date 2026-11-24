@@ -128,7 +128,7 @@ function CatalogResourceList({ basePath }: { basePath: string }) {
   const page = positivePage(searchParams.get("page"));
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [kind, setKind] = useState(searchParams.get("kind") ?? "");
-  const [registry, setRegistry] = useState(searchParams.get("registry") ?? "");
+  const [namespace, setNamespace] = useState(searchParams.get("namespace") ?? "");
   const [status, setStatus] = useState<"active" | "pending" | "archived">(resourceStatus(searchParams.get("status")));
   const [hasBindings, setHasBindings] = useState<"" | "true" | "false">(bindingFilter(searchParams.get("hasBindings")));
   const [result, setResult] = useState<CatalogResourcePage>({ items: [], total: 0, limit: pageSize, offset: 0 });
@@ -141,7 +141,7 @@ function CatalogResourceList({ basePath }: { basePath: string }) {
     loadCatalogResources({
       query: searchParams.get("q") ?? "",
       kind: searchParams.get("kind") ?? "",
-      registry: searchParams.get("registry") ?? "",
+      namespace: searchParams.get("namespace") ?? "",
       status: resourceStatus(searchParams.get("status")),
       hasBindings: bindingFilter(searchParams.get("hasBindings")),
       admin: true,
@@ -162,7 +162,7 @@ function CatalogResourceList({ basePath }: { basePath: string }) {
     const next = new URLSearchParams();
     if (query.trim()) next.set("q", query.trim());
     if (kind.trim()) next.set("kind", kind.trim());
-    if (registry.trim()) next.set("registry", registry.trim());
+    if (namespace.trim()) next.set("namespace", namespace.trim());
     if (status !== "active") next.set("status", status);
     if (hasBindings) next.set("hasBindings", hasBindings);
     router.push(`${basePath}${next.size ? `?${next}` : ""}`);
@@ -184,8 +184,8 @@ function CatalogResourceList({ basePath }: { basePath: string }) {
           <datalist id="catalog-directory-kinds">{catalogResourceKindCodes.map((value) => <option key={value} value={value} />)}</datalist>
         </label>
         <label className="grid gap-1.5 text-sm font-bold">
-          <span>{t("catalogEditor.registry")}</span>
-          <input className="field font-mono" placeholder={t("resourceEditor.allRegistries")} value={registry} onChange={(event) => setRegistry(event.target.value)} />
+          <span>{t("mods.exportImport.entry.namespace")}</span>
+          <input className="field font-mono" placeholder="minecraft" value={namespace} onChange={(event) => setNamespace(event.target.value)} />
         </label>
         <button className="button-primary focus-ring h-11 self-end" type="submit">{t("globalCatalog.searchAction")}</button>
       </form>

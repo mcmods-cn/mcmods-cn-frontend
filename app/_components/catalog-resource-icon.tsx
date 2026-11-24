@@ -137,7 +137,7 @@ function placeholderResource(reference: CatalogIconReference, name: string, loca
   return {
     publicId: reference.publicId || `unresolved:minecraft.item:${identifier}`,
     id: identifier,
-    registry: reference.identifier?.split(":", 1)[0] || "",
+    registry: "items",
     kind: "minecraft.item",
     names: name ? { [locale]: name } : {},
     resolvedName: name,

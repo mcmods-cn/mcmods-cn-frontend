@@ -7,7 +7,7 @@ import { localizedCatalogResourceName } from "../../_lib/content-language";
 import { loadCatalogResourcePresentations, loadCatalogResources } from "../../_lib/editor-api";
 import type { CatalogResourcePage, CatalogResourceRef, ResourcePageLoader } from "../../_lib/editor-types";
 import { useI18n } from "../../_lib/i18n-provider";
-import { catalogRegistryForKind, namespaceFromIdentifier } from "../../_lib/catalog-resource-identifiers";
+import { catalogRegistryForKind } from "../../_lib/catalog-resource-identifiers";
 import { CatalogResourceIcon, CatalogResourceIdentity, type SelectedResourceListLabels } from "./selected-resource-list";
 
 type ResourceFilterOption = { value: string; label: string };
@@ -187,7 +187,7 @@ function OpenResourcePickerDialog({
     if (invalidManual) return;
     const identifiers = [...new Set(manualInputs.map((item) => item.trim()).filter(Boolean))];
     const manualKind = unresolvedKind || kind || initialKind || kindOptions[0]?.value || "resource";
-    const manualRegistry = unresolvedRegistry || registry || initialRegistry || registryOptions[0]?.value || "";
+    const manualRegistry = unresolvedRegistry || registry || initialRegistry || registryOptions[0]?.value || catalogRegistryForKind(manualKind) || "";
     setSelected((current) => {
       const next = multiple ? new Map(current) : new Map<string, CatalogResourceRef>();
       for (const identifier of identifiers) {
@@ -195,7 +195,7 @@ function OpenResourcePickerDialog({
         next.set(publicId, {
           publicId,
           id: identifier,
-          registry: manualRegistry || catalogRegistryForKind(manualKind) || namespaceFromIdentifier(identifier),
+          registry: manualRegistry,
           kind: manualKind,
           names: {},
           unresolved: true,

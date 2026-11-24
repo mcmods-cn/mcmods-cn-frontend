@@ -17,7 +17,7 @@ export function loadCatalogResources(query: CatalogResourceQuery, token = "", si
   if (query.query?.trim()) parameters.set("q", query.query.trim());
   if (query.locale?.trim()) parameters.set("locale", query.locale.trim());
   if (query.kind?.trim()) parameters.set("kindCode", query.kind.trim());
-	if (query.registry?.trim()) parameters.set("registry", query.registry.trim());
+	if (query.namespace?.trim()) parameters.set("namespace", query.namespace.trim());
   if (query.status) parameters.set("status", query.status);
   if (query.hasBindings) parameters.set("hasBindings", query.hasBindings);
   parameters.set("limit", String(Math.max(1, Math.min(100, query.limit ?? 40))));
@@ -52,7 +52,8 @@ export function loadCatalogResources(query: CatalogResourceQuery, token = "", si
 	items: page.items.map((item) => ({
       publicId: item.publicId,
 	  id: item.id,
-	  registry: item.registry || item.namespace || item.id.split(":", 1)[0] || "minecraft",
+	  namespace: item.namespace,
+	  registry: item.registry || "",
       kind: item.kind,
       names: item.names || (item.name ? { [item.locale || query.locale || item.defaultLocale || "en-US"]: item.name } : {}),
 	  resolvedName: item.name,
@@ -208,6 +209,7 @@ export function loadCatalogResourcePresentation(reference: string, locale = "", 
     publicId: string;
     kind: string;
     id: string;
+    namespace?: string;
     registry?: string;
     locale?: string;
     name?: string;
@@ -215,7 +217,8 @@ export function loadCatalogResourcePresentation(reference: string, locale = "", 
   }>(`/api/v1/catalog/resource-presentation?${parameters}`, { signal }).then((item): CatalogResourceRef => ({
     publicId: item.publicId,
     id: item.id,
-    registry: item.registry || item.id.split(":", 1)[0] || "minecraft",
+    namespace: item.namespace,
+    registry: item.registry || "",
     kind: item.kind,
     names: item.name ? { [item.locale || locale || "en-US"]: item.name } : {},
     resolvedName: item.name,

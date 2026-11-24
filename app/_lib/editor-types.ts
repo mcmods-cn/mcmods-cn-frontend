@@ -68,6 +68,7 @@ export type CatalogResourceRef = {
   entityId?: string;
   requestedPublicId?: string;
   id: string;
+  namespace?: string;
   registry: string;
   kind: string;
   names: Record<string, string>;
@@ -131,7 +132,7 @@ export type CatalogResourceQuery = {
   query?: string;
   locale?: ContentLanguageTag;
   kind?: string;
-  registry?: string;
+  namespace?: string;
   status?: "active" | "pending" | "archived";
   hasBindings?: "" | "true" | "false";
   admin?: boolean;

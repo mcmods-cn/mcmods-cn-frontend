@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { namespaceFromIdentifier } from "../../_lib/catalog-resource-identifiers";
+import { catalogRegistryForKind } from "../../_lib/catalog-resource-identifiers";
 import type { CatalogResourceRef } from "../../_lib/editor-types";
 import {
   lootEntryFamily,
@@ -504,7 +504,7 @@ function catalogResourceFromSource(identifier: string, kind: string, source: Loo
   return {
     publicId: publicID || `unresolved:${kind}:${identifier.toLowerCase()}`,
     id: identifier,
-    registry: stringValue(source.sourceRegistry) || namespaceFromIdentifier(identifier),
+    registry: stringValue(source.sourceRegistry) || (kind === "tag" ? "minecraft:item" : catalogRegistryForKind(kind) || ""),
     kind,
     names: stringRecord(source.names),
     iconUrl,
