@@ -3135,6 +3135,12 @@ const zhCN = {
       retryDraftLoad: "重新读取草稿",
     },
     automation: {
+      batchSize: "每批项目数",
+      dailyLimit: "每日项目上限",
+      minimumDownloads: "最低下载量",
+      intervalSeconds: "运行间隔（秒）",
+      maxConcurrency: "并行抓取任务数",
+      aiDailyTokenBudget: "每日 AI Token 预算",
       group: "自动化与导入",
       seedCrawler: "早期数据填充爬虫",
       seedCrawlerDescription: "仅从 Modrinth 分批获取候选并复用现有导入、草稿和审核流程。",

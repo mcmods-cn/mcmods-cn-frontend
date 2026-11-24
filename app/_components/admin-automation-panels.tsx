@@ -41,6 +41,15 @@ type SeedCrawlerCandidateDetail = SeedCrawlerCandidateSummary & {
   payload: Record<string, unknown>;
 };
 
+const numericSeedFields = [
+  { key: "batchSize", min: 1, max: 50 },
+  { key: "dailyLimit", min: 1, max: 1000 },
+  { key: "minimumDownloads", min: 0, max: undefined },
+  { key: "intervalSeconds", min: 60, max: undefined },
+  { key: "maxConcurrency", min: 1, max: 16 },
+  { key: "aiDailyTokenBudget", min: 0, max: undefined },
+] as const;
+
 const emptySeedCrawlerPage = <T,>(): SeedCrawlerPage<T> => ({
   items: [],
   limit: 30,
@@ -100,12 +109,12 @@ export function SeedCrawlerAdminPanel({ token, canWrite, canRun }: { token: stri
     mutationInFlight.current = true;
     setBusy(true);
     try {
-      await apiRequest(
+      const result = await apiRequest<{ config: SeedConfig }>(
         "/api/v1/admin/seed-crawler",
         { method: "PUT", body: JSON.stringify(config) },
         token,
       );
-      await load();
+      setConfig(result.config);
       setMessage(t("admin.governance.saved"));
     } catch (error) {
       setMessage(errorMessage(error));
@@ -194,74 +203,66 @@ export function SeedCrawlerAdminPanel({ token, canWrite, canRun }: { token: stri
         description={t("admin.automation.seedCrawlerDescription")}
       />
       {message ? <Notice text={message} /> : null}
-      <fieldset className="mt-5 grid min-w-0 gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 sm:grid-cols-2 lg:grid-cols-4" disabled={!canWrite || busy}>
-        <Toggle
-          label={t("common.enabled")}
-          checked={config.enabled}
-          onChange={(value) => setConfig({ ...config, enabled: value })}
-        />
-        <Toggle
-          label={t("admin.automation.autoSubmit")}
-          checked={config.autoSubmitReview}
-          onChange={(value) =>
-            setConfig({ ...config, autoSubmitReview: value })
-          }
-        />
-        {(
-          [
-            "batchSize",
-            "dailyLimit",
-            "minimumDownloads",
-            "intervalSeconds",
-            "maxConcurrency",
-            "aiDailyTokenBudget",
-          ] as const
-        ).map((key) => (
-          <label className="grid gap-1 text-sm font-bold" key={key}>
-            {key}
-            <input
-              className="field"
-              min={0}
-              type="number"
-              value={config[key]}
-              onChange={(event) =>
-                setConfig({ ...config, [key]: Number(event.target.value) })
-              }
-            />
-          </label>
-        ))}
-        <label className="grid gap-2 text-sm font-bold sm:col-span-2 lg:col-span-4">
-          {t("admin.automation.projectTypes")}
-          <span className="flex flex-wrap gap-3">
-            {["mod", "plugin", "shader_pack", "resource_pack"].map((type) => (
-              <label className="flex gap-2" key={type}>
-                <input
-                  checked={config.projectTypes.includes(type)}
-                  type="checkbox"
-                  onChange={(event) =>
-                    setConfig({
-                      ...config,
-                      projectTypes: event.target.checked
-                        ? [...config.projectTypes, type]
-                        : config.projectTypes.filter((value) => value !== type),
-                    })
-                  }
-                />
-                {type}
-              </label>
-            ))}
-          </span>
-        </label>
-        {canWrite ? (
-          <button
-            className="button-primary focus-ring justify-self-start"
-            type="button"
-            onClick={() => void save()}
-          >
-            {t("common.save")}
-          </button>
-        ) : null}
-      </fieldset>
+      <form onSubmit={event => { event.preventDefault(); void save(); }}>
+        <fieldset className="mt-5 grid min-w-0 gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 sm:grid-cols-2 lg:grid-cols-4" disabled={!canWrite || busy}>
+          <Toggle
+            label={t("common.enabled")}
+            checked={config.enabled}
+            onChange={(value) => setConfig({ ...config, enabled: value })}
+          />
+          <Toggle
+            label={t("admin.automation.autoSubmit")}
+            checked={config.autoSubmitReview}
+            onChange={(value) =>
+              setConfig({ ...config, autoSubmitReview: value })
+            }
+          />
+          {numericSeedFields.map(({ key, min, max }) => (
+            <label className="grid gap-1 text-sm font-bold" key={key}>
+              {t(`admin.automation.${key}`)}
+              <input
+                className="field"
+                min={min}
+                max={max}
+                required
+                type="number"
+                value={Number.isNaN(config[key]) ? "" : config[key]}
+                onChange={(event) => setConfig({ ...config, [key]: event.currentTarget.valueAsNumber })}
+              />
+            </label>
+          ))}
+          <fieldset className="grid gap-2 text-sm font-bold sm:col-span-2 lg:col-span-4">
+            <legend>{t("admin.automation.projectTypes")}</legend>
+            <span className="flex flex-wrap gap-3">
+              {["mod", "plugin", "shader_pack", "resource_pack"].map((type) => (
+                <label className="flex gap-2" key={type}>
+                  <input
+                    checked={config.projectTypes.includes(type)}
+                    type="checkbox"
+                    onChange={(event) =>
+                      setConfig({
+                        ...config,
+                        projectTypes: event.target.checked
+                          ? [...config.projectTypes, type]
+                          : config.projectTypes.filter((value) => value !== type),
+                      })
+                    }
+                  />
+                  {type}
+                </label>
+              ))}
+            </span>
+          </fieldset>
+          {canWrite ? (
+            <button
+              className="button-primary focus-ring justify-self-start"
+              type="submit"
+            >
+              {t("common.save")}
+            </button>
+          ) : null}
+        </fieldset>
+      </form>
       {canRun ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <button

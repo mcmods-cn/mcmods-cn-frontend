@@ -62,15 +62,16 @@ test("seed crawler reading, configuring, and running remain separate capabilitie
     const writes: Array<{ path: string; method: string; body: Record<string, unknown> }> = [];
     let config = { enabled: false, projectTypes: ["mod"], batchSize: 10, dailyLimit: 25, minimumDownloads: 100,
       intervalSeconds: 3600, maxConcurrency: 1, aiDailyTokenBudget: 0, autoSubmitReview: false };
+    let configReads = 0;
     const list = { items: [], limit: 30, hasMore: false, nextCursor: "" };
     const browser = await fixture.page(({ path, method, body }) => {
       if (path === "/api/v1/auth/me") return { data: actor(["seed_crawler.view", ...(canWrite ? ["seed_crawler.configure"] : []), ...(canRun ? ["seed_crawler.run"] : [])]) };
-      if (path === "/api/v1/admin/seed-crawler" && method === "GET") return { data: { config } };
+      if (path === "/api/v1/admin/seed-crawler" && method === "GET") { configReads++; return { data: { config } }; }
       if (path === "/api/v1/admin/seed-crawler/candidates" || path === "/api/v1/admin/seed-crawler/runs" && method === "GET") return { data: list };
       if (path === "/api/v1/admin/seed-crawler" && method === "PUT" || path === "/api/v1/admin/seed-crawler/runs" && method === "POST") {
         const payload = JSON.parse(body);
         writes.push({ path, method, body: payload });
-        if (method === "PUT") config = payload;
+        if (method === "PUT") { config = payload; return { data: { config } }; }
         return { data: {} };
       }
     });
@@ -79,7 +80,7 @@ test("seed crawler reading, configuring, and running remain separate capabilitie
       await page.goto(`${fixture.origin}/admin`);
       await page.locator('[data-admin-group="automation"]').click();
       await page.locator('[data-admin-panel="seed-crawler"]').click();
-      const limit = page.getByRole("spinbutton", { name: "dailyLimit", exact: true });
+      const limit = page.getByRole("spinbutton", { name: "Daily project limit", exact: true });
       await limit.waitFor();
       assert.equal(await limit.isDisabled(), !canWrite);
       const save = page.getByRole("button", { name: "Save", exact: true });
@@ -89,10 +90,19 @@ test("seed crawler reading, configuring, and running remain separate capabilitie
       assert.equal(await dry.count(), Number(canRun));
       assert.equal(await run.count(), Number(canRun));
       if (canWrite) {
+        const initialReads = configReads;
+        for (const invalid of ["0", "1001", "1.5", ""]) {
+          await limit.fill(invalid);
+          await save.click();
+          assert.equal(await limit.evaluate(input => (input as HTMLInputElement).validity.valid), false);
+          assert.equal(writes.length, 0);
+        }
         await limit.fill("31");
         const saved = page.waitForResponse(response => response.url().endsWith("/admin/seed-crawler") && response.request().method() === "PUT");
         await save.click();
         assert.equal((await saved).ok(), true);
+        await page.getByText("Saved.", { exact: true }).waitFor();
+        assert.equal(configReads, initialReads, "PUT returns the authoritative crawler configuration");
         assert.deepEqual(writes.map(({ method, body }) => [method, body.dailyLimit]), [["PUT", 31]]);
       } else if (canRun) {
         const queued = page.waitForResponse(response => response.url().endsWith("/admin/seed-crawler/runs") && response.request().method() === "POST");

@@ -3136,6 +3136,12 @@ const en = {
       retryDraftLoad: "Retry loading draft",
     },
     automation: {
+      batchSize: "Projects per batch",
+      dailyLimit: "Daily project limit",
+      minimumDownloads: "Minimum downloads",
+      intervalSeconds: "Interval (seconds)",
+      maxConcurrency: "Concurrent crawler runs",
+      aiDailyTokenBudget: "Daily AI token budget",
       group: "Automation and import",
       seedCrawler: "Seed data crawler",
       seedCrawlerDescription: "Fetch bounded Modrinth candidates and reuse the existing importer, drafts, and review flow.",
