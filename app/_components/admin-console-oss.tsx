@@ -741,7 +741,7 @@ function RuntimeLogsPanel({ token, title }: { token: string; title: string }) {
   );
 }
 
-function LogCleanupPanel({ token }: { token: string }) {
+function LogCleanupPanel({ token, canWrite }: { token: string; canWrite: boolean }) {
   const { t } = useI18n();
   const [retention, setRetention] = useState<LogRetentionConfig | null>(null);
   const [message, setMessage] = useState("");
@@ -759,7 +759,7 @@ function LogCleanupPanel({ token }: { token: string }) {
   const categories = useMemo(() => retention ? Object.keys(retention.categoryDays).sort() : [], [retention]);
 
   async function saveRetention() {
-    if (!retention) return;
+    if (!canWrite || !retention || saving || cleaning) return;
     setSaving(true);
     setMessage("");
     try {
@@ -778,6 +778,7 @@ function LogCleanupPanel({ token }: { token: string }) {
   }
 
   async function runCleanup() {
+    if (!canWrite || saving || cleaning) return;
     setCleaning(true);
     setMessage("");
     try {
@@ -807,33 +808,33 @@ function LogCleanupPanel({ token }: { token: string }) {
           <h2 className="text-xl font-black">{t("admin.logCleanup.title")}</h2>
           <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.logCleanup.description")}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        {canWrite && <div className="flex flex-wrap gap-2">
           <button className="button-secondary focus-ring" disabled={cleaning || saving} type="button" onClick={() => void runCleanup()}>
             {cleaning ? t("common.loading") : t("admin.logs.cleanupNow")}
           </button>
           <button className="button-primary focus-ring" disabled={saving || cleaning} type="button" onClick={() => void saveRetention()}>
             {saving ? t("common.saving") : t("common.save")}
           </button>
-        </div>
+        </div>}
       </div>
       {message ? <div className="mt-4"><InlineMessage text={message} /></div> : null}
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <label className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4 font-bold">
-          <input checked={retention.enabled} type="checkbox" onChange={(event) => setRetention({ ...retention, enabled: event.target.checked })} />
+          <input disabled={!canWrite || saving || cleaning} checked={retention.enabled} type="checkbox" onChange={(event) => setRetention({ ...retention, enabled: event.target.checked })} />
           {t("admin.logs.enableRollingCleanup")}
         </label>
         <label className="grid gap-1 text-sm font-semibold">
           {t("admin.logs.defaultRetentionDays")}
-          <input className="field" min={1} max={3650} type="number" value={retention.defaultDays} onChange={(event) => setRetention({ ...retention, defaultDays: Number(event.target.value) })} />
+          <input disabled={!canWrite || saving || cleaning} className="field" min={1} max={3650} type="number" value={retention.defaultDays} onChange={(event) => setRetention({ ...retention, defaultDays: Number(event.target.value) })} />
         </label>
       </div>
       <div className="mt-5 overflow-x-auto">
         <table className="w-full min-w-[560px] text-left text-sm">
           <thead><tr className="text-[var(--muted)]"><th className="border-b border-[var(--line)] p-3">{t("admin.logCleanup.category")}</th><th className="border-b border-[var(--line)] p-3">{t("admin.logCleanup.retentionDays")}</th></tr></thead>
-          <tbody>{categories.map((category) => <tr key={category}><th className="border-b border-[var(--line)] p-3 font-semibold">{logCategoryTitle(category, t)}</th><td className="border-b border-[var(--line)] p-3"><input className="field max-w-52" min={1} max={3650} type="number" value={retention.categoryDays[category] ?? retention.defaultDays} onChange={(event) => setRetention({ ...retention, categoryDays: { ...retention.categoryDays, [category]: Number(event.target.value) } })} /></td></tr>)}</tbody>
+          <tbody>{categories.map((category) => <tr key={category}><th className="border-b border-[var(--line)] p-3 font-semibold">{logCategoryTitle(category, t)}</th><td className="border-b border-[var(--line)] p-3"><input disabled={!canWrite || saving || cleaning} className="field max-w-52" min={1} max={3650} type="number" value={retention.categoryDays[category] ?? retention.defaultDays} onChange={(event) => setRetention({ ...retention, categoryDays: { ...retention.categoryDays, [category]: Number(event.target.value) } })} /></td></tr>)}</tbody>
         </table>
       </div>
-      <p className="mt-4 text-xs leading-5 text-[var(--muted)]">{t("admin.logCleanup.saveEffect")}</p>
+      {canWrite && <p className="mt-4 text-xs leading-5 text-[var(--muted)]">{t("admin.logCleanup.saveEffect")}</p>}
     </section>
   );
 }

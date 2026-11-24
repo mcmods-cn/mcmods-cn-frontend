@@ -256,8 +256,8 @@ const definitions = {
   },
   "logs-cleanup": {
     group: "logs", title: "admin.panels.logsCleanup", description: "admin.nav.logsCleanupDesc",
-    read: "log.read",
-    render: ({ token }) => <LogCleanupPanel token={token} />,
+    read: "log.read", write: "log.write",
+    render: ({ token, access }) => <LogCleanupPanel token={token} canWrite={access.write} />,
   },
   "logs-admin": {
     group: "logs", title: "admin.panels.logsAdmin", description: "admin.nav.logsAdminDesc",

@@ -186,7 +186,8 @@ test("a log reader can inspect retention policy without controls that write or c
       permissionRules: ["admin.access", "activity.read", "log.read"].map(code => ({ code, allow: true, priority: 1 })),
     } };
     if (path === "/api/v1/admin/activity") return { data: { items: [] } };
-    if (path.startsWith("/api/v1/admin/activity-logs/") && method !== "GET") { writes.push(path); return { status: 403, error: "Read only" }; }
+    if ((path.startsWith("/api/v1/admin/activity-logs/") || path.startsWith("/api/v1/admin/logs/")) && method !== "GET") { writes.push(path); return { status: 403, error: "Read only" }; }
+    if (path === "/api/v1/admin/logs/config") return { data: { enabled: true, defaultDays: 45, categoryDays: { api_access: 20 } } };
     if (path === "/api/v1/admin/activity-logs/retention") return { data: {
       config: { enabled: true, runIntervalMinutes: 60, default: { enabled: true, allowDelete: true, retentionDays: 90, batchSize: 1000 }, actions: {} },
       actions: ["view"], objectTypes: ["mod"],
@@ -199,6 +200,14 @@ test("a log reader can inspect retention policy without controls that write or c
     assert.equal(await policy.locator('input[value="90"]').first().isDisabled(), true);
     assert.equal(await policy.getByRole("button", { name: "Save", exact: true }).count(), 0);
     assert.equal(await policy.getByRole("button", { name: "Preview cleanup", exact: true }).count(), 0);
+    await browser.page.locator('[data-admin-group="logs"]').click();
+    await browser.page.locator('[data-admin-panel="logs-cleanup"]').click();
+    const days = browser.page.getByRole("spinbutton", { name: "Default retention days" });
+    await days.waitFor();
+    assert.equal(await days.inputValue(), "45");
+    assert.equal(await days.isDisabled(), true);
+    assert.equal(await browser.page.getByRole("button", { name: "Save", exact: true }).count(), 0);
+    assert.equal(await browser.page.getByRole("button", { name: "Clean up now", exact: true }).count(), 0);
     assert.deepEqual(writes, []);
   } finally { await browser.close(); }
 });
