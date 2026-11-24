@@ -5,7 +5,7 @@ import { apiErrorMessage } from "../_lib/api-error.mts";
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { apiRequest } from "../_lib/api";
+import { ApiError, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
   CreatorDetail as CreatorDetailRecord,
@@ -38,6 +38,9 @@ function CreatorDetailContent({ kind, publicId }: { kind: CreatorKind; publicId:
   const { ready, token, user } = useAuthSnapshot();
   const [record, setRecord] = useState<CreatorDetailRecord | null>(null);
   const [roles, setRoles] = useState<CreatorRole[]>([]);
+  const [loadError, setLoadError] = useState<unknown>();
+  const [rolesError, setRolesError] = useState<unknown>();
+  const [roleAttempt, setRoleAttempt] = useState(0);
   const [loading, setLoading] = useState(true);
   const [claimOpen, setClaimOpen] = useState(false);
   const translation = useRef(t);
@@ -50,18 +53,15 @@ function CreatorDetailContent({ kind, publicId }: { kind: CreatorKind; publicId:
     loadController.current = controller;
     setLoading(true);
     try {
-      const [detail, roleResult] = await Promise.all([
-        apiRequest<CreatorDetailRecord>(`/api/v1/creators/${encodeURIComponent(publicId)}`, { signal: controller.signal }, token || undefined),
-        apiRequest<{ items: CreatorRole[] }>("/api/v1/creator-roles", { signal: controller.signal }, token || undefined),
-      ]);
+      const detail = await apiRequest<CreatorDetailRecord>(`/api/v1/creators/${encodeURIComponent(publicId)}`, { signal: controller.signal }, token || undefined);
       if (controller.signal.aborted) return;
       if (detail.creator.kind !== kind) throw new Error(translation.current("creators.kindMismatch"));
       setRecord(detail);
-      setRoles(roleResult.items);
+      setLoadError(undefined);
     } catch (error) {
       if (controller.signal.aborted) return;
       setRecord(null);
-      notifySite(apiErrorMessage(error, translation.current, translation.current("creators.loadFailed")), translation.current("creators.title"), "danger");
+      setLoadError(error);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
@@ -73,8 +73,22 @@ function CreatorDetailContent({ kind, publicId }: { kind: CreatorKind; publicId:
     return () => { window.clearTimeout(timer); loadController.current?.abort(); };
   }, [load, ready]);
 
+  const usesRoles = Boolean(record?.members.length || record?.teams?.length);
+  useEffect(() => {
+    if (!usesRoles) return;
+    const controller = new AbortController();
+    apiRequest<{ items: CreatorRole[] }>("/api/v1/creator-roles", { signal: controller.signal }, token || undefined)
+      .then(result => { if (!controller.signal.aborted) { setRoles(result.items); setRolesError(undefined); } })
+      .catch(error => { if (!controller.signal.aborted) setRolesError(error); });
+    return () => controller.abort();
+  }, [roleAttempt, token, usesRoles]);
+
   if (loading) return <CreatorPageState text={t("common.loading")} />;
-  if (!record) return <CreatorPageState text={t("creators.notFound")} action={<button className="button-secondary focus-ring" type="button" onClick={() => void load()}>{t("common.retry")}</button>} />;
+  if (!record) {
+    const text = loadError instanceof ApiError && loadError.status === 404
+      ? t("creators.notFound") : apiErrorMessage(loadError, t, t("creators.loadFailed"));
+    return <CreatorPageState text={text} action={<button className="button-secondary focus-ring" type="button" onClick={() => void load()}>{t("common.retry")}</button>} />;
+  }
 
   const localized = creatorDisplayLocalization(record, locale);
   const creator = record.creator;
@@ -114,6 +128,8 @@ function CreatorDetailContent({ kind, publicId }: { kind: CreatorKind; publicId:
           <DetailSection title={t("creators.introduction")}><MarkdownRenderer emptyText={t("creators.noIntroduction")} markdown={descriptionMarkdown} /></DetailSection>
           {creator.kind === "team" ? <DetailSection title={t("creators.members")}>{record.members.length ? <div className="grid gap-3 sm:grid-cols-2">{record.members.map((member) => <Link className="focus-ring flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={`/authors/${member.creatorId}`} key={`${member.creatorId}:${member.role.id}`}><CreatorAvatar creator={member} /><span className="min-w-0 flex-1"><span className="block truncate font-black">{member.name}</span><span className="mt-1 block truncate text-sm text-[var(--muted)]">{member.title || roleDisplayName(member.role, roles, locale)}</span></span></Link>)}</div> : <EmptyLine>{t("creators.noMembers")}</EmptyLine>}</DetailSection> : null}
           {creator.kind === "author" ? <DetailSection title={t("creators.teams")}>{record.teams?.length ? <div className="grid gap-3 sm:grid-cols-2">{record.teams.map((membership) => <Link className="focus-ring flex min-w-0 items-center gap-3 rounded-lg border border-[var(--line)] p-3 hover:border-[var(--accent)]" href={creatorHref(membership.team)} key={`${membership.team.publicId}:${membership.role.id}`}><CreatorAvatar creator={membership.team} /><span className="min-w-0 flex-1"><span className="block truncate font-black">{membership.team.name}</span><span className="mt-1 block truncate text-sm text-[var(--muted)]">{membership.title || roleDisplayName(membership.role, roles, locale)}</span></span></Link>)}</div> : <EmptyLine>{t("creators.noTeams")}</EmptyLine>}</DetailSection> : null}
+          {usesRoles && !!rolesError && <div role="alert" className="surface grid gap-2 p-4"><p>{apiErrorMessage(rolesError, t, t("creators.loadFailed"))}</p>
+            <button className="button-secondary focus-ring w-fit" type="button" onClick={() => { setRolesError(undefined); setRoleAttempt(value => value + 1); }}>{t("common.retry")}</button></div>}
           <DetailSection title={t("creators.works")}>{record.works.length ? <div className="grid gap-3 sm:grid-cols-2">{record.works.map((work) => <Link className="focus-ring flex min-w-0 gap-4 rounded-lg border border-[var(--line)] p-4 transition hover:-translate-y-0.5 hover:border-[var(--accent)]" href={`/mods/${work.siteId}`} key={work.uniqueId}><span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-lg bg-[var(--panel-subtle)] font-black text-[var(--muted)]">{work.iconUrl ? <img alt="" className="h-full w-full object-cover" src={work.iconUrl} /> : "MOD"}</span><span className="min-w-0"><span className="block truncate font-black text-[var(--accent)]">{work.secondaryName || work.primaryName}</span>{work.secondaryName ? <span className="mt-0.5 block truncate text-xs text-[var(--muted)]">{work.primaryName}</span> : null}<span className="mt-2 line-clamp-2 text-sm leading-6 text-[var(--muted)]">{work.summary}</span></span></Link>)}</div> : <EmptyLine>{t("creators.noWorks")}</EmptyLine>}</DetailSection>
         </div>
 

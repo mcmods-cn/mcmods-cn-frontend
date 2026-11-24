@@ -235,3 +235,72 @@ test("Minecraft language selection keeps keyboard focus and search within the re
     assert.equal(registrations, 0);
   } finally { await browser.close(); }
 });
+
+test("creator details keep the recorded member role while its translated role list is unavailable", { timeout: 30_000 }, async () => {
+  const role = { id: "role1", code: "artist", name: "Original role", description: "", custom: true, translations: { "en-US": { name: "Translated role" } } };
+  let details = 0, roles = 0;
+  const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/creators/team001") {
+      if (++details === 1) return { status: 503, code: "HTTP_503", error: "Temporary profile failure" };
+      return { data: { creator: { publicId: "team001", kind: "team", name: "Recorded team" }, descriptionMarkdown: "", members: [{ creatorId: "member01", name: "Recorded member", role }],
+        links: [], collaborators: [], teams: [], works: [], canEditProfile: false, canManageMembers: false } };
+    }
+    if (request.path === "/api/v1/creator-roles") {
+      if (++roles === 1) return { status: 503, code: "HTTP_503", error: "Temporary roles failure" };
+      return { data: { items: [role] } };
+    }
+    return editorAPI(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/teams/team001`);
+    await page.getByText("This service is temporarily unavailable. Try again later.", { exact: true }).waitFor();
+    assert.equal(await page.getByText("This author or team could not be found.", { exact: true }).count(), 0);
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await page.getByRole("heading", { name: "Recorded team" }).waitFor();
+    await page.getByText("Original role", { exact: true }).waitFor();
+    await page.getByRole("alert").getByRole("button", { name: "Retry", exact: true }).click();
+    await page.getByText("Translated role", { exact: true }).waitFor();
+    assert.equal(details, 2); assert.equal(roles, 2);
+  } finally { await browser.close(); }
+});
+
+test("cancelling a creator insertion drops pending team details and new searches own their cursors", { timeout: 30_000 }, async () => {
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const team = { publicId: "team001", kind: "team", name: "Inline team", avatarUrl: "", claimed: false };
+  const queries: Array<[string, string]> = [];
+  const browser = await fixture.page(async request => {
+    if (request.path === "/api/v1/creators") {
+      const query = request.url.searchParams.get("query") || "", cursor = request.url.searchParams.get("cursor") || "";
+      queries.push([query, cursor]);
+      return { data: { items: [team], nextCursor: query ? "" : "unfiltered-cursor", hasMore: !query } };
+    }
+    if (request.path === "/api/v1/creators/team001") {
+      started.resolve(); await release.promise;
+      return { data: { creator: team, members: [] } };
+    }
+    return editorAPI(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/mods/new`);
+    await page.getByRole("button", { name: /Add author/ }).click();
+    const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "Add an author or team" }) });
+    const more = dialog.getByRole("button", { name: "Load more authors and teams", exact: true });
+    await more.waitFor();
+    await page.clock.install();
+    await dialog.getByRole("textbox").fill("filtered");
+    assert.equal(await more.isDisabled(), true);
+    await page.clock.runFor(250);
+    await dialog.getByRole("button", { name: /Inline team/ }).click();
+    await dialog.getByRole("button", { name: "Insert selected" }).click();
+    await started.promise;
+    const aborted = page.waitForEvent("requestfailed", request => new URL(request.url()).pathname === "/api/v1/creators/team001");
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    release.resolve();
+    await aborted;
+    await page.getByText("No authors or teams have been added.", { exact: true }).waitFor();
+    assert.deepEqual(queries, [["", ""], ["filtered", ""]]);
+  } finally { release.resolve(); await browser.close(); }
+});

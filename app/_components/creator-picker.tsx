@@ -103,10 +103,10 @@ export function CreatorPicker({
           allowedKinds={allowedKinds}
           existing={new Set(value.map((item) => item.creatorId).filter(Boolean))}
           onClose={() => setOpen(false)}
-          onInsert={async (creators) => {
+          onInsert={async (creators, signal) => {
             const additions = await Promise.all(creators.map(async (creator): Promise<BackendModAuthor> => {
               const detail = creator.kind === "team"
-                ? await apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(creator.publicId)}`, {}, token || undefined)
+                ? await apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(creator.publicId)}`, { signal }, token || undefined)
                 : null;
               return {
               creatorId: creator.publicId,
@@ -125,6 +125,7 @@ export function CreatorPicker({
               })),
             };
             }));
+            if (signal.aborted) return;
             onChange([...value, ...additions]);
             setOpen(false);
           }}
@@ -143,7 +144,7 @@ function CreatorPickerDialog({
   allowedKinds: CreatorKind[];
   existing: Set<string | undefined>;
   onClose: () => void;
-  onInsert: (creators: CreatorSummary[]) => Promise<void>;
+  onInsert: (creators: CreatorSummary[], signal: AbortSignal) => Promise<void>;
 }) {
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
@@ -158,6 +159,26 @@ function CreatorPickerDialog({
   const [refreshKey, setRefreshKey] = useState(0);
   const [inserting, setInserting] = useState(false);
   const requestGeneration = useRef(0);
+
+  const scope = JSON.stringify([allowedKinds, kind, query, refreshKey, token]);
+  const [loadedScope, setLoadedScope] = useState("");
+  const insertRequest = useRef<AbortController | null>(null);
+  const moreRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => insertRequest.current?.abort(), []);
+
+  async function insert() {
+    if (!selected.length || insertRequest.current) return;
+    const controller = new AbortController();
+    insertRequest.current = controller;
+    setInserting(true); setMessage("");
+    try { await onInsert(selected, controller.signal); }
+    catch (error) { if (!controller.signal.aborted) setMessage(apiErrorMessage(error, t, t("creators.loadFailed"))); }
+    finally {
+      insertRequest.current = null;
+      if (!controller.signal.aborted) setInserting(false);
+    }
+  }
 
   useEffect(() => {
     const generation = ++requestGeneration.current;
@@ -174,13 +195,14 @@ function CreatorPickerDialog({
       )
         .then((result) => {
           if (!cancelled && requestGeneration.current === generation) {
+            setLoadedScope(scope);
             setItems(result.items.filter((item) => allowedKinds.includes(item.kind)));
             setNextCursor(result.nextCursor);
             setMessage("");
           }
         })
         .catch((error) => {
-          if (!cancelled) setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
+          if (!cancelled) { setLoadedScope(""); setMessage(apiErrorMessage(error, t, t("creators.loadFailed"))); }
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -189,13 +211,17 @@ function CreatorPickerDialog({
     return () => {
       cancelled = true;
       controller.abort();
+      moreRequest.current?.abort();
+      moreRequest.current = null;
       window.clearTimeout(timer);
     };
-  }, [allowedKinds, kind, query, refreshKey, t, token]);
+  }, [allowedKinds, kind, query, scope, t, token]);
 
   async function loadMore() {
     const cursor = nextCursor;
-    if (!cursor || loadingMore) return;
+    if (!cursor || loadedScope !== scope || moreRequest.current) return;
+    const controller = new AbortController();
+    moreRequest.current = controller;
     const generation = requestGeneration.current;
     setLoadingMore(true);
     setMessage("");
@@ -204,24 +230,25 @@ function CreatorPickerDialog({
         (path, signal) => apiRequest(path, { signal }, token || undefined),
         { limit: 40, kind, query, sort: "name", order: "asc" },
         cursor,
+        controller.signal,
       );
-      if (requestGeneration.current !== generation) return;
+      if (controller.signal.aborted || requestGeneration.current !== generation) return;
       setItems((current) => mergeCreatorPageItems(
         current,
         result.items.filter((item) => allowedKinds.includes(item.kind)),
       ));
       setNextCursor(result.nextCursor);
     } catch (error) {
-      if (requestGeneration.current === generation) {
+      if (!controller.signal.aborted && requestGeneration.current === generation) {
         setMessage(apiErrorMessage(error, t, t("creators.loadFailed")));
       }
     } finally {
-      if (requestGeneration.current === generation) setLoadingMore(false);
+      if (moreRequest.current === controller) { moreRequest.current = null; setLoadingMore(false); }
     }
   }
 
   const selectedIDs = useMemo(() => new Set(selected.map((item) => item.publicId)), [selected]);
-  const available = useMemo(() => items.filter((item) => !existing.has(item.publicId)), [existing, items]);
+  const available = useMemo(() => loadedScope === scope ? items.filter((item) => !existing.has(item.publicId)) : [], [existing, items, loadedScope, scope]);
 
   return (
     <div className="fixed inset-0 z-[90] grid place-items-center bg-black/50 p-4" role="presentation" onMouseDown={onClose}>
@@ -252,8 +279,8 @@ function CreatorPickerDialog({
               </button>
             ))}
           </div>
-          {nextCursor ? <button className="button-secondary focus-ring w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("common.loading") : t("creators.loadMore")}</button> : null}
-          {!loading && available.length === 0 ? <p className="py-5 text-center text-sm text-[var(--muted)]">{t("creators.noResults")}</p> : null}
+          {nextCursor ? <button className="button-secondary focus-ring w-full" disabled={loadingMore || loadedScope !== scope} type="button" onClick={() => void loadMore()}>{loadingMore ? t("common.loading") : t("creators.loadMore")}</button> : null}
+          {!loading && !message && loadedScope === scope && available.length === 0 ? <p className="py-5 text-center text-sm text-[var(--muted)]">{t("creators.noResults")}</p> : null}
           {loading ? <p className="py-5 text-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
           <section className="border-t border-[var(--line)] pt-4">
             <h3 className="font-black">{t("creators.selected", { count: selected.length })}</h3>
@@ -280,15 +307,12 @@ function CreatorPickerDialog({
               </div>
             </section>
           ) : null}
-          {message ? <p className="rounded-lg border border-[var(--red)] p-3 text-sm font-bold text-[var(--red)]">{message}</p> : null}
+          {message ? <div className="rounded-lg border border-[var(--red)] p-3" role="alert"><p>{message}</p>
+            {loadedScope !== scope && <button className="button-secondary focus-ring mt-2" type="button" onClick={() => setRefreshKey(key => key + 1)}>{t("common.retry")}</button>}</div> : null}
         </div>
         <footer className="flex justify-end gap-2 border-t border-[var(--line)] p-4">
           <button className="button-secondary focus-ring" type="button" onClick={onClose}>{t("common.cancel")}</button>
-          <button className="button-primary focus-ring" disabled={!selected.length || inserting} type="button" onClick={() => {
-            setInserting(true);
-            setMessage("");
-            void onInsert(selected).catch((error) => setMessage(apiErrorMessage(error, t, t("creators.loadFailed")))).finally(() => setInserting(false));
-          }}>{inserting ? t("common.loading") : t("creators.insertSelected")}</button>
+          <button className="button-primary focus-ring" disabled={!selected.length || inserting} type="button" onClick={() => void insert()}>{inserting ? t("common.loading") : t("creators.insertSelected")}</button>
         </footer>
       </section>
     </div>
