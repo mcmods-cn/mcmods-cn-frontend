@@ -23,7 +23,8 @@ test("BUG144 FP057 PERF068 recipe edits preserve nested definitions and picker s
   const nested = { imported: { condition: [{ key: "preserve", values: [1, 2, { enabled: true }] }] } };
   const bindingDefinition = { binding: { custom: "keep-binding" } };
   const candidateDefinition = { candidate: { components: { nested: ["keep-candidate"] } } };
-  const template = { publicId: templateId, recipeTypePublicId: typeId, templateKey: "synthetic_crafting", canvas: { width: 176, height: 86, imageScale: 1 }, slots: [{ slotKey: "result", role: "output", outputIndex: 0, rect: { x: 100, y: 20, width: 18, height: 18 } }] };
+  const rawInput = { resourcePublicId: "", rawResourceId: "fixture:coolant", canonicalId: "", kindCode: "minecraft.fluid", unresolved: true, amount: 250 };
+  const template = { publicId: templateId, recipeTypePublicId: typeId, templateKey: "synthetic_crafting", canvas: { width: 176, height: 86, imageScale: 1 }, slots: [{ slotKey: "result", role: "output", outputIndex: 0, rect: { x: 100, y: 20, width: 18, height: 18 } }, { slotKey: "coolant", role: "input", rect: { x: 10, y: 20, width: 18, height: 18 } }] };
   const resource = { publicId: "resource01", id: "fixture:item", kind: "minecraft.item", registry: "minecraft:item", names: {}, name: "", unresolved: false };
   const writes: Array<Record<string, unknown>> = [];
   const resourceReads: Array<{offset:number;locale:string}> = [];
@@ -32,7 +33,7 @@ test("BUG144 FP057 PERF068 recipe edits preserve nested definitions and picker s
   const browser = await controlled(({ path, method, body, url }) => {
     if (path === `/api/v1/catalog/recipes/${recipeId}`) {
       if (method === "PUT") { writes.push(JSON.parse(body)); return { status: 503, error: "Controlled recipe save failure" }; }
-      return { data: { publicId: recipeId, recipeTypePublicId: typeId, templatePublicId: templateId, canonicalSourceId: "fixture:crafting_source", applicableVersions: ["1.21"], defaultLocale: "en-US", localizations: [{ locale: "en-US", name: "Synthetic recipe", summary: "", contentMarkdown: "", provenance: "human", reviewStatus: "approved", editable: true }], publishedRevisionId: "revision-before", reviewStatus: "approved", definition: nested, bindings: { result: { definition: bindingDefinition, candidates: [{ resourcePublicId: "resource01", canonicalId: "fixture:item", kindCode: "minecraft.item", amount: 1, definition: candidateDefinition }] } } } };
+      return { data: { publicId: recipeId, recipeTypePublicId: typeId, templatePublicId: templateId, canonicalSourceId: "fixture:crafting_source", applicableVersions: ["1.21"], defaultLocale: "en-US", localizations: [{ locale: "en-US", name: "Synthetic recipe", summary: "", contentMarkdown: "", provenance: "human", reviewStatus: "approved", editable: true }], publishedRevisionId: "revision-before", reviewStatus: "approved", definition: nested, bindings: { coolant: { candidates: [rawInput] }, result: { definition: bindingDefinition, candidates: [{ resourcePublicId: "resource01", canonicalId: "fixture:item", kindCode: "minecraft.item", amount: 1, definition: candidateDefinition }] } } } };
     }
     if (path === "/api/v1/recipe-types") return { data: { items: [{ publicId: typeId, canonicalId: "minecraft:crafting", name: "Synthetic crafting" }], total: 1 } };
     if (path === "/api/v1/catalog/recipe-source-versions") return { data: { items: [] } };
@@ -61,6 +62,12 @@ test("BUG144 FP057 PERF068 recipe edits preserve nested definitions and picker s
     await page.getByText("Controlled recipe save failure", { exact: true }).waitFor();
     assert.equal(writes.length, 1);
     assert.deepEqual(writes[0].definition, nested);
+    const input = (writes[0].bindings as Record<string, { candidates: Array<Record<string, unknown>> }>).coolant.candidates;
+    assert.equal(input.length, 1);
+    assert.equal(input[0].rawResourceId, "fixture:coolant");
+    assert.equal(input[0].kindCode, "minecraft.fluid");
+    assert.equal(input[0].amount, 250);
+    assert.equal(input[0].resourcePublicId, undefined);
     const result = (writes[0].bindings as Record<string, {definition:unknown;candidates:Array<{amount:number;definition:unknown}>}>).result;
     assert.deepEqual(result.definition, bindingDefinition);
     assert.deepEqual(result.candidates[0].definition, candidateDefinition);
