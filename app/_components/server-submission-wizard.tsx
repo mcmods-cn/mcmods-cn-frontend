@@ -45,6 +45,10 @@ type Props = {
 
 type Draft = Omit<CreateServerRequest, "address" | "mods" | "proofFileIds">;
 
+const maxBodyBytes = 100_000;
+const maxProofTextBytes = 10_000;
+const utf8 = new TextEncoder();
+
 const emptyDraft: Draft = {
   name: "",
   shortDescription: "",
@@ -143,7 +147,7 @@ export function ServerSubmissionWizard({
       const detectedVersion = suggestedMinecraftVersionFromProbe(result);
       setDraft((current) => ({
         ...current,
-        name: current.name || result.motd.slice(0, settings.nameMaxLength),
+        name: current.name || Array.from(result.motd).slice(0, settings.nameMaxLength).join(""),
         minecraftVersions: current.minecraftVersions.length || !detectedVersion ? current.minecraftVersions : [detectedVersion],
       }));
       setSelectedMods(result.mods.map((mod) => unresolvedModResource(mod.id)));
@@ -215,6 +219,9 @@ export function ServerSubmissionWizard({
     if (Array.from(draft.shortDescription.trim()).length > settings.summaryMaxLength) {
       return t("servers.wizard.summaryTooLong", { count: settings.summaryMaxLength });
     }
+    if (utf8.encode(draft.bodyMarkdown.trim()).length > maxBodyBytes) {
+      return t("servers.wizard.bodyTooLarge", { count: maxBodyBytes });
+    }
     if (!draft.minecraftVersions.length) return t("servers.wizard.versionRequired");
     if (!draft.languages.length) return t("servers.wizard.languageRequired");
     if (draft.links.some((link) => !link.url.trim())) return t("servers.wizard.linkRequired");
@@ -237,6 +244,10 @@ export function ServerSubmissionWizard({
     const validationError = validateStepTwo();
     if (validationError) {
       setMessage(validationError);
+      return;
+    }
+    if (reviewRequired && utf8.encode(draft.proofText.trim()).length > maxProofTextBytes) {
+      setMessage(t("servers.wizard.proofTooLarge", { count: maxProofTextBytes }));
       return;
     }
     if (reviewRequired && (!draft.proofText.trim() || !proofFiles.length)) {
@@ -344,7 +355,7 @@ export function ServerSubmissionWizard({
               {probe ? <ProbeSummary probe={probe} /> : null}
               <div className="grid gap-5 lg:grid-cols-2">
                 <Field label={t("servers.wizard.name")}>
-                  <input className="field w-full" maxLength={settings.nameMaxLength} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+                  <input className="field w-full" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
                 </Field>
                 <Field label={t("servers.wizard.primaryTag")}>
                   <select className="field w-full" value={draft.primaryTag} onChange={(event) => setDraft({ ...draft, primaryTag: event.target.value as ServerPrimaryTag })}>
@@ -352,7 +363,7 @@ export function ServerSubmissionWizard({
                   </select>
                 </Field>
                 <Field className="lg:col-span-2" label={t("servers.wizard.summary")}>
-                  <textarea className="field min-h-24 w-full resize-y" maxLength={settings.summaryMaxLength} value={draft.shortDescription} onChange={(event) => setDraft({ ...draft, shortDescription: event.target.value })} />
+                  <textarea className="field min-h-24 w-full resize-y" value={draft.shortDescription} onChange={(event) => setDraft({ ...draft, shortDescription: event.target.value })} />
                   <p className="mt-1 text-right text-xs text-[var(--muted)]">{Array.from(draft.shortDescription).length}/{settings.summaryMaxLength}</p>
                 </Field>
                 <Field label={t("servers.wizard.versions")}>
@@ -433,7 +444,7 @@ export function ServerSubmissionWizard({
                 {t("servers.wizard.proofHint", { count: settings.maxProofFiles, size: formatBytes(settings.maxProofTotalBytes) })}
               </div>
               <Field label={t("servers.wizard.proofText")}>
-                <textarea className="field min-h-36 w-full resize-y" maxLength={10000} value={draft.proofText} onChange={(event) => setDraft({ ...draft, proofText: event.target.value })} />
+                <textarea className="field min-h-36 w-full resize-y" maxLength={maxProofTextBytes} value={draft.proofText} onChange={(event) => setDraft({ ...draft, proofText: event.target.value })} />
               </Field>
               <section>
                 <div className="flex flex-wrap items-center justify-between gap-3">

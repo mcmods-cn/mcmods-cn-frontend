@@ -156,10 +156,11 @@ test("server editing can select Minecraft's bundled US English language", { time
 
 test("server editing requires a settings snapshot and retries unavailable limits", { timeout: 30_000 }, async () => {
   let reads = 0;
-  let writes = 0;
+  const writes: Array<{ name: string; shortDescription: string }> = [];
   const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/users/me/drafts/complete") return { data: { completed: true } };
     if (request.path === serverPath) {
-      if (request.method === "PATCH") writes++;
+      if (request.method === "PATCH") writes.push(JSON.parse(request.body));
       return { data: record() };
     }
     if (request.path === "/api/v1/servers/settings") {
@@ -182,9 +183,17 @@ test("server editing requires a settings snapshot and retries unavailable limits
     const name = editor.getByRole("textbox", { name: "Server name", exact: true });
     await name.waitFor();
     assert.equal(await name.inputValue(), serverName);
-    assert.equal(await name.getAttribute("maxlength"), "160");
-    assert.equal(await editor.getByRole("button", { name: "Save server", exact: true }).count(), 1);
-    assert.deepEqual({ reads, writes }, { reads: 2, writes: 0 });
+    const save = editor.getByRole("button", { name: "Save server", exact: true });
+    const summary = editor.getByRole("textbox", { name: /List summary/ });
+    await name.fill("🌲".repeat(161)); await save.click();
+    await editor.getByText("The server name cannot exceed 160 characters", { exact: true }).waitFor();
+    await name.fill("🌲".repeat(160));
+    await summary.fill("🌱".repeat(1001)); await save.click();
+    await editor.getByText("The list summary cannot exceed 1000 characters", { exact: true }).waitFor();
+    assert.equal(reads, 2); assert.equal(writes.length, 0);
+    await summary.fill("🌱".repeat(1000)); await save.click();
+    await editor.waitFor({ state: "detached" });
+    assert.deepEqual(writes.map(({ name, shortDescription }) => [Array.from(name).length, Array.from(shortDescription).length]), [[160, 1000]]);
   } finally { await browser.close(); }
 });
 

@@ -482,6 +482,8 @@ const en = {
       name: "Server name",
       nameRequired: "Enter a server name",
       nameTooLong: "The server name cannot exceed {count} characters",
+      bodyTooLarge: "The introduction cannot exceed {count} UTF-8 bytes",
+      proofTooLarge: "The proof description cannot exceed {count} UTF-8 bytes",
       primaryTag: "Primary gameplay tag",
       summary: "List summary (plain text)",
       summaryTooLong: "The list summary cannot exceed {count} characters",

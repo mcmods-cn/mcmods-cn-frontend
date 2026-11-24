@@ -339,7 +339,7 @@ test("OCT02 server submission freezes its snapshot and retains it after a failed
 
     await submit.evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
     await started.promise;
-    const input = page.locator('input[maxlength="80"]');
+    const input = page.getByRole("textbox", { name: "Server name", exact: true });
     assert.equal(await input.isDisabled(), true);
     await page.getByRole("button", { name: "Cancel", exact: true }).evaluate(button => (button as HTMLButtonElement).click());
     assert.equal(new URL(page.url()).pathname, "/servers/new");

@@ -482,6 +482,8 @@ const zhCN = {
       name: "服务器名称",
       nameRequired: "请填写服务器名称",
       nameTooLong: "服务器名称不能超过 {count} 个字符",
+      bodyTooLarge: "正文的 UTF-8 编码最多允许 {count} 字节",
+      proofTooLarge: "证明说明的 UTF-8 编码最多允许 {count} 字节",
       primaryTag: "主要玩法标签",
       summary: "列表简介（不支持 Markdown）",
       summaryTooLong: "列表简介不能超过 {count} 个字符",
