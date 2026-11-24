@@ -2704,6 +2704,8 @@ const zhCN = {
     wardrobeRemoved: "已移出衣柜。",
     loginToUse: "登录后使用",
     applyToProfile: "应用到玩家档案",
+    applyApprovalHint: "材质通过审核后才能装备到玩家角色。",
+    applyPrivateHint: "请选择私有角色来装备这个私有材质。",
     selectProfileHint: "选择一个玩家档案，并将当前外观应用到对应槽位。",
     apply: "立即应用",
     applied: "外观已应用。",

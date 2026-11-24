@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { useAuthSnapshot } from "../_lib/auth";
+import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { loadOwnedResolvedContent, loadResolvedContent } from "../_lib/editor-api";
 import {
@@ -37,7 +37,7 @@ export function SkinDetail({ publicId }: { publicId: string }) {
 
 function SkinDetailContent({ publicId }: { publicId: string }) {
   const { locale, t } = useI18n();
-  const { ready, token } = useAuthSnapshot();
+  const { ready, token, user } = useAuthSnapshot();
   const router = useRouter();
   const [baseTexture, setTexture] = useState<SkinTexture | null>(null);
   const [localization, setLocalization] = useState<{ locale: string; name?: string; summary?: string }>();
@@ -101,8 +101,12 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
     return () => controller.abort();
   }, [profileAttempt, ready, token]);
 
+  const selected = profiles.find(profile => profile.publicId === selectedProfile);
+  const privateMismatch = texture?.visibility === "private" && selected?.visibility !== "private";
+  const canApply = texture?.canUse && texture.reviewStatus === "approved" && selected && !privateMismatch && hasPermission(user, "skin.profile.write");
+
   async function toggleWardrobe() {
-    if (!token || !texture || mutating.current) return;
+    if (!token || !texture?.canUse || mutating.current) return;
     mutating.current = true;
     setBusy("wardrobe");
     try {
@@ -120,7 +124,7 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
   }
 
   async function applyTexture() {
-    if (!token || !texture || !selectedProfile || mutating.current) return;
+    if (!token || !texture || !canApply || mutating.current) return;
     mutating.current = true;
     setBusy("apply");
     try {
@@ -131,6 +135,7 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
       );
       if (!alive.current) return;
       setProfiles((items) => items.map((item) => item.publicId === updated.publicId ? updated : item));
+      setTexture(current => current && { ...current, inWardrobe: true });
       notifySite(t("skins.applied"), texture.name, "success");
     } catch (reason) {
       if (alive.current) notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
@@ -159,7 +164,6 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
 
   const textureURL = skinTextureURL(texture);
   const ownerName = texture.owner?.username || t("skins.anonymous");
-  const selected = profiles.find((profile) => profile.publicId === selectedProfile);
   const viewerSkin = texture.kind === "skin" ? textureURL : skinTextureURL(selected?.skin);
   const viewerCape = texture.kind === "cape" ? textureURL : skinTextureURL(selected?.cape);
 
@@ -211,7 +215,7 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
               </dl>
               <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
                 <a className="button-primary focus-ring text-center" download href={textureURL} target="_blank" rel="noopener noreferrer">{t("skins.download")}</a>
-                {token ? <button className="button-secondary focus-ring" disabled={Boolean(busy)} type="button" onClick={() => void toggleWardrobe()}>{texture.inWardrobe ? t("skins.removeWardrobe") : t("skins.addWardrobe")}</button> : <Link className="button-secondary focus-ring text-center" href={`/login?next=/skins/${texture.publicId}`}>{t("skins.loginToUse")}</Link>}
+                {token ? <button className="button-secondary focus-ring" disabled={!texture.canUse || Boolean(busy)} type="button" onClick={() => void toggleWardrobe()}>{texture.inWardrobe ? t("skins.removeWardrobe") : t("skins.addWardrobe")}</button> : <Link className="button-secondary focus-ring text-center" href={`/login?next=/skins/${texture.publicId}`}>{t("skins.loginToUse")}</Link>}
                 <UnifiedReportButton targetAuthor={ownerName} targetId={texture.publicId} targetSummary={texture.name} targetType="skin" />
                 {texture.reviewStatus === "approved" ? <ProjectEditorApplicationButton canEdit={texture.canEdit} projectId={texture.publicId} projectName={texture.name} projectType="skin" returnPath={`/skins/${texture.publicId}`} /> : null}
               </div>
@@ -220,11 +224,11 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
             {token && profiles.length ? (
               <section className="surface rounded-lg p-5">
                 <h2 className="font-black">{t("skins.applyToProfile")}</h2>
-                <p className="mt-1 text-sm text-[var(--muted)]">{t("skins.selectProfileHint")}</p>
+                <p className="mt-1 text-sm text-[var(--muted)]">{t(texture.reviewStatus !== "approved" ? "skins.applyApprovalHint" : privateMismatch ? "skins.applyPrivateHint" : "skins.selectProfileHint")}</p>
                 <select aria-label={t("skins.applyToProfile")} className="field mt-4" disabled={Boolean(busy)} value={selectedProfile} onChange={(event) => setSelectedProfile(event.target.value)}>
                   {profiles.map((profile) => <option key={profile.publicId} value={profile.publicId}>{profile.name}</option>)}
                 </select>
-                <button className="button-primary focus-ring mt-3 w-full" disabled={!selectedProfile || Boolean(busy) || (!texture.canUse && !texture.inWardrobe)} type="button" onClick={() => void applyTexture()}>{busy === "apply" ? t("skins.saving") : t("skins.apply")}</button>
+                <button className="button-primary focus-ring mt-3 w-full" disabled={!canApply || Boolean(busy)} type="button" onClick={() => void applyTexture()}>{busy === "apply" ? t("skins.saving") : t("skins.apply")}</button>
               </section>
             ) : null}
 

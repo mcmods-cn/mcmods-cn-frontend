@@ -2704,6 +2704,8 @@ const en = {
     wardrobeRemoved: "Removed from wardrobe.",
     loginToUse: "Log in to use",
     applyToProfile: "Apply to player profile",
+    applyApprovalHint: "A texture must be approved before it can be applied to a player profile.",
+    applyPrivateHint: "Select a private player profile to apply this private texture.",
     selectProfileHint: "Choose a player profile and apply this texture to its matching slot.",
     apply: "Apply now",
     applied: "Texture applied.",

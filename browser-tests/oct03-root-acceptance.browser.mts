@@ -594,3 +594,47 @@ test("account settings cancel an unfinished avatar upload when its owner changes
     assert.deepEqual(writes, []);
   } finally { release.resolve(); await browser.close(); }
 });
+
+for (const scenario of ["pending owner", "review-only viewer", "private approved owner"] as const) {
+  test(`skin detail separates wardrobe from equipping for a ${scenario}`, { timeout: 20_000 }, async () => {
+    const owner = scenario !== "review-only viewer";
+    const approved = scenario === "private approved owner";
+    const privateProfile = { ...profile, publicId: "play0002", name: "Private profile", visibility: "private" };
+    const texture = { ...skin, status: "active", canEdit: true, canUse: owner, inWardrobe: !owner, reviewStatus: approved ? "approved" : "pending", visibility: approved ? "private" : "public" };
+    const actor = { ...reader, permissionRules: [{ code: "skin.profile.write", allow: true, priority: 100 }] };
+    const writes: Array<[string, string, string]> = [];
+    const browser = await fixture.page(({ path, method, body }) => {
+      if (path === "/api/v1/auth/me") return { data: actor };
+      if (path === "/api/v1/skins/skin0001") return { data: texture };
+      if (path === "/api/v1/users/me/player-profiles") return { data: [profile, privateProfile] };
+      if (path === "/api/v1/skins/skin0001/content") return { status: 404, error: "No localized fixture" };
+      if (path === "/api/v1/projects/skin0001/follow") return { data: { followed: false, notificationsEnabled: false } };
+      if (path === "/api/v1/comment-targets/skin/skin0001/comments") return { data: emptyComments };
+      if (path === "/api/v1/users/me/skin-wardrobe/skin0001") { writes.push([path, method, body]); return { data: { added: true } }; }
+      if (path === "/api/v1/users/me/player-profiles/play0002/textures") { writes.push([path, method, body]); return { data: { ...privateProfile, skin: texture } }; }
+    });
+    try {
+      const { page } = browser;
+      await page.goto(fixture.origin + "/skins/skin0001");
+      const apply = page.getByRole("button", { name: "Apply now", exact: true });
+      const wardrobe = page.getByRole("button", { name: owner ? "Add to wardrobe" : "Remove from wardrobe", exact: true });
+      await apply.waitFor();
+      assert.equal(await apply.isDisabled(), true);
+      assert.equal(await wardrobe.isEnabled(), owner);
+      if (approved) {
+        await page.getByRole("combobox", { name: "Apply to player profile", exact: true }).selectOption(privateProfile.publicId);
+        await apply.click();
+        await page.getByRole("button", { name: "Remove from wardrobe", exact: true }).waitFor();
+        assert.equal(writes.length, 1);
+        assert.deepEqual(writes[0].slice(0, 2), ["/api/v1/users/me/player-profiles/play0002/textures", "PUT"]);
+        assert.deepEqual(JSON.parse(writes[0][2]), { skinPublicId: skin.publicId });
+      } else if (owner) {
+        await wardrobe.click();
+        await page.getByRole("button", { name: "Remove from wardrobe", exact: true }).waitFor();
+        assert.equal(await apply.isDisabled(), true);
+        assert.equal(writes.length, 1);
+        assert.deepEqual(writes[0].slice(0, 2), ["/api/v1/users/me/skin-wardrobe/skin0001", "PUT"]);
+      } else assert.deepEqual(writes, []);
+    } finally { await browser.close(); }
+  });
+}
