@@ -131,6 +131,7 @@ export type BackendModRevision = {
   version: number;
   status: "pending" | "approved" | "rejected";
   snapshot: CreateModPayload;
+  iconUnavailable?: boolean;
   changeReason: string;
   submittedBy?: string;
   submittedByName: string;
