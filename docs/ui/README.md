@@ -1,6 +1,6 @@
 # 前端截图与界面验收
 
-## 战利品 JSON 保存与举报附件首选
+## 战利品保存、举报附件与 Markdown 编辑
 
 2026 年 11 月 24 日 UTC，Chromium 在前端生产构建 `8e04f9f`、修复写入时序的 `b84979d` 和补齐保存按钮禁用外观的 `c3ca2f2` 上重复相同操作。改前使用 Next standalone，后两版通过本机 HTTPS 加载各自 Dockerfile 构建的 OCI 镜像。页面使用合成数据和受控 API 响应。[改前 CI 失败记录](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/runs/45400170972) · [时序修复镜像](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/runs/45402664698) · [最终镜像构建](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/runs/45403447980)
 
@@ -28,6 +28,16 @@
 node --test --test-concurrency=1 --test-name-pattern='^FP056|^switching accounts cancels the open report attachment batch' \
   browser-tests/oct03-page-remaining.browser.mts browser-tests/oct03-cross-legacy-acceptance.browser.mts
 ```
+
+### Markdown 键盘选区与草稿
+
+在独立 Markdown 编辑器中，用 Enter 给前两行添加编号，随即用键盘全选 45 个字符，再输入换行和 `second line`。对照使用相同的合成正文、Chromium 键盘操作和游客草稿。改前使用 `b84979d` 的 QA standalone，改后通过本机 HTTPS 运行 `728c641` 的正式 OCI。[旧版前端 CI](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/runs/45402530278) · [新版镜像构建](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/runs/45405303932)
+
+| 同一操作后的编辑内容 | 改前 `b84979d` | 改后 `728c641` |
+| --- | --- | --- |
+| 全选替换后添加二级标题 | [多出的末行](markdown-selection-before.png) | [标题和替换后的正文](markdown-selection-after.png) |
+
+旧版在下一动画帧把全选范围从 45 个字符缩至 36 个，原来的末行 `trailing` 因此进入保存的草稿，重载后仍可见。新版保留全部 45 个字符的选区，替换后只有新内容。撤销恢复带编号的三行，重做恢复替换结果。连续应用相同的二级标题样式仍选中占位词。保存并重载后，正文只有 `## Heading` 和 `second line` 两行。[编辑器状态处理](../frontend-state-recovery.md#markdown-与可访问操作) · [键盘回归](../../browser-tests/oct03-page-editor-acceptance.browser.mts)
 
 ## Mod 与整合包目录卡片
 

@@ -47,6 +47,8 @@ MOD 导入创建/上传尚未完成时不能启动第二个导入，避免覆盖
 
 独立 Markdown 编辑器在身份初始化和已有草稿读取完成后才开放输入、格式工具及上传。读取失败保持这些修改操作禁用，并保留原位重试；不能先允许输入，再让迟到的初次读取覆盖用户编辑。嵌入式编辑器继续由所属资源提供受控正文。
 
+独立编辑器和评论框共用 `useTextareaSelection`。工具栏格式化或插入贴纸时，先记录当前 textarea、目标正文和选区，再更新受控正文。如果 textarea 已显示目标值，立即恢复焦点和选区。如果正文发生变化，在 React 提交中核对元素与正文都匹配后再设置选区。待处理记录只使用一次。随后用户全选、移动光标或直接输入的内容会按浏览器当前选区处理。[选区实现](../app/_lib/use-textarea-selection.ts) · [正式浏览器回归](../browser-tests/oct03-page-editor-acceptance.browser.mts) · [前后截图](ui/README.md#markdown-键盘选区与草稿)
+
 内部 Markdown 私有字符标记不会由原文伪造；非法 URI 编码保留为普通文本，避免渲染抛出 URIError。目录使用实际 Markdown 解析器与相同 remark 插件，忽略代码围栏中的示例标题，排除的标题层级仍参与重复锚点编号。此验证不代表所有数学或自定义富标题组合均已交互验收。
 
 复制失败显示错误，不显示“已复制”。配方模板提供原生键盘可操作的输入、输出、催化剂槽添加按钮。普通编辑表单在提交中禁用字段，避免响应覆盖提交后的编辑；高级战利品 JSON 不接受 null、数组或字符串冒充整体对象。
@@ -65,7 +67,7 @@ MOD 导入创建/上传尚未完成时不能启动第二个导入，避免覆盖
 
 `node --test` 的确定性用例验证日期、CSV 文本公式边界、Markdown 标记与目录解析。`browser-tests/oct02-*.browser.mts` 启动真实 production React 页面，但明确替换本项目 API 响应以控制竞态和失败；它们不证明数据库持久化、服务端授权、真实邮件或付费 AI 质量。真实前后端与 PostgreSQL 联通验证必须另行记录。
 
-部署当前前端时，先按后端发布流程核验 PostgreSQL generation 171。仓内用例和隔离站点联调各有独立的结果及源码组合。[部署顺序与验收](../README.md#验证与发布)
+部署时使用所选后端版本自带的 `db-initialize` 核验 PostgreSQL 代际和结构指纹。本轮隔离组合实际安装并验证了代际 172。仓内用例和隔离站点联调各有独立的结果及源码组合。[后端安装与恢复](https://github.com/mcmods-cn/mcmods-cn-backend#数据库安装发布和恢复) · [当前初始化器](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/cmd/db-initialize/main.go) · [前端验证与发布](../README.md#验证与发布)
 
 ## 分页、旧链接与提交快照
 
