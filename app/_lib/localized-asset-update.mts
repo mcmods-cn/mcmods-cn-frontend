@@ -15,7 +15,7 @@ export function localizedAssetContentPayload(
   return {
     defaultLocale,
     localizations: versions
-      .filter((version) => version.editable !== false && version.fields.name.trim())
+      .filter((version) => version.editable !== false && (version.fields.name.trim() || version.fields.summary.trim() || version.fields.contentMarkdown.trim()))
       .map((version) => ({
         locale: version.locale,
         name: version.fields.name.trim(),

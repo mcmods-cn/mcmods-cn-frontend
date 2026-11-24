@@ -85,12 +85,15 @@ export async function uploadUserFileToOSS(
   token: string,
   source = "playground",
   onProgress?: (loaded: number, total: number, metrics: OSSUploadMetrics) => void,
+  signal?: AbortSignal,
 ) {
-  const sha256 = await computeFileSHA256(file);
+  const sha256 = await computeFileSHA256(file, { signal });
+  signal?.throwIfAborted();
   const ticket = await apiRequest<OSSDirectUploadTicket>(
     "/api/v1/users/me/oss/uploads/presign",
     {
       method: "POST",
+      signal,
       body: JSON.stringify({
         originalName: file.name,
         contentType: file.type || "application/octet-stream",
@@ -108,12 +111,12 @@ export async function uploadUserFileToOSS(
   }
 
   try {
-    await putFileToOSS(ticket, file, onProgress);
+    await putFileToOSS(ticket, file, onProgress, { signal });
   } catch (error) {
     await abortMultipartUpload("/api/v1/users/me/oss/uploads/complete", ticket, token);
     throw error;
   }
-  const record = await completeOSSUpload("/api/v1/users/me/oss/uploads/complete", ticket, token);
+  const record = await completeOSSUpload("/api/v1/users/me/oss/uploads/complete", ticket, token, signal);
   return normalizeUploadResult(record, ticket);
 }
 

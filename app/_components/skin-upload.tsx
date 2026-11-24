@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { createEmptyLocalizedContent, ensureLocalizedContent, updateLocalizedContent } from "../_lib/content-language";
 import { supportedLocales, useI18n, type Locale } from "../_lib/i18n-provider";
+import { localizedAssetContentPayload } from "../_lib/localized-asset-update.mts";
 import type { LocalizedContentFields, LocalizationVersion } from "../_lib/editor-types";
 import { createSkin, SkinKind, SkinModel, SkinVisibility } from "../_lib/skin-api";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
@@ -35,9 +36,10 @@ function SkinUploadContent() {
   const [dimensions, setDimensions] = useState("");
   const [error, setError] = useState("");
   const [uploading, setUploading] = useState(false);
-  const submitInFlight = useRef(false);
   const [previewURL, setPreviewURL] = useState("");
   const validationGeneration = useRef(0);
+  const validated = useRef<{ file: File; kind: SkinKind } | null>(null);
+  const submitAbort = useRef<AbortController | null>(null);
   const candidateFile = useRef<File | undefined>(undefined);
   const uploadedFile = useRef<{ file: File; kind: SkinKind; id: string } | null>(null);
   const selected = localizations.find((item) => item.locale === selectedLocale) ?? createEmptyLocalizedContent(selectedLocale);
@@ -49,12 +51,15 @@ function SkinUploadContent() {
     queueMicrotask(() => { if (active) setPreviewURL(url); });
     return () => { active = false; if (url) URL.revokeObjectURL(url); };
   }, [file]);
-  const cancelValidation = useCallback(() => { validationGeneration.current++; }, []);
-  useEffect(() => cancelValidation, [cancelValidation]);
+  useEffect(() => () => {
+    validationGeneration.current++;
+    submitAbort.current?.abort();
+  }, []);
 
   async function chooseFile(nextFile?: File, nextKind = kind) {
     const generation = ++validationGeneration.current;
     candidateFile.current = nextFile;
+    validated.current = null;
     setError("");
     setDimensions("");
     setFile(undefined);
@@ -62,9 +67,11 @@ function SkinUploadContent() {
     try {
       const size = await validateTexture(nextFile, nextKind, t);
       if (generation !== validationGeneration.current) return;
+      validated.current = { file: nextFile, kind: nextKind };
       setFile(nextFile);
       setDimensions(`${size.width} × ${size.height}`);
-      if (!selected.fields.name.trim()) setLocalizations((items) => updateLocalizedContent(items, selectedLocale, { name: nextFile.name.replace(/\.png$/i, "") }));
+      setLocalizations(items => items.find(item => item.locale === selectedLocale)?.fields.name.trim()
+        ? items : updateLocalizedContent(items, selectedLocale, { name: nextFile.name.replace(/\.png$/i, "") }));
     } catch (reason) {
       if (generation !== validationGeneration.current) return;
       setFile(undefined);
@@ -73,15 +80,16 @@ function SkinUploadContent() {
   }
 
   async function submit() {
-    if (!file || !token || submitInFlight.current || uploading || !defaultVersion.fields.name.trim()) return;
-    submitInFlight.current = true;
+    if (!file || validated.current?.file !== file || validated.current.kind !== kind || !token || submitAbort.current || uploading || !defaultVersion.fields.name.trim()) return;
+    const controller = new AbortController();
+    submitAbort.current = controller;
     setUploading(true);
     setError("");
     try {
-      await validateTexture(file, kind, t);
       let fileId = uploadedFile.current?.file === file && uploadedFile.current.kind === kind ? uploadedFile.current.id : undefined;
       if (!fileId) {
-        const uploaded = await uploadUserFileToOSS(file, token, kind === "skin" ? "minecraft_skin" : "minecraft_cape");
+        const uploaded = await uploadUserFileToOSS(file, token, kind === "skin" ? "minecraft_skin" : "minecraft_cape", undefined, controller.signal);
+        controller.signal.throwIfAborted();
         if (!uploaded.id) throw new Error(t("skins.uploadFailed"));
         fileId = uploaded.id;
         uploadedFile.current = { file, kind, id: fileId };
@@ -94,23 +102,19 @@ function SkinUploadContent() {
         model: kind === "skin" ? model : "default",
         visibility,
         tags: parseTags(tags),
-        defaultLocale,
-        localizations: localizations.filter((item) => item.fields.name.trim()).map((item) => ({
-          locale: item.locale,
-          name: item.fields.name.trim(),
-          summary: item.fields.summary,
-          contentMarkdown: item.fields.contentMarkdown,
-        })),
-      }, token);
+        ...localizedAssetContentPayload(defaultLocale, localizations),
+      }, token, controller.signal);
+      if (controller.signal.aborted) return;
       notifySite(t("skins.uploadSubmitted"), created.name, "success");
       router.push(`/skins/${created.publicId}`);
     } catch (reason) {
+      if (controller.signal.aborted) return;
       const message = reason instanceof Error ? reason.message : t("skins.uploadFailed");
       setError(message);
       notifySite(message, t("skins.uploadTitle"), "danger");
     } finally {
-      submitInFlight.current = false;
-      setUploading(false);
+      submitAbort.current = null;
+      if (!controller.signal.aborted) setUploading(false);
     }
   }
 
@@ -165,14 +169,21 @@ function SkinUploadContent() {
 
 async function validateTexture(file: File, kind: SkinKind, t: (key: string) => string) {
   if (file.size <= 0 || file.size > 2 * 1024 * 1024) throw new Error(t("skins.invalidPng"));
-  const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
-  const signature = [137, 80, 78, 71, 13, 10, 26, 10];
-  if (!signature.every((value, index) => header[index] === value)) throw new Error(t("skins.invalidPng"));
+  const buffer = await file.slice(0, 24).arrayBuffer();
+  const header = new DataView(buffer);
+  if (buffer.byteLength < 24 || header.getUint32(0) !== 0x89504e47 || header.getUint32(4) !== 0x0d0a1a0a ||
+      header.getUint32(8) !== 13 || header.getUint32(12) !== 0x49484452) throw new Error(t("skins.invalidPng"));
+  const size = { width: header.getUint32(16), height: header.getUint32(20) };
+  const maxEdge = 1024;
+  const supported = kind === "skin" ? sameScale(size, 64, 64) || sameScale(size, 64, 32)
+    : sameScale(size, 64, 32) || (sameScale(size, 22, 17) && size.width / 22 * 64 <= maxEdge);
+  if (size.width > maxEdge || size.height > maxEdge || !supported) {
+    throw new Error(t(kind === "skin" ? "skins.invalidSkinSize" : "skins.invalidCapeSize"));
+  }
   const bitmap = await createImageBitmap(file);
-  const size = { width: bitmap.width, height: bitmap.height };
-  bitmap.close();
-  if (kind === "skin" && !(sameScale(size, 64, 64) || sameScale(size, 64, 32))) throw new Error(t("skins.invalidSkinSize"));
-  if (kind === "cape" && !(sameScale(size, 64, 32) || sameScale(size, 22, 17))) throw new Error(t("skins.invalidCapeSize"));
+  try {
+    if (bitmap.width !== size.width || bitmap.height !== size.height) throw new Error(t("skins.invalidPng"));
+  } finally { bitmap.close(); }
   return size;
 }
 

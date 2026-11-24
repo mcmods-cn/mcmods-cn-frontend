@@ -8,6 +8,7 @@ test("localized asset content is serialized as one bounded snapshot", () => {
   assert.deepEqual(localizedAssetContentPayload("zh-CN", [
     { locale: "zh-CN", fields: { name: " 中文 ", summary: " 介绍 ", contentMarkdown: "正文" }, editable: true },
     { locale: "en-US", fields: { name: "English", summary: "Summary", contentMarkdown: "Body" }, editable: true },
+    { locale: "de-DE", fields: { name: "", summary: " Zusammenfassung ", contentMarkdown: "" }, editable: true },
     { locale: "ja", fields: { name: "", summary: "", contentMarkdown: "" }, editable: true },
     { locale: "ru", fields: { name: "Generated", summary: "", contentMarkdown: "" }, editable: false },
   ]), {
@@ -15,6 +16,7 @@ test("localized asset content is serialized as one bounded snapshot", () => {
     localizations: [
       { locale: "zh-CN", name: "中文", summary: "介绍", contentMarkdown: "正文" },
       { locale: "en-US", name: "English", summary: "Summary", contentMarkdown: "Body" },
+      { locale: "de-DE", name: "", summary: "Zusammenfassung", contentMarkdown: "" },
     ],
   });
 });

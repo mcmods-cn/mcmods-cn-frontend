@@ -8,6 +8,7 @@ import { apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { createEmptyLocalizedContent, ensureLocalizedContent, updateLocalizedContent } from "../_lib/content-language";
 import { supportedLocales, useI18n, type Locale } from "../_lib/i18n-provider";
+import { localizedAssetContentPayload } from "../_lib/localized-asset-update.mts";
 import type { LocalizedContentFields, LocalizationVersion } from "../_lib/editor-types";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
@@ -37,7 +38,8 @@ function BlueprintUploadContent() {
   const [defaultLocale, setDefaultLocale] = useState<Locale>(initialLocale);
   const [localizations, setLocalizations] = useState<LocalizationVersion<LocalizedContentFields>[]>(() => [createEmptyLocalizedContent(initialLocale)]);
   const [uploading, setUploading] = useState(false);
-  const submitInFlight = useRef(false);
+  const submitAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => submitAbort.current?.abort(), []);
   const [progress, setProgress] = useState(0);
   const [uploadedBlueprint, setUploadedBlueprint] = useState<{ file: File; publicId: string }>();
   const uploadedCover = useRef<{ publicId: string; file: File } | null>(null);
@@ -55,46 +57,46 @@ function BlueprintUploadContent() {
   }
 
   async function submit() {
-    if (!blueprint || !token || submitInFlight.current || uploading || !defaultVersion.fields.name.trim()) return;
-    submitInFlight.current = true;
+    if (!blueprint || !token || submitAbort.current || uploading || !defaultVersion.fields.name.trim()) return;
+    const controller = new AbortController();
+    submitAbort.current = controller;
     setUploading(true);
     setProgress(5);
     try {
       let publicId = uploadedBlueprint?.file === blueprint ? uploadedBlueprint.publicId : undefined;
       if (!publicId) {
-        const uploaded = await uploadUserFileToOSS(blueprint, token, "blueprint_library");
+        const uploaded = await uploadUserFileToOSS(blueprint, token, "blueprint_library", undefined, controller.signal);
+        controller.signal.throwIfAborted();
         publicId = uploaded.blueprintId || uploaded.blueprint?.id;
         if (!publicId) throw new Error(t("blueprints.uploadFailed"));
         setUploadedBlueprint({ file: blueprint, publicId });
       }
       setProgress(55);
       if (cover && (uploadedCover.current?.publicId !== publicId || uploadedCover.current.file !== cover)) {
-        await uploadUserFileToOSS(cover, token, `blueprint_cover:${publicId}`);
+        await uploadUserFileToOSS(cover, token, `blueprint_cover:${publicId}`, undefined, controller.signal);
+        controller.signal.throwIfAborted();
         uploadedCover.current = { publicId, file: cover };
       }
       setProgress(82);
       await apiRequest(`/api/v1/blueprints/${encodeURIComponent(publicId)}`, {
         method: "PUT",
+        signal: controller.signal,
         body: JSON.stringify({
           title: defaultVersion.fields.name.trim(),
           description: defaultVersion.fields.contentMarkdown,
-          defaultLocale,
-          localizations: localizations.filter((item) => item.fields.name.trim()).map((item) => ({
-            locale: item.locale,
-            name: item.fields.name.trim(),
-            summary: item.fields.summary,
-            contentMarkdown: item.fields.contentMarkdown,
-          })),
+          ...localizedAssetContentPayload(defaultLocale, localizations),
         }),
       }, token);
+      if (controller.signal.aborted) return;
       setProgress(100);
       notifySite(t("blueprints.uploadQueuedNotice"), t("blueprints.title"), "success");
       router.push(`/blueprints/${publicId}`);
     } catch (error) {
+      if (controller.signal.aborted) return;
       notifySite(error instanceof Error ? error.message : String(error), t("blueprints.title"), "danger");
     } finally {
-      submitInFlight.current = false;
-      setUploading(false);
+      submitAbort.current = null;
+      if (!controller.signal.aborted) setUploading(false);
     }
   }
 

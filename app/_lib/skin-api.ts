@@ -142,10 +142,11 @@ export function loadSkin(publicId: string, token?: string) {
   return apiRequest<SkinTexture>(`/api/v1/skins/${encodeURIComponent(publicId)}`, {}, token);
 }
 
-export function createSkin(input: CreateSkinInput, token: string) {
+export function createSkin(input: CreateSkinInput, token: string, signal?: AbortSignal) {
   return apiRequest<SkinTexture>("/api/v1/skins", {
     method: "POST",
     body: JSON.stringify(input),
+    signal,
   }, token);
 }
 

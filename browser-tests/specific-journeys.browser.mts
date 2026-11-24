@@ -413,3 +413,37 @@ test("recipe shopping quantities preserve range text and case-sensitive units wh
     ]);
   } finally { await browser.close(); }
 });
+
+test("switching the skin uploader account cancels before skin metadata creation", async () => {
+  let actor = "uploaderA";
+  let writes = 0;
+  const presign = Promise.withResolvers<APIReply>();
+  const pending = Promise.withResolvers<void>();
+  const browser = await controlled(({ path, method }) => {
+    if (path === "/api/v1/auth/me") return { data: { id: actor, username: actor, permissionRules: [], roleCodes: [], permissionVersion: 1, rbacVersion: 1 } };
+    if (path === "/api/v1/users/me/oss/uploads/presign") { pending.resolve(); return presign.promise; }
+    if (path === "/api/v1/skins" && method === "POST") { writes++; return { status: 409, error: "Unexpected old texture write" }; }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/skins/upload");
+    const bytes = Buffer.from(await page.evaluate(() => {
+      const canvas = document.createElement("canvas"); canvas.width = canvas.height = 64;
+      return canvas.toDataURL("image/png").split(",")[1];
+    }), "base64");
+    await page.locator('input[type=file]').setInputFiles({ name: "my-skin.png", mimeType: "image/png", buffer: bytes });
+    await page.getByText("64 × 64", { exact: true }).waitFor();
+    const requestFailed = page.waitForEvent("requestfailed", { predicate: request => new URL(request.url()).pathname === "/api/v1/users/me/oss/uploads/presign", timeout: 5000 });
+    await page.getByRole("button", { name: "Submit texture" }).click();
+    await pending.promise;
+    actor = "uploaderB";
+    await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:controlled-other-user" })));
+    await page.getByRole("button", { name: "Submit texture" }).waitFor();
+    const cancelled = await requestFailed;
+    assert.equal(cancelled.failure()?.errorText, "net::ERR_ABORTED");
+    presign.resolve({ data: { uploadRequired: false, file: { id: "texture-a", originalName: "my-skin.png" } } });
+    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    assert.equal(writes, 0);
+    assert.equal(await page.getByRole("textbox", { name: "Name (en-US)", exact: true }).inputValue(), "");
+  } finally { presign.resolve({ status: 503, error: "Test finished" }); await browser.close(); }
+});

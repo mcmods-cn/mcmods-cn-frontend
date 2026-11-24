@@ -62,6 +62,11 @@ test("FP030 FP031 skin ignores a late decoded file, releases bitmap/URL resource
       return canvas.toDataURL("image/png").split(",")[1];
     }, { width, height }), "base64");
     const fileInput = page.locator('input[accept="image/png,.png"]');
+    await fileInput.setInputFiles({ name: "too-wide.png", mimeType: "image/png", buffer: await png(1088, 544) });
+    await page.getByText("Use a 64×64 or 64×32 skin, scaled equally up to 16×.", { exact: true }).waitFor({ timeout: 5000 });
+    assert.equal(await page.getByRole("button", { name: "Submit texture", exact: true }).isDisabled(), true);
+    assert.equal(await page.evaluate(() => window.__oct03Images.closed.includes("too-wide.png")), false,
+      "the unsupported size is rejected from PNG metadata before allocating a bitmap");
     await fileInput.setInputFiles({ name: "old.png", mimeType: "image/png", buffer: await png(64, 64) });
     await page.waitForFunction(() => window.__oct03Images.started);
     await fileInput.setInputFiles({ name: "new.png", mimeType: "image/png", buffer: await png(128, 64) });
@@ -90,7 +95,8 @@ test("FP030 FP031 skin ignores a late decoded file, releases bitmap/URL resource
     await page.locator('main a[href="/skins"]').click();
     await page.waitForURL(url => url.pathname === "/skins");
     await page.waitForFunction(() => window.__oct03Images.created.every(url => window.__oct03Images.revoked.includes(url)));
-    assert(await page.evaluate(() => window.__oct03Images.closed.filter(name => name === "new.png").length >= 3));
+    assert.deepEqual(await page.evaluate(() => window.__oct03Images.closed.toSorted()), ["new.png", "old.png"],
+      "each selected immutable file is decoded and closed once; metadata retries reuse the validated file");
   } finally { second.resolve({ status: 503, error: "Controlled retry metadata failure" }); await browser.close(); }
 });
 
