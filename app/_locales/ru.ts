@@ -133,6 +133,7 @@ const ru = {
   modContent: { ...en.modContent, managerBack: "Назад к {name}", templates: { ...en.modContent.templates, loot_table: "Таблицы добычи", game_setting: "Настройки игры" } },
   resourceEditor: {
     ...en.resourceEditor,
+    lootEditor: { ...en.resourceEditor.lootEditor, clearQuantity: "Удалить это правило количества" },
     catalogShort: "Ресурсы", catalogTitle: "Глобальный каталог ресурсов", catalogDescription: "Ищите игровые ресурсы по названию, идентификатору или типу.",
     versionedDefinition: "Изменяйте определение ресурса в связанной версии мода.",
     search: "Поиск ресурсов", searchPlaceholder: "Локализованное имя или ID ресурса", allKinds: "Все типы", allRegistries: "Все пространства имён", empty: "Подходящих ресурсов нет.", globalResource: "Глобальный ресурс",

@@ -1351,7 +1351,7 @@ const zhCN = {
       weight: "权重",
       quality: "品质",
       quantity: "数量",
-      clearQuantity: "恢复默认数量",
+      clearQuantity: "移除此数量规则",
       children: "子条目",
       addChild: "新增子条目",
       rolls: "抽取次数",

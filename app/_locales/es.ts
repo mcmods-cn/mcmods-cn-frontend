@@ -133,6 +133,7 @@ const es = {
   modContent: { ...en.modContent, managerBack: "Volver a {name}", templates: { ...en.modContent.templates, loot_table: "Tablas de botín", game_setting: "Ajustes del juego" } },
   resourceEditor: {
     ...en.resourceEditor,
+    lootEditor: { ...en.resourceEditor.lootEditor, clearQuantity: "Quitar esta regla de cantidad" },
     catalogShort: "Recursos", catalogTitle: "Catálogo global de recursos", catalogDescription: "Busca recursos reutilizables del juego por nombre, ID o tipo.",
     versionedDefinition: "Edita la definición en una versión vinculada del mod.",
     search: "Buscar recursos", searchPlaceholder: "Nombre localizado o ID del recurso", allKinds: "Todos los tipos", allRegistries: "Todos los espacios de nombres", empty: "No hay recursos coincidentes.", globalResource: "Recurso global",

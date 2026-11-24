@@ -134,6 +134,7 @@ const zhTW = {
   modContent: { ...zhCN.modContent, managerBack: "返回{name}", templates: { ...zhCN.modContent.templates, loot_table: "戰利品表", game_setting: "遊戲設定" } },
   resourceEditor: {
     ...zhCN.resourceEditor,
+    lootEditor: { ...zhCN.resourceEditor.lootEditor, clearQuantity: "移除此數量規則" },
     catalogShort: "資源", catalogTitle: "全域資源目錄", catalogDescription: "依名稱、ID 或類型尋找可重複使用的遊戲資源。",
     versionedDefinition: "請在關聯的模組資料版本中編輯資源定義。",
     search: "搜尋資源", searchPlaceholder: "本地化名稱或資源 ID", allKinds: "全部類型", allRegistries: "全部命名空間", empty: "找不到符合條件的資源。", globalResource: "全域資源",

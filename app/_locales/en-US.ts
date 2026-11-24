@@ -1351,7 +1351,7 @@ const en = {
       weight: "Weight",
       quality: "Quality",
       quantity: "Quantity",
-      clearQuantity: "Use default quantity",
+      clearQuantity: "Remove this count rule",
       children: "Child entries",
       addChild: "Add child",
       rolls: "Rolls",

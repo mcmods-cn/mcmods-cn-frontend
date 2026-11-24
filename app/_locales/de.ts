@@ -133,6 +133,7 @@ const de = {
   modContent: { ...en.modContent, managerBack: "Zurück zu {name}", templates: { ...en.modContent.templates, loot_table: "Beutetabellen", game_setting: "Spieleinstellungen" } },
   resourceEditor: {
     ...en.resourceEditor,
+    lootEditor: { ...en.resourceEditor.lootEditor, clearQuantity: "Diese Mengenregel entfernen" },
     catalogShort: "Ressourcen", catalogTitle: "Globaler Ressourcenkatalog", catalogDescription: "Durchsuche wiederverwendbare Spielressourcen nach Name, ID oder Typ.",
     versionedDefinition: "Bearbeite Ressourcendefinitionen in einer verknüpften Mod-Version.",
     search: "Ressourcen suchen", searchPlaceholder: "Lokalisierter Name oder Ressourcen-ID", allKinds: "Alle Typen", allRegistries: "Alle Namensräume", empty: "Keine passenden Ressourcen.", globalResource: "Globale Ressource",

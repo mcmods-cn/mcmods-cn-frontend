@@ -302,7 +302,7 @@ test("loot quantity edits preserve additive functions and the following conditio
     const textarea = advanced.locator("textarea");
     const edited = JSON.parse(await textarea.inputValue()).pools[0].entries[0];
     assert.deepEqual(edited.functions, [{ ...entry.functions[0], count: 0 }, nextRule]);
-    await page.getByRole("button", { name: "Use default quantity" }).click();
+    await page.getByRole("button", { name: "Remove this count rule" }).click();
     assert.deepEqual(JSON.parse(await textarea.inputValue()).pools[0].entries[0].functions, [nextRule]);
   } finally {
     await browser.close();

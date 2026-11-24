@@ -133,6 +133,7 @@ const ja = {
   modContent: { ...en.modContent, managerBack: "{name} に戻る", templates: { ...en.modContent.templates, loot_table: "戦利品テーブル", game_setting: "ゲーム設定" } },
   resourceEditor: {
     ...en.resourceEditor,
+    lootEditor: { ...en.resourceEditor.lootEditor, clearQuantity: "この個数ルールを削除" },
     catalogShort: "リソース", catalogTitle: "グローバルリソースカタログ", catalogDescription: "名前、ID、種類で再利用できるゲームリソースを検索します。",
     versionedDefinition: "リソース定義は、関連する Mod の資料バージョンで編集します。",
     search: "リソースを検索", searchPlaceholder: "ローカライズ名またはリソース ID", allKinds: "すべての種類", allRegistries: "すべての名前空間", empty: "一致するリソースはありません。", globalResource: "グローバルリソース",
