@@ -163,6 +163,7 @@ export function BanReasonSelect({
 export function useBanReasons(
   token: string,
   locale: string,
+  enabled: boolean,
 ): BanReasonLoadState {
   const [attempt, setAttempt] = useState(0);
   const requestKey = `${locale}\u0000${token}\u0000${attempt}`;
@@ -173,6 +174,7 @@ export function useBanReasons(
   }>({ requestKey: "", items: [], error: "" });
   const reload = useCallback(() => setAttempt((value) => value + 1), []);
   useEffect(() => {
+    if (!enabled) return;
     const controller = new AbortController();
     void apiRequest<{ items: BanReason[] }>(
       `/api/v1/admin/ban-reasons?locale=${encodeURIComponent(locale)}`,
@@ -185,12 +187,12 @@ export function useBanReasons(
           setResult({ requestKey, items: [], error: errorMessage(error) });
       });
     return () => controller.abort();
-  }, [locale, requestKey, token]);
-  const loading = result.requestKey !== requestKey;
+  }, [enabled, locale, requestKey, token]);
+  const loading = enabled && result.requestKey !== requestKey;
   return {
-    items: loading ? [] : result.items,
+    items: enabled && !loading ? result.items : [],
     loading,
-    error: loading ? "" : result.error,
+    error: enabled && !loading ? result.error : "",
     reload,
   };
 }

@@ -816,3 +816,31 @@ test("user details and account defaults load with their own read capabilities", 
     assert.ok(!reads.includes("/api/v1/admin/levels/config"));
   } finally { await browser.close(); }
 });
+
+test("ordinary reviewers and sticker managers see only their available actions", { timeout: 30_000 }, async () => {
+  let reasonReads = 0;
+  const browser = await fixture.page(({ path }) => {
+    if (path === "/api/v1/auth/me") return { data: actor("catalog-reviewer", ["admin.access", "report.review", "ban.view_internal", "sticker.manage"]) };
+    if (path === "/api/v1/admin/bans") return { data: { items: [{ id: "banA", username: "Listed account", status: "active", reasonCode: "fixture" }], nextCursor: "", hasMore: false } };
+    if (path === "/api/v1/admin/reports") return { data: { items: [{ id: "reportA", targetType: "mod", reasonCode: "fixture", createdAt: "2026-11-24T00:00:00Z" }], nextCursor: "", hasMore: false } };
+    if (path === "/api/v1/admin/reports/reportA") return { data: { id: "reportA", targetType: "mod", targetId: "Mod fixture", status: "in_review", claimedByCurrentUser: true, detail: "Report fixture", evidence: [] } };
+    if (path === "/api/v1/admin/stickers") return { data: { locales: ["en-US"], packs: [] } };
+    if (path === "/api/v1/admin/ban-reasons") { reasonReads++; return { data: { items: [] } }; }
+  });
+  try {
+    const page = browser.page;
+    await panel(page, "bans", "reviews");
+    await page.getByText("Listed account", { exact: true }).waitFor();
+    assert.equal(await page.locator('input[name="userId"]').count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Revoke", exact: true }).count(), 0);
+    await panel(page, "reports", "reviews");
+    await page.getByRole("button", { name: /mod · fixture/ }).click();
+    await page.getByText("Report fixture", { exact: true }).waitFor();
+    assert.equal(await page.locator('form select[name="conclusion"]').isEnabled(), true);
+    assert.equal(await page.locator('input[name="banUserId"], input[name="deleteTarget"]').count(), 0);
+    await panel(page, "stickers", "content");
+    await page.locator('form input[placeholder="dogs"]').waitFor();
+    assert.equal(await page.locator('input[type="file"]').count(), 0);
+    assert.equal(reasonReads, 0);
+  } finally { await browser.close(); }
+});

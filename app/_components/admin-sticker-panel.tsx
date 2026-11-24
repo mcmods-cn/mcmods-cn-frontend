@@ -34,7 +34,7 @@ type StickerAdminResponse = {
   packs: AdminStickerPack[];
 };
 
-export function AdminStickerPanel({ token }: { token: string }) {
+export function AdminStickerPanel({ token, canUploadImages }: { token: string; canUploadImages: boolean }) {
   const { locale, t } = useI18n();
   const [data, setData] = useState<StickerAdminResponse>({ locales: [], packs: [] });
   const [message, setMessage] = useState("");
@@ -120,7 +120,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
 
   async function createSticker(event: FormEvent) {
     event.preventDefault();
-    if (!image) return;
+    if (!canUploadImages || !image) return;
     if (mutationPending.current) return;
     mutationPending.current = true;
     setBusy(true);
@@ -210,7 +210,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
   async function saveSticker(pack: AdminStickerPack, sticker: AdminSticker, form: HTMLFormElement) {
     const values = new FormData(form);
     const translations = Object.fromEntries(data.locales.map((locale) => [locale, String(values.get(`name:${locale}`) || "").trim()]));
-    const replacement = values.get("image");
+    const replacement = canUploadImages ? values.get("image") : null;
     if (mutationPending.current) return;
     mutationPending.current = true;
     setBusy(true);
@@ -273,7 +273,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
           </button>
         </form>
 
-        <form className="surface grid gap-3 p-5" onSubmit={createSticker}>
+        {canUploadImages && <form className="surface grid gap-3 p-5" onSubmit={createSticker}>
           <h2 className="text-xl font-black">{t("admin.stickers.createSticker")}</h2>
           <select className="field" required value={selectedPack} onChange={(event) => setSelectedPack(event.target.value)}>
             <option value="">{t("admin.stickers.selectPack")}</option>
@@ -300,7 +300,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
           <button className="button-primary focus-ring" disabled={busy || !selectedPack || !image} type="submit">
             {t("common.create")}
           </button>
-        </form>
+        </form>}
       </div>
 
       <div className="grid gap-4">
@@ -333,7 +333,7 @@ export function AdminStickerPanel({ token }: { token: string }) {
                   />
                   <p className="mt-2 truncate font-bold">{localizedStickerName(sticker.translations, locale, sticker.code)}</p>
                   <code className="text-xs">{sticker.code}</code>
-                  <StickerEditor busy={busy} locales={data.locales} pack={pack} sticker={sticker} onSave={saveSticker} />
+                  <StickerEditor canUploadImages={canUploadImages} busy={busy} locales={data.locales} pack={pack} sticker={sticker} onSave={saveSticker} />
                   <button className="mt-2 block w-full text-sm font-bold text-[var(--accent)]" disabled={busy} type="button" onClick={() => void toggleSticker(pack, sticker)}>
                     {sticker.status === "active" ? t("admin.stickers.disable") : t("admin.stickers.enable")}
                   </button>
@@ -384,6 +384,7 @@ function PackEditor({ busy, locales, pack, onSave }: PackEditorProps) {
 }
 
 type StickerEditorProps = {
+  canUploadImages: boolean;
   busy: boolean;
   locales: string[];
   pack: AdminStickerPack;
@@ -391,7 +392,7 @@ type StickerEditorProps = {
   onSave: (pack: AdminStickerPack, sticker: AdminSticker, form: HTMLFormElement) => Promise<void>;
 };
 
-function StickerEditor({ busy, locales, pack, sticker, onSave }: StickerEditorProps) {
+function StickerEditor({ canUploadImages, busy, locales, pack, sticker, onSave }: StickerEditorProps) {
   const { t } = useI18n();
   return (
     <details className="mt-3 rounded-lg border border-[var(--line)] p-2 text-left">
@@ -408,10 +409,10 @@ function StickerEditor({ busy, locales, pack, sticker, onSave }: StickerEditorPr
           {t("admin.stickers.sortOrder")}
           <input className="field mt-1" defaultValue={sticker.sortOrder} name="sortOrder" type="number" />
         </label>
-        <label className="text-sm font-bold">
+        {canUploadImages && <label className="text-sm font-bold">
           {t("admin.stickers.replaceImage")}
           <input accept="image/png,image/gif" className="field mt-1" name="image" type="file" />
-        </label>
+        </label>}
         <UncontrolledTranslationFields locales={locales} names={sticker.translations} />
         <button className="button-primary focus-ring" disabled={busy} type="submit">
           {t("common.save")}

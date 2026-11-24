@@ -94,12 +94,12 @@ const definitions = {
   "reports": {
     group: "reviews", title: "admin.governance.reports", description: "admin.governance.reportsDescription",
     read: "report.review",
-    render: ({ token }) => <UnifiedReportAdminPanel token={token} />,
+    render: ({ token, user }) => <UnifiedReportAdminPanel token={token} canBan={hasPermission(user, "report.action.ban")} canDeleteTarget={hasPermission(user, "report.action.delete")} />,
   },
   "bans": {
     group: "reviews", title: "admin.governance.bans", description: "admin.governance.bansDescription",
-    read: "ban.view_internal",
-    render: ({ token }) => <BanAdminPanel token={token} />,
+    read: "ban.view_internal", write: "ban.create",
+    render: ({ token, user, access }) => <BanAdminPanel token={token} canCreate={access.write} canRevoke={hasPermission(user, "ban.revoke")} />,
   },
   "creator-claims": {
     group: "reviews", title: "admin.community.creatorClaims", description: "admin.community.creatorClaimsDescription",
@@ -159,7 +159,7 @@ const definitions = {
   "stickers": {
     group: "content", title: "admin.stickers.title", description: "admin.stickers.description",
     read: "sticker.manage",
-    render: ({ token }) => <AdminStickerPanel token={token} />,
+    render: ({ token, user }) => <AdminStickerPanel token={token} canUploadImages={hasPermission(user, "sticker.upload") && hasPermission(user, "oss.write")} />,
   },
   "roles": {
     group: "permission", title: "admin.roles", description: "admin.rolesDesc",

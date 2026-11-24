@@ -40,9 +40,9 @@ type ReportDetail = ReportRow & {
   relatedReports: Array<Record<string, unknown>>;
 };
 
-export function UnifiedReportAdminPanel({ token }: { token: string }) {
+export function UnifiedReportAdminPanel({ token, canBan, canDeleteTarget }: { token: string; canBan: boolean; canDeleteTarget: boolean }) {
   const { locale, t } = useI18n();
-  const banReasons = useBanReasons(token, locale);
+  const banReasons = useBanReasons(token, locale, canBan);
   const [status, setStatus] = useState("pending");
   const [page, setPage] = useState<GovernancePage<ReportRow>>({
     items: [],
@@ -194,7 +194,7 @@ export function UnifiedReportAdminPanel({ token }: { token: string }) {
           body: JSON.stringify({
             conclusion: form.get("conclusion"),
             note: form.get("note"),
-            deleteTarget: form.get("deleteTarget") === "on",
+            deleteTarget: canDeleteTarget && form.get("deleteTarget") === "on",
             banUserId: String(form.get("banUserId") || ""),
             banReasonCode: String(form.get("banReasonCode") || ""),
             banCustomReason: String(form.get("banCustomReason") || ""),
@@ -386,10 +386,11 @@ export function UnifiedReportAdminPanel({ token }: { token: string }) {
                   name="note"
                   placeholder={t("admin.governance.reviewNote")}
                 />
-                <label className="flex gap-2 font-bold">
+                {canDeleteTarget && <label className="flex gap-2 font-bold">
                   <input name="deleteTarget" type="checkbox" />
                   {t("admin.governance.deleteTarget")}
-                </label>
+                </label>}
+                {canBan && <>
                 <input
                   className="field"
                   disabled={banReasons.loading || Boolean(banReasons.error)}
@@ -418,6 +419,7 @@ export function UnifiedReportAdminPanel({ token }: { token: string }) {
                   name="publicRecordMarkdown"
                   placeholder={t("admin.governance.publicRecord")}
                 />
+                </>}
                 <button
                   className="button-primary focus-ring"
                   disabled={busy}

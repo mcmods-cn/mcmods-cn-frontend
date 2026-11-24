@@ -39,7 +39,7 @@ type BanRow = {
 
 type BanWireRow = Omit<BanRow, "status"> & { status: unknown };
 
-export function BanAdminPanel({ token }: { token: string }) {
+export function BanAdminPanel({ token, canCreate, canRevoke }: { token: string; canCreate: boolean; canRevoke: boolean }) {
   const { locale, t } = useI18n();
   const [page, setPage] = useState<GovernancePage<BanRow>>({
     items: [],
@@ -50,7 +50,7 @@ export function BanAdminPanel({ token }: { token: string }) {
   const [cursor, setCursor] = useState("");
   const [cursorHistory, setCursorHistory] = useState<string[]>([]);
   const [message, setMessage] = useState("");
-  const banReasons = useBanReasons(token, locale);
+  const banReasons = useBanReasons(token, locale, canCreate);
   const load = useCallback(
     (targetCursor = cursor, signal?: AbortSignal) => {
       const pageCursor = targetCursor
@@ -94,6 +94,7 @@ export function BanAdminPanel({ token }: { token: string }) {
   }
   async function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canCreate || banReasons.loading || banReasons.error) return;
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     let endsAt: string | null;
@@ -129,6 +130,7 @@ export function BanAdminPanel({ token }: { token: string }) {
     await load("");
   }
   async function revoke(id: string) {
+    if (!canRevoke) return;
     const reason = window.prompt(t("admin.governance.revokeReason"));
     if (!reason) return;
     try {
@@ -149,7 +151,7 @@ export function BanAdminPanel({ token }: { token: string }) {
         description={t("admin.governance.bansDescription")}
       />
       {message ? <Notice text={message} /> : null}
-      <form
+      {canCreate && <form
         className="mt-5 grid gap-3 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 md:grid-cols-2"
         onSubmit={create}
       >
@@ -193,7 +195,7 @@ export function BanAdminPanel({ token }: { token: string }) {
         >
           {t("admin.governance.createBan")}
         </button>
-      </form>
+      </form>}
       <div className="mt-5 grid gap-3">
         {page.items.map((item) => (
           <article
@@ -246,7 +248,7 @@ export function BanAdminPanel({ token }: { token: string }) {
                 >
                   {t("admin.governance.publicView")}
                 </Link>
-                {item.status !== "released" ? (
+                {canRevoke && item.status !== "released" ? (
                   <button
                     className="button-secondary focus-ring"
                     type="button"
