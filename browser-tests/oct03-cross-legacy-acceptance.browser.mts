@@ -771,12 +771,13 @@ for (const collection of ["mods", "modpacks", "plugins"]) test(`the ${collection
 test("community edits remove one unresolved resource and retire a pending save with its actor", { timeout: 20_000 }, async () => {
   const path = "/api/v1/community/posts/post00001";
   const held = Promise.withResolvers<APIReply>();
-  const requests: { resources: { identifier: string }[] }[] = [];
+  const requests: { baseRevisionId: string; resources: { identifier: string }[] }[] = [];
   let actorId = "editor001";
   const browser = await controlled(request => {
     if (request.path === "/api/v1/auth/me") return { data: { id: actorId, username: actorId, roleCodes: [], permissionRules: [] } };
-    if (request.path === path && request.method === "PUT") { requests.push(JSON.parse(request.body)); return held.promise; }
-    if (request.path === path) return { data: { ...post, category: "help", projects: [],
+    if (request.path === path && request.method === "PUT") { requests.push(JSON.parse(request.body));
+      return requests.length === 1 ? { status: 409, code: "COMMUNITY_POST_EDIT_CONFLICT", error: "Synthetic edit conflict" } : held.promise; }
+    if (request.path === path) return { data: { ...post, publishedRevisionId: "published-before-edit", category: "help", projects: [],
       resources: ["fixture:first", "fixture:second"].map(identifier => ({ identifier, kind: "minecraft.item", unresolved: true })) } };
     if (request.path === "/api/v1/community/post-categories") return { data: { items: ["help"] } };
     if (request.path === "/api/v1/economy/currencies") return { data: { items: [] } };
@@ -789,10 +790,16 @@ test("community edits remove one unresolved resource and retire a pending save w
     await first.getByRole("button", { name: "Delete", exact: true }).click();
     assert.equal(await first.count(), 0);
     await page.locator("code", { hasText: "fixture:second" }).waitFor();
+    const submit = page.getByRole("button", { name: "Submit", exact: true });
+    await submit.click();
+    await page.getByText(/This post changed after you opened the editor/).waitFor();
+    assert.deepEqual(requests.map(item => item.baseRevisionId), ["published-before-edit"]);
+    assert.equal(await first.count(), 0);
+    assert.equal(await page.locator("code", { hasText: "fixture:second" }).count(), 1);
     const started = page.waitForRequest(req => new URL(req.url()).pathname === path && req.method() === "PUT");
     await page.getByRole("button", { name: "Submit", exact: true }).click();
     await started;
-    assert.deepEqual(requests.map(item => item.resources.map(resource => resource.identifier)), [["fixture:second"]]);
+    assert.deepEqual(requests.map(item => item.resources.map(resource => resource.identifier)), [["fixture:second"], ["fixture:second"]]);
     const cancelled = page.waitForEvent("requestfailed", { predicate: req => new URL(req.url()).pathname === path && req.method() === "PUT", timeout: 4000 });
     void cancelled.catch(() => {});
     const identity = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/me");

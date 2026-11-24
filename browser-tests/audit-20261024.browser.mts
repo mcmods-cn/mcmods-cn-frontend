@@ -557,7 +557,7 @@ test("CMP-004 moderation keyset pagination retains failed pages and does not ski
     assert.equal(await page.locator("article").count(), 104);
     assert.deepEqual(requests.slice(0, 4), [{ status: "pending", cursor: "" }, { status: "pending", cursor: "after-50" }, { status: "pending", cursor: "after-50" }, { status: "pending", cursor: "after-100" }]);
     await page.getByRole("combobox", { name: "Queue status", exact: true }).selectOption("hidden");
-    await page.getByText("No version history yet.", { exact: true }).waitFor();
+    await page.getByText("No comments in this queue.", { exact: true }).waitFor();
     assert.deepEqual(requests.at(-1), { status: "hidden", cursor: "" });
   } finally { await browser.close(); }
 });

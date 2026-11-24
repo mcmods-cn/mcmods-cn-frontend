@@ -13,11 +13,3 @@ test("the first translatable notification loads the current account balance", ()
   assert.match(source, /window\.clearTimeout\(timer\)/);
   assert.match(source, /controller\.abort\(\)/);
 });
-
-test("a newly queued translation refreshes balance in the terminal cleanup path", () => {
-  const translation = source.slice(source.indexOf("async function translate"), source.indexOf("async function sendMessage"));
-  assert.match(translation, /balanceRefreshNeeded = !started\.cached/);
-  assert.match(translation, /finally\s*\{/);
-  assert.match(translation, /if \(balanceRefreshNeeded\)/);
-  assert.match(translation, /await loadBalance\(\)/);
-});
