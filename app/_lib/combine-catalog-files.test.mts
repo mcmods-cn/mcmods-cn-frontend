@@ -16,6 +16,10 @@ test("mixed JSON arrays and JSON lines retain exact order and UTF-8 values acros
   assert.equal(result.type, "application/x-ndjson");
 });
 
+test("JSONL errors report the physical line including leading whitespace", async () => {
+  await assert.rejects(combine([new File([" \r\n\n{}\r\ninvalid\r\n"], "input.jsonl")]), /invalidLine input.jsonl 4$/);
+});
+
 test("invalid input fails with its filename and line and never returns a partial catalog", async () => {
   await assert.rejects(combine([new File(['{"ok":true}\nwrong'], "bad.json")]), /invalidLine bad.json 2/);
   await assert.rejects(combine([new File(["[]"], "empty.json")]), /catalogImport.empty/);

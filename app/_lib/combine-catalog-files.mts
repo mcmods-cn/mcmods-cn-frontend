@@ -13,12 +13,13 @@ export async function combineCatalogFiles(
   const batches: BlobPart[] = [];
   for (const file of files) {
     signal.throwIfAborted();
-    const raw = (await file.text()).replace(/^\uFEFF/, "").trim();
+    const raw = (await file.text()).replace(/^\uFEFF/, "");
     signal.throwIfAborted();
-    if (!raw) continue;
+    const content = raw.trimStart();
+    if (!content) continue;
     const rows: string[] = [];
-    if (raw.startsWith("[")) {
-      const parsed = JSON.parse(raw);
+    if (content.startsWith("[")) {
+      const parsed = JSON.parse(content);
       if (!Array.isArray(parsed)) throw new Error(t("modContent.catalogImport.notArray", { file: file.name }));
       for (const entry of parsed) rows.push(JSON.stringify(entry));
     } else {
