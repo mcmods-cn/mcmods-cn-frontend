@@ -4,14 +4,14 @@ export function advancementConnectedGroups<T>(
   parentIdOf: (item: T) => string,
 ) {
   const itemByID = new Map(items.map((item) => [idOf(item), item]));
-  const neighbors = new Map<string, string[]>();
+  const neighbors = new Map(items.map((item) => [idOf(item), [] as string[]]));
 
   for (const item of items) {
     const id = idOf(item);
     const parentID = parentIdOf(item);
     if (!id || !parentID || parentID === id || !itemByID.has(parentID)) continue;
-    neighbors.set(id, [...(neighbors.get(id) ?? []), parentID]);
-    neighbors.set(parentID, [...(neighbors.get(parentID) ?? []), id]);
+    neighbors.get(id)?.push(parentID);
+    neighbors.get(parentID)?.push(id);
   }
 
   const visited = new Set<string>();
