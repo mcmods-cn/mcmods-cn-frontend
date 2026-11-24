@@ -69,8 +69,11 @@ function ContentTranslationSession({
 
   useEffect(() => {
     const controller = new AbortController();
-    refresh(controller.signal).catch((reason: unknown) => {
-      if (!controller.signal.aborted && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
+    queueMicrotask(() => {
+      if (controller.signal.aborted) return;
+      refresh(controller.signal).catch((reason: unknown) => {
+        if (!controller.signal.aborted) setError(errorText(reason));
+      });
     });
     return () => controller.abort();
   }, [refresh]);
