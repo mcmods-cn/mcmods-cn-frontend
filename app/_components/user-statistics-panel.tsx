@@ -50,38 +50,38 @@ type UserStatistics = {
 const ranges = ["all", "7d", "30d", "90d", "1y"] as const;
 
 export function UserStatisticsPanel({ token }: { token: string }) {
-  const { locale, t } = useI18n();
+  const { t } = useI18n();
   const [range, setRange] = useState<(typeof ranges)[number]>("all");
-  const [statistics, setStatistics] = useState<UserStatistics | null>(null);
-  const [loading, setLoading] = useState(true);
+  return <section className="grid gap-4">
+    <div className="surface flex flex-wrap items-center justify-between gap-3 rounded-lg p-4">
+      <div><h2 className="text-xl font-black">{t("user.statistics")}</h2><p className="text-sm text-[var(--muted)]">{t("user.statisticsDescription")}</p></div>
+      <label className="text-sm font-semibold">{t("user.statisticsRange")} <select className="field ml-2 w-auto" value={range} onChange={(event) => setRange(event.target.value as typeof range)}>{ranges.map(value => <option key={value} value={value}>{t(`user.statisticsRanges.${value}`)}</option>)}</select></label>
+    </div>
+    <StatisticsRange key={range} range={range} token={token} />
+  </section>;
+}
+
+function StatisticsRange({ token, range }: { token: string; range: string }) {
+  const { locale, t } = useI18n();
+  const [statistics, setStatistics] = useState<UserStatistics>();
   const [error, setError] = useState("");
-
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      setError("");
-      apiRequest<UserStatistics>(`/api/v1/users/me/statistics?range=${range}`, {}, token)
-        .then((value) => { if (!cancelled) setStatistics(value); })
-        .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : t("user.statisticsLoadFailed")); })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    }, 0);
-    return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [range, t, token]);
-
-  if (loading && !statistics) return <section className="surface rounded-lg p-8 text-center text-sm text-[var(--muted)]">{t("common.loading")}</section>;
-  if (error && !statistics) return <section className="surface rounded-lg p-6 text-sm text-[var(--red)]">{error}</section>;
-  if (!statistics) return null;
-  const selected = statistics.selectedRange ?? statistics.cumulative;
+    const controller = new AbortController();
+    apiRequest<UserStatistics>(`/api/v1/users/me/statistics?range=${range}`, { signal: controller.signal }, token).then(value => {
+      if (controller.signal.aborted) return;
+      if (value.range !== range) throw new Error(t("user.statisticsLoadFailed"));
+      setStatistics(value);
+    }).catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : t("user.statisticsLoadFailed")); });
+    return () => controller.abort();
+  }, [attempt, range, t, token]);
+  if (error) return <div className="surface flex flex-wrap items-center gap-3 p-4" role="alert">
+    {error}<button className="button-secondary focus-ring" onClick={() => { setError(""); setAttempt(value => value + 1); }} type="button">{t("common.retry")}</button>
+  </div>;
+  if (!statistics) return <p className="surface p-6" role="status">{t("common.loading")}</p>;
+  const selected = statistics.selectedRange ?? (range === "all" ? statistics.cumulative : undefined);
   const progress = Math.max(0, Math.min(100, statistics.level.progressPercent));
-  return (
-    <section className="grid gap-4">
-      <div className="surface flex flex-wrap items-center justify-between gap-3 rounded-lg p-4">
-        <div><h2 className="text-xl font-black">{t("user.statistics")}</h2><p className="text-sm text-[var(--muted)]">{t("user.statisticsDescription")}</p></div>
-        <label className="text-sm font-semibold">{t("user.statisticsRange")} <select className="field ml-2 w-auto" value={range} onChange={(event) => setRange(event.target.value as typeof range)}>{ranges.map((value) => <option key={value} value={value}>{t(`user.statisticsRanges.${value}`)}</option>)}</select></label>
-      </div>
-      {error ? <p className="rounded-lg border border-[var(--line)] p-3 text-sm text-[var(--red)]">{error}</p> : null}
-
+  return <>
       <StatisticsSection title={t("user.statisticsOverview")}>
         <Metric label={t("user.totalOperations")} value={number(selected?.actionCount, locale)} />
         <Metric label={t("user.totalEdits")} value={number(selected?.editCount, locale)} />
@@ -128,8 +128,7 @@ export function UserStatisticsPanel({ token }: { token: string }) {
         <div className="mt-4 h-3 overflow-hidden rounded-full bg-[var(--panel-subtle)]"><div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${progress}%` }} /></div>
         <div className="mt-2 flex flex-wrap justify-between gap-2 text-xs text-[var(--muted)]"><span>{statistics.level.experienceInLevel.toLocaleString(locale)} XP</span><span>{t("user.experienceToNext", { count: statistics.level.experienceToNextLevel.toLocaleString(locale) })}</span><span>{t("user.lifetimeExperience")}: {statistics.level.lifetimeExperience.toLocaleString(locale)}</span></div>
       </section>
-    </section>
-  );
+  </>;
 }
 
 function StatisticsSection({ title, children }: { title: string; children: React.ReactNode }) {
@@ -141,5 +140,5 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function number(value: number | undefined, locale: string) {
-  return (value ?? 0).toLocaleString(locale);
+  return value === undefined ? "—" : value.toLocaleString(locale);
 }

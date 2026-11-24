@@ -313,3 +313,29 @@ test("private comment watches can continue an empty visible page and a stale fil
     assert.equal(await panel.getByRole("link", { name: "Stale muted branch" }).count(), 0);
   } finally { mutedReply.resolve({ data: { items: [], nextCursor: "" } }); await browser.close(); }
 });
+
+test("the selected activity range never labels a previous total and retries its own failed read", { timeout: 30_000 }, async () => {
+  let sevenDayReads = 0;
+  const browser = await controlled(({ path, url }) => {
+    if (path === "/api/v1/users/me/profile-settings" || path === "/api/v1/users/me/overview" || path === "/api/v1/users/me/notification-settings")
+      return { status: 503, error: "Independent account panel unavailable" };
+    if (path !== "/api/v1/users/me/statistics") return;
+    const range = url.searchParams.get("range");
+    if (range === "7d" && ++sevenDayReads === 1) return { status: 503, error: "Range temporarily unavailable" };
+    return { data: { range, selectedRange: { actionCount: range === "all" ? 777 : 0 }, contentCreation: [], community: {},
+      level: { level: 1, experience: 0, experienceInLevel: 0, experienceToNextLevel: 10, lifetimeExperience: 0, progressPercent: 0 } } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/user?section=statistics`);
+    await page.getByText("777", { exact: true }).waitFor();
+    await page.getByRole("combobox", { name: "Time range" }).selectOption("7d");
+    const error = page.getByRole("alert").filter({ hasText: "Range temporarily unavailable" });
+    await error.waitFor();
+    assert.equal(await page.getByText("777", { exact: true }).count(), 0);
+    await error.getByRole("button", { name: "Retry" }).click();
+    const operations = page.getByText("Operations", { exact: true }).locator("..").filter({ has: page.locator("strong") });
+    await operations.locator("strong").filter({ hasText: /^0$/ }).waitFor();
+    assert.equal(sevenDayReads, 2);
+  } finally { await browser.close(); }
+});
