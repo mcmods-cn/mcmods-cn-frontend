@@ -207,7 +207,7 @@ test("Leaving an existing recipe cancels its pending deletion and keeps the chos
     }, recipePath);
     await page.goto(`${fixture.origin}/recipe-types?editor=recipe-edit&publicId=${typeId}&recipePublicId=${recipeId}`);
     page.once("dialog", dialog => dialog.accept());
-    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.getByRole("button", { name: "Archive", exact: true }).click();
     await started.promise;
     await page.getByRole("link", { name: "Back to recipe methods", exact: true }).click();
     await page.waitForURL(url => url.search === `?publicId=${typeId}`);
