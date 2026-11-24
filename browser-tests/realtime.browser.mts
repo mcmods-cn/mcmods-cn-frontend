@@ -231,6 +231,47 @@ test("TEST023 actual notification view loads one AI balance before any translati
   } finally { await browser.close(); }
 });
 
+test("reopening the realtime stream catches up the active conversation without an event replay", { timeout: 30_000 }, async () => {
+  const calls = { unread: 0, conversations: 0, notifications: 0 };
+  let offlineMessage = false;
+  const browser = await fixture.page(({ path, method, url }) => {
+    if (path === "/api/v1/me/unread-summary") {
+      calls.unread++;
+      return { data: { notifications: 0, messages: 0, total: 0 } };
+    }
+    if (path === "/api/v1/notifications") {
+      calls.notifications++;
+      return { data: pageOf([], 50) };
+    }
+    if (path === "/api/v1/messages/conversations") {
+      calls.conversations++;
+      return { data: pageOf(conversations, 30) };
+    }
+    if (method === "PUT" && path.endsWith("/presence")) return { data: { online: true } };
+    if (method === "GET" && path.endsWith("/conv-a")) {
+      const after = url.searchParams.get("after");
+      if (after) return { data: pageOf(offlineMessage && after === "a1" ? [message("a2", "conv-a", "Arrived while disconnected")] : []) };
+      return { data: pageOf([message("a1", "conv-a", "Before disconnect")]) };
+    }
+  });
+  const { page } = browser;
+  try {
+    await controlEventSource(page);
+    await page.goto(`${fixture.origin}/messages`);
+    await page.getByRole("button", { name: "Private chats", exact: true }).click();
+    await page.getByRole("button", { name: /Partner A/ }).click();
+    await page.getByText("Before disconnect", { exact: true }).waitFor();
+    const before = { ...calls };
+    await page.evaluate(() => window.__test023.sources[0].onerror?.(new Event("error")));
+    offlineMessage = true;
+    await page.waitForFunction(() => window.__test023.sources.length === 2);
+    await page.getByText("Arrived while disconnected", { exact: true }).waitFor({ timeout: 3_000 });
+    assert.ok(calls.notifications > before.notifications && calls.conversations > before.conversations && calls.unread > before.unread);
+    await page.evaluate(() => window.__test023.sources[0].onerror?.(new Event("error")));
+    assert.equal(await page.evaluate(() => window.__test023.sources[1].closed), false);
+  } finally { await browser.close(); }
+});
+
 test("TEST023 actual realtime lifecycle closes on error/hidden/logout and cancels delayed reconnect", { timeout: 30_000 }, async () => {
   const browser = await fixture.page(({ path }) => {
     if (path === "/api/v1/notifications") return { data: pageOf([], 50) };

@@ -29,6 +29,7 @@ export const realtimeQueryKeys = {
   notifications: (userID: string, kind: string) => `notifications:${userID}:${kind}`,
   notificationPrefix: (userID: string) => `notifications:${userID}:`,
   conversations: (userID: string) => `direct-conversations:${userID}`,
+  messagePrefix: (userID: string) => `direct-messages:${userID}:`,
   messages: (userID: string, conversationID: string) => `direct-messages:${userID}:${conversationID}`,
 };
 
@@ -88,6 +89,13 @@ export function createRealtimeQueryCoordinator(options: RealtimeQueryCoordinator
 
   function hasSubscribers(key: string) {
     return (listeners.get(key)?.size ?? 0) > 0;
+  }
+
+  function refreshAfterReconnect(userID: string) {
+    invalidate(realtimeQueryKeys.unreadSummary(userID));
+    invalidate(realtimeQueryKeys.conversations(userID));
+    invalidatePrefix(realtimeQueryKeys.notificationPrefix(userID));
+    invalidatePrefix(realtimeQueryKeys.messagePrefix(userID));
   }
 
   function routeRealtimeEvent(userID: string, event: RealtimeEventDetail) {
@@ -159,6 +167,7 @@ export function createRealtimeQueryCoordinator(options: RealtimeQueryCoordinator
   return {
     invalidate,
     readQuery,
+    refreshAfterReconnect,
     routeRealtimeEvent,
     subscribe,
   };
