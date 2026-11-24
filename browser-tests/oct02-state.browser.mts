@@ -39,6 +39,45 @@ test("OCT02 Markdown literal markers do not throw or become custom references; T
   } finally { await browser.close(); }
 });
 
+test("Markdown references dispatch their own resource IDs with optional text extensions disabled or enabled", { timeout: 60_000 }, async () => {
+  for (const superscript of [true, false]) for (const subscript of [true, false]) {
+    const reads = new Set<string>();
+    const browser = await controlledPage(({ path }) => {
+      if (path === "/api/v1/auth/me") return { status: 401, error: "Guest" };
+      if (path === "/api/v1/markdown/config") return { data: { superscript, subscript, abbreviations: true, enhancedTables: false, taskLists: false, footnotes: false } };
+      if (["blue00001", "intr00001", "reci00001"].some(id => path.includes(id))) {
+        reads.add(path);
+        return { status: 404, error: "Missing fixture reference" };
+      }
+    });
+    try {
+      const { page } = browser;
+      await page.goto(`${fixture.origin}/tools/playground`);
+      for (const withAbbreviation of [false, true]) {
+        reads.clear();
+        const source = "[bluemap:blue00001] [intro:intr00001] [recipe:reci00001] ^raised^ ~lowered~";
+        const editor = page.getByRole("textbox", { name: "Editor", exact: true });
+        await editor.fill("Blank preview");
+        await page.locator(".markdown-preview-grid").getByText("Blank preview", { exact: true }).waitFor();
+        await editor.fill(withAbbreviation ? `*[API]: Interface\n\nAPI ${source}` : source);
+        const lines = page.locator(".markdown-reference-line");
+        try {
+          await page.waitForFunction(() => [...document.querySelectorAll(".markdown-reference-line p")].filter(p => p.textContent === "Missing fixture reference").length === 3,
+            undefined, { timeout: 3000 });
+        } catch {
+          assert.fail(`Expected three distinct Markdown reference views (${JSON.stringify({ superscript, subscript, withAbbreviation })}), observed API paths: ${JSON.stringify([...reads])}`);
+        }
+        assert.ok(reads.has("/api/v1/blueprints/blue00001"));
+        assert.ok(reads.has("/api/v1/content/intr00001"));
+        assert.ok(reads.has("/api/v1/catalog/recipes/reci00001/render"));
+        assert.equal(await lines.locator("sup").count(), Number(superscript));
+        assert.equal(await lines.locator("sub").count(), Number(subscript));
+        assert.equal(await lines.locator("abbr").count(), Number(withAbbreviation));
+      }
+    } finally { await browser.close(); }
+  }
+});
+
 test("OCT02 private messages preserve new input during a send and clear bodies on a cookie-session account change", { timeout: 30_000 }, async () => {
   let actor = "actor-a";
   let sends = 0;

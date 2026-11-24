@@ -701,6 +701,7 @@ function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: M
   return (tree: Root) => {
     const slugger = new GithubSlugger();
     const protectedText = new WeakSet<Text>();
+    const matcher = markdownTokenMatcher(config, abbreviations);
 
     visitTree(tree, "element", (node) => {
       if (node.type !== "element") return;
@@ -728,7 +729,7 @@ function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: M
       if (protectedText.has(node)) return;
       if (!parent || typeof index !== "number") return;
       if (["a", "code", "pre", "annotation", "script", "style"].includes(parent.tagName ?? "")) return;
-      const replacements = splitTextNode(node.value, config, abbreviations, isMainlandChina);
+      const replacements = splitTextNode(node.value, matcher, abbreviations, isMainlandChina);
       if (replacements.length > 1 || replacements[0] !== node) {
         parent.children.splice(index, 1, ...replacements);
         if (parent.tagName === "p" && replacements.some((replacement) => isMarkdownReferenceNode(replacement as Text | Element))) {
@@ -746,71 +747,76 @@ function rehypeMcmodsExtensions(config: MarkdownRendererConfig, abbreviations: M
   };
 }
 
-function splitTextNode(value: string, config: MarkdownRendererConfig, abbreviations: Map<string, string>, isMainlandChina: boolean) {
+function markdownTokenMatcher(config: MarkdownRendererConfig, abbreviations: Map<string, string>) {
+  const marker = (group: string, start: string) => `${start}(?<${group}>[^${customMarkerEnd}]+)${customMarkerEnd}`;
+  const tokens = [...abbreviations.keys()].sort((a, b) => b.length - a.length).map(escapeRegExp);
+  const patterns = [
+    marker("protectedIcon", iconMarkerStart),
+    marker("protectedVideo", videoMarkerStart),
+    marker("protectedGeogebra", geogebraMarkerStart),
+    marker("protectedTime", timeMarkerStart),
+    marker("blueprint", blueprintMarkerStart),
+    marker("intro", introMarkerStart),
+    marker("recipe", recipeMarkerStart),
+    String.raw`\[icon:(?<icon>[a-zA-Z0-9_-]+)(?:=(?<amount>[^\],]+))?(?:,(?<unit>[^\]]+))?\]`,
+    String.raw`\[(?:vedio|video):(?<video>[^\]]+)\]`,
+    String.raw`\[[Gg]eo[Gg]ebra:(?<geogebra>[^\]]+)\]`,
+  ];
+  if (config.superscript) patterns.push(String.raw`\^(?<sup>[^\^\s][^\^]*?)\^`);
+  if (config.subscript) patterns.push(String.raw`~(?<sub>[^~\s][^~]*?)~`);
+  if (tokens.length) patterns.push(String.raw`\b(?<abbr>${tokens.join("|")})\b`);
+  return new RegExp(patterns.join("|"), "g");
+}
+
+function splitTextNode(value: string, matcher: RegExp, abbreviations: Map<string, string>, isMainlandChina: boolean) {
   const nodes: Array<Text | Element> = [];
-  const tokens = Array.from(abbreviations.keys()).sort((a, b) => b.length - a.length).map(escapeRegExp);
-  const protectedIconPattern = `${escapeRegExp(iconMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
-  const protectedVideoPattern = `${escapeRegExp(videoMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
-  const protectedGeogebraPattern = `${escapeRegExp(geogebraMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
-  const protectedTimePattern = `${escapeRegExp(timeMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
-  const protectedBlueprintPattern = `${escapeRegExp(blueprintMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
-  const protectedIntroPattern = `${escapeRegExp(introMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
-  const protectedRecipePattern = `${escapeRegExp(recipeMarkerStart)}([^${customMarkerEnd}]+)${escapeRegExp(customMarkerEnd)}`;
-  const iconPattern = String.raw`\[icon:([a-zA-Z0-9_-]+)(?:=([^\],]+))?(?:,([^\]]+))?\]`;
-  const videoPattern = String.raw`\[(?:vedio|video):([^\]]+)\]`;
-  const geogebraPattern = String.raw`\[[Gg]eo[Gg]ebra:([^\]]+)\]`;
-  const superscriptPattern = config.superscript ? String.raw`\^([^\^\s][^\^]*?)\^` : String.raw`(?!)`;
-  const subscriptPattern = config.subscript ? String.raw`~([^~\s][^~]*?)~` : String.raw`(?!)`;
-  const abbrPattern = tokens.length > 0 ? String.raw`\b(${tokens.join("|")})\b` : String.raw`(?!)`;
-  const matcher = new RegExp(
-    `${protectedIconPattern}|${protectedVideoPattern}|${protectedGeogebraPattern}|${protectedTimePattern}|${iconPattern}|${videoPattern}|${geogebraPattern}|${superscriptPattern}|${subscriptPattern}|${abbrPattern}|${protectedBlueprintPattern}|${protectedIntroPattern}|${protectedRecipePattern}`,
-    "g",
-  );
   let lastIndex = 0;
   let match: RegExpExecArray | null;
+  matcher.lastIndex = 0;
   while ((match = matcher.exec(value))) {
+    const groups = match.groups!;
     if (match.index > lastIndex) nodes.push({ type: "text", value: value.slice(lastIndex, match.index) });
-    const protectedPayload = match[1] || match[2] || match[3] || match[4] || match[13] || match[14] || match[15];
+    const protectedPayload = groups.protectedIcon || groups.protectedVideo || groups.protectedGeogebra || groups.protectedTime || groups.blueprint || groups.intro || groups.recipe;
     const decoded = protectedPayload ? decodeMarkdownMarker(protectedPayload) : undefined;
     if (protectedPayload && decoded === undefined) {
       nodes.push({ type: "text", value: match[0] });
       lastIndex = matcher.lastIndex;
       continue;
     }
-    if (match[1]) {
+    if (groups.protectedIcon) {
       const token = decoded!;
       const icon = parseIconSyntax(token);
       nodes.push(icon ? createIconNode(icon.name, icon.value, icon.unit) : { type: "text", value: token });
-    } else if (match[2]) {
+    } else if (groups.protectedVideo) {
       const token = decoded!;
       const video = createVideoEmbedNode(token, isMainlandChina);
       nodes.push(video ?? { type: "text", value: `[vedio:${token}]` });
-    } else if (match[3]) {
+    } else if (groups.protectedGeogebra) {
       const token = decoded!;
       const geogebra = createGeoGebraEmbedNode(token);
       nodes.push(geogebra ?? { type: "text", value: `[GeoGebra:${token}]` });
-    } else if (match[4]) {
+    } else if (groups.protectedTime) {
       const token = decoded!;
       nodes.push(createTimeNode(token) ?? { type: "text", value: token });
-    } else if (match[5]) nodes.push(createIconNode(match[5], match[6], match[7]));
-    else if (match[8]) {
-      const video = createVideoEmbedNode(match[8], isMainlandChina);
+    } else if (groups.icon) nodes.push(createIconNode(groups.icon, groups.amount, groups.unit));
+    else if (groups.video) {
+      const video = createVideoEmbedNode(groups.video, isMainlandChina);
       nodes.push(video ?? { type: "text", value: match[0] });
-    } else if (match[9]) {
-      const geogebra = createGeoGebraEmbedNode(match[9]);
+    } else if (groups.geogebra) {
+      const geogebra = createGeoGebraEmbedNode(groups.geogebra);
       nodes.push(geogebra ?? { type: "text", value: match[0] });
-    } else if (match[10]) nodes.push({ type: "element", tagName: "sup", properties: {}, children: [{ type: "text", value: match[10] }] });
-    else if (match[11]) nodes.push({ type: "element", tagName: "sub", properties: {}, children: [{ type: "text", value: match[11] }] });
-    else if (match[12]) {
+    } else if (groups.sup) nodes.push({ type: "element", tagName: "sup", properties: {}, children: [{ type: "text", value: groups.sup }] });
+    else if (groups.sub) nodes.push({ type: "element", tagName: "sub", properties: {}, children: [{ type: "text", value: groups.sub }] });
+    else if (groups.abbr) {
       nodes.push({
         type: "element",
         tagName: "abbr",
-        properties: { title: abbreviations.get(match[12]) ?? "" },
-        children: [{ type: "text", value: match[12] }],
+        properties: { title: abbreviations.get(groups.abbr) ?? "" },
+        children: [{ type: "text", value: groups.abbr }],
       });
-    } else if (match[13]) nodes.push(createMarkdownReferenceNode("blueprint", decoded!));
-    else if (match[14]) nodes.push(createMarkdownReferenceNode("intro", decoded!));
-    else if (match[15]) nodes.push(createMarkdownReferenceNode("recipe", decoded!));
+    } else if (groups.blueprint) nodes.push(createMarkdownReferenceNode("blueprint", decoded!));
+    else if (groups.intro) nodes.push(createMarkdownReferenceNode("intro", decoded!));
+    else if (groups.recipe) nodes.push(createMarkdownReferenceNode("recipe", decoded!));
     lastIndex = matcher.lastIndex;
   }
   if (lastIndex < value.length) nodes.push({ type: "text", value: value.slice(lastIndex) });
