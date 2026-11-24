@@ -155,7 +155,7 @@ const es = {
   },
   contentLanguage: {
     ...en.contentLanguage,
-    title: "Preferencias de idioma del contenido", description: "Elige el primer y segundo idioma para el contenido localizado. Los idiomas admitidos se pueden editar; los demás idiomas BCP 47 usan traducciones de IA guardadas.",
+    title: "Preferencias de idioma del contenido", description: "Elige cualquier idioma de la lista de Minecraft como primer idioma del contenido. Para el segundo, elige uno de los idiomas que admite este sitio.",
     primary: "Primer idioma del contenido", primaryHint: "El sitio busca primero este idioma; uno no admitido funciona como destino de traducción de solo lectura.", secondary: "Segundo idioma del contenido", secondaryHint: "Se usa cuando el primer idioma no está disponible.",
     chineseFallbackHint: "El chino simplificado y tradicional se sustituyen entre sí antes que el inglés.", editablePrimary: "Idioma editable", translationOnlyPrimary: "Solo traducción", save: "Guardar idiomas", saved: "Preferencias de idioma guardadas.", required: "Introduce ambos idiomas del contenido.", loadFailed: "No se pudieron cargar las preferencias de idioma.", saveFailed: "No se pudieron guardar las preferencias de idioma.",
   },

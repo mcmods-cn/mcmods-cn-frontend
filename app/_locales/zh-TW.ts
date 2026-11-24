@@ -158,7 +158,7 @@ const zhTW = {
   contentLanguage: {
     ...zhCN.contentLanguage,
     title: "內容語言偏好",
-    description: "設定全站本地化資料的第一語言與第二語言。網站支援的語言可以人工編輯；其他合法的 BCP 47 語言只能透過寫入資料庫的 AI 翻譯使用。",
+    description: "第一內容語言可從 Minecraft 語言清單中任選，第二內容語言請從本站支援的語言中選擇。",
     primary: "第一內容語言", primaryHint: "系統會優先尋找此語言。不受支援的語言仍可作為唯讀翻譯目標。",
     secondary: "第二內容語言", secondaryHint: "資料沒有第一語言版本時，將優先使用此語言。",
     chineseFallbackHint: "簡體中文與繁體中文會先互相回退，再尋找預設語言與英語。",

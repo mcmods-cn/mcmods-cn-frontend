@@ -155,7 +155,7 @@ const ja = {
   },
   contentLanguage: {
     ...en.contentLanguage,
-    title: "コンテンツ言語設定", description: "ローカライズされたコンテンツの第一・第二言語を選択します。対応言語は編集でき、その他の有効な BCP 47 言語は保存済み AI 翻訳として利用します。",
+    title: "コンテンツ言語設定", description: "第一コンテンツ言語は Minecraft の言語一覧から選べます。第二コンテンツ言語は、このサイトが対応している言語から選んでください。",
     primary: "第一コンテンツ言語", primaryHint: "最初に検索する言語です。未対応言語は読み取り専用の翻訳先として使用できます。", secondary: "第二コンテンツ言語", secondaryHint: "第一言語版がない場合に使用します。",
     chineseFallbackHint: "簡体字中国語と繁体字中国語は英語より先に相互フォールバックします。", editablePrimary: "編集可能な言語", translationOnlyPrimary: "翻訳専用言語", save: "言語設定を保存", saved: "コンテンツ言語設定を保存しました。", required: "第一・第二言語を入力してください。", loadFailed: "言語設定を読み込めませんでした。", saveFailed: "言語設定を保存できませんでした。",
   },

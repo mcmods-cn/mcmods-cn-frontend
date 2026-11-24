@@ -155,7 +155,7 @@ const fr = {
   },
   contentLanguage: {
     ...en.contentLanguage,
-    title: "Préférences de langue du contenu", description: "Choisissez les première et deuxième langues des contenus localisés. Les langues prises en charge sont modifiables ; les autres langues BCP 47 utilisent des traductions IA enregistrées.",
+    title: "Préférences de langue du contenu", description: "Pour la première langue du contenu, choisissez une langue dans la liste de Minecraft. Pour la seconde, choisissez une langue prise en charge par ce site.",
     primary: "Première langue du contenu", primaryHint: "Le site recherche d’abord cette langue ; une langue non prise en charge reste une cible de traduction en lecture seule.", secondary: "Deuxième langue du contenu", secondaryHint: "Utilisée lorsque la première langue n’est pas disponible.",
     chineseFallbackHint: "Le chinois simplifié et traditionnel se remplacent mutuellement avant l’anglais.", editablePrimary: "Langue modifiable", translationOnlyPrimary: "Traduction uniquement", save: "Enregistrer les langues", saved: "Préférences de langue enregistrées.", required: "Saisissez les deux langues du contenu.", loadFailed: "Impossible de charger les préférences de langue.", saveFailed: "Impossible d’enregistrer les préférences de langue.",
   },

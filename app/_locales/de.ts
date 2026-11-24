@@ -155,7 +155,7 @@ const de = {
   },
   contentLanguage: {
     ...en.contentLanguage,
-    title: "Inhaltssprachen", description: "Erste und zweite Sprache für lokalisierte Inhalte wählen. Unterstützte Sprachen sind bearbeitbar; andere gültige BCP-47-Sprachen werden als gespeicherte KI-Übersetzungen genutzt.",
+    title: "Inhaltssprachen", description: "Für die erste Inhaltssprache kannst du jede Sprache aus der Minecraft-Liste wählen. Für die zweite stehen die von dieser Website unterstützten Sprachen zur Auswahl.",
     primary: "Erste Inhaltssprache", primaryHint: "Nach dieser Sprache wird zuerst gesucht; nicht unterstützte Sprachen sind reine Übersetzungsziele.", secondary: "Zweite Inhaltssprache", secondaryHint: "Wird verwendet, wenn die erste Sprache nicht verfügbar ist.",
     chineseFallbackHint: "Vereinfachtes und traditionelles Chinesisch greifen vor Englisch aufeinander zurück.", editablePrimary: "Bearbeitbare Sprache", translationOnlyPrimary: "Nur Übersetzung", save: "Sprachen speichern", saved: "Inhaltssprachen gespeichert.", required: "Erste und zweite Inhaltssprache eingeben.", loadFailed: "Inhaltssprachen konnten nicht geladen werden.", saveFailed: "Inhaltssprachen konnten nicht gespeichert werden.",
   },
