@@ -150,9 +150,10 @@ test("REM-002 Mod challenge preserves input and the same submission key through 
   try {
     const { page } = browser;
     await page.goto(`${fixture.origin}/mods/new`);
-    await page.locator('input[maxlength="100"]').fill("challenge-mod");
-    await page.locator('input[maxlength="160"]').first().fill("Challenge Mod");
-    await page.locator('input[maxlength="128"]').fill("challenge_mod");
+    await page.getByRole("textbox", { name: /^Mod site ID/ }).fill("challenge-mod");
+    const primaryName = page.getByRole("textbox", { name: /^Primary name/ });
+    await primaryName.fill("Challenge Mod");
+    await page.getByRole("textbox", { name: "Mod ID", exact: true }).fill("challenge_mod");
     await page.locator('main form').first().locator('button[type="submit"]').first().click();
     const dialog = page.getByRole("dialog", { name: "Complete human verification", exact: true });
     await dialog.waitFor();
@@ -170,7 +171,7 @@ test("REM-002 Mod challenge preserves input and the same submission key through 
     assert.equal(writes[0].key, writes[2].key);
     assert.deepEqual(writes[0].body, writes[2].body);
     await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-    assert.equal(await page.locator('input[maxlength="160"]').first().inputValue(), "Challenge Mod");
+    assert.equal(await primaryName.inputValue(), "Challenge Mod");
   } finally { await browser.close(); }
 });
 
@@ -183,14 +184,16 @@ test("REM-003 missing default-language name is located before any write and no t
   try {
     const { page } = browser;
     await page.goto(`${fixture.origin}/mods/new`);
-    await page.locator('input[maxlength="100"]').fill("localized-mod");
-    await page.locator('input[maxlength="160"]').first().fill("Official original name");
-    await page.locator('input[maxlength="128"]').fill("localized_mod");
-    await page.locator('textarea[maxlength="500"]').fill("A summary without a localized name");
+    await page.getByRole("textbox", { name: /^Mod site ID/ }).fill("localized-mod");
+    await page.getByRole("textbox", { name: /^Primary name/ }).fill("Official original name");
+    await page.getByRole("textbox", { name: "Mod ID", exact: true }).fill("localized_mod");
+    await page.getByRole("textbox", { name: /^Short summary/ }).fill("A summary without a localized name");
     await page.locator('main form').first().locator('button[type="submit"]').first().click();
     await page.getByText("Enter a name in the default content language before submitting localized content.", { exact: true }).waitFor();
     assert.equal(writes, 0);
-    assert.equal(await page.locator('input[maxlength="160"]').nth(1).inputValue(), "");
+    const localizedName = page.getByRole("textbox", { name: /name in the default content language/ });
+    await localizedName.and(page.locator(":focus")).waitFor();
+    assert.equal(await localizedName.inputValue(), "");
   } finally { await browser.close(); }
 });
 
