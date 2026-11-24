@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import {
@@ -43,6 +43,7 @@ export function UserPlayerProfilesPanel(props: { token: string }) {
 
 function UserPlayerProfilesSession({ token }: { token: string }) {
   const { locale, t } = useI18n();
+  const bioId = useId();
   const [service, setService] = useState<SkinServiceInfo | null>(null);
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [wardrobe, setWardrobe] = useState<SkinTexture[]>([]);
@@ -392,7 +393,11 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
                 <h3 className="font-black">{t("skins.profileSettings")}</h3>
                 <div className="mt-3 grid gap-3">
                   <label className="text-sm font-bold">{t("skins.profileName")}<input className="field mt-1" maxLength={16} minLength={3} pattern="[A-Za-z0-9_]{3,16}" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-                  <label className="text-sm font-bold">{t("skins.profileBio")}<textarea className="field mt-1 min-h-20" aria-invalid={!validBio} value={draft.bio} onChange={(event) => setDraft({ ...draft, bio: event.target.value })} />{!validBio && <span role="alert">{t("skins.profileBioLimit")}</span>}</label>
+                  <div className="text-sm font-bold">
+                    <label htmlFor={bioId}>{t("skins.profileBio")}</label>
+                    <textarea id={bioId} className="field mt-1 min-h-20" aria-invalid={!validBio} aria-describedby={validBio ? undefined : `${bioId}-error`} value={draft.bio} onChange={(event) => setDraft({ ...draft, bio: event.target.value })} />
+                    {!validBio && <span id={`${bioId}-error`} role="alert">{t("skins.profileBioLimit")}</span>}
+                  </div>
                   <label className="text-sm font-bold">{t("skins.visibility")}<select className="field mt-1" value={draft.visibility} onChange={(event) => setDraft({ ...draft, visibility: event.target.value as SkinVisibility })}><option value="public">{t("skins.visibilityPublic")}</option><option value="unlisted">{t("skins.visibilityUnlisted")}</option><option value="private">{t("skins.visibilityPrivate")}</option></select></label>
                   <label className="flex items-center gap-2 text-sm font-bold"><input checked={draft.isDefault} type="checkbox" onChange={(event) => setDraft({ ...draft, isDefault: event.target.checked })} />{t("skins.makeDefault")}</label>
                   <button className="button-primary focus-ring" disabled={!validBio || !playerProfileNamePattern.test(draft.name.trim()) || busy === "profile"} type="button" onClick={() => void saveProfile()}>{busy === "profile" ? t("skins.saving") : t("skins.saveProfile")}</button>

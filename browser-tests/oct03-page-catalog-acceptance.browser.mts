@@ -107,7 +107,7 @@ test("FP046 character bio remains unsaved across UI locale and successful appear
   let profileReads = 0;
   const browser = await controlled(({ path, method, body }) => {
     if (path === "/api/v1/skin-service") return { data: { enabled: true, profileLimit: 2 } };
-    if (path === "/api/v1/users/me/player-profiles/player02" && method === "PUT") { assert.equal(JSON.parse(body).isDefault, true); return { data: { ...other, isDefault: true } }; }
+    if (path === "/api/v1/users/me/player-profiles/player02" && method === "PUT") { assert.equal(JSON.parse(body).isDefault, true); profile.isDefault = false; other.isDefault = true; return { data: other }; }
     if (path === "/api/v1/users/me/launcher-credential") { assert.equal(method, "PUT"); assert.equal(JSON.parse(body).password, "🟩".repeat(3)); return { data: { enabled: true } }; }
     if (path === "/api/v1/users/me/player-profiles") { assert.equal(method, "GET"); profileReads++; return { data: { items: [profile, other] } }; }
     if (path === "/api/v1/users/me/skin-wardrobe") return { data: { items: [texture], total: 1, limit: 100, hasMore: false, nextCursor: "" } };
@@ -129,6 +129,8 @@ test("FP046 character bio remains unsaved across UI locale and successful appear
     const save = page.getByRole("button", { name: "Save profile", exact: true });
     await bio.fill("🟩".repeat(500)); assert.equal(await save.isEnabled(), true);
     await bio.fill("🟩".repeat(501)); assert.equal(await save.isDisabled(), true);
+    assert.equal(await bio.getAttribute("aria-invalid"), "true");
+    assert.equal(await bio.evaluate(field => document.getElementById(field.getAttribute("aria-describedby") || "")?.textContent), "The character bio can contain up to 500 characters.");
     await bio.fill("Unsaved player biography");
     const password = page.locator('input[autocomplete="new-password"]');
     const credential = page.getByRole("button", { name: "Set / rotate password", exact: true });
