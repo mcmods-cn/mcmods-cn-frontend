@@ -69,16 +69,11 @@ function ContentTranslationSession({
 
   useEffect(() => {
     const controller = new AbortController();
-    loadResolvedContent(publicId, primaryLocale, secondaryLocale, token, controller.signal).then((next) => {
-      if (controller.signal.aborted) return;
-      setDocument(next);
-      setPendingTaskId(translationInProgress(next.translation.status) ? next.translation.taskId : undefined);
-      setError("");
-    }).catch((reason: unknown) => {
+    refresh(controller.signal).catch((reason: unknown) => {
       if (!controller.signal.aborted && !(reason instanceof DOMException && reason.name === "AbortError")) setError(errorText(reason));
     });
     return () => controller.abort();
-  }, [primaryLocale, publicId, secondaryLocale, token]);
+  }, [refresh]);
 
   useEffect(() => {
     onResolved?.(document?.localization);
@@ -105,6 +100,7 @@ function ContentTranslationSession({
           if (controller.signal.aborted) return;
           if (task.status === "failed") {
             setPendingTaskId(undefined);
+            setDocument(current => current && { ...current, translation: { ...current.translation, status: "failed", canRequest: false } });
             setError(task.error || t("contentTranslation.failed"));
             return;
           }
@@ -148,7 +144,7 @@ function ContentTranslationSession({
   }
 
   async function translate() {
-    if (!document || !token || !user || requesting || requestInFlight.current || !hasPermission(user, "content.translate")) return;
+    if (!document || !token || !user || pendingTaskId || document.translation.status !== "request_required" || !document.translation.canRequest || requesting || requestInFlight.current || !hasPermission(user, "content.translate")) return;
     requestInFlight.current = true;
     setRequesting(true);
     setError("");
@@ -165,8 +161,16 @@ function ContentTranslationSession({
       );
       pollDeadline.current = Date.now() + 90_000;
       setPollTimedOut(false);
-      setPendingTaskId(result.taskId && translationInProgress(result.status) ? result.taskId : undefined);
-      await refresh();
+      if (result.taskId && result.status && translationInProgress(result.status)) {
+        const status = result.status;
+        setPendingTaskId(result.taskId);
+        setDocument(current => current && { ...current, translation: {
+          ...current.translation, taskId: result.taskId, status, canRequest: false,
+          countsTowardDailyTokenQuota: result.countsTowardDailyTokenQuota ?? current.translation.countsTowardDailyTokenQuota,
+        } });
+      } else {
+        await refresh();
+      }
     } catch (reason) {
       setError(errorText(reason));
     } finally {
@@ -183,7 +187,7 @@ function ContentTranslationSession({
 
   const fallback = Boolean(document?.resolvedLocale && document.requestedLocale.toLowerCase() !== document.resolvedLocale.toLowerCase());
   const automatic = document?.translation.automatic && translationInProgress(activeStatus);
-  const requestRequired = activeStatus === "request_required" && document?.translation.canRequest;
+  const requestRequired = !pendingTaskId && activeStatus === "request_required" && document?.translation.canRequest;
   const show = Boolean(error || fallback || automatic || requestRequired || pendingTaskId || document?.localization?.provenance === "ai" || document?.localization?.provenance === "human_corrected");
   if (!show) return null;
 

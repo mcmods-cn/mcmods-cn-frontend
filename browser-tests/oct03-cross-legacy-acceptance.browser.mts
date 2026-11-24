@@ -403,9 +403,10 @@ test("OCT03 FP035 translation polling stops after90s and explicit refresh never 
   const browser = await controlled(({ path, method }) => {
     if (path === "/api/v1/tags/tag000001") return { data: { publicId: "tag000001", canonicalId: "synthetic:tag", registry: "minecraft:item", defaultLocale: "zh-CN", reviewStatus: "approved", localizations: [], members: [] } };
     if (path === "/api/v1/comment-targets/tag/tag000001/comments") return { data: { ...comments([]), target: { type: "tag", key: "tag000001", title: "Synthetic tag", url: "/mods-tag?publicId=tag000001" } } };
-    if (path === "/api/v1/content/tag000001/translations" && method === "POST") { requests++; return { data: { taskId: "task-one", status: "queued" } }; }
+    if (path === "/api/v1/content/tag000001/translations" && method === "POST") { requests++; return { status: 202, data: { taskId: "task-one", status: "queued", countsTowardDailyTokenQuota: true } }; }
     if (path === "/api/v1/content/tag000001") {
       contentReads++;
+      if (requests && !taskReads) return { status: 503, error: "Content read unavailable after translation was accepted" };
       return { data: { publicId: "tag000001", entityType: "tag", requestedLocale: "en-US", resolvedLocale: "zh-CN", defaultLocale: "zh-CN", resolution: "missing", available: [], editableLocales: [], translation: requests ? { status: "queued", taskId: "task-one", automatic: true, canRequest: true } : { status: "request_required", automatic: false, canRequest: true } } };
     }
     if (path === "/api/v1/content/translations/task-one") { taskReads++; return { data: { taskId: "task-one", status: "queued" } }; }
@@ -416,7 +417,8 @@ test("OCT03 FP035 translation polling stops after90s and explicit refresh never 
     await page.clock.install({ time: initial });
     await page.goto(`${fixture.origin}/mods-tag?publicId=tag000001`);
     await page.getByRole("button", { name: "Translate", exact: true }).click();
-    await page.getByText(/AI translation in progress/).waitFor();
+    await page.getByText("AI translation in progress · uses your daily token allowance", { exact: true }).waitFor({ timeout: 5000 });
+    assert.equal(await page.getByRole("button", { name: "Translate", exact: true }).count(), 0);
     const firstTaskResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/content/translations/task-one");
     await page.clock.runFor(1801);
     await firstTaskResponse;
