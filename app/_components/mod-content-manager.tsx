@@ -45,7 +45,7 @@ function ModContentManagerSession({ siteId, importSource, versionId, createNew }
         </div>
         <Link className="button-secondary focus-ring" href={`/mods/${encodeURIComponent(siteId)}/edit`}>{t("mods.detail.edit")}</Link>
       </header>
-      <ModContentWorkspace createNew={createNew} initialImportSource={importSource} initialVersionId={versionId} siteId={siteId} subjectId={user.id} token={token} />
+      <ModContentWorkspace initialMod={mod} createNew={createNew} initialImportSource={importSource} initialVersionId={versionId} siteId={siteId} subjectId={user.id} token={token} />
     </div>
   </main>;
 }

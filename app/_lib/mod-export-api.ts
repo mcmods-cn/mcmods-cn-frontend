@@ -239,13 +239,15 @@ function resumeModExportUploadTicket(
   );
 }
 
-export async function uploadEmbeddedIconCatalog(file: File, siteId: string, token: string, source: CatalogImportSource, options: ModExportImportOptions, onProgress?: (progress: ModExportUploadProgress) => void) {
+export async function uploadEmbeddedIconCatalog(file: File, siteId: string, token: string, source: CatalogImportSource, options: ModExportImportOptions, onProgress?: (progress: ModExportUploadProgress) => void, signal?: AbortSignal) {
   onProgress?.({ phase: "hashing", percent: 0 });
-  const sha256 = await computeFileSHA256(file);
+  const sha256 = await computeFileSHA256(file, { signal });
+  signal?.throwIfAborted();
   onProgress?.({ phase: "preparing", percent: 0 });
   const root = `/api/v1/mods/${encodeURIComponent(siteId)}/catalog-imports`;
   const ticket = await apiRequest<OSSDirectUploadTicket>(`${root}/uploads/presign`, {
     method: "POST",
+    signal,
     body: JSON.stringify({
       originalName: file.name,
       contentType: file.type || "application/json",
@@ -263,16 +265,17 @@ export async function uploadEmbeddedIconCatalog(file: File, siteId: string, toke
         phase: "uploading",
         percent: total > 0 ? Math.round(loaded / total * 100) : 0,
         ...metrics,
-      }));
+      }), { signal });
     } catch (error) {
       await abortMultipartUpload(`${root}/uploads/complete`, ticket, token);
       throw error;
     }
     onProgress?.({ phase: "confirming", percent: 100 });
-    record = await completeOSSUpload<OSSFileRecord>(`${root}/uploads/complete`, ticket, token);
+    record = await completeOSSUpload<OSSFileRecord>(`${root}/uploads/complete`, ticket, token, signal);
   }
+  signal?.throwIfAborted();
   if (!record?.id) throw new Error("catalog import upload did not return a file record");
-  const job = await submitImportJob(root, { ossFileId: record.id, source, ...options }, token);
+  const job = await submitImportJob(root, { ossFileId: record.id, source, ...options }, token, signal);
   onProgress?.({ phase: "importing", percent: 100 });
   return job;
 }

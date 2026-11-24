@@ -68,6 +68,54 @@ for (const section of ["changelogs", "blackroom"] as const) {
   });
 }
 
+test("the mod content workspace reuses its original editor read when loading compatible versions", async () => {
+  let editorReads = 0;
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/mods/fixture-mod/editor") editorReads++;
+    return baseWorkspace(request);
+  });
+  try {
+    await browser.page.goto(fixture.origin + "/mods/fixture-mod/data/edit?version=version01");
+    await browser.page.getByRole("heading", { name: "Fixture version", exact: true }).waitFor();
+    assert.equal(editorReads, 1);
+  } finally { await browser.close(); }
+});
+
+test("changing the catalog importer account cancels the old ticket before any import submission", async () => {
+  let actorId = "editor001";
+  const ticket = Promise.withResolvers<APIReply>();
+  const started = Promise.withResolvers<void>();
+  const root = "/api/v1/mods/fixture-mod/catalog-imports";
+  let submissions = 0;
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/auth/me") return { data: actor(actorId) };
+    if (request.path === root + "/uploads/presign") { started.resolve(); return ticket.promise; }
+    if (request.path === root && request.method === "POST") {
+      submissions++;
+      return { status: 409, error: "The old import should have stopped" };
+    }
+    return baseWorkspace(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/mods/fixture-mod/data/edit?version=version01&import=letmeseesee");
+    const input = page.locator('input[accept*="application/x-ndjson"]').nth(1);
+    await input.locator("..").waitFor({ state: "visible" });
+    const aborted = page.waitForEvent("requestfailed", { predicate: request => new URL(request.url()).pathname === root + "/uploads/presign", timeout: 8000 });
+    void aborted.catch(() => {});
+    await input.setInputFiles({ name: "catalog.json", mimeType: "application/json", buffer: Buffer.from('[{"id":"fixture:icon"}]') });
+    await started.promise;
+    actorId = "editor002";
+    const identity = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/me");
+    await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:synthetic-catalog-editor" })));
+    assert.equal((await (await identity).json()).data.username, actorId);
+    assert.equal((await aborted).failure()?.errorText, "net::ERR_ABORTED");
+    ticket.resolve({ data: { uploadRequired: false, file: { id: "catalogfile" } } });
+    await page.getByRole("heading", { name: "Fixture version", exact: true }).waitFor();
+    assert.equal(submissions, 0);
+  } finally { ticket.resolve({ status: 503, error: "Test ended" }); await browser.close(); }
+});
+
 test("FP005 BUG062 empty-project fallback exposes only each loader's verified versions and localized picker actions", {timeout:30_000}, async()=>{
   const writes:Array<Record<string,unknown>>=[];
   const browser=await controlled(request=>{

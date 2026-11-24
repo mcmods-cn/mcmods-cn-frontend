@@ -48,7 +48,7 @@ type VersionDraft = { minecraftVersions: string[]; loaders: string[]; modVersion
 const emptyVersion = (): VersionDraft => ({ minecraftVersions: [], loaders: [], modVersion: "", reason: "" });
 const emptyLocalization = (locale: string): ModContentLocalization => ({ locale, name: "", summary: "", contentMarkdown: "" });
 
-export function ModContentWorkspace({ siteId, subjectId, token, initialImportSource = "", initialVersionId = "", createNew = false }: { siteId: string; subjectId: string; token: string; initialImportSource?: ImportSource; initialVersionId?: string; createNew?: boolean }) {
+export function ModContentWorkspace({ siteId, subjectId, token, initialMod, initialImportSource = "", initialVersionId = "", createNew = false }: { initialMod: BackendModRecord; siteId: string; subjectId: string; token: string; initialImportSource?: ImportSource; initialVersionId?: string; createNew?: boolean }) {
   const { locale, t } = useI18n();
   const [versions, setVersions] = useState<ModContentVersion[]>([]);
   const [templates, setTemplates] = useState<ModContentTemplate[]>([]);
@@ -82,12 +82,12 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
     window.history.replaceState(null, "", `/mods/${encodeURIComponent(siteId)}/data/edit?${query}`);
   }, [selectedVersionId, siteId]);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (loadedMod?: BackendModRecord) => {
     const [nextVersions, nextTemplates, nextSections, mod, nextMinecraftConfig] = await Promise.all([
       loadModContentVersions(siteId, token),
       loadModContentTemplates(siteId, token),
       loadModContentSections(siteId, token),
-      apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}/editor`, {}, token),
+      loadedMod ?? apiRequest<BackendModRecord>(`/api/v1/mods/${encodeURIComponent(siteId)}/editor`, {}, token),
       loadMinecraftVersionConfig(),
     ]);
     setVersions(nextVersions);
@@ -103,9 +103,9 @@ export function ModContentWorkspace({ siteId, subjectId, token, initialImportSou
   }, [siteId, token]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => { void reload().catch((reason) => setMessage(errorText(reason))); }, 0);
+    const timer = window.setTimeout(() => { void reload(initialMod).catch((reason) => setMessage(errorText(reason))); }, 0);
     return () => window.clearTimeout(timer);
-  }, [reload]);
+  }, [initialMod, reload]);
   useEffect(() => {
     if (!importBusy) return;
     const warnBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -468,7 +468,8 @@ function ExporterImportPanel({ siteId, subjectId, token, version, blocked, onImp
 function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { siteId: string; token: string; version: ModContentVersion; blocked: boolean; onBusyChange: (source: ImportSource, busy: boolean) => void }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
-  const inFlight = useRef(false);
+  const transfer = useRef<AbortController | null>(null);
+  useEffect(() => () => transfer.current?.abort(), []);
   const [message, setMessage] = useState("");
   const [overwrite, setOverwrite] = useState(false);
   const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
@@ -477,9 +478,10 @@ function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { si
     return () => onBusyChange("icon", false);
   }, [busy, onBusyChange]);
   async function uploadFile(file?: File) {
-    if (!file || inFlight.current || blocked || version.status !== "active") return;
+    if (!file || transfer.current || blocked || version.status !== "active") return;
     if (!file.name.toLowerCase().endsWith(".zip")) { setMessage(t("modContent.iconImport.zipOnly")); return; }
-    inFlight.current = true;
+    const controller = new AbortController();
+    transfer.current = controller;
     onBusyChange("icon", true);
     setBusy(true); setMessage(""); setUpload({ phase: "hashing", percent: 0 });
     try {
@@ -488,13 +490,15 @@ function IconExportPanel({ siteId, token, version, blocked, onBusyChange }: { si
         token,
         `iconexport:${siteId}:${version.publicId}:${overwrite ? "overwrite" : "preserve"}`,
         (loaded, total, metrics) => setUpload({ phase: "uploading", percent: total > 0 ? Math.round(loaded / total * 100) : 0, ...metrics }),
+        controller.signal,
       );
+      if (controller.signal.aborted) return;
       setMessage(t("modContent.iconImport.uploaded", { id: uploaded.id }));
     } catch (reason) {
-      setMessage(errorText(reason));
+      if (!controller.signal.aborted) setMessage(errorText(reason));
     } finally {
-      inFlight.current = false;
-      setBusy(false);
+      transfer.current = null;
+      if (!controller.signal.aborted) setBusy(false);
     }
   }
   return <section className="mt-6"><h3 className="text-lg font-black">{t("modContent.iconImport.title")}</h3><p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("modContent.iconImport.description")}</p><ImportOverwriteChoice checked={overwrite} disabled={busy || blocked} onChange={setOverwrite} /><FileDropZone
@@ -519,6 +523,7 @@ function EmbeddedIconImportPanel({ siteId, subjectId, token, version, source, bl
   const [job, setJob] = useState<ModExportJob | null>(null);
   const [upload, setUpload] = useState<ModExportUploadProgress | null>(null);
   const polling = useRef<AbortController | null>(null);
+  const transfer = useRef<AbortController | null>(null);
   const importerName = importSourceLabel(source);
   const supportsMultipleFiles = source === "iconrenderer" || source === "irr";
   const hintKey = source === "iconrenderer"
@@ -527,7 +532,7 @@ function EmbeddedIconImportPanel({ siteId, subjectId, token, version, source, bl
 
   useEffect(() => {
     active.current = true;
-    return () => { active.current = false; polling.current?.abort(); };
+    return () => { active.current = false; polling.current?.abort(); transfer.current?.abort(); };
   }, []);
   useEffect(() => {
     onBusyChange(source, busy);
@@ -585,21 +590,24 @@ function EmbeddedIconImportPanel({ siteId, subjectId, token, version, source, bl
       setMessage(t("modContent.catalogImport.jsonOnly"));
       return;
     }
+    const controller = new AbortController();
+    transfer.current = controller;
     inFlight.current = true;
     onBusyChange(source, true);
     setBusy(true); setMessage(""); setJob(null); setUpload(null);
     try {
       const file = supportsMultipleFiles
-        ? await combineCatalogFiles(selectedFiles, source, importerName, t)
+        ? await combineCatalogFiles(selectedFiles, source, importerName, t, controller.signal)
         : selectedFiles[0];
       const initial = await uploadEmbeddedIconCatalog(file, siteId, token, source, {
         targetVersionPublicId: version.publicId,
         overwriteExistingImportData: overwrite,
-      }, setUpload);
+      }, setUpload, controller.signal);
       await monitor(initial);
     } catch (reason) {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setMessage(errorText(reason));
     } finally {
+      transfer.current = null;
       inFlight.current = false;
       if (active.current) setBusy(false);
     }
@@ -727,13 +735,16 @@ async function combineCatalogFiles(
   source: CatalogImportSource,
   importer: string,
   t: (key: string, values?: Record<string, string | number>) => string,
+  signal: AbortSignal,
 ) {
   if (files.length > 8) throw new Error(t("modContent.catalogImport.tooManyFiles", { importer }));
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
   if (totalSize > 128 * 1024 * 1024) throw new Error(t("modContent.catalogImport.filesTooLarge", { importer }));
   const entries: unknown[] = [];
   for (const file of files) {
+    signal.throwIfAborted();
     const raw = (await file.text()).replace(/^\uFEFF/, "").trim();
+    signal.throwIfAborted();
     if (!raw) continue;
     if (raw.startsWith("[")) {
       const parsed = JSON.parse(raw);
