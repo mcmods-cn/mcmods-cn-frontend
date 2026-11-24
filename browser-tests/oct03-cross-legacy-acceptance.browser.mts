@@ -751,6 +751,14 @@ for (const collection of ["mods", "modpacks", "plugins"]) test(`the ${collection
   try {
     const { page } = browser;
     await page.goto(fixture.origin + "/" + collection + "/new");
+    if (collection !== "plugins") {
+      const primary = page.getByRole("textbox", { name: /^Primary name/ });
+      const summary = page.getByRole("textbox", { name: /^List summary|^Short summary|^Summary/ }).first();
+      await primary.fill("𠮷".repeat(160));
+      await summary.fill("😀".repeat(500));
+      assert.equal(await primary.inputValue(), "𠮷".repeat(160));
+      assert.equal(await summary.inputValue(), "😀".repeat(500));
+    }
     const input = page.locator('input[type="file"][multiple][accept^="image/"]').first();
     const first = page.waitForRequest(request => new URL(request.url()).pathname === ticketPath);
     await input.setInputFiles(["one", "two"].map(name => ({ name: name + ".png", mimeType: "image/png", buffer: Buffer.from("synthetic " + name) })));
