@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { resolvePublicDeploymentConfig, resolvePublicSiteURL } from "./deployment-env.mts";
+import { publicAPIURL, resolvePublicDeploymentConfig, resolvePublicSiteURL } from "./deployment-env.mts";
 
 test("development deployment configuration has safe local defaults", () => {
   assert.deepEqual(resolvePublicDeploymentConfig({}, "development"), {
@@ -53,6 +53,19 @@ test("public URL validation rejects unsafe or ambiguous production values", () =
     yggdrasilAPIRoot: "http://auth.example.test/api/yggdrasil",
   }, "production"));
   assert.equal(resolvePublicSiteURL(undefined, "development"), "http://localhost:3000");
+});
+
+test("public deployment URLs cannot leave appended paths inside an empty query or fragment", () => {
+  const valid = { apiBaseURL: "https://api.example.test/service", siteURL: "https://www.example.test" };
+  for (const suffix of ["?", "#", "?#"]) {
+    for (const field of ["apiBaseURL", "siteURL", "yggdrasilAPIRoot"]) {
+      assert.throws(() => resolvePublicDeploymentConfig({ ...valid, [field]: `https://example.test/${suffix}` }, "production"),
+        /query string or fragment/);
+    }
+  }
+  const config = resolvePublicDeploymentConfig({ ...valid, apiBaseURL: "https://api.example.test/service%3Fv%232/" }, "production");
+  const endpoint = new URL(publicAPIURL("/api/v1/site/config", config.apiBaseURL));
+  assert.equal(endpoint.pathname, "/service%3Fv%232/api/v1/site/config");
 });
 
 test("public deployment configuration has one committed and documented example contract", async () => {
