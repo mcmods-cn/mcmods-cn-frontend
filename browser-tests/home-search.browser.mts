@@ -118,6 +118,17 @@ for (const collection of ["mods", "modpacks"]) {
         await measured.screenshot({ path: `${evidence}/${collection}-mobile.png` });
         await page.setViewportSize({ width: 1366, height: 900 });
       }
+      const downloads = measured.getByRole("link", { name: "Downloads", exact: true });
+      assert.ok(await downloads.evaluate((link) => {
+        const range = document.createRange();
+        range.selectNodeContents(link);
+        const text = range.getBoundingClientRect();
+        const button = link.getBoundingClientRect();
+        return text.left >= button.left && text.right <= button.right;
+      }), "the desktop download label fits inside its link");
+      for (const emptyLabel of ["Versions:", "Loaders:", "Author:"]) {
+        assert.equal(await measured.getByText(emptyLabel, { exact: true }).count(), 0);
+      }
       // Each term and value belongs to one metric, independent of hidden mobile actions.
       const metric = (row: typeof measured, label: string) => row.locator("dt").filter({ hasText: new RegExp(`^${label}$`) }).locator("+ dd");
       assert.equal(await metric(measured, "On-site downloads").textContent({ timeout: 4000 }), "73");

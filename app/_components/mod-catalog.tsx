@@ -525,12 +525,12 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
         {mod.links?.length ? <div className="mt-2 flex flex-wrap gap-1.5">{mod.links.slice(0, 5).map((link, index) => <a className="focus-ring rounded-md border border-[var(--line)] px-2 py-1 text-[11px] font-bold text-[var(--muted)] hover:border-[var(--accent)] hover:text-[var(--accent)]" href={link.url} key={`${link.type}-${index}`} rel="noreferrer" target="_blank" title={link.note || t(`mods.submission.linkTypes.${link.type}`)} onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>{t(`mods.submission.linkTypes.${link.type}`)}</a>)}</div> : null}
 
         <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2">
-          <div>
+          {visibleVersions.length > 0 ? <div>
             <span className="font-bold text-[var(--muted)]">{t("mods.card.versions")}: </span>
             {expanded ? mod.versions.join("、") : visibleVersions.join("、")}
             {mod.versions.length > visibleVersions.length ? <button className="ml-1 font-bold text-[var(--accent)] hover:underline" type="button" onClick={stopAnd(onToggleExpanded)}>{t(expanded ? "mods.card.hideVersions" : "mods.card.allVersions", { count: mod.versions.length - visibleVersions.length })}</button> : null}
-          </div>
-          <div className="flex flex-wrap items-center gap-1"><span className="font-bold text-[var(--muted)]">{t("mods.card.loaders")}:</span>{mod.loaders.map((loader) => <Tag key={loader}>{loader}</Tag>)}</div>
+          </div> : null}
+          {mod.loaders.length > 0 ? <div className="flex flex-wrap items-center gap-1"><span className="font-bold text-[var(--muted)]">{t("mods.card.loaders")}:</span>{mod.loaders.map((loader) => <Tag key={loader}>{loader}</Tag>)}</div> : null}
           <div><span className="font-bold text-[var(--muted)]">{t("mods.card.environment")}: </span>{t(`mods.environments.${mod.environment}`)}</div>
           <div><span className="font-bold text-[var(--muted)]">{t("mods.card.updated")}: </span>{formatDate(mod.updatedAt, locale)}</div>
         </div>
@@ -538,7 +538,7 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
 
         <div className={`mt-3 border-t border-[var(--line)] pt-3 text-xs ${expanded ? "block" : "hidden sm:block"}`}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <span><span className="font-bold text-[var(--muted)]">{mod.team ? t("mods.card.team") : t("mods.card.author")}:</span> {mod.team ?? mod.authors.join("、")}</span>
+            {mod.team || mod.authors.length ? <span><span className="font-bold text-[var(--muted)]">{mod.team ? t("mods.card.team") : t("mods.card.author")}:</span> {mod.team || mod.authors.join("、")}</span> : null}
             {mod.members ? <span className="flex items-center -space-x-1">{mod.members.slice(0, 3).map((member) => <span key={member.name} className="grid h-7 w-7 place-items-center rounded-full border-2 border-[var(--panel)] bg-[var(--panel-subtle)] text-[10px] font-black" title={`${member.name} · ${t(`mods.roles.${member.roleKey}`)}`}>{member.initials}</span>)}</span> : null}
             <span className="font-semibold text-[var(--muted)]">{mod.license}</span>
           </div>
@@ -555,11 +555,11 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
             <Stat label={t("mods.card.comments")} value={formatCompact(mod.stats.comments, locale)} />
           </div>
         </dl> : null}
-        <div className="grid grid-cols-2 gap-2">
-          <button className="button-primary focus-ring col-span-2 px-3 py-2 text-sm" type="button" onClick={stopAnd(openDetails)}>{t("mods.card.details")}</button>
-          <button className="button-secondary focus-ring px-2 py-2 text-xs" type="button" aria-pressed={favorite} onClick={stopAnd(onToggleFavorite)}>{t(favorite ? "mods.card.favorited" : "mods.card.favorite")}</button>
-          <Link className="button-secondary focus-ring px-2 py-2 text-xs" href={`${basePath}/${encodeURIComponent(mod.siteId)}?tab=downloads`} onClick={(event) => event.stopPropagation()}>{t("mods.card.viewDownloads")}</Link>
-          <button className="button-secondary focus-ring col-span-2 px-2 py-2 text-xs" type="button" onClick={stopAnd(onShare)}>{t("mods.card.share")}</button>
+        <div className="flex flex-wrap gap-2">
+          <button className="button-primary focus-ring w-full px-3 py-2 text-sm" type="button" onClick={stopAnd(openDetails)}>{t("mods.card.details")}</button>
+          <button className="button-secondary focus-ring grow text-center px-2 py-2 text-xs" type="button" aria-pressed={favorite} onClick={stopAnd(onToggleFavorite)}>{t(favorite ? "mods.card.favorited" : "mods.card.favorite")}</button>
+          <Link className="button-secondary focus-ring grow text-center px-2 py-2 text-xs" href={`${basePath}/${encodeURIComponent(mod.siteId)}?tab=downloads`} onClick={(event) => event.stopPropagation()}>{t("mods.card.viewDownloads")}</Link>
+          <button className="button-secondary focus-ring w-full px-2 py-2 text-xs" type="button" onClick={stopAnd(onShare)}>{t("mods.card.share")}</button>
         </div>
       </div>
     </article>
