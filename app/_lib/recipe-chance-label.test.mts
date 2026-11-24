@@ -51,6 +51,14 @@ test("legacy textual chances and numeric probability are both supported without 
   }
 });
 
+test("slot quantity badges distinguish a reported zero from an unknown amount", () => {
+  assert.equal(recipeSlotAmountLabel({ amount: 0, unit: "mB" }), "0 mB");
+  assert.equal(recipeSlotAmountLabel({ count: 0 }), "0");
+  assert.equal(recipeSlotAmountLabel({ amount: null, unit: "mB" }), "");
+  assert.equal(recipeSlotAmountLabel({ amount: 1 }), "");
+  assert.equal(recipeSlotAmountLabel({ amount: -1 }), "");
+});
+
 test("materials with missing quantity never count as one, and known counts keep their units", () => {
   assert.equal(recipeMaterialMeasure({ amount: null }).amount, "");
   assert.equal(recipeMaterialMeasure({ amount: 0 }).amount, "0");
