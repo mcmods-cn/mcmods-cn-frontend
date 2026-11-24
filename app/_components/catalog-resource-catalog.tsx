@@ -13,6 +13,7 @@ import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { ContentTranslationControl } from "./editor/content-translation-control";
 import { LocalizationStatusBadge } from "./editor/localization-status-badge";
+import { LoginRequiredState, PageFeedback } from "./page-feedback";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { CatalogResourceCreateEditor } from "./catalog-manual-editors";
 
@@ -21,11 +22,15 @@ const pageSize = 36;
 export function CatalogResourceCatalog({ basePath = "/admin/global-resources" }: { basePath?: string }) {
   const searchParams = useSearchParams();
   const publicId = searchParams.get("publicId") ?? "";
-  const { user, token } = useAuthSnapshot();
+  const { ready, user, token } = useAuthSnapshot();
+  const { t } = useI18n();
   const editor = searchParams.get("editor");
   if (editor === "create") return <CatalogResourceCreateEditor basePath={basePath} />;
   if (publicId) return <CatalogResourceDetail key={`${publicId}:${user?.id || "guest"}:${token || "guest"}`} basePath={basePath} publicId={publicId} />;
-  return <CatalogResourceList basePath={basePath} />;
+  if (!ready) return <PageFeedback title={t("common.loading")} />;
+  if (!user || !token) return <LoginRequiredState nextPath={basePath} />;
+  if (!hasPermission(user, "global_resource.list")) return <PageFeedback title={t("admin.permissionDeniedBody")} tone="danger" />;
+  return <CatalogResourceList key={JSON.stringify([user.id, token, user.permissionVersion, user.rbacVersion, searchParams.toString()])} basePath={basePath} />;
 }
 
 function CatalogResourceDetail({ basePath, publicId }: { basePath: string; publicId: string }) {
@@ -193,7 +198,7 @@ function CatalogResourceList({ basePath }: { basePath: string }) {
     {error ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{error}</p> : null}
     {loading ? <div className="grid min-h-72 place-items-center font-bold text-[var(--muted)]">{t("common.loading")}</div> : result.items.length ? <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
       {result.items.map((resource) => <ResourceCard basePath={basePath} key={resource.publicId} locale={locale} resource={resource} />)}
-    </div> : <div className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-12 text-center text-[var(--muted)]">{t("resourceEditor.empty")}</div>}
+    </div> : !error ? <div className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-12 text-center text-[var(--muted)]">{t("resourceEditor.empty")}</div> : null}
     <Pagination basePath={basePath} page={page} searchParams={searchParams} total={result.total} />
   </CatalogResourceFrame>;
 }

@@ -37,6 +37,36 @@ test("global resource directory filters the identifier namespace independently o
   } finally { await browser.close(); }
 });
 
+test("switching catalog reviewers retires the previous resource list before loading another account", async () => {
+  let account = "reviewer";
+  let reads = 0;
+  const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/auth/me") return { data: {
+      id: account, username: account, roleCodes: [], permissionVersion: 1, rbacVersion: 1,
+      permissionRules: account === "reviewer" ? [{ code: "global_resource.list", priority: 100, allow: true }] : [],
+    } };
+    if (request.path === "/api/v1/admin/global-resources") {
+      reads++;
+      if (account !== "reviewer") return { status: 403, error: "List is unavailable for this account" };
+      return { data: { items: [{ publicId: "row000001", id: "fixture:private", namespace: "fixture", kind: "minecraft.item", registry: "items", name: "Synthetic review item" }], total: 1, limit: 36, offset: 0 } };
+    }
+    return common(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/admin/global-resources?status=pending");
+    await page.getByText("Synthetic review item", { exact: true }).waitFor();
+    account = "regular";
+    const refreshedIdentity = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/me");
+    await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:new-account" })));
+    assert.equal((await (await refreshedIdentity).json()).data.username, "regular");
+    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    assert.equal(await page.getByText("Synthetic review item", { exact: true }).count(), 0, "The new user must never see the previous reviewer’s list");
+    await page.getByText("Your account does not have permission to perform this action.", { exact: true }).waitFor({ timeout: 5000 });
+    assert.equal(reads, 1);
+  } finally { await browser.close(); }
+});
+
 test("CONT001 global resource form rejects non-object JSON without writing and creates a pending revision", async () => {
   const writes: Record<string, unknown>[] = [];
   const browser = await fixture.page(request => {
