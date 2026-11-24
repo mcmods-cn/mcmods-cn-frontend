@@ -53,10 +53,10 @@ test("upload recovery releases its database after persisting multipart checkpoin
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
           const database = request.result;
-          const count = database.transaction("tasks").objectStore("tasks").count();
-          database.close();
-          count.onsuccess = () => resolve(count.result);
-          count.onerror = () => reject(count.error);
+          const transaction = database.transaction("tasks");
+          const count = transaction.objectStore("tasks").count();
+          transaction.oncomplete = () => { database.close(); resolve(count.result); };
+          transaction.onabort = () => { database.close(); reject(transaction.error); };
         };
       });
       const upgrade = await new Promise<string>((resolve, reject) => {
