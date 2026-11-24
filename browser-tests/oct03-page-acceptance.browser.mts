@@ -237,6 +237,14 @@ test("Leaving the template editor cancels its pending save and keeps the selecte
   const path = "/api/v1/recipe-types/recipetype1/templates";
   let writes = 0;
   const browser = await controlled(request => {
+    if (request.path === "/api/v1/recipe-types/recipetype1/catalog" && request.method === "GET") {
+      return { data: {
+        publicId: "recipetype1", canonicalId: "example:crafting", names: { "en_us": "Test crafting" },
+        recipeCount: 0, templateCount: 0, catalysts: [], contentMarkdown: "", contentLocale: "en-US",
+        recipes: [], total: 0, limit: 24, offset: 0,
+      } };
+    }
+    if (request.path === path && request.method === "GET") return { data: { items: [] } };
     if (request.path === path && request.method === "POST") {
       writes++;
       started.resolve();
@@ -264,7 +272,7 @@ test("Leaving the template editor cancels its pending save and keeps the selecte
     await started.promise;
     await page.getByRole("link", { name: "Back to recipe methods", exact: true }).click();
     await page.waitForURL(url => url.search === "?publicId=recipetype1");
-    await page.waitForFunction(() => document.documentElement.dataset.templateSave === "cancelled");
+    await page.waitForFunction(() => document.documentElement.dataset.templateSave === "cancelled", undefined, { timeout: 5_000 });
     reply.resolve({ data: { objectPublicId: "template1", reviewStatus: "approved" } });
     assert.equal(new URL(page.url()).search, "?publicId=recipetype1");
     assert.equal(writes, 1);
