@@ -538,7 +538,7 @@ test("a committed Mod ID confirmation recovers the job without resending the dec
     if (path === root + "/active") return { data: { job: pending } };
     if (path === root + "/" + id + "/confirm-modid" && method === "POST") {
       writes++;
-      assert.deepEqual(body, { confirmModidMismatch: true, analysisHash: pending.modidAnalysisHash });
+      assert.deepEqual(JSON.parse(body), { confirmModidMismatch: true, analysisHash: pending.modidAnalysisHash });
       return { status: 500, error: "Decision accepted", code: "import_job_accepted_status_unavailable", details: { jobId: id } };
     }
     if (path === root + "/" + id && method === "GET") {
