@@ -657,6 +657,47 @@ test("a committed comment edit receipt preserves its author and advances the nex
   } finally { await browser.close(); }
 });
 
+test("a failed comment edit keeps the latest corrected draft for its original version", async () => {
+  const original = "Published comment";
+  const corrected = "Corrected comment draft";
+  const writes: string[] = [];
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/comment-targets/community_post/post00001/comments") {
+      return { data: comments([{ ...comment("comment01", original), canEdit: true }]) };
+    }
+    if (request.path === "/api/v1/comments/comment01" && request.method === "PATCH") {
+      writes.push(JSON.parse(request.body).body);
+      return writes.length === 1 ? { status: 503, error: "Try editing again" }
+        : { data: { ...comment("comment01", corrected), canEdit: true, updatedAt: "2026-10-03T01:01:00Z" } };
+    }
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/discussions/post00001");
+    const card = page.locator('[data-comment-id="comment01"]');
+    const button = card.getByRole("button", { name: "Edit", exact: true });
+    const tooLong = "a".repeat(10001);
+    const edit = async (input: string) => {
+      const prompted = page.waitForEvent("dialog");
+      const click = button.click();
+      const dialog = await prompted;
+      const initial = dialog.defaultValue();
+      await dialog.accept(input);
+      await click;
+      return initial;
+    };
+    assert.equal(await edit(tooLong), original);
+    await page.getByText(/Comments can contain up to 10000/).waitFor();
+    assert.deepEqual(writes, []);
+    assert.equal(await edit(corrected), tooLong);
+    await page.getByText("Try editing again", { exact: true }).waitFor();
+    assert.equal(await edit(corrected), corrected);
+    await card.getByText(corrected, { exact: true }).waitFor();
+    assert.deepEqual(writes, [corrected, corrected]);
+  } finally { await browser.close(); }
+});
+
 test("a committed comment deletion clears attachments, actions and loaded reply previews", { timeout: 30_000 }, async () => {
   const parentBody = "Deletion fixture parent";
   const childBody = "Reply stays visible";

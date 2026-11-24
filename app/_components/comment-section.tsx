@@ -325,11 +325,11 @@ type CommentTreeProps = {
 };
 
 function CommentTree(props: CommentTreeProps) {
-  const editDraft = useRef<{ id: string; version: string; body: string } | null>(null);
+  const editDraft = useRef<{ actor: string; generation: number; id: string; version: string; body: string } | null>(null);
   const router = useRouter();
   const replyInput = useRef<HTMLTextAreaElement>(null);
   const { t } = useI18n();
-  const { user } = useAuthSnapshot();
+  const { user, generation } = useAuthSnapshot();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [highlighted, setHighlighted] = useState("");
   const [returnTo, setReturnTo] = useState("");
@@ -417,23 +417,30 @@ function CommentTree(props: CommentTreeProps) {
   async function edit(comment: CommentItem) {
     if (!props.token) return;
     const previous = editDraft.current;
-    const initialBody = previous?.id === comment.id && previous.version === comment.updatedAt ? previous.body : comment.body;
+    const actor = user?.id || "";
+    const sameDraft = previous?.actor === actor && previous.generation === generation
+      && previous.id === comment.id && previous.version === comment.updatedAt;
+    const initialBody = sameDraft ? previous.body : comment.body;
     const nextBody = window.prompt(t("mods.comments.editPrompt"), initialBody);
-    if (nextBody == null) { editDraft.current = null; return; }
+    if (nextBody == null) { if (sameDraft) editDraft.current = null; return; }
     if (nextBody.length > maxCommentDraftUnits) {
       props.onMessage(t("commentFeedback.bodyLimit", { count: maxCommentCharacters }));
       return;
     }
     const normalized = trimCommentBody(nextBody);
-    if (!normalized || normalized === comment.body) { editDraft.current = null; return; }
+    if (!normalized || normalized === comment.body) {
+      if (sameDraft) editDraft.current = null;
+      return;
+    }
+    const draft = { actor, generation, id: comment.id, version: comment.updatedAt, body: nextBody };
+    editDraft.current = draft;
     if (exceedsCommentTextLimit(nextBody)) {
-      editDraft.current = { id: comment.id, version: comment.updatedAt, body: nextBody };
       props.onMessage(t("commentFeedback.bodyLimit", { count: maxCommentCharacters }));
       return;
     }
     try {
       const result = await updateComment(comment.id, normalized, comment.updatedAt, props.token);
-      editDraft.current = null;
+      if (editDraft.current === draft) editDraft.current = null;
       props.onItemsChange((items) => items.map((item) => {
         if (item.id !== result.id) return item;
         return "detailsUnavailable" in result ? { ...item, body: result.body, updatedAt: result.updatedAt } : result;
