@@ -303,7 +303,6 @@ function ModCatalogSession({ projectType }: { projectType: "mod" | "modpack" }) 
                     t={t}
                     view={filters.view}
                     basePath={basePath}
-                    onViewDownloads={() => window.open(`https://modrinth.com/${isModpack ? "modpack" : "mod"}/${mod.modrinthProjectId || mod.siteId}/versions`, "_blank", "noopener,noreferrer")}
                     onShare={() => void shareMod(mod)}
                     onToggleExpanded={() => setExpandedCards((current) => toggleSet(current, mod.siteId))}
                     onToggleFavorite={() => toggleFavorite(mod)}
@@ -472,7 +471,7 @@ function FilterPanel({
   );
 }
 
-function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleFavorite, onViewDownloads, onShare, onToggleExpanded }: {
+function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleFavorite, onShare, onToggleExpanded }: {
   mod: ModCatalogEntry;
   view: CatalogView;
   locale: string;
@@ -481,7 +480,6 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
   expanded: boolean;
   basePath: string;
   onToggleFavorite: () => void;
-  onViewDownloads: () => void;
   onShare: () => void;
   onToggleExpanded: () => void;
 }) {
@@ -560,7 +558,7 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
         <div className="grid grid-cols-2 gap-2">
           <button className="button-primary focus-ring col-span-2 px-3 py-2 text-sm" type="button" onClick={stopAnd(openDetails)}>{t("mods.card.details")}</button>
           <button className="button-secondary focus-ring px-2 py-2 text-xs" type="button" aria-pressed={favorite} onClick={stopAnd(onToggleFavorite)}>{t(favorite ? "mods.card.favorited" : "mods.card.favorite")}</button>
-          <button className="button-secondary focus-ring px-2 py-2 text-xs" type="button" onClick={stopAnd(onViewDownloads)}>{t("mods.card.viewDownloads")}</button>
+          <Link className="button-secondary focus-ring px-2 py-2 text-xs" href={`${basePath}/${encodeURIComponent(mod.siteId)}?tab=downloads`} onClick={(event) => event.stopPropagation()}>{t("mods.card.viewDownloads")}</Link>
           <button className="button-secondary focus-ring col-span-2 px-2 py-2 text-xs" type="button" onClick={stopAnd(onShare)}>{t("mods.card.share")}</button>
         </div>
       </div>

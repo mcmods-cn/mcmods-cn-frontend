@@ -101,6 +101,10 @@ test("FP074 mod catalog corrects an out of range URL page and re-fetches its res
     assert.equal(await browser.page.getByRole("searchbox", { name: "Search", exact: true }).inputValue(), "recover");
     assert(offsets.includes(19_960), "The initial request must use the original URL page");
     assert(offsets.includes(0), "Correcting the URL must issue a new request for the actual first page");
+    const downloads = browser.page.getByRole("link", { name: "Downloads", exact: true });
+    assert.equal(await downloads.getAttribute("href"), "/mods/fp074-mod?tab=downloads");
+    await downloads.click();
+    await browser.page.waitForURL(url => url.pathname === "/mods/fp074-mod" && url.searchParams.get("tab") === "downloads");
   } finally { await browser.close(); }
 });
 
@@ -126,6 +130,10 @@ test("FP077 modpack catalog uses its own category vocabulary", { timeout: 30_000
     await card.getByText("Kitchen sink", { exact: true }).waitFor();
     await card.getByText("Chinese original", { exact: true }).waitFor();
     assert.equal(await card.getByText(/mods\.(tags|categories)\./).count(), 0);
+    const downloads = browser.page.getByRole("link", { name: "Downloads", exact: true });
+    assert.equal(await downloads.getAttribute("href"), "/modpacks/fp077-pack?tab=downloads");
+    await downloads.click();
+    await browser.page.waitForURL(url => url.pathname === "/modpacks/fp077-pack" && url.searchParams.get("tab") === "downloads");
   } finally { await browser.close(); }
 });
 
