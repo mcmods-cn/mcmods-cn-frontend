@@ -8,6 +8,7 @@ const autosaveIntervalMilliseconds = 15_000;
 
 type DraftWriter = {
   signal: AbortSignal;
+  storageKey: string;
   saving?: Promise<void>;
   completing?: Promise<void>;
 };
@@ -24,6 +25,7 @@ export function useAutoDraft<T extends object>({
   token,
   value,
   onRestore,
+  matchesStoredDraft,
 }: {
   draftKey: string;
   projectKey: string;
@@ -34,12 +36,14 @@ export function useAutoDraft<T extends object>({
   token?: string;
   value: T;
   onRestore: (payload: T) => void;
+  matchesStoredDraft?: (storedKey: string, payload: T) => boolean;
 }) {
   const [status, setStatus] = useState<AutoDraftStatus>("idle");
   const [savedAt, setSavedAt] = useState("");
   const [error, setError] = useState("");
   const valueRef = useRef(value);
   const restoreRef = useRef(onRestore);
+  const matchesStoredRef = useRef(matchesStoredDraft);
   const metadataRef = useRef({ draftKey, projectKey, editUrl, kind, title });
   const lastSavedRef = useRef("");
   const initializedKeyRef = useRef("");
@@ -48,12 +52,12 @@ export function useAutoDraft<T extends object>({
 
   useEffect(() => {
     const scope = new AbortController();
-    writerRef.current = { signal: scope.signal };
+    writerRef.current = { signal: scope.signal, storageKey: draftKey };
     return () => scope.abort();
   }, [draftKey, token]);
 
   useEffect(() => { valueRef.current = value; }, [value]);
-  useEffect(() => { restoreRef.current = onRestore; }, [onRestore]);
+  useEffect(() => { restoreRef.current = onRestore; matchesStoredRef.current = matchesStoredDraft; }, [onRestore, matchesStoredDraft]);
   useEffect(() => { metadataRef.current = { draftKey, projectKey, editUrl, kind, title }; }, [draftKey, editUrl, kind, projectKey, title]);
 
   useEffect(() => {
@@ -73,7 +77,10 @@ export function useAutoDraft<T extends object>({
       })
       .then((draft) => {
         if (!draft || cancelled) return;
-        if (draft.draftKey !== draftKey) throw new Error("draft editor does not match");
+        const matches = matchesStoredRef.current?.(draft.draftKey, draft.payload) ?? (draft.draftKey === draftKey);
+        if (!matches) throw new Error("draft editor does not match");
+        // An explicit resume continues and completes the same persisted draft.
+        if (writerRef.current) writerRef.current.storageKey = draft.draftKey;
         const restored = serializeDraft(draft.payload);
         lastSavedRef.current = restored;
         restoreRef.current(draft.payload);
@@ -99,7 +106,7 @@ export function useAutoDraft<T extends object>({
       const payload = valueRef.current;
       const snapshot = serializeDraft(payload);
       if (!shouldPersistAutoDraft(snapshot, lastSavedRef.current)) return false;
-      const result = await saveUserDraft({ ...metadataRef.current, payload }, token, allowKeepalive && snapshot.length < 60_000);
+      const result = await saveUserDraft({ ...metadataRef.current, draftKey: writer.storageKey, payload }, token, allowKeepalive && snapshot.length < 60_000);
       if (writer.signal.aborted) return false;
       lastSavedRef.current = snapshot;
       setSavedAt(result.updatedAt);
@@ -150,7 +157,7 @@ export function useAutoDraft<T extends object>({
     const writer = writerRef.current;
     if (!writer || writer.signal.aborted) return Promise.reject(new DOMException("Editor closed", "AbortError"));
     if (writer.completing) return writer.completing;
-    const input = { ...metadataRef.current, ...completion, payload: valueRef.current };
+    const input = { ...metadataRef.current, draftKey: writer.storageKey, ...completion, payload: valueRef.current };
     const request = (async () => {
       // An active-draft write delivered after completion creates a new draft row.
       await writer.saving;

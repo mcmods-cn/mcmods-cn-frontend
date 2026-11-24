@@ -499,3 +499,52 @@ test("custom template changes retain body-only translations and retry only the p
     assert.equal(writes.length, 1);
   } finally { await browser.close(); }
 });
+
+test("autosaving edits to separate versions of a resource keeps two recoverable drafts", { timeout: 30_000 }, async () => {
+  const versionIDs = ["version01", "version02"];
+  const active = new Map<string, { payload: { activeVersionId: string; reason: string }; editUrl: string }>();
+  const resource = resourceSnapshot("minecraft.item", {});
+  const browser = await controlled(({ path, method, body }) => {
+    if (path === "/api/v1/mods/fixture-mod/content-templates") return { data: { items: [rangeTemplate] } };
+    if (path === "/api/v1/mods/fixture-mod/content-sections") return { data: { items: versionIDs.map((versionPublicId, i) => ({ ...rootSection, publicId: "section0" + (i + 1), versionPublicId })) } };
+    if (path === "/api/v1/mods/fixture-mod/content-resources/resource01") return { data: { ...resource,
+      versions: versionIDs.map(publicId => ({ ...resource.versions[0], publicId })),
+      details: versionIDs.map((versionPublicId, i) => ({ ...resource.details[0], sectionPublicId: "section0" + (i + 1), versionPublicId })),
+    } };
+    if (path.startsWith("/api/v1/users/me/drafts/")) {
+      const version = path.split("/").at(-1);
+      const entry = [...active].find(([, draft]) => draft.payload.activeVersionId === (version === "other-version" ? "version01" : version));
+      if (!entry) return { status: 404, error: "Draft unavailable" };
+      return { data: { ...entry[1], draftKey: version === "other-version" ? "mod-resource:fixture-mod:edit:resource01" : entry[0], updatedAt: stamp } };
+    }
+    if (path === "/api/v1/users/me/drafts" && method === "POST") {
+      const draft = JSON.parse(body);
+      active.set(draft.draftKey, draft);
+      return { data: { id: "draft00" + active.size, updatedAt: stamp } };
+    }
+  });
+  try {
+    const { page } = browser;
+    for (const [i, versionId] of versionIDs.entries()) {
+      await page.goto(`${fixture.origin}/mods/fixture-mod/resources/resource01/edit?version=${versionId}&section=section0${i + 1}`);
+      const reason = page.locator("aside textarea").first();
+      await reason.fill("Editing " + versionId);
+      const saved = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/users/me/drafts" && response.request().method() === "POST");
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await saved;
+    }
+    assert.deepEqual([...active.values()].map(d => [d.payload.activeVersionId, d.payload.reason, new URL(d.editUrl, fixture.origin).searchParams.get("version")]), [
+      ["version01", "Editing version01", "version01"], ["version02", "Editing version02", "version02"],
+    ]);
+    for (const [i, versionId] of versionIDs.entries()) {
+      await page.goto(`${fixture.origin}/mods/fixture-mod/resources/resource01/edit?version=${versionId}&section=section0${i + 1}&draft=${versionId}`);
+      await page.waitForFunction(reason => document.querySelector<HTMLTextAreaElement>("aside textarea")?.value === reason, "Editing " + versionId);
+    }
+    await page.goto(fixture.origin + "/mods/fixture-mod/resources/resource01/edit?version=version02&section=section02&draft=other-version");
+    await page.getByText("draft editor does not match", { exact: false }).waitFor();
+    assert.equal(await page.locator("aside textarea").inputValue(), "");
+  } finally { await browser.close(); }
+});

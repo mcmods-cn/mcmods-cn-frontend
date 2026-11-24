@@ -301,8 +301,12 @@ function ModContentResourceEditorSession({
     iconFilePublicId, iconSmallFilePublicId, kindCode, localizations, reason,
     renderFilePublicId, selectedSectionId,
   };
+  const resourceDraftKey = `mod-resource:${siteId}:${mode}:${resourceId || `${versionId}:${sectionId}`}`;
+  const draftKey = mode === "edit" ? `${resourceDraftKey}:${activeVersionId}` : resourceDraftKey;
   const autoDraft = useAutoDraft({
-    draftKey: `mod-resource:${siteId}:${mode}:${resourceId || `${versionId}:${sectionId}`}`,
+    draftKey,
+    matchesStoredDraft: (storedKey, payload) => payload.activeVersionId === activeVersionId
+      && (storedKey === draftKey || mode === "edit" && storedKey === resourceDraftKey),
     projectKey: `mod:${siteId}`,
     editUrl: resourceEditorEditURL(mode, siteId, resourceId, activeVersionId, selectedSectionId),
     enabled: ready && Boolean(token) && loaded && !loading && !missingCreateTarget,
