@@ -115,6 +115,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
   const onChangeRef = useRef(onChange);
   const onBusyChangeRef = useRef(onBusyChange);
   const fileTransfer = useRef<AbortController | null>(null);
+  const uploadBatch = useRef(0);
   const sessionActive = useRef(true);
   useEffect(() => {
     sessionActive.current = true;
@@ -618,8 +619,9 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
   }
 
   function insertUploadPlaceholders(files: File[]) {
-    const batch = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
-    const markers = files.map((file, index) => `<!-- Uploading "${safeUploadCommentName(file.name)}" (${batch}/${index + 1})... -->`);
+    let batch: string;
+    do { batch = `mcmods-upload:${++uploadBatch.current}/`; } while (markdownRef.current.includes(batch));
+    const markers = files.map((file, index) => `<!-- Uploading "${safeUploadCommentName(file.name)}" (${batch}${index + 1})... -->`);
     insertMarkdownSnippet(`\n${markers.join("\n\n")}\n`);
     return markers;
   }
