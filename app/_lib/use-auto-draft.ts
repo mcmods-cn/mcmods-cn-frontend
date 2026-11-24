@@ -6,6 +6,12 @@ import { completeUserDraft, loadUserDraft, saveUserDraft } from "./draft-api";
 
 const autosaveIntervalMilliseconds = 15_000;
 
+type DraftWriter = {
+  signal: AbortSignal;
+  saving?: Promise<void>;
+  completing?: Promise<void>;
+};
+
 export type AutoDraftStatus = "idle" | "restoring" | "restored" | "saving" | "saved" | "error";
 
 export function useAutoDraft<T extends object>({
@@ -38,7 +44,13 @@ export function useAutoDraft<T extends object>({
   const lastSavedRef = useRef("");
   const initializedKeyRef = useRef("");
   const restoringRef = useRef(false);
-  const savingRef = useRef(false);
+  const writerRef = useRef<DraftWriter | undefined>(undefined);
+
+  useEffect(() => {
+    const scope = new AbortController();
+    writerRef.current = { signal: scope.signal };
+    return () => scope.abort();
+  }, [draftKey, token]);
 
   useEffect(() => { valueRef.current = value; }, [value]);
   useEffect(() => { restoreRef.current = onRestore; }, [onRestore]);
@@ -77,36 +89,40 @@ export function useAutoDraft<T extends object>({
     return () => { cancelled = true; };
   }, [draftKey, enabled, token]);
 
-  const saveLatest = useCallback(async (keepalive = false) => {
-    if (!enabled || !token || restoringRef.current || savingRef.current) return;
+  const saveLatest = useCallback((keepalive = false) => {
+    const writer = writerRef.current;
+    if (!enabled || !token || !writer || writer.signal.aborted || restoringRef.current || writer.saving || writer.completing) return;
     const serialized = serializeDraft(valueRef.current);
     if (!shouldPersistAutoDraft(serialized, lastSavedRef.current)) return;
-    savingRef.current = true;
     setStatus("saving");
-    try {
-      const persistCurrent = async (allowKeepalive: boolean) => {
-        const payload = valueRef.current;
-        const snapshot = serializeDraft(payload);
-        if (!shouldPersistAutoDraft(snapshot, lastSavedRef.current)) return false;
-        const result = await saveUserDraft({ ...metadataRef.current, payload }, token, allowKeepalive && snapshot.length < 60_000);
-        lastSavedRef.current = snapshot;
-        setSavedAt(result.updatedAt);
-        setError("");
-        setStatus("saved");
-        return true;
-      };
-      const savedOnce = await persistCurrent(keepalive);
-      const latest = serializeDraft(valueRef.current);
-      if (savedOnce && shouldPersistAutoDraft(latest, lastSavedRef.current)) {
-        setStatus("saving");
-        await persistCurrent(false);
+    const persistCurrent = async (allowKeepalive: boolean) => {
+      const payload = valueRef.current;
+      const snapshot = serializeDraft(payload);
+      if (!shouldPersistAutoDraft(snapshot, lastSavedRef.current)) return false;
+      const result = await saveUserDraft({ ...metadataRef.current, payload }, token, allowKeepalive && snapshot.length < 60_000);
+      if (writer.signal.aborted) return false;
+      lastSavedRef.current = snapshot;
+      setSavedAt(result.updatedAt);
+      setError("");
+      setStatus("saved");
+      return true;
+    };
+    const request = (async () => {
+      try {
+        const savedOnce = await persistCurrent(keepalive);
+        const latest = serializeDraft(valueRef.current);
+        if (savedOnce && !writer.completing && shouldPersistAutoDraft(latest, lastSavedRef.current)) {
+          setStatus("saving");
+          await persistCurrent(false);
+        }
+      } catch (cause) {
+        if (writer.signal.aborted) return;
+        setError(cause instanceof Error ? cause.message : String(cause));
+        setStatus("error");
       }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setStatus("error");
-    } finally {
-      savingRef.current = false;
-    }
+    })().finally(() => { writer.saving = undefined; });
+    writer.saving = request;
+    return request;
   }, [enabled, token]);
 
   useEffect(() => {
@@ -122,7 +138,7 @@ export function useAutoDraft<T extends object>({
     };
   }, [enabled, saveLatest, token]);
 
-  const completeDraft = useCallback(async (completion: {
+  const completeDraft = useCallback((completion: {
     projectKey: string;
     projectTitle: string;
     targetUrl: string;
@@ -130,17 +146,24 @@ export function useAutoDraft<T extends object>({
     reviewTargetType?: "server";
     reviewTargetPublicId?: string;
   }) => {
-    if (!token) return;
-    await completeUserDraft({
-      ...metadataRef.current,
-      ...completion,
-      payload: valueRef.current,
-    }, token);
-    const current = serializeDraft(valueRef.current);
-    lastSavedRef.current = current;
-    setSavedAt("");
-    setStatus("idle");
-    setError("");
+    if (!token) return Promise.resolve();
+    const writer = writerRef.current;
+    if (!writer || writer.signal.aborted) return Promise.reject(new DOMException("Editor closed", "AbortError"));
+    if (writer.completing) return writer.completing;
+    const input = { ...metadataRef.current, ...completion, payload: valueRef.current };
+    const request = (async () => {
+      // An active-draft write delivered after completion creates a new draft row.
+      await writer.saving;
+      writer.signal.throwIfAborted();
+      await completeUserDraft(input, token);
+      if (writer.signal.aborted) return;
+      lastSavedRef.current = serializeDraft(input.payload);
+      setSavedAt("");
+      setStatus("idle");
+      setError("");
+    })().finally(() => { writer.completing = undefined; });
+    writer.completing = request;
+    return request;
   }, [token]);
 
   return { completeDraft, error, savedAt, status };

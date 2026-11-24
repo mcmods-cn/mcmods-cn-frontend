@@ -169,3 +169,61 @@ for (const sameActor of [false, true]) test(`OCT03 BUG126 a late restore cannot 
     assert.notEqual(await title.inputValue(), "Private old session draft");
   } finally { releaseA(); releaseB(); await browser.close(); }
 });
+
+test("draft completion waits for a pending autosave before closing the active draft", { timeout: 30_000 }, async () => {
+  const started = Promise.withResolvers<void>();
+  const resume = Promise.withResolvers<void>();
+  const completion = Promise.withResolvers<void>();
+  const events: string[] = [];
+  const browser = await fixture.page(async (request) => {
+    if (request.path === "/api/v1/users/me/drafts" && request.method === "POST") {
+      events.push("autosave-start");
+      started.resolve();
+      await resume.promise;
+      events.push("autosave-saved");
+      return { data: { updatedAt } };
+    }
+    if (request.path === "/api/v1/community/posts/oct03edit" && request.method === "PUT") {
+      return { data: { id: "oct03edit", revisionId: "confirmed-revision", reviewStatus: "pending", changeRequestId: "review" } };
+    }
+    if (request.path === "/api/v1/users/me/drafts/complete") {
+      events.push("complete");
+      completion.resolve();
+      return { data: { completed: true } };
+    }
+    return providers(request);
+  });
+  try {
+    const { page } = browser;
+    await startEditing(page);
+    await page.getByLabel("Title", { exact: true }).fill("submitted draft");
+    await page.clock.runFor(15_001);
+    await started.promise;
+    // Observe when the submission handler has consumed the successful business
+    // response and had an event-loop turn to dispatch any draft request.
+    await page.evaluate(() => {
+      const original = Response.prototype.json;
+      Response.prototype.json = async function () {
+        const value = await original.call(this);
+        if (value?.data?.revisionId === "confirmed-revision") {
+          const marker = new MessageChannel();
+          marker.port1.onmessage = () => {
+            document.documentElement.dataset.submissionConsumed = "yes";
+            marker.port1.close();
+            marker.port2.close();
+          };
+          marker.port2.postMessage(null);
+        }
+        return value;
+      };
+    });
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
+    await page.locator('html[data-submission-consumed="yes"]').waitFor({ state: "attached" });
+    resume.resolve();
+    await completion.promise;
+    assert.deepEqual(events, ["autosave-start", "autosave-saved", "complete"]);
+  } finally {
+    resume.resolve();
+    await browser.close();
+  }
+});
