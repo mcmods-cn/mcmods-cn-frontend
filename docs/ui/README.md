@@ -1,5 +1,21 @@
 # 前端截图与界面验收
 
+## Mod 与整合包目录卡片
+
+同一组匿名目录记录在改前显示下载量 0，改后显示接口返回的站内下载量 73、评分 4.5 和评论数 2。收藏数 0 仍然显示。未提供作者的卡片保留许可证，缺少版本或加载器时省去对应标签。桌面操作区按实际文字宽度换行，手机上的收藏与下载仍可并排。
+
+| 生产构建源码 | 桌面 1366 × 900 | 手机 390 × 844 |
+| --- | --- | --- |
+| 改前 `f81a0a8` | [目录卡片](catalog-card-before-desktop.png) | [目录卡片](catalog-card-before-mobile.png) |
+| 改后 `0c31c4b` | [目录卡片](catalog-card-after-desktop.png) | [目录卡片](catalog-card-after-mobile.png) |
+
+截图由真实 Chromium 在上述视口裁剪到卡片，使用英文界面和三条合成 HTTP 记录。Mod 与整合包采用同一组件，两条路由分别测试。浏览器回归同时检查未提供统计、真实零值，以及桌面下载文字是否完全位于链接内。完成生产浏览器构建后可重拍。[构建与验证](../../README.md#验证与发布)
+
+```sh
+MCMODS_CATALOG_STATS_SCREENSHOTS="$(mktemp -d)" node --test \
+  --test-name-pattern='catalog shows measured site activity' browser-tests/home-search.browser.mts
+```
+
 ## 第三轮交接
 
 实际 Chromium 截图使用专用合成账号。服务器配置面板显示明确的只读状态，有配置写权限的用户才可保存。商店背景道具使用成功后，预览失败会保留成功提示和最新库存，重试只重新读取预览。
@@ -17,7 +33,7 @@
 node --test --test-concurrency=1 browser-tests/server-admin-state.browser.mts browser-tests/economy-background.browser.mts
 ```
 
-隔离站点另用标准镜像、可信 HTTPS 及未修改的 Minecraft 1.20.1 Fabric 开发原包完成上传、导入和独立审核。从匿名页面采集以下 1280 × 720 截图。[公开物品](resource-steps-public-item.png) · [公开配方](resource-steps-public-recipe.png) · [三仓版本与运行范围](../../README.md#当前验收记录)
+隔离站点另用标准镜像、可信 HTTPS 及未修改的 Minecraft 1.20.1 Fabric 开发原包完成上传、导入和独立审核。从匿名页面采集以下 1280 × 720 截图。[公开物品](resource-steps-public-item.png) · [公开配方](resource-steps-public-recipe.png) · [三仓版本与运行范围](../../README.md#版本与验收记录)
 
 ## 此前的浏览器对照
 
