@@ -329,3 +329,38 @@ test("creator name limit counts UTF-8 bytes before saving a multibyte name", { t
     assert.deepEqual(writes, ["🌲".repeat(40)]);
   } finally { await browser.close(); }
 });
+
+test("creator profile conflicts keep the draft until its published revision has been compared", { timeout: 30_000 }, async () => {
+  const id = "author004";
+  const path = "/api/v1/creators/" + id;
+  const writes: Array<{ name: string; baseRevisionId: string }> = [];
+  let revision = "first0001";
+  const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/review-locks/creator/" + id) return { data: { locked: false } };
+    if (request.path === path) {
+      if (request.method === "GET") return { data: { creator: { publicId: id, kind:"author", name: revision === "first0001" ? "First publication" : "Another editor", avatarUrl:"" }, descriptionMarkdown: "", defaultLocale:"en-US", localizations:[], links:[], canEditProfile:true,publishedRevisionId:revision } };
+      assert.equal(request.method,"PUT");
+      writes.push(JSON.parse(request.body));
+      revision = "next00002";
+      return writes.length === 1 ? { status:409,code:"CREATOR_EDIT_CONFLICT",error:"Changed publication" } : { status:503,error:"End of review fixture" };
+    }
+    return editorAPI(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/authors/" + id + "/edit");
+    const name = page.locator('form input[required][maxlength="160"]');
+    await name.fill("Preserved local draft");
+    const save = page.getByRole("button", { name:"Save",exact:true });
+    await save.click();
+    await page.getByRole("button", { name:"Read published profile",exact:true }).click();
+    await page.locator("pre").filter({hasText:"Another editor"}).waitFor();
+    assert.equal(await name.inputValue(), "Preserved local draft");
+    assert.equal(await save.isDisabled(), true);
+    assert.deepEqual(writes.map(value => value.baseRevisionId), ["first0001"]);
+    await page.getByRole("button", {name:"Use this version for my draft",exact:true}).click();
+    const response = page.waitForResponse(value => new URL(value.url()).pathname === path && value.request().method() === "PUT");
+    await save.click(); await response;
+    assert.deepEqual(writes.map(value => [value.baseRevisionId,value.name]), [["first0001","Preserved local draft"],["next00002","Preserved local draft"]]);
+  } finally { await browser.close(); }
+});

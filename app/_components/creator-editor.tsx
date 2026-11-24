@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "../_lib/api";
+import { ApiError, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import {
   CreatorDetail,
@@ -21,6 +21,7 @@ import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { notifySite } from "../_lib/site-notice";
 import { useAutoDraft } from "../_lib/use-auto-draft";
+import { useEditorWrite } from "./editor/use-editor-write";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
 import { ToolsPlayground } from "./tools-playground";
@@ -85,6 +86,10 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
   const { locale, t } = useI18n();
   const router = useRouter();
   const editing = Boolean(detail);
+  const writes = useEditorWrite();
+  const [baseRevisionId, setBaseRevisionId] = useState<string | null>(detail?.publishedRevisionId ?? "");
+  const [revisionConflict, setRevisionConflict] = useState(false);
+  const [comparison, setComparison] = useState<CreatorDetail>();
   const [kind, setKind] = useState<CreatorKind>(detail?.creator.kind ?? initialKind);
   const [name, setName] = useState(detail?.creator.name ?? "");
   const initialDefaultLocale = (detail?.defaultLocale || "zh-CN") as Locale;
@@ -123,6 +128,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
       : `${creatorBaseHref(initialKind)}/new`,
     enabled: true,
     value: {
+      baseRevisionId,
       kind,
       name,
       defaultLocale,
@@ -134,6 +140,11 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
       links,
     },
     onRestore: (restored) => {
+      if (detail) {
+        const restoredBase = typeof restored.baseRevisionId === "string" ? restored.baseRevisionId : null;
+        setBaseRevisionId(restoredBase);
+        setRevisionConflict(restoredBase !== (detail.publishedRevisionId ?? ""));
+      }
       setKind(restored.kind);
       setName(restored.name);
       setDefaultLocale(restored.defaultLocale);
@@ -251,20 +262,39 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
     }
   }
 
+  async function comparePublished() {
+    if (!detail || busy) return;
+    const request = writes.beginWrite();
+    if (!request) return;
+    setSaving(true);
+    try {
+      const latest = await apiRequest<CreatorDetail>(`/api/v1/creators/${encodeURIComponent(detail.creator.publicId)}`, { signal: request.signal }, token);
+      if (!request.signal.aborted && latest.canEditProfile) setComparison(latest);
+      else if (!request.signal.aborted) notifySite(t("creators.editDenied"), t("creators.title"), "danger");
+    } catch (error) {
+      if (!request.signal.aborted) notifySite(error instanceof Error ? error.message : t("creators.loadFailed"), t("creators.title"), "danger");
+    } finally {
+      if (writes.finishWrite(request)) setSaving(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!snapshot.name || nameTooLong || busy || mutationInFlight.current) return;
+    if (!snapshot.name || nameTooLong || busy || mutationInFlight.current || (editing && (baseRevisionId === null || revisionConflict))) return;
     if (avatarReferenceNeedsVerification) {
       notifySite(creatorAvatarVerificationMessage(locale), t("creators.avatar"), "danger");
       return;
     }
+    const request = writes.beginWrite();
+    if (!request) return;
     mutationInFlight.current = true;
     setSaving(true);
     try {
       const profilePayload = creatorProfilePayload(snapshot);
       const result = editing
-        ? await apiRequest<{ reviewStatus: "pending" | "approved"; changeRequestId: string }>(`/api/v1/creators/${encodeURIComponent(detail!.creator.publicId)}`, { method: "PUT", body: JSON.stringify(profilePayload) }, token)
-        : await apiRequest<{ publicId: string; reviewStatus: "pending" | "approved"; changeRequestId: string }>("/api/v1/creators", { method: "POST", body: JSON.stringify(profilePayload) }, token);
+        ? await apiRequest<{ reviewStatus: "pending" | "approved"; changeRequestId: string }>(`/api/v1/creators/${encodeURIComponent(detail!.creator.publicId)}`, { method: "PUT", body: JSON.stringify({ ...profilePayload, baseRevisionId }), signal: request.signal }, token)
+        : await apiRequest<{ publicId: string; reviewStatus: "pending" | "approved"; changeRequestId: string }>("/api/v1/creators", { method: "POST", body: JSON.stringify(profilePayload), signal: request.signal }, token);
+      if (request.signal.aborted) return;
       const publicId = editing ? detail!.creator.publicId : "publicId" in result ? result.publicId : "";
       const targetUrl = `${creatorBaseHref(kind)}/${publicId}`;
       let draftCompletionFailed = false;
@@ -278,13 +308,20 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
       } catch {
         draftCompletionFailed = true;
       }
+      if (request.signal.aborted) return;
       notifySite(draftCompletionFailed ? t("drafts.completionFailed") : result.reviewStatus === "pending" ? t(editing ? "creators.editSubmitted" : "creators.createSubmitted") : t(editing ? "creators.editSaved" : "creators.createSaved"), t("creators.title"), draftCompletionFailed ? "info" : "success");
       router.push(targetUrl);
     } catch (saveError) {
+      if (request.signal.aborted) return;
+      if (saveError instanceof ApiError && ["CREATOR_EDIT_CONFLICT", "CREATOR_REVISION_REQUIRED"].includes(saveError.code ?? "")) {
+        setRevisionConflict(true);
+        setComparison(undefined);
+        return;
+      }
       notifySite(saveError instanceof Error ? saveError.message : t(editing ? "creators.editFailed" : "creators.createFailed"), t("creators.title"), "danger");
     } finally {
       mutationInFlight.current = false;
-      setSaving(false);
+      if (writes.finishWrite(request)) setSaving(false);
     }
   }
 
@@ -301,10 +338,18 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
           <div className="flex gap-2">
             <DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} />
             <Link className="button-secondary focus-ring" href={returnHref}>{t("common.cancel")}</Link>
-            <button className="button-primary focus-ring" disabled={busy || !name.trim() || nameTooLong} type="submit">{saving ? t("common.loading") : t(editing ? "common.save" : "common.create")}</button>
+            <button className="button-primary focus-ring" disabled={busy || !name.trim() || nameTooLong || revisionConflict} type="submit">{saving ? t("common.loading") : t(editing ? "common.save" : "common.create")}</button>
           </div>
         </header>
 
+        {revisionConflict ? <section className="mt-4 grid gap-3 rounded-lg border border-[var(--warning)] p-3" aria-live="polite">
+          <p>{t("creators.revisionConflict")}</p>
+          <button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => void comparePublished()}>{t("creators.comparePublished")}</button>
+          {comparison ? <>
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap text-sm">{JSON.stringify({ name: comparison.creator.name, defaultLocale: comparison.defaultLocale, localizations: comparison.localizations, descriptionMarkdown: comparison.descriptionMarkdown, links: comparison.links, avatarFileId: comparison.avatarFileId }, null, 2)}</pre>
+            <button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => { setBaseRevisionId(comparison.publishedRevisionId ?? ""); setRevisionConflict(false); setComparison(undefined); }}>{t("creators.useComparedRevision")}</button>
+          </> : null}
+        </section> : null}
         <section className="mt-6 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4">
           <h2 className="font-black">{t("creators.importProfile")}</h2>
           <p className="mt-1 text-sm leading-6 text-[var(--muted)]">{t(kind === "team" ? "creators.importTeamHint" : "creators.importAuthorHint")}</p>
