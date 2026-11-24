@@ -17,7 +17,7 @@ import { visit } from "unist-util-visit";
 import type { PluggableList } from "unified";
 import { API_BASE_URL, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
-import type { BlueprintDetailRecord } from "../_lib/blueprint-api";
+import { retainBlueprintAssetIndex, type BlueprintDetailRecord } from "../_lib/blueprint-api";
 import { DRAWIO_ORIGIN, parseDrawioMessage, type DrawioEditorMessage } from "../_lib/drawio";
 import { loadResolvedContent } from "../_lib/editor-api";
 import { loadGlobalRecipe } from "../_lib/global-catalog-api";
@@ -350,7 +350,8 @@ function MarkdownBlueprintReference({ publicId }: { publicId: string }) {
       { cache: "no-store", signal: controller.signal },
       token || undefined,
     ).then((value) => {
-      setRecord(value);
+      if (controller.signal.aborted) return;
+      setRecord(previous => retainBlueprintAssetIndex(previous, value));
       setError("");
     }).catch((reason: unknown) => {
       if (!(reason instanceof DOMException && reason.name === "AbortError")) setError(markdownReferenceError(reason));

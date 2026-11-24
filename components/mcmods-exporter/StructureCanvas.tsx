@@ -80,7 +80,7 @@ export function StructureCanvas({
     let cancelled = false
     const controller = new AbortController()
     setError('')
-    setProgress({ finishedStates: 0, totalStates: 0, currentState: t('mods.exportImport.renderer.reading') })
+    setProgress({ finishedStates: 0, totalStates: 0, currentState: '' })
     let renderer: StructureRenderer | undefined
     source.load(controller.signal)
       .then((bytes) => {
@@ -126,7 +126,7 @@ export function StructureCanvas({
       rendererRef.current = null
       renderer?.dispose()
     }
-  }, [assetSource, source, source.key, source.name, autoRotate, showGrid, cullInvisibleFaces, t])
+  }, [assetSource, source, source.key, source.name, autoRotate, showGrid, cullInvisibleFaces])
 
   useEffect(() => {
     layerViewRef.current = { min: layerMin, max: layerMax, mode: outsideLayerMode, showContextBelow, showContextAbove }
@@ -147,7 +147,7 @@ export function StructureCanvas({
       <div ref={hostRef} style={{ position: 'absolute', inset: 0 }} />
       {progress && (
         <div style={overlayStyle} role="status">
-          <strong>{progress.totalStates ? t('mods.exportImport.renderer.building', { percent }) : progress.currentState}</strong>
+          <strong>{progress.totalStates ? t('mods.exportImport.renderer.building', { percent }) : progress.currentState || t('mods.exportImport.renderer.reading')}</strong>
           {progress.totalStates > 0 && <code>{progress.currentState}</code>}
         </div>
       )}

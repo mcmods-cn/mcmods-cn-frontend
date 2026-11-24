@@ -80,3 +80,18 @@ export type BlueprintListResponse = {
   hasMore: boolean;
   nextCursor: string;
 };
+
+// Translated detail reads may return the same ordered asset index. Keeping it
+// lets the viewer retain the active WebGL scene and its camera.
+export function retainBlueprintAssetIndex(previous: BlueprintDetailRecord | null | undefined, next: BlueprintDetailRecord) {
+  if (!previous || previous.id !== next.id) return next;
+  const before = previous.assetRevisions;
+  const after = next.assetRevisions;
+  if (!before || !after || before.length !== after.length) return next;
+  const equal = before.every((entry, i) => {
+    const other = after[i];
+    return entry.id === other.id && entry.siteId === other.siteId &&
+      entry.paths.length === other.paths.length && entry.paths.every((path, j) => path === other.paths[j]);
+  });
+  return equal ? { ...next, assetRevisions: before } : next;
+}

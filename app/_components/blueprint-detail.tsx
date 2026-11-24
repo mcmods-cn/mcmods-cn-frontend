@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../_lib/api";
 import { csvCell } from "../_lib/blueprint-csv.mts";
-import type { BlueprintDetailRecord, BlueprintMaterial } from "../_lib/blueprint-api";
+import { retainBlueprintAssetIndex, type BlueprintDetailRecord, type BlueprintMaterial } from "../_lib/blueprint-api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { loadFavoriteMembershipSummary } from "../_lib/favorite-api";
 import { useI18n } from "../_lib/i18n-provider";
@@ -58,7 +58,8 @@ function BlueprintDetailContent({ publicId }: { publicId: string }) {
         : await loadResolvedContent(publicId, locale, "en-US", token).catch(() => undefined);
       const fields = content?.localization?.fields;
       if (controller.signal.aborted || generation !== loadGeneration.current) return;
-      setRecord(fields ? { ...result, title: fields.name || result.title, description: fields.contentMarkdown || result.description } : result);
+      const localized = fields ? { ...result, title: fields.name || result.title, description: fields.contentMarkdown || result.description } : result;
+      setRecord(previous => retainBlueprintAssetIndex(previous, localized));
       setNotFound(false);
       setLoadError("");
     } catch (error) {

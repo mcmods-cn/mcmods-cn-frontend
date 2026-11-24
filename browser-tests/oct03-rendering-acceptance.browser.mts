@@ -359,6 +359,43 @@ async function saveDiagnostic(name: string, page: Page) {
   }
 }
 
+test("blueprint locale changes preserve unchanged geometry and rebuild a changed asset index", { timeout: 40_000 }, async (context) => {
+  const id = "locale-render";
+  const serve = provider(id, 3);
+  let renderReads = 0;
+  const browser = await scopedPage(async (request) => {
+    if (request.path === `/api/v1/blueprints/${id}/render`) renderReads++;
+    const reply = await serve(request);
+    if (request.path !== `/api/v1/blueprints/${id}` || !reply?.data) return reply;
+    const locale = request.url.searchParams.get("locale");
+    const data = reply.data as { assetRevisions: { id: string; siteId: string; paths: string[] }[] };
+    return { data: {
+      ...data, title: `Blueprint ${locale}`,
+      assetRevisions: data.assetRevisions.map(entry => ({
+        ...entry, paths: locale === "fr_fr" ? [...entry.paths, "assets/audit/models/block/added.json"] : entry.paths,
+      })),
+    } };
+  }, context.signal);
+  try {
+    await observeNativeRendering(browser.page);
+    await browser.page.setViewportSize({ width: 1280, height: 800 });
+    await browser.page.goto(`${fixture.origin}/blueprints/${id}`);
+    await waitDraw(browser.page, 0, 3);
+    assert.equal(renderReads, 1);
+    const language = browser.page.locator("header select").filter({ visible: true });
+    await language.selectOption("zh-CN");
+    await browser.page.getByRole("heading", { name: "Blueprint zh_cn", exact: true }).waitFor();
+    await frames(browser.page);
+    assert.equal(renderReads, 1, "Changing translated text must retain the original normalized structure read");
+    assert.equal((await snapshot(browser.page)).contexts.length, 1, "The original WebGL scene stays mounted");
+    await language.selectOption("fr-FR");
+    await browser.page.getByRole("heading", { name: "Blueprint fr_fr", exact: true }).waitFor();
+    await waitDraw(browser.page, 1, 3);
+    assert.equal(renderReads, 2, "Changed asset membership must refresh the scene even at the same blueprint revision");
+    assertReleased((await snapshot(browser.page)).contexts[0]);
+  } finally { await browser.close(); }
+});
+
 test("PERF069 real production renderer submits 600k instances, slices layers and releases one build", { timeout: 120_000 }, async (context) => {
   await runAcceptance("production-600k-admission-and-layers", ["PERF-069"], context.signal, async () => {
     const browser = await scopedPage(provider("oct03-render-large", 600000), context.signal);
