@@ -1,4 +1,25 @@
-# 首页与后台浏览器对照
+# 前端截图与界面验收
+
+## 第三轮交接
+
+实际 Chromium 截图使用专用合成账号。服务器配置面板显示明确的只读状态，有配置写权限的用户才可保存。商店背景道具使用成功后，预览失败会保留成功提示和最新库存，重试只重新读取预览。
+
+| 场景 | 桌面 | 手机 |
+| --- | --- | --- |
+| 服务器提交设置，修改前 | [1280 × 720](server-settings-before-desktop.png) | [390 × 844](server-settings-before-mobile.png) |
+| 服务器提交设置，修改后 | [1280 × 720](server-settings-after-desktop.png) | [390 × 844](server-settings-after-mobile.png) |
+| 主页背景预览失败，修改前 | [1440 × 900](economy-background-before-desktop.png) | [412 × 840](economy-background-before-mobile.png) |
+| 主页背景预览失败，修改后 | [1440 × 900](economy-background-after-desktop.png) | [412 × 840](economy-background-after-mobile.png) |
+
+这两组对照使用受控 API 响应。完成根 README 的构建后，可运行定向回归。[验收命令与版本](../../README.md#验证与发布)
+
+```bash
+node --test --test-concurrency=1 browser-tests/server-admin-state.browser.mts browser-tests/economy-background.browser.mts
+```
+
+隔离站点另用标准镜像、可信 HTTPS 及未修改的 Minecraft 1.20.1 Fabric 开发原包完成上传、导入和独立审核。从匿名页面采集以下 1280 × 720 截图。[公开物品](resource-steps-public-item.png) · [公开配方](resource-steps-public-recipe.png) · [三仓版本与运行范围](../../README.md#当前验收记录)
+
+## 此前的浏览器对照
 
 第三轮站点图标回归使用 Chromium 桌面 1440 × 900 亮色和手机 390 × 844 深色。同一 `/service` 网关前缀下，旧生产页面的上传返回 404，两端均未解码图标。修改后上传返回 201，匿名图标读取按站点配置跳转，解码合成的 32 px 图像。前后截图随交接产物提供。回归使用回环 API 与合成图标，部署网关要按 [README](../../README.md) 设置会话 Cookie 路径。
 

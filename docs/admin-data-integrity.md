@@ -16,6 +16,8 @@ OSS 配置、通知模板和用户手工权限必须成功读取当前账号/目
 
 新增面板时在 `admin-panels.tsx` 填写分组、标题和说明的语言键、可见条件及渲染组件。统一设置的写权限和 AI 操作的执行权限由同一条定义传给界面。每条导航项与内容共用面板 ID。处理项目或记录的操作仍在对应组件核对其对象权限。[面板定义](../app/_components/admin-panels.tsx)
 
+服务器提交配置和 Minecraft 版本配置使用 `admin.config.read` 开放查看，使用 `admin.config.write` 开放保存与版本同步。种子爬虫按 `seed_crawler.view`、`seed_crawler.configure` 和 `seed_crawler.run` 分别开放查看、配置和手动执行。后台设置读取失败时保留重试入口，读取成功后才启用有权限的操作。[操作权限回归](../browser-tests/admin-automation-access.browser.mts) · [服务器设置回归](../browser-tests/server-admin-state.browser.mts)
+
 进入供应商、模型或任务绑定面板会用 `ai.read` 读取 `GET /api/v1/admin/ai/config`。读取完成前禁用表单。账号具有 `ai.write`、配置完整且含 64 位小写十六进制修订号时才可提交。没有修订号的旧服务支持查看。切换账号或面板、权限变化和服务端明确拒绝授权时，页面清除当前编辑状态及尚未提交的密钥。
 
 保存向同一路径 PUT 完整配置和读取到的 `revision`。未填写密钥时保留已存凭据，输入新值表示替换。勾选清除时只为所选供应商发送 `clearApiKeys`。更改请求来源站点后，服务端可要求明确替换或清除该供应商的密钥。表单在该请求失败后保留输入。成功后只采用服务端的完整脱敏回执。[配置与凭据处理](../app/_lib/admin-ai-config.mts)

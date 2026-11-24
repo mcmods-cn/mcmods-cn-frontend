@@ -1,18 +1,19 @@
 # mcmods_exporter renderer core
 
-本目录是从独立 React 演示站提取的框架无关核心。完整架构、数据库和 API 契约见 [`docs/mcmods-exporter-integration.md`](../../../docs/mcmods-exporter-integration.md)。
+本目录提供框架无关的结构与模型渲染能力。Next.js 调用方从导入修订取得资源路径和可见范围。[蓝图查看器](../../../app/_components/blueprint-viewer.tsx) · [资料详情](../../../app/_components/mod-content-resource-detail.tsx) · [后端系统地图](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/docs/system-map.md) · [导出协议](https://github.com/mcmods-cn/mcmods_exporter/blob/main/docs/contract-validation.md)
 
-最小调用：
+浏览器中使用已获授权的导入修订和资产索引创建 renderer。
 
 ```ts
 import {
   IndexedHttpAssetSource,
   StructureRenderer,
 } from '@/lib/mcmods-exporter/renderer'
+import { modExportAssetURL } from '@/app/_lib/mod-export-api'
 
 const source = new IndexedHttpAssetSource(
   assetPaths,
-  path => `/api/v1/revisions/${revisionId}/assets/content?path=${encodeURIComponent(path)}`,
+  path => modExportAssetURL(revisionId, path, true),
 )
 
 const renderer = new StructureRenderer(hostElement, source, {
@@ -29,7 +30,7 @@ renderer.dispose()
 
 支持的模型：标准 elements/faces、Forge/NeoForge/Porting Lib OBJ 与 composite、NeoForge blockstate composite、separate transforms base、empty、OBJ MTL/flipV/visibility，以及 Mekanism Energy Cube 的 frame/LED/port 自定义 loader。
 
-`AssetSource` 必须只暴露当前 revision 的资源。JSON/OBJ/MTL 应由 Go API 从 PostgreSQL 返回；PNG/纹理 URL 可以指向 CDN。
+资料详情只提供当前导入修订的资产。蓝图可按路径绑定各自已获授权的修订。`modExportAssetURL` 统一处理 API 前缀和路径编码。私有详情沿用现有会话请求。[资产 URL 与请求入口](../../../app/_lib/mod-export-api.ts)
 
 Next.js 封装先读取结构字节，再初始化 WebGL 并异步构建场景、加载模型和纹理。缺失模型可以进入已有的方块回退，未被兼容回退处理的构建错误和 WebGL 初始化失败会显示失败状态；页面的名称、介绍和其他操作仍然可用。失败和卸载都会释放已经创建的纹理、模型、观察器和 renderer，迟到的纹理或截图不会更新已切换的资源。`StructureCanvasSource.load` 应返回可取消的 Promise，并按 `key` 标识资源内容。
 

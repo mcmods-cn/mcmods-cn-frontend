@@ -68,17 +68,28 @@ npm run test:browser
 npm audit --audit-level=high
 ```
 
-2026-11-21，前端 `8c80944` 在独立检出中通过 ESLint、TypeScript、409 项单元测试和生产构建。依赖沿用 `8d9e882` 以同一锁文件完成的 `npm ci`。默认 Chromium 套件共 291 项，290 项通过，1 项需要另行提供游戏 ZIP。使用 exporter 0.10.1 的真实 Fabric 原版包后，配方像素用例 2/2 通过。9 项原生 WebGL 验证也通过。套件使用合成 API，覆盖同账号重新登录、跨标签页退出和旧服务回退。[配方绘制验证](browser-tests/recipe-slot-pixels.browser.mts)
-
-独立的真实服务验证通过了登录、收藏、菜单退出，以及 Fabric 和 Forge 游戏 ZIP 的上传、导入、独立审核与公开配方展示。发布镜像以 `nextjs`（UID 1001）启动，登录页和公开认证配置端点均返回 200。[手机实拍与界面测量](docs/ui/README.md)
-
-以上 `.test` 地址用于模拟 API 的浏览器回归。部署时换成实际的公开 HTTPS 地址。Playwright 套件启动本机 standalone 生产产物，使用合成身份与显式 API fixtures。真实登录、持久化收藏和退出另用 `npm run test:live`，需要同一隔离环境提供 `MCMODS_LIVE_FRONTEND_ORIGIN`、`MCMODS_LIVE_API_ORIGIN`、`MCMODS_LIVE_ACCOUNT`、`MCMODS_LIVE_PASSWORD`。真实资料协议验收见下文。
-
-要核对原版火把的绘制位置，在完成生产构建后提供 Minecraft 1.20.1 的 `minecraft` 单命名空间、`all` 导出 ZIP。该用例通过本地 API 夹具加载原包的模板、背景和火把图标，再在 Chromium 实拍中检查火焰是否落入工作台输出格。常规套件也验证自定义流体的绘制区域可大于命中格。
+以上 `.test` 地址用于浏览器夹具。生产环境用实际的公开 HTTPS 地址。Chromium 套件启动本机 standalone 产物，由本地夹具供应合成身份、API 响应和事件。要连同原版火把像素用例一起运行，在完成生产构建后提供 Minecraft 1.20.1 的 `minecraft` 单命名空间、`all` 导出原 ZIP。该用例读取模板、背景及火把图标，在浏览器中检查工作台输出格。缺少原包时，该专项会跳过。[配方绘制验证](browser-tests/recipe-slot-pixels.browser.mts)
 
 ```bash
-MCMODS_TEST_VANILLA_GEOMETRY_ZIP=/path/to/minecraft.zip node --test browser-tests/recipe-slot-pixels.browser.mts
+MCMODS_TEST_VANILLA_GEOMETRY_ZIP=/path/to/minecraft.zip npm run test:browser
 ```
+
+### 当前验收记录
+
+2026-11-23 的结果对应前端 `a71d99fb30227b5931468e078989b70ace882589`。文档发布沿用此源码与产物的验收记录。`.test` 浏览器产物从 `e3015bb` 构建，之后两条提交仅调整实时消息与退出测试夹具，应用源码与锁文件逐文件一致。标准镜像在 `a71d99f` 单独构建。[GitHub Actions 检查](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/workflows/ci.yml)
+
+| 检查 | 结果与运行范围 |
+| --- | --- |
+| `npm run check`、`npm test`、生产构建 | ESLint、TypeScript 和构建成功。418 项单元测试通过，零失败、零跳过 |
+| `npm run test:browser` | 336 项通过，零失败、零跳过。使用 Playwright 1.62.1、Chromium `151.0.7922.34` 和合成 API。像素专项使用 `71e548a` 的 Fabric 开发原包，另含 9 项软件 WebGL 用例 |
+| `npm run test:live` | 1 项通过，真实 Go API 和隔离 PostgreSQL 覆盖登录、收藏持久化、菜单退出及会话撤销。前端使用 Next 开发实例，控制器 `2861d71` 仅调整启动调度冲突检查，后端 Go 字节与 `db0acc9` 一致 |
+| 站点隔离联调 | 标准前端镜像以 `nextjs`（UID 1001）启动，运行镜像 ID 为 `sha256:a26ee3a47387b16beb0008c980bcf6ca9451dfad4b5f21575bda6be6c4a8cafd`。可信本地 HTTPS `/service` 网关联通真实 API、PostgreSQL 18.6、Redis 和 JetStream |
+
+早期 Chromium 运行曾因临时空间不足而失败。独立的前次完整套件另有两项软件 WebGL 超时，候选复跑全部通过。实体 GPU 和目标生产配置继续单独验收。账号回归可在同一隔离环境提供 `MCMODS_LIVE_FRONTEND_ORIGIN`、`MCMODS_LIVE_API_ORIGIN`、`MCMODS_LIVE_ACCOUNT` 和 `MCMODS_LIVE_PASSWORD` 后运行。使用合成账号，凭据仅存放于隔离运行环境。[账号测试](browser-tests/live-backend.mts) · [界面实拍](docs/ui/README.md)
+
+真实资料链使用后端 `db0acc9`、前端 `a71d99f` 和 exporter `5d058d3`。Minecraft 1.20.1 Fabric 开发客户端生成的未修改 ZIP 的 SHA-256 是 `31a50489c64c63ee843f350ad84a0c1668dffecd3229795b1389cdca651782e1`。断点和续传保持同一上传，完成请求依次返回 201 和 200，导入队列实际投递与确认各一次、零重投。审核前匿名读取返回 403，独立审核后可匿名查看资源和配方。对象传输使用隔离的 OSS 协议夹具。正式发行 JAR 入世界仍需有效的标准 Minecraft 会话，目标云存储尚待验收。[三仓验收](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/docs/governance.md#当前版本与验收) · [公开配方实拍](docs/ui/resource-steps-public-recipe.png)
+
+### 发布与回滚
 
 本地查看生产产物时，使用发布容器采用的 standalone 服务器。静态文件需一同提供。
 
@@ -88,7 +99,9 @@ cp -r .next/static .next/standalone/.next/
 HOSTNAME=127.0.0.1 PORT=3000 node .next/standalone/server.js
 ```
 
-生产发布与回滚均按**完整镜像与对应构建配置**切换。本轮前端变更无需迁移数据库。先将所有 API 实例升级到支持后台面板独立读取、OAuth 按字段 PATCH、AI 配置修订号和显式密钥清除、条件退出和当前导入状态的版本，再更新前端。检查 `/authentication-write-config` 指向目标 API。回滚至旧 API 时，条件退出路由返回 404/405，页面允许检查当前账号。OAuth 设置保留未保存的草稿，支持 PATCH 的实例恢复后可重试。登录不保持时核对后端允许的前端 origin 与 Cookie 设置。浏览器上传失败时核对签名地址的 CSP origin。缺少样式或出现静态资源 404 时检查 `public`、`.next/static` 是否和同一次构建的 server.js 一同部署。
+生产发布与回滚均按**完整镜像与对应构建配置**切换。先按后端说明安装及核验 PostgreSQL generation 171，再启动 API 与 Worker。确认 API 支持后台面板独立读取、OAuth 按字段 PATCH、AI 配置修订号和显式密钥清除、条件退出和当前导入状态。设置目标域名和代理路径后重新构建前端，检查 `/authentication-write-config` 指向目标 API。回滚时同时核对对应后端与数据库配置。旧 API 的条件退出路由返回 404/405 时，页面允许检查当前账号。OAuth 设置保留未保存的草稿，支持 PATCH 的实例恢复后可重试。[后端安装与恢复](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/README.md#数据库安装发布和恢复)
+
+登录不保持时核对后端允许的前端 origin 与 Cookie 设置。浏览器上传失败时核对签名地址的 CSP origin。缺少样式或出现静态资源 404 时检查 `public`、`.next/static` 是否和同一次构建的 `server.js` 一同部署。GitHub 镜像发布工作流由 `v*` 标签或手动触发，使用仓库配置的公开变量构建，并同时标记版本和源码 SHA。[容器发布工作流](.github/workflows/release-container.yml)
 
 ## 依赖审查
 
@@ -98,8 +111,9 @@ HOSTNAME=127.0.0.1 PORT=3000 node .next/standalone/server.js
 
 ## 文档与验收证据
 
-- [首页和后台截图对照](docs/ui/README.md) 记录浏览器视口、数据范围和测量。
+- [前端截图与界面验收](docs/ui/README.md) 记录浏览器视口、数据范围和测量。
 - [当前界面行为](docs/frontend-state-recovery.md) 与 [后台设置和审核](docs/admin-data-integrity.md) 说明恢复边界和权限语义。
+- [模型与蓝图渲染器](lib/mcmods-exporter/renderer/README.md) 说明从导入修订读取资产与释放 WebGL 资源的调用方式。
 - [历史审计](docs/audit) 保留 2026 年 10 月至 11 月的验收、修复和认证时序材料，各文档中的测试结果对应当时的提交。维护者可从本页命令重新验证当前版本。
 
 ## 代理环境中的容器构建
