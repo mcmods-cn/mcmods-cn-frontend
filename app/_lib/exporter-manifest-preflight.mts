@@ -22,14 +22,16 @@ export async function readExporterManifest(file: Blob): Promise<Record<string, u
     const raw = new Uint8Array(await file.slice(directoryOffset, directoryOffset + directorySize).arrayBuffer());
     const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
     let found: { offset: number; compressed: number; size: number; method: number } | undefined;
+    const decoder = new TextDecoder();
+    const pathSeparator = "/".charCodeAt(0);
     let position = 0;
     for (let index = 0; index < count; index++) {
       if (position + 46 > raw.length || view.getUint32(position, true) !== 0x02014b50) return;
       const nameLength = view.getUint16(position + 28, true);
       const entryLength = 46 + nameLength + view.getUint16(position + 30, true) + view.getUint16(position + 32, true);
       if (position + entryLength > raw.length) return;
-      const name = new TextDecoder().decode(raw.subarray(position + 46, position + 46 + nameLength));
-      if (name.toLowerCase() === "manifest.json") {
+      const name = raw.subarray(position + 46, position + 46 + nameLength);
+      if (!name.includes(pathSeparator) && decoder.decode(name).toLowerCase() === "manifest.json") {
         if (found || view.getUint16(position + 8, true) & 1) return;
         found = { offset: view.getUint32(position + 42, true), compressed: view.getUint32(position + 20, true), size: view.getUint32(position + 24, true), method: view.getUint16(position + 10, true) };
       }

@@ -54,3 +54,12 @@ test("F-003 preflight reads stored/deflated real ZIP manifests without loading a
   }
   assert.equal(await readExporterManifest(new Blob(["invalid zip"])), undefined);
 });
+
+test("preflight selects only a root manifest and preserves case-insensitive duplicate handling", async () => {
+  const root = strToU8(JSON.stringify({ configuration: { all_namespaces: false } }));
+  const nested = { "assets/manifest.json": strToU8(JSON.stringify({ configuration: { all_namespaces: true } })) };
+  const read = (files: Record<string, Uint8Array<ArrayBuffer>>) => readExporterManifest(new Blob([zipSync(files)]));
+  assert.equal(await read(nested), undefined);
+  assert.deepEqual(await read({ ...nested, "MANIFEST.JSON": root }), { configuration: { all_namespaces: false } });
+  assert.equal(await read({ "MANIFEST.JSON": root, "manifest.json": root }), undefined);
+});
