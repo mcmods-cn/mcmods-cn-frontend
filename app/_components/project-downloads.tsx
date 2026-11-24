@@ -33,9 +33,8 @@ const projectFilePageLimit = 20;
 type ProjectFilesData = Omit<ProjectFilesResponse, "source" | "limit" | "hasMore" | "nextCursor">;
 
 export function ProjectDownloads(props: ProjectDownloadsProps) {
-  const { locale } = useI18n();
   const { user } = useAuthSnapshot();
-  return <ProjectDownloadsSession key={`${user?.id || "guest"}:${props.token || "guest"}:${locale}:${props.projectType}:${props.projectId}`} {...props} />;
+  return <ProjectDownloadsSession key={`${user?.id || "guest"}:${props.token || "guest"}:${props.projectType}:${props.projectId}`} {...props} />;
 }
 
 function ProjectDownloadsSession({
@@ -47,10 +46,14 @@ function ProjectDownloadsSession({
   suggestedLoaders = [],
 }: ProjectDownloadsProps) {
   const { locale, t } = useI18n();
-  const [data, setData] = useState<ProjectFilesData>();
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [sourceCursors, setSourceCursors] = useState<Partial<Record<ProjectFileSource, string>>>({});
+  const [pages, setPages] = useState<Partial<Record<ProjectFileSource, ProjectFilesResponse>>>({});
+  const [pending, setPending] = useState<Partial<Record<ProjectFileSource, boolean>>>({});
+  const [failures, setFailures] = useState<Partial<Record<ProjectFileSource, { cursor: string; reason?: unknown }>>>({});
+  const controllers = useRef(new Map<ProjectFileSource, AbortController>());
+  const data = useMemo(() => {
+    const available = projectFileSources.flatMap(source => pages[source] ? [pages[source]] : []);
+    return available.length ? combineProjectFilePages(available) : undefined;
+  }, [pages]);
   const [message, setMessage] = useState("");
   const [version, setVersion] = useState(allFilter);
   const [loader, setLoader] = useState(allFilter);
@@ -58,42 +61,49 @@ function ProjectDownloadsSession({
   const [downloadingId, setDownloadingId] = useState("");
   const basePath = projectFilesPath(projectType, projectId);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setMessage("");
+  const readPage = useCallback(async (source: ProjectFileSource, cursor = "") => {
+    const requests = controllers.current;
+    if (cursor && requests.has(source)) return;
+    requests.get(source)?.abort();
+    const controller = new AbortController();
+    requests.set(source, controller);
+    setPending(value => ({ ...value, [source]: true }));
     try {
-      const pages = await Promise.all(projectFileSources.map((item) => loadProjectFilePage(basePath, item, "", token)));
-      setData(combineProjectFilePages(pages));
-      setSourceCursors(Object.fromEntries(pages.map((page) => [page.source, page.hasMore ? page.nextCursor : ""])));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.detail.downloads.loadFailed"));
+      const page = await loadProjectFilePage(basePath, source, cursor, token, controller.signal);
+      if (controller.signal.aborted) return;
+      if (source !== "internal" && (page.warnings?.[source] || page.warnings?.providers)) {
+        setFailures(current => ({ ...current, [source]: { cursor } }));
+        return;
+      }
+      setPages(current => {
+        const previous = current[source];
+        const result = cursor && previous ? { ...page, ...mergeProjectFilePages(previous, [page]) } : page;
+        return { ...current, [source]: result };
+      });
+      setFailures(current => ({ ...current, [source]: undefined }));
+    } catch (reason) {
+      if (!controller.signal.aborted) setFailures(current => ({ ...current, [source]: { cursor, reason } }));
     } finally {
-      setLoading(false);
+      if (requests.get(source) === controller) {
+        requests.delete(source); setPending(value => ({ ...value, [source]: false }));
+      }
     }
-  }, [basePath, t, token]);
+  }, [basePath, token]);
 
-  useEffect(() => { queueMicrotask(() => void load()); }, [load]);
+  useEffect(() => {
+    const requests = controllers.current;
+    const timer = window.setTimeout(() => { for (const source of projectFileSources) void readPage(source); }, 0);
+    return () => { window.clearTimeout(timer); for (const request of requests.values()) request.abort(); requests.clear(); };
+  }, [readPage]);
 
-  const loadMore = useCallback(async () => {
-    const sources = source === allFilter
-      ? projectFileSources.filter((item) => sourceCursors[item])
-      : sourceCursors[source] ? [source] : [];
-    if (!sources.length) return;
-    setLoadingMore(true);
-    setMessage("");
-    try {
-      const pages = await Promise.all(sources.map((item) => loadProjectFilePage(basePath, item, sourceCursors[item] ?? "", token)));
-      setData((current) => current ? mergeProjectFilePages(current, pages) : combineProjectFilePages(pages));
-      setSourceCursors((current) => ({
-        ...current,
-        ...Object.fromEntries(pages.map((page) => [page.source, page.hasMore ? page.nextCursor : ""])),
-      }));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.detail.downloads.loadFailed"));
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [basePath, source, sourceCursors, t, token]);
+  const selectedSources = source === allFilter ? projectFileSources : [source];
+  const failedSources = selectedSources.filter(key => failures[key]);
+  const loading = selectedSources.some(key => !pages[key] && !failures[key]);
+  const more = selectedSources.filter(key => pages[key]?.hasMore && pages[key]?.nextCursor && !failures[key]);
+  const loadingMore = more.some(key => pending[key]);
+  function loadMore() {
+    for (const key of more) void readPage(key, pages[key]?.nextCursor);
+  }
 
   const filtered = useMemo(() => (data?.items ?? []).filter((file) => {
     if (source !== allFilter && file.source !== source) return false;
@@ -104,9 +114,7 @@ function ProjectDownloadsSession({
   const groups = useMemo(() => groupProjectFiles(filtered, version), [filtered, version]);
   const versions = useMemo(() => uniqueOptions(data?.versions ?? [], suggestedVersions), [data?.versions, suggestedVersions]);
   const loaders = useMemo(() => uniqueOptions(data?.loaders ?? [], suggestedLoaders), [data?.loaders, suggestedLoaders]);
-  const hasMoreForSelection = source === allFilter
-    ? projectFileSources.some((item) => Boolean(sourceCursors[item]))
-    : Boolean(sourceCursors[source]);
+  const hasMoreForSelection = more.length > 0;
 
   async function download(file: ProjectFile) {
     setDownloadingId(`${file.source}:${file.id}`);
@@ -121,10 +129,10 @@ function ProjectDownloadsSession({
       anchor.click();
       anchor.remove();
       if (file.source === "internal") {
-        setData((current) => current ? {
-          ...current,
-          items: current.items.map((item) => item.id === file.id && item.source === "internal" ? { ...item, downloadCount: item.downloadCount + 1 } : item),
-        } : current);
+        setPages(current => {
+          const internal = current.internal;
+          return internal ? { ...current, internal: { ...internal, items: internal.items.map(item => item.id === file.id ? { ...item, downloadCount: item.downloadCount + 1 } : item) } } : current;
+        });
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("mods.detail.downloads.downloadFailed"));
@@ -138,7 +146,11 @@ function ProjectDownloadsSession({
     setMessage("");
     try {
       await apiRequest(`${basePath}/${encodeURIComponent(file.id)}`, { method: "DELETE" }, token);
-      await load();
+      setPages(current => {
+        const internal = current.internal;
+        return internal ? { ...current, internal: { ...internal, items: internal.items.filter(item => item.id !== file.id) } } : current;
+      });
+      await readPage("internal");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("mods.detail.downloads.deleteFailed"));
     }
@@ -165,9 +177,17 @@ function ProjectDownloadsSession({
       </div>
     </section>
 
-    {data && Object.keys(data.warnings).length ? <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 p-4 text-sm font-bold text-amber-800 dark:text-amber-200">{Object.keys(data.warnings).map((key) => t("mods.detail.downloads.providerUnavailable", { source: key === "providers" ? t("mods.detail.downloads.externalSources") : t(`mods.detail.downloadSources.${key}`) })).join(" · ")}</div> : null}
     {message ? <div className="rounded-lg border border-[var(--red)]/40 bg-[var(--red)]/10 p-4 text-sm font-bold text-[var(--red)]">{message}</div> : null}
-    {loading ? <DownloadSkeleton /> : groups.length ? <div className="space-y-4">{groups.map((group) => <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]" key={group.key}>
+    {failedSources.map(key => {
+      const failure = failures[key];
+      if (!failure) return null;
+      const label = t(`mods.detail.downloadSources.${key}`);
+      return <div key={key} role="alert" className="rounded-lg border border-[var(--line)] p-3">
+        <p>{failure.reason instanceof Error ? `${label} · ${failure.reason.message}` : t("mods.detail.downloads.providerUnavailable", { source: label })}</p>
+        <button className="button-secondary focus-ring mt-2" disabled={pending[key]} type="button" onClick={() => void readPage(key, failure.cursor)}>{t("common.retry")}</button>
+      </div>;
+    })}
+    {groups.length ? <div className="space-y-4">{groups.map((group) => <section className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel)]" key={group.key}>
       <div className="border-b border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3"><h3 className="font-black">{group.label}</h3></div>
       <div className="divide-y divide-[var(--line)]">{group.items.map((file) => <ProjectFileRow
         key={`${file.source}:${file.id}`}
@@ -178,7 +198,7 @@ function ProjectDownloadsSession({
         onDelete={() => void remove(file)}
         onDownload={() => void download(file)}
       />)}</div>
-    </section>)}</div> : <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-10 text-center text-[var(--muted)]">{t("mods.detail.downloads.noFiles")}</div>}
+    </section>)}</div> : loading ? <DownloadSkeleton /> : !failedSources.length ? <div className="rounded-lg border border-dashed border-[var(--line)] bg-[var(--panel)] p-10 text-center text-[var(--muted)]">{t("mods.detail.downloads.noFiles")}</div> : null}
 
     {!loading && hasMoreForSelection ? <button className="button-secondary focus-ring w-full" disabled={loadingMore} type="button" onClick={() => void loadMore()}>{loadingMore ? t("mods.detail.downloads.loadingMore") : t("mods.detail.downloads.loadMore")}</button> : null}
 
@@ -190,7 +210,7 @@ function ProjectDownloadsSession({
       projectType={projectType}
       token={token}
       versions={versions}
-      onCreated={load}
+      onCreated={() => readPage("internal")}
     /> : null}
   </div>;
 }
@@ -255,6 +275,10 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const uploadInFlight = useRef(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const uploadedFile = useRef<{ file: File; id: string } | null>(null);
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [message, setMessage] = useState("");
 
   async function submit(event: FormEvent) {
@@ -275,9 +299,13 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
     setMessage("");
     setProgress(0);
     try {
-      const uploaded = await uploadProjectFileToOSS(file, token, projectType, projectId, (loaded, total) => setProgress(total > 0 ? Math.round(loaded / total * 85) : 0));
+      if (uploadedFile.current?.file !== file) {
+        const uploaded = await uploadProjectFileToOSS(file, token, projectType, projectId, (loaded, total) => setProgress(total > 0 ? Math.round(loaded / total * 85) : 0));
+        if (!mounted.current) return;
+        uploadedFile.current = { file, id: uploaded.id };
+      }
       const input: CreateProjectFileInput = {
-        ossFileId: uploaded.id,
+        ossFileId: uploadedFile.current.id,
         displayName: displayName.trim() || file.name,
         versionName: versionName.trim(),
         releaseChannel: channel,
@@ -285,6 +313,9 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
         loaders: parsedLoaders,
       };
       await apiRequest<ProjectFile>(basePath, { method: "POST", body: JSON.stringify(input) }, token);
+      if (!mounted.current) return;
+      uploadedFile.current = null;
+      if (fileInput.current) fileInput.current.value = "";
       setProgress(100);
       setMessage(t("mods.detail.downloads.uploaded"));
       setFile(undefined);
@@ -304,7 +335,7 @@ function ProjectFileUpload({ basePath, projectType, projectId, projectName, toke
     <form className="border-t border-[var(--line)] p-5" onSubmit={submit}>
       <p className="text-sm leading-6 text-[var(--muted)]">{t("mods.detail.downloads.uploadDescription", { project: projectName })}</p>
       <fieldset className="mt-5 grid gap-4 sm:grid-cols-2" disabled={uploading}>
-        <label className="text-sm font-black sm:col-span-2">{t("mods.detail.downloads.projectFile", { formats: acceptedFormats })}<input className="field mt-2" type="file" accept={acceptedFileTypes} required onChange={(event) => { const next = event.target.files?.[0]; setFile(next); if (next && !displayName) setDisplayName(next.name.replace(/\.(?:jar|mrpack|zip)$/i, "")); }} /></label>
+        <label className="text-sm font-black sm:col-span-2">{t("mods.detail.downloads.projectFile", { formats: acceptedFormats })}<input className="field mt-2" ref={fileInput} type="file" accept={acceptedFileTypes} required onChange={(event) => { const next = event.target.files?.[0]; setFile(next); if (next && !displayName) setDisplayName(next.name.replace(/\.(?:jar|mrpack|zip)$/i, "")); }} /></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.displayName")}<input className="field mt-2" maxLength={200} value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.versionName")}<input className="field mt-2" maxLength={120} required value={versionName} placeholder="1.0.0" onChange={(event) => setVersionName(event.target.value)} /></label>
         <label className="text-sm font-black">{t("mods.detail.downloads.gameVersions")}<input className="field mt-2" required value={gameVersions} list={`project-file-versions-${projectId}`} placeholder="1.21.1, 1.20.1" onChange={(event) => setGameVersions(event.target.value)} /><datalist id={`project-file-versions-${projectId}`}>{versions.map((item) => <option key={item} value={item} />)}</datalist></label>
@@ -359,10 +390,10 @@ function uniqueOptions(...lists: string[][]) {
   return Array.from(new Set(lists.flat().map((item) => item.trim()).filter(Boolean)));
 }
 
-async function loadProjectFilePage(basePath: string, source: ProjectFileSource, cursor: string, token: string) {
+async function loadProjectFilePage(basePath: string, source: ProjectFileSource, cursor: string, token: string, signal?: AbortSignal) {
   const parameters = new URLSearchParams({ source, limit: String(projectFilePageLimit) });
   if (cursor) parameters.set("cursor", cursor);
-  return apiRequest<ProjectFilesResponse>(`${basePath}?${parameters}`, {}, token);
+  return apiRequest<ProjectFilesResponse>(`${basePath}?${parameters}`, { signal }, token);
 }
 
 function combineProjectFilePages(pages: ProjectFilesResponse[]): ProjectFilesData {

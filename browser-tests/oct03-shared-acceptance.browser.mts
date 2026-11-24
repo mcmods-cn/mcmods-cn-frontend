@@ -635,6 +635,17 @@ test("OCT03 locale storage hints carry the validated preference even before anot
   } finally { await browser.close(); }
 });
 
+function downloadProjectReply(path: string): APIReply | undefined {
+  if (path === "/api/v1/mods/upload-notice") return { data: {
+    id: "m00000011", uniqueId: "m00000011", siteId: "upload-notice", primaryName: "Synthetic upload notice", secondaryName: "", abbreviation: "SN", summary: "", modIds: [], defaultLocale: "en-US", localizations: [], environment: "bothRequired", primaryCategory: "utility", compatibilities: [{ loader: "fabric", versions: ["1.21"] }], officialStatus: "active", sourceStatus: "closed", license: "MIT", curseforgeProjectId: "", modrinthProjectId: "", githubProjectPath: "", iconUrl: "", bodyMarkdown: "", searchKeywords: [], submissionMethod: "manual", reviewStatus: "approved", createdAt: "2026-10-03T00:00:00Z", updatedAt: "2026-10-03T00:00:00Z", tags: [], authors: [], links: [], relationshipGroups: [], galleryImages: [],
+  } };
+  if (path === "/api/v1/content/m00000011") return { status: 404, error: "No synthetic localized business content" };
+  if (path === "/api/v1/projects/m00000011/follow") return { data: { followed: false, notificationsEnabled: false } };
+  if (path === "/api/v1/content-metrics/m00000011" || path === "/api/v1/content-metrics/m00000011/view") return { status: 503, error: "Synthetic metrics unavailable" };
+  if (path === "/api/v1/ratings/mod/m00000011") return { status: 503, error: "Synthetic ratings unavailable" };
+  if (path === "/api/v1/comment-targets/mod/m00000011/comments") return { data: { items: [], total: 0, nextCursor: "", capabilities: { canCreate: false } } };
+}
+
 test("OCT03 FS011 all six corrected upload notices wait for security scanning and pending files stay disabled", { timeout: 60_000 }, async () => {
   for (const [locale, notice] of [
     ["de-DE", "Die Datei wurde hochgeladen. Nach erfolgreicher Sicherheitsprüfung steht sie zum Download bereit."],
@@ -652,14 +663,8 @@ test("OCT03 FS011 all six corrected upload notices wait for security scanning an
     const basePath = "/api/v1/projects/mod/m00000011/files";
     const browser = await fixture.page(({ path, method, url, body }) => {
       if (path === "/api/v1/auth/me") return { data: actor("upload011", ["project.file.upload"]) };
-      if (path === "/api/v1/mods/upload-notice") return { data: {
-        id: "m00000011", uniqueId: "m00000011", siteId: "upload-notice", primaryName: "Synthetic upload notice", secondaryName: "", abbreviation: "SN", summary: "", modIds: [], defaultLocale: "en-US", localizations: [], environment: "bothRequired", primaryCategory: "utility", compatibilities: [{ loader: "fabric", versions: ["1.21"] }], officialStatus: "active", sourceStatus: "closed", license: "MIT", curseforgeProjectId: "", modrinthProjectId: "", githubProjectPath: "", iconUrl: "", bodyMarkdown: "", searchKeywords: [], submissionMethod: "manual", reviewStatus: "approved", createdAt: "2026-10-03T00:00:00Z", updatedAt: "2026-10-03T00:00:00Z", tags: [], authors: [], links: [], relationshipGroups: [], galleryImages: [],
-      } };
-      if (path === "/api/v1/content/m00000011") return { status: 404, error: "No synthetic localized business content" };
-      if (path === "/api/v1/projects/m00000011/follow") return { data: { followed: false, notificationsEnabled: false } };
-      if (path === "/api/v1/content-metrics/m00000011" || path === "/api/v1/content-metrics/m00000011/view") return { status: 503, error: "Synthetic metrics unavailable" };
-      if (path === "/api/v1/ratings/mod/m00000011") return { status: 503, error: "Synthetic ratings unavailable" };
-      if (path === "/api/v1/comment-targets/mod/m00000011/comments") return { data: { items: [], total: 0, nextCursor: "", capabilities: { canCreate: false } } };
+      const detail = downloadProjectReply(path);
+      if (detail) return detail;
       if (path === basePath && method === "GET") return { data: { items: registered && url.searchParams.get("source") === "internal" ? [file] : [], source: url.searchParams.get("source"), limit: 20, hasMore: false, nextCursor: "", versions: ["1.21"], loaders: ["fabric"], providers: { internal: true, modrinth: false, curseforge: false }, warnings: {}, canUpload: true, uploadPermission: "project.file.upload" } };
       if (path === `${basePath}/uploads/presign`) {
         presigns++;
@@ -675,6 +680,7 @@ test("OCT03 FS011 all six corrected upload notices wait for security scanning an
         assert.equal(input.versionName, "1.0");
         assert.deepEqual(input.gameVersions, ["1.21"]);
         assert.deepEqual(input.loaders, ["fabric"]);
+        if (locale === "de-DE" && registrations === 1) return { status: 503, code: "HTTP_503", error: "Registration temporarily unavailable" };
         registered = true;
         return { data: file };
       }
@@ -691,11 +697,17 @@ test("OCT03 FS011 all six corrected upload notices wait for security scanning an
       await form.locator('input[type="file"]').setInputFiles({ name: "fixture.jar", mimeType: "application/java-archive", buffer: Buffer.from("synthetic") });
       await form.locator('input[placeholder="1.0.0"]').fill("1.0");
       await form.locator('button[type="submit"]').click();
+      if (locale === "de-DE") {
+        await form.locator("p.mt-4").waitFor();
+        assert.equal(await form.locator('input[type="file"]').evaluate((element: HTMLInputElement) => element.files?.[0]?.name), "fixture.jar");
+        await form.locator('button[type="submit"]').click();
+      }
       await page.getByText(notice, { exact: true }).waitFor();
+      assert.equal(await form.locator('input[type="file"]').inputValue(), "");
       const row = page.locator("div.flex.flex-col.gap-3").filter({ has: page.getByText("Synthetic pending file", { exact: true }) });
       assert.equal(await row.locator("button.button-primary").isDisabled(), true, `${locale} must keep pending content unavailable`);
       assert.equal(await page.locator("html").getAttribute("lang"), locale);
-      assert.equal(presigns, 1); assert.equal(registrations, 1); assert.equal(downloads, 0);
+      assert.equal(presigns, 1); assert.equal(registrations, locale === "de-DE" ? 2 : 1); assert.equal(downloads, 0);
     } finally { await browser.close(); }
   }
 });
@@ -728,6 +740,43 @@ test("currency icons resolve raw item identifiers by kind and exact resource IDs
       await viewed;
     }
     assert.deepEqual([...requests].sort(), [["fixture:copper", "minecraft.item"], ["fluid00001", null]]);
+  } finally { await browser.close(); }
+});
+
+test("download source failures preserve other files and resume the exact provider cursor", { timeout: 30_000 }, async () => {
+  const requests = { internal: [] as string[], curseforge: [] as string[], modrinth: [] as string[] };
+  const browser = await fixture.page(({ path, url, method }) => {
+    if (path === "/api/v1/auth/me") return { status: 401, code: "UNAUTHENTICATED", error: "Guest" };
+    const detail = downloadProjectReply(path);
+    if (detail) return detail;
+    if (path !== "/api/v1/projects/mod/m00000011/files" || method !== "GET") return;
+    const source = url.searchParams.get("source");
+    assert.ok(source === "internal" || source === "curseforge" || source === "modrinth");
+    const cursor = url.searchParams.get("cursor") || "";
+    requests[source].push(cursor);
+    if (source === "curseforge" && requests.curseforge.length === 1) return { status: 503, code: "HTTP_503", error: "Upstream request failed" };
+    const warning = source === "modrinth" && cursor === "next-modrinth" && requests.modrinth.length === 2;
+    const id = source + (cursor ? "-second" : "-first");
+    const file = { id, source, displayName: id, fileName: id + ".jar", versionName: "1.0", releaseChannel: "release", gameVersions: ["1.21"], loaders: ["fabric"], publishedAt: "2026-10-03T00:00:00Z", sizeBytes: 10, downloadCount: 1, downloadCountSource: source, scanStatus: "clean", downloadPath: "/downloads/" + id };
+    return { data: { source, items: warning ? [] : [file], limit: 20, hasMore: source === "modrinth" && !cursor, nextCursor: source === "modrinth" && !cursor ? "next-modrinth" : "", versions: ["1.21"], loaders: ["fabric"], providers: { internal: true, modrinth: true, curseforge: true }, warnings: warning ? { modrinth: "Upstream unavailable" } : {}, canUpload: false, uploadPermission: "project.file.upload" } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/mods/upload-notice?tab=downloads`);
+    await page.getByText("internal-first", { exact: true }).waitFor();
+    await page.getByText("modrinth-first", { exact: true }).waitFor();
+    const retry = (supplier: string) => page.getByRole("alert").filter({ hasText: supplier }).getByRole("button", { name: "Retry", exact: true });
+    await retry("CurseForge").click();
+    await page.getByText("curseforge-first", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Load more files", exact: true }).click();
+    await page.getByText("Modrinth is temporarily unavailable.", { exact: true }).waitFor();
+    await page.getByRole("combobox", { name: "Download source" }).selectOption("modrinth");
+    await page.getByText("modrinth-first", { exact: true }).waitFor();
+    assert.equal(await page.getByText("No downloadable files match these filters.", { exact: true }).count(), 0);
+    await retry("Modrinth").click();
+    await page.getByText("modrinth-second", { exact: true }).waitFor();
+    await page.getByText("modrinth-first", { exact: true }).waitFor();
+    assert.deepEqual(requests, { internal: [""], curseforge: ["", ""], modrinth: ["", "next-modrinth", "next-modrinth"] });
   } finally { await browser.close(); }
 });
 
