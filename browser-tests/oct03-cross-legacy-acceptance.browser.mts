@@ -744,6 +744,7 @@ for (const collection of ["mods", "modpacks", "plugins"]) test(`the ${collection
   let actorId = "editor001";
   const browser = await controlled(({ path, body }) => {
     if (path === "/api/v1/auth/me") return { data: { id: actorId, username: actorId, roleCodes: [], permissionRules: [] } };
+    if (path === "/api/v1/creator-roles") return { data: { items: [] } };
     if (path === "/api/v1/minecraft/versions") return { data: { versions: [], loaders: [] } };
     if (path === ticketPath) { uploads.push(JSON.parse(body).originalName); return held.promise; }
   });
