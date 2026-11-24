@@ -105,7 +105,7 @@ test("the parent selector and drag tree apply the same allowed category moves", 
 });
 
 test("a layout editor retries the first read and retires a pending review on account change", { timeout: 20_000 }, async () => {
-  let account = "owner-one", reads = 0, writes = 0;
+  let account = "owner-one", readUnavailable = true, writes = 0;
   const path = "/api/v1/mods/workshop/content-sections/section01/layout";
   const pending = Promise.withResolvers<void>();
   const browser = await fixture.page(async request => {
@@ -116,13 +116,14 @@ test("a layout editor retries the first read and retires a pending review on acc
       await pending.promise;
       return { data: { publicId: section.publicId, revisionId: "revision2", reviewStatus: "pending" } };
     }
-    if (++reads === 1) return { status: 503, error: "Temporary layout read failure" };
+    if (readUnavailable) return { status: 503, code: "LAYOUT_READ_UNAVAILABLE", error: "Temporary layout read failure" };
     return { data: { section, categories: [], items: [], total: 0, limit: 500, hasMore: false, nextCursor: "", capabilities: {} } };
   });
   try {
     const { page } = browser;
     await page.goto(fixture.origin + "/mods/workshop/data/sections/section01/arrange");
     await page.getByText("Temporary layout read failure", { exact: true }).waitFor();
+    readUnavailable = false;
     await page.getByRole("button", { name: "Retry", exact: true }).click();
     const started = page.waitForRequest(req => req.method() === "PATCH");
     await page.getByRole("button", { name: "Submit layout for review", exact: true }).first().click();
