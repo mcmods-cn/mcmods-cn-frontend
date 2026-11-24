@@ -79,6 +79,13 @@ function UserNetworkListSession({ network, userId }: { network: NetworkType; use
           : userNetworkPagePath(userId, network, 24, currentCursor);
         const nextPayload = await apiRequest<UserConnectionsPayload>(endpoint, {}, token || undefined);
         if (cancelled) return;
+        if (network === "blocked" && typeof nextPayload.total === "number") {
+          const lastPage = Math.max(1, Math.ceil(nextPayload.total / (nextPayload.pageSize || 24)));
+          if (page > lastPage) {
+            setPage(lastPage);
+            return;
+          }
+        }
         setPayload(nextPayload);
         setLoadFailed(false);
         setMessage("");
@@ -95,11 +102,16 @@ function UserNetworkListSession({ network, userId }: { network: NetworkType; use
     setUnblocking(true);
     try {
       await apiRequest<{ blocked: boolean }>(`/api/v1/users/${encodeURIComponent(item.id)}/block`, { method: "DELETE" }, token);
-      setPayload((current) => current ? {
-        ...current,
-        items: current.items.filter((value) => value.id !== item.id),
-        total: Math.max(0, (current.total || 0) - 1),
-      } : current);
+      if (page > 1 && payload?.items.length === 1) {
+        setPayload(null);
+        setPage(page - 1);
+      } else {
+        setPayload((current) => current ? {
+          ...current,
+          items: current.items.filter((value) => value.id !== item.id),
+          total: current.total === undefined ? undefined : Math.max(0, current.total - 1),
+        } : current);
+      }
       setProfile((current) => current ? { ...current, blocked: Math.max(0, current.blocked - 1) } : current);
       setMessage(t("user.unblockSucceeded"));
     } catch (error) {
@@ -130,9 +142,9 @@ function UserNetworkListSession({ network, userId }: { network: NetworkType; use
           ) : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t(networkEmptyKey(network))}</p>}
           {showPagination ? (
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
-              <button className="button-secondary focus-ring" disabled={network === "blocked" ? page <= 1 : cursorHistory.length <= 1} type="button" onClick={() => { setPayload(null); if (network === "blocked") setPage((value) => Math.max(1, value - 1)); else setCursorHistory(rewindUserNetworkCursor); }}>{t("common.previous")}</button>
+              <button className="button-secondary focus-ring" disabled={unblocking || (network === "blocked" ? page <= 1 : cursorHistory.length <= 1)} type="button" onClick={() => { setPayload(null); if (network === "blocked") setPage((value) => Math.max(1, value - 1)); else setCursorHistory(rewindUserNetworkCursor); }}>{t("common.previous")}</button>
               <span className="text-sm font-bold text-[var(--muted)]">{network === "blocked" ? t("user.networkPage", { page, pages }) : t("user.networkCursorPage", { page: cursorHistory.length })}</span>
-              <button className="button-secondary focus-ring" disabled={network === "blocked" ? page >= pages : !payload?.hasMore} type="button" onClick={() => { setPayload(null); if (network === "blocked") setPage((value) => Math.min(pages, value + 1)); else setCursorHistory((history) => advanceUserNetworkCursor(history, payload?.nextCursor || "")); }}>{t("common.next")}</button>
+              <button className="button-secondary focus-ring" disabled={unblocking || (network === "blocked" ? page >= pages : !payload?.hasMore)} type="button" onClick={() => { setPayload(null); if (network === "blocked") setPage((value) => Math.min(pages, value + 1)); else setCursorHistory((history) => advanceUserNetworkCursor(history, payload?.nextCursor || "")); }}>{t("common.next")}</button>
             </div>
           ) : null}
         </section>

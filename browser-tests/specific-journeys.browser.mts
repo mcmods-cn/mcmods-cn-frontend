@@ -339,3 +339,49 @@ test("the selected activity range never labels a previous total and retries its 
     assert.equal(sevenDayReads, 2);
   } finally { await browser.close(); }
 });
+
+test("removing the only blocked user on the last page returns to the remaining users", async () => {
+  const users = Array.from({ length: 25 }, (_, index) => ({ id: `user-${index + 1}`, username: `Blocked user ${index + 1}`, signature: "", avatarUrl: "" }));
+  const pages: number[] = [];
+  let deletions = 0;
+  const browser = await controlled(({ path, method, url }) => {
+    if (path === "/api/v1/users/test048u1/profile") return { data: { id: "test048u1", username: "Reviewer", isOwn: true, followers: 0, following: 0, blocked: users.length } };
+    if (path === "/api/v1/users/me/blocks") {
+      const page = Number(url.searchParams.get("page"));
+      pages.push(page);
+      return { data: { items: users.slice((page - 1) * 24, page * 24), total: users.length, page, pageSize: 24 } };
+    }
+    if (path === "/api/v1/users/user-25/block" && method === "DELETE") {
+      deletions++;
+      users.splice(24, 1);
+      return { data: { blocked: false } };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/user/test048u1/blocked`);
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    const last = page.getByRole("article").filter({ hasText: "Blocked user 25" });
+    await last.getByRole("button", { name: "Unblock" }).click();
+    await page.getByText("Blocked user 1", { exact: true }).waitFor({ timeout: 5_000 });
+    assert.equal(await page.getByRole("article").count(), 24);
+    assert.equal(await page.getByText("Blocked user 25", { exact: true }).count(), 0);
+    assert.equal(deletions, 1);
+    assert.deepEqual(pages, [1, 2, 1]);
+  } finally { await browser.close(); }
+});
+
+test("a rejected community submission shows the review decision to its author", async () => {
+  const browser = await controlled(({ path }) => {
+    if (path === "/api/v1/community/posts/testpost1") return { data: { id: "testpost1", kind: "tutorial", title: "My submission", sourceLocale: "en-US",
+      bodyMarkdown: "Tutorial draft", minecraftVersions: [], authorId: "test048u1", authorName: "Test reviewer", reviewStatus: "rejected",
+      projects: [], resources: [], canEdit: true, canResolve: false } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/tutorials/testpost1`);
+    const header = page.getByRole("heading", { name: "My submission", exact: true }).locator("xpath=ancestor::header");
+    await header.getByText("Rejected", { exact: true }).waitFor({ timeout: 5_000 });
+    assert.equal(await header.getByText("Pending review", { exact: true }).count(), 0);
+  } finally { await browser.close(); }
+});
