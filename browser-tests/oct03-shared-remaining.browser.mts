@@ -461,3 +461,36 @@ test("OCT03 PERF067 editor-application queue uses bounded cursor pages, deduplic
     assert.deepEqual(requests, ["", cursor]);
   } finally { pageRelease.resolve(); await browser.close(); }
 });
+
+test("leaving the notification owner cancels polling a queued translation", { timeout: 20_000 }, async () => {
+  let identity = "first_actor";
+  const polls: string[] = [], balanceOwners: string[] = [];
+  const pathForTask = "/api/v1/notifications/translations/job00001";
+  const release = Promise.withResolvers<void>();
+  const browser = await fixture.page(async ({ path }) => {
+    if (path === "/api/v1/auth/me") return { data: actor(identity) };
+    if (path === "/api/v1/messages/conversations") return { data: pageOf([], 30) };
+    if (path === "/api/v1/notifications") return { data: pageOf([notice(identity)]) };
+    if (path === "/api/v1/notifications/ai-balance") { balanceOwners.push(identity); return { data: balance(500) }; }
+    if (path === "/api/v1/notifications/first_actor/translate") return { data: { cached: false, taskId: "job00001" } };
+    if (path === pathForTask) { polls.push(identity); await release.promise; return { data: { status: "completed", translation: { title: "Prior result", body: "Prior body" } } }; }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/messages");
+    await page.getByText("500", { exact: true }).waitFor();
+    const first = page.waitForRequest(req => new URL(req.url()).pathname === pathForTask);
+    await page.getByRole("button", { name: "AI translate", exact: true }).click(); await first;
+    const cancelled = page.waitForEvent("requestfailed", { predicate: req => new URL(req.url()).pathname === pathForTask, timeout: 4000 });
+    void cancelled.catch(() => {});
+    identity = "second_actor";
+    await page.evaluate(() => dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:translate-fixture" })));
+    await page.getByText("Synthetic notice second_actor", { exact: true }).waitFor();
+    assert.equal((await cancelled).failure()?.errorText, "net::ERR_ABORTED");
+    release.resolve();
+    await page.getByText("500", { exact: true }).waitFor();
+    assert.deepEqual(polls, ["first_actor"]);
+    assert.deepEqual(balanceOwners, ["first_actor", "second_actor"]);
+    assert.equal(await page.getByText("Prior result").count(), 0);
+  } finally { release.resolve(); await browser.close(); }
+});

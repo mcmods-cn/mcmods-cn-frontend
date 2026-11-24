@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useEditorWrite } from "./editor/use-editor-write";
+import { waitForPolledJob } from "../_lib/job-polling.mts";
 import { apiRequest } from "../_lib/api";
 import { loadPublicUserProfile, type AITokenBalance, type OnlineStatus } from "../_lib/user-api";
 import { useAuthSnapshot } from "../_lib/auth";
@@ -116,6 +118,7 @@ function MessagesCenterSession() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const sendingMessageRef = useRef(false);
   const [translations, setTranslations] = useState<Record<string, Translation>>({});
+  const translationWrite = useEditorWrite();
   const [translatingID, setTranslatingID] = useState<string | null>(null);
   const [markingAllRead, setMarkingAllRead] = useState(false);
   const [aiBalanceSnapshot, setAIBalanceSnapshot] = useState<{ token: string; balance: AITokenBalance } | null>(null);
@@ -470,7 +473,9 @@ function MessagesCenterSession() {
   }
 
   async function translate(item: NotificationItem) {
-	if (!token || translatingID || !item.translationAllowed) return;
+    if (!token || translatingID || !item.translationAllowed) return;
+    const request = translationWrite.beginWrite();
+    if (!request) return;
     setTranslatingID(item.id);
     setStatus("");
     let balanceRefreshNeeded = false;
@@ -478,27 +483,30 @@ function MessagesCenterSession() {
     try {
       const started = await apiRequest<{ cached: boolean; taskId?: string; translation?: Translation }>(
         `/api/v1/notifications/${item.id}/translate`,
-        { method: "POST", body: JSON.stringify({ targetLocale: locale }) },
+        { method: "POST", signal: request.signal, body: JSON.stringify({ targetLocale: locale }) },
         token,
       );
+      if (request.signal.aborted) return;
       balanceRefreshNeeded = !started.cached;
       let translation = started.translation;
       if (!started.cached && started.taskId) {
-        translation = await waitForTranslation(started.taskId, token);
+        translation = await waitForTranslation(started.taskId, token, request.signal);
       }
-      if (translation) setTranslations((current) => ({ ...current, [`${locale}:${item.id}`]: translation! }));
+      if (!translation) throw new Error(t("messages.translationFailed"));
+      if (!request.signal.aborted) setTranslations((current) => ({ ...current, [`${locale}:${item.id}`]: translation! }));
     } catch (error) {
+      if (request.signal.aborted) return;
       translationFailed = true;
       setStatus(error instanceof Error ? error.message : t("messages.translationFailed"));
     } finally {
-      if (balanceRefreshNeeded) {
+      if (balanceRefreshNeeded && !request.signal.aborted) {
         try {
-          await loadBalance();
+          await loadBalance(request.signal);
         } catch (error) {
-          if (!translationFailed) setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
+          if (!translationFailed && !request.signal.aborted) setStatus(error instanceof Error ? error.message : t("messages.loadFailed"));
         }
       }
-      setTranslatingID(null);
+      if (translationWrite.finishWrite(request)) setTranslatingID(null);
     }
   }
 
@@ -738,13 +746,13 @@ function MessageState({ text, children }: { text: string; children?: React.React
   return <div className="grid min-h-56 place-items-center p-6 text-center text-sm text-[var(--muted)]"><div>{text}{children}</div></div>;
 }
 
-async function waitForTranslation(taskID: string, token: string): Promise<Translation> {
-  const deadline = Date.now() + 120_000;
-  while (Date.now() < deadline) {
-    const task = await apiRequest<{ status: string; error?: string; translation?: Translation }>(`/api/v1/notifications/translations/${taskID}`, {}, token);
-    if (task.status === "completed" && task.translation) return task.translation;
-    if (task.status === "failed") throw new Error(task.error || "AI translation failed");
-    await new Promise((resolve) => window.setTimeout(resolve, 800));
-  }
-  throw new Error("AI translation timed out");
+async function waitForTranslation(taskID: string, token: string, owner: AbortSignal): Promise<Translation> {
+  const deadline = AbortSignal.timeout(120_000);
+  const task = await waitForPolledJob(
+    signal => apiRequest<{ status: string; error?: string; translation?: Translation }>(
+      `/api/v1/notifications/translations/${encodeURIComponent(taskID)}`, { signal }, token),
+    new Set(["completed", "failed"]), () => {}, AbortSignal.any([owner, deadline]), undefined, 800,
+  );
+  if (task.status === "failed" || !task.translation) throw new Error(task.error || "AI translation failed");
+  return task.translation;
 }
