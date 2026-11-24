@@ -45,7 +45,7 @@ function CanonicalRecipeSlot({ binding, locale, scale, slot }: { binding: Recipe
   const width = slot.rect.width * scale;
   const height = slot.rect.height * scale;
   const name = resource.id || resource.rawIdentifier || resource.publicId;
-  const content = <>{icon ? <img alt="" className="h-full w-full object-contain [image-rendering:pixelated]" src={icon} /> : <span className="grid h-full w-full place-items-center font-black text-black/60">?</span>}{candidate.amount !== 1 ? <span className="absolute bottom-0 right-0 rounded bg-black/75 px-1 text-[10px] font-black text-white">{candidate.amount}</span> : null}<RecipeCandidateChanceLabel candidate={candidate} locale={locale} slot={slot} /></>;
+  const content = <>{icon ? <img alt="" className="h-full w-full object-contain [image-rendering:pixelated]" src={icon} /> : <span className="grid h-full w-full place-items-center font-black text-black/60">?</span>}{candidate.amount !== undefined && candidate.amount !== 1 ? <span className="absolute bottom-0 right-0 rounded bg-black/75 px-1 text-[10px] font-black text-white">{candidate.amount}</span> : null}<RecipeCandidateChanceLabel candidate={candidate} locale={locale} slot={slot} /></>;
   const style = { left, top, width, height };
   return <span className="absolute z-10" style={style} title={name}>{content}</span>;
 }

@@ -101,7 +101,7 @@ test("FP051 imported recipe edit opens its actual type and preserves the draft t
       }
       recipeReads++;
       if (recipeReads === 1) return { status: 503, error: "Controlled recipe resolution failure" };
-      return { data: { publicId: recipeId, recipeTypePublicId: typeId, templatePublicId: templateId, canonicalSourceId: "fixture:crafting_source", applicableVersions: ["1.21"], defaultLocale: "en-US", localizations: [{ locale: "en-US", name: "Synthetic imported recipe", summary: "", contentMarkdown: "", provenance: "import", reviewStatus: "approved", editable: true }], publishedRevisionId: "revision-before", reviewStatus: "approved", definition: {}, bindings: { result: { candidates: [{ resourcePublicId: "resource01", canonicalId: "fixture:item", kindCode: "minecraft.item", name: "Synthetic item", amount: 1 }] } } } };
+      return { data: { publicId: recipeId, recipeTypePublicId: typeId, templatePublicId: templateId, canonicalSourceId: "fixture:crafting_source", applicableVersions: ["1.21"], defaultLocale: "en-US", localizations: [{ locale: "en-US", name: "Synthetic imported recipe", summary: "", contentMarkdown: "", provenance: "import", reviewStatus: "approved", editable: true }], publishedRevisionId: "revision-before", reviewStatus: "approved", definition: {}, bindings: { result: { candidates: [{ resourcePublicId: "resource01", canonicalId: "fixture:item", kindCode: "minecraft.item", name: "Synthetic item", amount: null }] } } } };
     }
     if (path === "/api/v1/recipe-types") { typeOptionsStarted.resolve(); return typeOptions.promise; }
     if (path === "/api/v1/catalog/recipe-source-versions") return { data: { items: [] } };
@@ -135,7 +135,14 @@ test("FP051 imported recipe edit opens its actual type and preserves the draft t
     await typeSelect.locator(`option[value="${typeId}"]`).waitFor({ state: "attached" });
     assert.equal(await typeSelect.inputValue(), typeId);
     assert.equal(await popup.getByLabel("Canonical source ID", { exact: true }).inputValue(), "fixture:crafting_source");
+    const amount = popup.getByLabel("Amount", { exact: true });
+    assert.equal(await amount.inputValue(), "", "unknown imported amounts must not become one");
     await name.fill("Edited imported recipe");
+    assert.equal(await popup.getByRole("button", { name: "Save", exact: true }).isDisabled(), true);
+    await amount.fill("0");
+    assert.equal(await amount.inputValue(), "0");
+    assert.equal(await popup.getByRole("button", { name: "Save", exact: true }).isDisabled(), true);
+    await amount.fill("2.5");
     await popup.getByRole("button", { name: "Save", exact: true }).click();
     await popup.getByText("Controlled recipe write failure", { exact: true }).waitFor();
     assert.equal(await name.inputValue(), "Edited imported recipe", "An unsuccessful mutation keeps the user's input");
@@ -149,6 +156,7 @@ test("FP051 imported recipe edit opens its actual type and preserves the draft t
       assert.equal(write.templatePublicId, templateId);
       assert.equal(write.baseRevisionId, "revision-before");
       assert.deepEqual(write.applicableVersionIds, ["1.21"]);
+      assert.equal((write.bindings as Record<string, { candidates: { amount: number }[] }>).result.candidates[0].amount, 2.5);
       assert.deepEqual(write.localizations, [{ locale: "en-US", name: "Edited imported recipe", summary: "", contentMarkdown: "" }]);
     }
     assert.deepEqual(popupErrors, []);

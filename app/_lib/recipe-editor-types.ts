@@ -68,7 +68,7 @@ export type RecipeSourceVersionOption = {
 
 export type RecipeCandidate = {
   resource: CatalogResourceRef;
-  amount: number;
+  amount?: number;
   probability?: number;
   byproduct?: boolean;
   definition?: Record<string, unknown>;

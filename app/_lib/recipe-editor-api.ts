@@ -114,7 +114,7 @@ export async function loadRecipe(publicId: string, token = "", signal?: AbortSig
               unresolved,
               rawIdentifier: unresolved ? canonicalId : undefined,
             },
-            amount: numberValue(item.amount, 1),
+            amount: optionalNumber(item.amount),
             probability,
             byproduct: item.byproduct === true,
             definition: objectValue(item.definition),
@@ -295,7 +295,7 @@ function numberValue(value: unknown, fallback = 0) {
 }
 
 function optionalNumber(value: unknown) {
-  if (value === null || value === undefined || value === "") return undefined;
+  if (typeof value !== "number" && !(typeof value === "string" && value.trim())) return undefined;
   const number = numberValue(value, Number.NaN);
   return Number.isFinite(number) ? number : undefined;
 }

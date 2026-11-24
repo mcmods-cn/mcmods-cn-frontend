@@ -287,7 +287,7 @@ export function RecipeEditor({
     setMessage("");
     try {
       const definition = preserveRecipeDefinition(draft.definition);
-      const payload = recipeMutation(draft, selectedTemplate, versions, dirtyLocales, contentDefaultLocale, reason, definition);
+      const payload = recipeMutation(draft, selectedTemplate, versions, dirtyLocales, contentDefaultLocale, reason, definition, labels.invalidAmount);
       const result = await saveRecipe(draft.recipeTypePublicId, draft.publicId, payload, token);
       const next = { ...draft, publicId: result.objectPublicId || draft.publicId, definition, publishedRevisionId: result.reviewStatus === "approved" ? result.revisionId : draft.publishedRevisionId };
       setDraft(next);
@@ -409,7 +409,7 @@ function CandidateEditor({ candidate, role, index, labels, onChange, onRemove }:
   const percent = candidate.probability === undefined ? "" : round(candidate.probability * 100);
   return <article className="grid gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-3 lg:grid-cols-[minmax(0,1fr)_140px_150px_130px_auto] lg:items-end">
     <div className="min-w-0"><CatalogResourceIdentity labels={labels.resourcePicker} resource={candidate.resource} /><span className="sr-only">{index + 1}</span></div>
-    <label className="grid gap-2 text-sm font-bold">{labels.amount}<input className="field" min="0.000001" step="any" type="number" value={candidate.amount} onChange={(event) => onChange({ amount: Number(event.target.value) })} /></label>
+    <label className="grid gap-2 text-sm font-bold">{labels.amount}<input className="field" min="0" step="any" type="number" value={candidate.amount ?? ""} onChange={(event) => onChange({ amount: event.target.value === "" ? undefined : event.target.valueAsNumber })} /></label>
     {role === "output" ? <label className="grid gap-2 text-sm font-bold">{labels.probabilityPercent}<input className="field" max={100} min={0} step="any" type="number" value={percent} onChange={(event) => onChange({ probability: probabilityFromPercent(event.target.value) })} /></label> : <span />}
     {role === "output" ? <label className="flex min-h-11 items-center gap-2 rounded-md border border-[var(--line)] bg-[var(--panel)] px-3 text-sm font-bold"><input checked={candidate.byproduct === true} type="checkbox" onChange={(event) => onChange({ byproduct: event.target.checked })} />{labels.byproduct}</label> : <span />}
     <button aria-label={labels.removeCandidate} className="button-secondary focus-ring text-[var(--red)]" title={labels.removeCandidate} type="button" onClick={onRemove}>{labels.removeCandidate}</button>
@@ -435,7 +435,7 @@ function normalizeCandidateForRole(candidate: RecipeCandidate, role: RecipeSlotR
   return { resource: candidate.resource, amount: candidate.amount, definition: candidate.definition };
 }
 
-function recipeMutation(draft: RecipeRecord, template: RecipeTemplateRecord, versions: LocalizationVersion<RecipeLocalizedFields>[], dirtyLocales: ReadonlySet<string>, defaultLocale: Locale, reason: string, definition: Record<string, unknown>): RecipeMutation {
+function recipeMutation(draft: RecipeRecord, template: RecipeTemplateRecord, versions: LocalizationVersion<RecipeLocalizedFields>[], dirtyLocales: ReadonlySet<string>, defaultLocale: Locale, reason: string, definition: Record<string, unknown>, invalidAmount: string): RecipeMutation {
   const roles = new Map(template.slots.map((slot) => [slot.slotKey, slot.role]));
   return {
     baseRevisionId: draft.publishedRevisionId,
@@ -452,15 +452,18 @@ function recipeMutation(draft: RecipeRecord, template: RecipeTemplateRecord, ver
       const output = roles.get(slotKey) === "output";
       return [slotKey, {
         definition: binding.definition,
-        candidates: binding.candidates.map((candidate) => ({
-          ...(candidate.resource.unresolved
-            ? { rawResourceId: candidate.resource.rawIdentifier || candidate.resource.id, kindCode: candidate.resource.kind || "minecraft.item" }
-            : { resourcePublicId: candidate.resource.publicId }),
-          amount: candidate.amount,
-          ...(output && candidate.probability !== undefined ? { probability: candidate.probability } : {}),
-          ...(output ? { byproduct: candidate.byproduct === true } : {}),
-          definition: candidate.definition,
-        })),
+        candidates: binding.candidates.map((candidate) => {
+          if (!validCandidateAmount(candidate.amount)) throw new Error(invalidAmount);
+          return {
+            ...(candidate.resource.unresolved
+              ? { rawResourceId: candidate.resource.rawIdentifier || candidate.resource.id, kindCode: candidate.resource.kind || "minecraft.item" }
+              : { resourcePublicId: candidate.resource.publicId }),
+            amount: candidate.amount,
+            ...(output && candidate.probability !== undefined ? { probability: candidate.probability } : {}),
+            ...(output ? { byproduct: candidate.byproduct === true } : {}),
+            definition: candidate.definition,
+          };
+        }),
       }];
     })),
   };
@@ -500,6 +503,10 @@ function hasRecipeLocalizedContent(fields: RecipeLocalizedFields) {
   return Boolean(fields.name.trim() || fields.summary.trim() || fields.contentMarkdown.trim());
 }
 
+function validCandidateAmount(amount: number | undefined): amount is number {
+  return typeof amount === "number" && Number.isFinite(amount) && amount > 0;
+}
+
 function validateRecipe(
   draft: RecipeRecord,
   template: RecipeTemplateRecord | undefined,
@@ -524,7 +531,7 @@ function validateRecipe(
     const candidates = draft.bindings[slot.slotKey]?.candidates ?? [];
     for (const candidate of candidates) {
       if (!candidate.resource.publicId) errors.push(`${slot.slotKey}: ${labels.required}`);
-      if (!Number.isFinite(candidate.amount) || candidate.amount <= 0) errors.push(`${slot.slotKey}: ${labels.invalidAmount}`);
+      if (!validCandidateAmount(candidate.amount)) errors.push(`${slot.slotKey}: ${labels.invalidAmount}`);
       if (slot.role === "output" && candidate.probability !== undefined && (!Number.isFinite(candidate.probability) || candidate.probability < 0 || candidate.probability > 1)) errors.push(`${slot.slotKey}: ${labels.invalidProbability}`);
     }
   }
