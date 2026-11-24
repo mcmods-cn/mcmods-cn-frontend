@@ -1,5 +1,6 @@
 "use client";
 
+import { projectTextOverflow } from "../_lib/project-text-limits.mts";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -281,6 +282,11 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
       setDefaultNameValidationAttempt((attempt) => attempt + 1);
       return;
     }
+    const limit = projectTextOverflow(snapshot, snapshot.secondaryName);
+    if (limit) {
+      setMessage(t("projectSubmission.characterLimit", { field: t(`mods.submission.fields.${limit.field}`), count: limit.limit }));
+      return;
+    }
     await persistSubmission(snapshot, changeReason);
   }
 
@@ -390,11 +396,11 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
           <div className="grid gap-4 md:grid-cols-2">
             <Field label={t("mods.submission.fields.siteId")} required hint={t("mods.submission.hints.siteId")}><input className="field font-mono" required maxLength={100} pattern="[a-z0-9](?:[a-z0-9_-]{0,98}[a-z0-9])?" value={draft.siteId} onChange={(event) => setDraft({ ...draft, siteId: normalizeProjectSiteIdInput(event.target.value) })} /></Field>
             {uniqueId ? <Field label={t("mods.submission.fields.uniqueId")} hint={t("mods.submission.hints.uniqueId")}><input className="field font-mono" readOnly value={uniqueId} /></Field> : null}
-            <Field label={t("mods.submission.fields.primaryName")} required hint={t("mods.submission.hints.primaryName")}><input className="field" required maxLength={160} value={draft.primaryName} onChange={(event) => setDraft({ ...draft, primaryName: event.target.value })} /></Field>
-            <Field label={`${t("mods.submission.fields.secondaryName")} (${selectedLocale})`} hint={t("mods.submission.hints.secondaryName")}><input ref={localizedNameInput} className="field" maxLength={160} value={localized.name} onChange={(event) => setDraft(updateModLocalization(draft, selectedLocale, { name: event.target.value }))} /></Field>
+            <Field label={t("mods.submission.fields.primaryName")} required hint={t("mods.submission.hints.primaryName")}><input className="field" required value={draft.primaryName} onChange={(event) => setDraft({ ...draft, primaryName: event.target.value })} /></Field>
+            <Field label={`${t("mods.submission.fields.secondaryName")} (${selectedLocale})`} hint={t("mods.submission.hints.secondaryName")}><input ref={localizedNameInput} className="field" value={localized.name} onChange={(event) => setDraft(updateModLocalization(draft, selectedLocale, { name: event.target.value }))} /></Field>
             <Field label={t("mods.submission.fields.abbreviation")} hint={t("mods.submission.hints.abbreviation")}><input className="field" maxLength={32} pattern="[\x21-\x7E]*" value={draft.abbreviation} onChange={(event) => setDraft({ ...draft, abbreviation: event.target.value })} /></Field>
           </div>
-          <Field label={`${t("mods.submission.fields.summary")} (${selectedLocale})`} hint={t("mods.submission.hints.summary")}><textarea className="field min-h-24 resize-y" maxLength={500} value={localized.summary} onChange={(event) => setDraft(updateModLocalization(draft, selectedLocale, { summary: event.target.value }))} /></Field>
+          <Field label={`${t("mods.submission.fields.summary")} (${selectedLocale})`} hint={t("mods.submission.hints.summary")}><textarea className="field min-h-24 resize-y" value={localized.summary} onChange={(event) => setDraft(updateModLocalization(draft, selectedLocale, { summary: event.target.value }))} /></Field>
           <div className="mt-4 flex flex-wrap items-center gap-5 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
             <div className="grid h-32 w-32 shrink-0 place-items-center overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--panel)]">
               {draft.iconUrl

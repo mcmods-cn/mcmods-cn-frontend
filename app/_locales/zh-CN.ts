@@ -1412,6 +1412,7 @@ const zhCN = {
     saveFailed: "无法保存内容语言偏好。",
   },
   projectSubmission: {
+    characterLimit: "{field}最多可填写 {count} 个字符。",
     title: "添加{project}",
     chooseMethod: "请选择添加方式。第三方导入最终会填入与手动添加相同的资料字段，并允许在提交前检查和补充。",
   },

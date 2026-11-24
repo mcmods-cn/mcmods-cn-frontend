@@ -1412,6 +1412,7 @@ const en = {
     saveFailed: "Content language preferences could not be saved.",
   },
   projectSubmission: {
+    characterLimit: "{field} can contain up to {count} characters.",
     title: "Add {project}",
     chooseMethod: "Choose how to add this project. Third-party imports fill the same fields as the manual form and can be reviewed before submission.",
   },
