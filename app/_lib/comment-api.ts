@@ -227,6 +227,7 @@ export function setCommentPinned(commentId: string, pinned: boolean, token: stri
 export function loadMyCommentWatches(
   token: string,
   options: { sort?: string; filter?: string; cursor?: string; limit?: number } = {},
+  signal?: AbortSignal,
 ) {
   const query = new URLSearchParams({
     sort: options.sort || "activity",
@@ -236,7 +237,7 @@ export function loadMyCommentWatches(
   if (options.cursor) query.set("cursor", options.cursor);
   return apiRequest<{ items: CommentWatchListItem[]; nextCursor: string }>(
     `/api/v1/users/me/comment-watches?${query}`,
-    {},
+    { signal },
     token,
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CommentWatchListItem,
   loadMyCommentWatches,
@@ -14,54 +14,44 @@ import { resolveCommentWatchMute } from "../_lib/comment-watch-mute.mts";
 
 export function UserCommentWatchesPanel({ token }: { token: string }) {
   const { locale, t } = useI18n();
-  const [items, setItems] = useState<CommentWatchListItem[]>([]);
   const [sort, setSort] = useState("activity");
   const [filter, setFilter] = useState("all");
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await loadMyCommentWatches(token, { sort, filter });
-      setItems(result.items);
-      setMessage("");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("commentWatches.loadFailed"));
-    } finally {
-      setLoading(false);
-    }
-  }, [filter, sort, t, token]);
+  const [cursors, setCursors] = useState([""]);
+  const [revision, setRevision] = useState(0);
+  const [page, setPage] = useState<{ key: string; items: CommentWatchListItem[]; nextCursor: string; error?: string }>();
+  const [actionError, setActionError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const inFlight = useRef(false);
+  const cursor = cursors[cursors.length - 1];
+  const key = JSON.stringify([filter, sort, cursor, revision]);
+  const current = page?.key === key ? page : undefined;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
+    const controller = new AbortController();
+    loadMyCommentWatches(token, { sort, filter, cursor }, controller.signal).then(result => {
+      if (!controller.signal.aborted) setPage({ ...result, key });
+    }).catch(error => {
+      if (!controller.signal.aborted) setPage({ key, items: [], nextCursor: "", error: error instanceof Error ? error.message : t("commentWatches.loadFailed") });
+    });
+    return () => controller.abort();
+  }, [cursor, filter, key, sort, t, token]);
 
-  async function markRead(item: CommentWatchListItem) {
+  async function updateWatch(action: () => Promise<unknown>) {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setSaving(true);
+    setActionError("");
     try {
-      await markCommentWatchRead(item.id, token);
-      setItems((current) => current.map((value) => value.id === item.id ? { ...value, unreadCount: 0 } : value));
+      await action();
+      // Read again from the current filter: marking read and muting can
+      // change both membership and sort order, including on earlier pages.
+      setCursors([""]);
+      setRevision(value => value + 1);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("commentWatches.actionFailed"));
-    }
-  }
-
-  async function unwatch(item: CommentWatchListItem) {
-    try {
-      await setCommentWatch(item.comment.id, false, token);
-      setItems((current) => current.filter((value) => value.id !== item.id));
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("commentWatches.actionFailed"));
-    }
-  }
-
-  async function mute(item: CommentWatchListItem, value: "none" | "1h" | "24h" | "7d" | "forever") {
-    try {
-      await updateCommentWatchMute(item.id, value, token);
-      await load();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("commentWatches.actionFailed"));
+      setActionError(error instanceof Error ? error.message : t("commentWatches.actionFailed"));
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
     }
   }
 
@@ -73,21 +63,22 @@ export function UserCommentWatchesPanel({ token }: { token: string }) {
           <p className="mt-1 text-sm text-[var(--muted)]">{t("commentWatches.description")}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select className="field py-2" aria-label={t("commentWatches.filter")} value={filter} onChange={(event) => setFilter(event.target.value)}>
+          <select className="field py-2" aria-label={t("commentWatches.filter")} value={filter} onChange={(event) => { setCursors([""]); setFilter(event.target.value); }}>
             <option value="all">{t("commentWatches.all")}</option>
             <option value="unread">{t("commentWatches.unread")}</option>
             <option value="muted">{t("commentWatches.muted")}</option>
           </select>
-          <select className="field py-2" aria-label={t("commentWatches.sort")} value={sort} onChange={(event) => setSort(event.target.value)}>
+          <select className="field py-2" aria-label={t("commentWatches.sort")} value={sort} onChange={(event) => { setCursors([""]); setSort(event.target.value); }}>
             <option value="activity">{t("commentWatches.sortActivity")}</option>
             <option value="created">{t("commentWatches.sortCreated")}</option>
             <option value="unread">{t("commentWatches.sortUnread")}</option>
           </select>
         </div>
       </div>
-      {message ? <p className="mt-4 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
+      {actionError ? <p className="mt-4 text-sm font-bold" role="alert">{actionError}</p> : null}
+      {current?.error ? <p className="mt-4 text-sm font-bold" role="alert">{current.error} <button className="button-secondary focus-ring" type="button" onClick={() => setRevision(value => value + 1)}>{t("common.retry")}</button></p> : null}
       <div className="mt-5 grid gap-3">
-        {items.map((item) => {
+        {current?.items.map((item) => {
           const authorName = item.comment.author.username;
           const muteState = resolveCommentWatchMute(item.mutedForever, item.mutedUntil);
           return <article className={`rounded-lg border bg-[var(--panel)] p-4 ${item.unreadCount ? "border-[var(--accent)]" : "border-[var(--line)]"}`} key={item.id}>
@@ -105,13 +96,13 @@ export function UserCommentWatchesPanel({ token }: { token: string }) {
             </dl>
             <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--line)] pt-3">
               <Link className="button-secondary focus-ring px-3 py-2 text-sm" href={`${item.target.url}#comment-${item.comment.id}`}>{t("commentWatches.view")}</Link>
-              <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={!item.unreadCount} type="button" onClick={() => void markRead(item)}>{t("commentWatches.markRead")}</button>
+              <button className="button-secondary focus-ring px-3 py-2 text-sm" disabled={saving || !item.unreadCount} type="button" onClick={() => void updateWatch(() => markCommentWatchRead(item.id, token))}>{t("commentWatches.markRead")}</button>
               <label className="flex items-center gap-2 text-xs font-bold text-[var(--muted)]">
                 {t("commentWatches.mute")}
-                <select className="field py-2" value={muteState.selection} onChange={(event) => {
+                <select className="field py-2" disabled={saving} value={muteState.selection} onChange={(event) => {
                   const value = event.target.value;
                   if (value === "until" || value === "invalid") return;
-                  void mute(item, value as "none" | "1h" | "24h" | "7d" | "forever");
+                  void updateWatch(() => updateCommentWatchMute(item.id, value as "none" | "1h" | "24h" | "7d" | "forever", token));
                 }}>
                   <option value="none">{t("commentWatches.muteNone")}</option>
                   {muteState.selection === "until" ? <option disabled value="until">{t("commentWatches.mutedUntil", { date: new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(muteState.expiresAt)) })}</option> : null}
@@ -122,13 +113,17 @@ export function UserCommentWatchesPanel({ token }: { token: string }) {
                   <option value="forever">{t("commentWatches.muteForever")}</option>
                 </select>
               </label>
-              <button className="ml-auto text-sm font-bold text-[var(--red)] hover:underline" type="button" onClick={() => void unwatch(item)}>{t("commentWatches.unwatch")}</button>
+              <button className="ml-auto text-sm font-bold text-[var(--red)] hover:underline" disabled={saving} type="button" onClick={() => void updateWatch(() => setCommentWatch(item.comment.id, false, token))}>{t("commentWatches.unwatch")}</button>
             </div>
           </article>;
         })}
-        {!loading && !items.length ? <p className="rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm font-bold text-[var(--muted)]">{t("commentWatches.empty")}</p> : null}
-        {loading ? <p className="p-6 text-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
+        {current && !current.error && !current.items.length ? <p className="rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm font-bold text-[var(--muted)]">{t("commentWatches.empty")}</p> : null}
+        {!current ? <p className="p-6 text-center text-sm font-bold text-[var(--muted)]">{t("common.loading")}</p> : null}
       </div>
+      {(cursors.length > 1 || current?.nextCursor) ? <div className="mt-4 flex justify-end gap-2">
+        <button className="button-secondary focus-ring" disabled={cursors.length === 1} type="button" onClick={() => setCursors(history => history.slice(0, -1))}>{t("common.previous")}</button>
+        <button className="button-secondary focus-ring" disabled={!current?.nextCursor} type="button" onClick={() => { if (current?.nextCursor) setCursors(history => [...history, current.nextCursor]); }}>{t("common.next")}</button>
+      </div> : null}
     </section>
   );
 }

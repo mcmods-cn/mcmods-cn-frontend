@@ -271,3 +271,45 @@ for (const [source, endpoint, fileName] of [
     } finally { await browser.close(); }
   });
 }
+
+test("private comment watches can continue an empty visible page and a stale filter cannot replace unread results", { timeout: 30_000 }, async () => {
+  const mutedStarted = Promise.withResolvers<void>();
+  const mutedReply = Promise.withResolvers<APIReply>();
+  const reads: string[] = [];
+  let marked = 0;
+  const stamp = "2026-11-01T00:00:00Z";
+  const watch = (id: string, title: string) => ({ id, comment: { id: id + "-comment", author: { username: "Test author" }, body: "Test body" },
+    target: { title, url: "/mods/fixture" }, mutedForever: false, unreadCount: 1, watchedReplies: 1, createdAt: stamp, lastActivityAt: stamp });
+  const browser = await controlled(({ path, method, url }) => {
+    if (path === "/api/v1/users/me/profile-settings" || path === "/api/v1/users/me/overview" || path === "/api/v1/users/me/notification-settings")
+      return { status: 503, error: "Independent account panel unavailable" };
+    if (path === "/api/v1/users/me/comment-watches") {
+      const filter = url.searchParams.get("filter");
+      const cursor = url.searchParams.get("cursor") ?? "";
+      reads.push(filter + "/" + cursor);
+      if (filter === "muted") { mutedStarted.resolve(); return mutedReply.promise; }
+      if (filter === "unread") return { data: { items: marked ? [] : [watch("unread", "Unread branch")], nextCursor: "" } };
+      return { data: cursor ? { items: [watch("visible", "Visible later branch")], nextCursor: "" } : { items: [], nextCursor: "opaque+/=" } };
+    }
+    if (path === "/api/v1/comment-watches/unread/read" && method === "POST") { marked++; return { data: {} }; }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/user?section=comment-watches`);
+    const panel = page.getByRole("heading", { name: "My watches", exact: true }).locator("xpath=ancestor::section[1]");
+    await panel.getByRole("button", { name: "Next", exact: true }).click();
+    await panel.getByRole("link", { name: "Visible later branch" }).waitFor();
+    await panel.getByRole("button", { name: "Previous", exact: true }).click();
+    await panel.getByRole("button", { name: "Next", exact: true }).waitFor();
+    const filter = panel.getByRole("combobox", { name: "Filter watches" });
+    await filter.selectOption("muted"); await mutedStarted.promise;
+    await filter.selectOption("unread");
+    await panel.getByRole("link", { name: "Unread branch" }).waitFor();
+    mutedReply.resolve({ data: { items: [watch("late", "Stale muted branch")], nextCursor: "" } });
+    await panel.getByRole("button", { name: "Mark read", exact: true }).click();
+    await panel.getByText("No comment branches are being watched.", { exact: true }).waitFor();
+    assert.equal(marked, 1);
+    assert.ok(reads.includes("all/opaque+/=")); assert.equal(reads.at(-1), "unread/");
+    assert.equal(await panel.getByRole("link", { name: "Stale muted branch" }).count(), 0);
+  } finally { mutedReply.resolve({ data: { items: [], nextCursor: "" } }); await browser.close(); }
+});
