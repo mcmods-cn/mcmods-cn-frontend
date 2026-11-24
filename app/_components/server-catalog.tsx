@@ -259,7 +259,7 @@ export function ServerCatalog() {
                 onClear={clearFilters}
               />
             ) : null}
-            {activeResult?.nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadedScope !== scope || loading || loadingMore} type="button" onClick={() => void loadMore()}>
+            {result?.nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadedScope !== scope || loading || loadingMore} type="button" onClick={() => void loadMore()}>
               {loadingMore ? t("common.loading") : t("servers.loadMore")}
             </button> : null}
           </section>
