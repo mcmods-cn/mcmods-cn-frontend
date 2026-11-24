@@ -159,6 +159,8 @@ const ja = {
   },
   admin: { ...en.admin, title: "管理コンソール", i18n: "多言語管理", translationManager: "翻訳管理",
     automation: { ...en.admin.automation,
+      draftUnavailable: "下書きを利用できません",
+      draftUnavailableHelp: "割り当てに計上済みの下書きが期限切れか削除されています。既存のプロジェクトを確認するか、元の下書きを復元してください。",
       batchSize: "バッチあたりのプロジェクト数",
       dailyLimit: "1 日のプロジェクト上限",
       minimumDownloads: "最小ダウンロード数",

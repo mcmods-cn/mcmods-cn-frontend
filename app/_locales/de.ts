@@ -159,6 +159,8 @@ const de = {
   },
   admin: { ...en.admin, title: "Admin-Konsole", i18n: "Mehrsprachigkeit", translationManager: "Übersetzungen",
     automation: { ...en.admin.automation,
+      draftUnavailable: "Entwurf nicht verfügbar",
+      draftUnavailableHelp: "Der bereits angerechnete Entwurf ist abgelaufen oder wurde gelöscht. Prüfe, ob das Projekt bereits existiert, oder stelle den ursprünglichen Entwurf wieder her.",
       batchSize: "Projekte pro Stapel",
       dailyLimit: "Tägliches Projektlimit",
       minimumDownloads: "Mindestanzahl an Downloads",

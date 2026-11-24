@@ -159,6 +159,8 @@ const es = {
   },
   admin: { ...en.admin, title: "Consola admin", i18n: "Gestión multilingüe", translationManager: "Gestión de traducciones",
     automation: { ...en.admin.automation,
+      draftUnavailable: "Borrador no disponible",
+      draftUnavailableHelp: "El borrador contabilizado en la cuota ha caducado o se ha eliminado. Comprueba si el proyecto ya existe o recupera el borrador original.",
       batchSize: "Proyectos por lote",
       dailyLimit: "Límite diario de proyectos",
       minimumDownloads: "Descargas mínimas",

@@ -3139,6 +3139,8 @@ const en = {
       retryDraftLoad: "Retry loading draft",
     },
     automation: {
+      draftUnavailable: "Draft unavailable",
+      draftUnavailableHelp: "The counted draft expired or was deleted. Check for an existing project or recover the original draft.",
       batchSize: "Projects per batch",
       dailyLimit: "Daily project limit",
       minimumDownloads: "Minimum downloads",

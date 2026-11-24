@@ -113,3 +113,42 @@ test("seed crawler reading, configuring, and running remain separate capabilitie
     } finally { await browser.close(); }
   }
 });
+
+test("crawler candidate details follow the last selection and explain an unavailable counted draft", async () => {
+  const firstRead = Promise.withResolvers<void>();
+  const older = Promise.withResolvers<void>();
+  const candidates = [
+    { externalProjectId: "first", status: "existing" },
+    { externalProjectId: "second", status: "draft_unavailable" },
+  ];
+  const list = { items: [], limit: 30, hasMore: false, nextCursor: "" };
+  const browser = await fixture.page(async ({ path }) => {
+    const base = "/api/v1/admin/seed-crawler";
+    if (path === "/api/v1/auth/me") return { data: actor(["seed_crawler.view"]) };
+    if (path === base) return { data: { config: { enabled: false, projectTypes: ["mod"], batchSize: 1, dailyLimit: 1, minimumDownloads: 0, intervalSeconds: 60, maxConcurrency: 1, aiDailyTokenBudget: 0, autoSubmitReview: false } } };
+    if (path === `${base}/runs`) return { data: list };
+    if (path === `${base}/candidates`) return { data: { ...list, items: candidates } };
+    if (path === `${base}/candidates/first`) { firstRead.resolve(); await older.promise; return { data: candidates[0] }; }
+    if (path === `${base}/candidates/second`) return { data: candidates[1] };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/admin`);
+    await page.locator('[data-admin-group="automation"]').click();
+    await page.locator('[data-admin-panel="seed-crawler"]').click();
+    const detailButton = (id: string) => page.getByRole("row").filter({ has: page.getByRole("cell", { name: id, exact: true }) }).getByRole("button");
+    await detailButton("first").click();
+    await firstRead.promise;
+    const stalePath = (request: { url(): string }) => new URL(request.url()).pathname.endsWith("/candidates/first");
+    const staleRequestEnded = Promise.race([page.waitForEvent("requestfailed", stalePath), page.waitForEvent("requestfinished", stalePath)]);
+    await detailButton("second").click();
+    const heading = page.getByRole("heading", { name: "Candidate details · second" });
+    await heading.waitFor();
+    older.resolve();
+    await staleRequestEnded;
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await page.getByRole("cell", { name: "Draft unavailable", exact: true }).waitFor();
+    await page.getByText(/The counted draft expired or was deleted/).waitFor();
+    assert.equal(await heading.isVisible(), true);
+  } finally { older.resolve(); await browser.close(); }
+});

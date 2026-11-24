@@ -34,6 +34,7 @@ type SeedCrawlerPage<T> = {
 type SeedCrawlerRunSummary = Record<string, unknown> & { id: string };
 type SeedCrawlerCandidateSummary = Record<string, unknown> & {
   externalProjectId: string;
+  status: string;
   firstSeenRunId: string;
   lastSeenRunId: string;
 };
@@ -73,6 +74,7 @@ export function SeedCrawlerAdminPanel({ token, canWrite, canRun }: { token: stri
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const mutationInFlight = useRef(false);
+  const detailRequest = useRef<AbortController | null>(null);
   const load = useCallback(async () => {
     try {
       const [cfg, runData, candidateData] = await Promise.all([
@@ -95,6 +97,7 @@ export function SeedCrawlerAdminPanel({ token, canWrite, canRun }: { token: stri
       setConfig(cfg.config);
       setRuns(runData);
       setCandidates(candidateData);
+      detailRequest.current?.abort();
       setCandidateDetail(undefined);
       setMessage("");
     } catch (error) {
@@ -103,6 +106,7 @@ export function SeedCrawlerAdminPanel({ token, canWrite, canRun }: { token: stri
   }, [token]);
   useEffect(() => {
     queueMicrotask(() => void load());
+    return () => detailRequest.current?.abort();
   }, [load]);
   async function save() {
     if (!canWrite || !config || mutationInFlight.current) return;
@@ -183,16 +187,19 @@ export function SeedCrawlerAdminPanel({ token, canWrite, canRun }: { token: stri
   async function selectSeedCandidate(item: Record<string, unknown>) {
     const externalProjectId = String(item.externalProjectId || "");
     if (!externalProjectId) return;
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
+    setCandidateDetail(undefined);
     try {
-      setCandidateDetail(
-        await apiRequest<SeedCrawlerCandidateDetail>(
-          `/api/v1/admin/seed-crawler/candidates/${encodeURIComponent(externalProjectId)}`,
-          {},
-          token,
-        ),
+      const detail = await apiRequest<SeedCrawlerCandidateDetail>(
+        `/api/v1/admin/seed-crawler/candidates/${encodeURIComponent(externalProjectId)}`,
+        { signal: controller.signal },
+        token,
       );
+      if (!controller.signal.aborted) setCandidateDetail(detail);
     } catch (error) {
-      setMessage(errorMessage(error));
+      if (!controller.signal.aborted) setMessage(errorMessage(error));
     }
   }
   if (!config) return <Empty text={message || t("common.loading")} />;
@@ -298,7 +305,9 @@ export function SeedCrawlerAdminPanel({ token, canWrite, canRun }: { token: stri
       ) : null}
       <RecordTable
         title={t("admin.automation.candidates")}
-        items={candidates.items}
+        items={candidates.items.map(item => item.status === "draft_unavailable"
+          ? { ...item, status: t("admin.automation.draftUnavailable") }
+          : item)}
         onSelect={(item) => void selectSeedCandidate(item)}
         selectLabel={t("admin.automation.details")}
       />
@@ -320,6 +329,9 @@ export function SeedCrawlerAdminPanel({ token, canWrite, canRun }: { token: stri
             {t("admin.automation.candidateDetails")} ·{" "}
             {candidateDetail.externalProjectId}
           </h3>
+          {candidateDetail.status === "draft_unavailable" ? (
+            <p className="mt-3 text-sm">{t("admin.automation.draftUnavailableHelp")}</p>
+          ) : null}
           <pre className="mt-3 max-h-[32rem] overflow-auto rounded-lg bg-[var(--panel-subtle)] p-3 text-xs">
             {JSON.stringify(candidateDetail, null, 2)}
           </pre>

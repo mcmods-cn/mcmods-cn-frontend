@@ -159,6 +159,8 @@ const ru = {
   },
   admin: { ...en.admin, title: "Панель администрирования", i18n: "Управление языками", translationManager: "Управление переводами",
     automation: { ...en.admin.automation,
+      draftUnavailable: "Черновик недоступен",
+      draftUnavailableHelp: "Срок действия учтённого в квоте черновика истёк или он удалён. Проверьте, существует ли проект, или восстановите исходный черновик.",
       batchSize: "Проектов в пакете",
       dailyLimit: "Проектов в сутки",
       minimumDownloads: "Минимум скачиваний",

@@ -165,6 +165,8 @@ const zhTW = {
   },
   admin: { ...zhCN.admin, title: "後台管理", i18n: "多語言管理", translationManager: "翻譯管理",
     automation: { ...zhCN.admin.automation,
+      draftUnavailable: "草稿已無法使用",
+      draftUnavailableHelp: "已計入配額的草稿已過期或被刪除。請確認專案是否已存在，或還原原草稿。",
       batchSize: "每批專案數",
       dailyLimit: "每日專案上限",
       minimumDownloads: "最低下載次數",

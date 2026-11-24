@@ -3138,6 +3138,8 @@ const zhCN = {
       retryDraftLoad: "重新读取草稿",
     },
     automation: {
+      draftUnavailable: "草稿已不可用",
+      draftUnavailableHelp: "已计入配额的草稿已过期或被删除。请检查项目是否已存在，或恢复原草稿。",
       batchSize: "每批项目数",
       dailyLimit: "每日项目上限",
       minimumDownloads: "最低下载量",

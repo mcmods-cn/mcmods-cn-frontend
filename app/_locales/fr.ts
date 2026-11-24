@@ -159,6 +159,8 @@ const fr = {
   },
   admin: { ...en.admin, title: "Console admin", i18n: "Gestion multilingue", translationManager: "Gestion des traductions",
     automation: { ...en.admin.automation,
+      draftUnavailable: "Brouillon indisponible",
+      draftUnavailableHelp: "Le brouillon déjà décompté du quota a expiré ou a été supprimé. Vérifiez si le projet existe déjà ou restaurez le brouillon initial.",
       batchSize: "Projets par lot",
       dailyLimit: "Limite de projets par jour",
       minimumDownloads: "Nombre minimal de téléchargements",
