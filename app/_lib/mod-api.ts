@@ -108,7 +108,8 @@ export type BackendModRecord = {
   galleryImages: BackendModGalleryImage[];
 };
 
-export type BackendModList = { items: BackendModRecord[]; total: number };
+type BackendModCard = BackendModRecord & Pick<ModCatalogEntry, "stats">;
+export type BackendModList = { items: BackendModCard[]; total: number };
 
 export type CreateModPayload = Omit<BackendModRecord, "id" | "uniqueId" | "reviewStatus" | "submittedBy" | "createdAt" | "updatedAt" | "publishedAt" | "publishedRevisionId" | "submissionRevisionId" | "changeRequestId">;
 
@@ -151,7 +152,7 @@ export type BackendModRevisionList = {
 };
 export type BackendModRevisionComparison = { before: BackendModRevision; after: BackendModRevision; changedFields: string[] };
 
-export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEntry {
+export function backendModToCatalogEntry(record: BackendModCard): ModCatalogEntry {
   return {
     ...baseProjectCatalogEntry(record),
     uniqueId: record.uniqueId,
@@ -159,6 +160,5 @@ export function backendModToCatalogEntry(record: BackendModRecord): ModCatalogEn
     icon: record.iconUrl ? `${API_BASE_URL}/api/v1/mods/${encodeURIComponent(record.siteId)}/icon` : "",
     features: { ...emptyModFeatures, reviewed: record.reviewStatus === "approved", downloads: Boolean(record.modrinthProjectId || record.curseforgeProjectId), gallery: record.galleryImages.length > 0 },
     relationshipGroups: record.relationshipGroups,
-    stats: { downloads: 0, views: 0, favorites: 0, rating: 0, comments: 0, downloadSource: "Modrinth" },
   };
 }

@@ -119,6 +119,7 @@ const ru = {
   skins: { ...en.skins, title: "Библиотека скинов", subtitle: "Просматривайте и назначайте скины и плащи сообщества своим игровым профилям.", upload: "Загрузить внешний вид", kindSkin: "Скин", kindCape: "Плащ", playerProfiles: "Профили игроков", wardrobe: "Мой гардероб", launcherLogin: "Вход через сторонний лаунчер", saveProfile: "Сохранить профиль", deleteProfile: "Удалить профиль", visibilityPublic: "Публичный", visibilityUnlisted: "По ссылке", visibilityPrivate: "Приватный", copyAddress: "Копировать", copied: "Скопировано" },
   assetEditor: { ...en.assetEditor, back: "Назад к подробностям", skinTitle: "Редактировать скин", blueprintTitle: "Редактировать чертёж", submit: "Отправить изменения", name: "Название", introduction: "Описание", tags: "Теги", visibility: "Видимость", visibilityPublic: "Публичный", visibilityUnlisted: "По ссылке", visibilityPrivate: "Приватный", armModel: "Модель рук", modelClassic: "Классическая", modelSlim: "Тонкая", reason: "Описание изменений", loginRequired: "Войдите перед редактированием.", submitted: "Изменения отправлены. Языковые версии, требующие проверки, будут опубликованы после одобрения.", saveFailed: "Не удалось сохранить изменения.", loadFailed: "Не удалось загрузить данные редактора.", defaultReason: "Изменение локализованного содержимого" },
   mods: { ...en.mods,
+    card: { ...en.mods.card, siteDownloads: "Загрузки на сайте" },
     exportImport: {
       ...en.mods.exportImport,
       modalDescription: "Перед импортом проверяются ZIP и выбранная версия материалов.",

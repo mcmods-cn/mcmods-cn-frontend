@@ -549,16 +549,15 @@ function ModCard({ mod, view, locale, t, favorite, expanded, basePath, onToggleF
       </div>
 
       <div className={`${view === "grid" ? "mt-4 border-t border-[var(--line)] pt-4" : "border-t border-[var(--line)] pt-4 lg:border-l lg:border-t-0 lg:pl-4 lg:pt-0"}`}>
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-          <Stat label={t("mods.card.downloads")} value={formatCompact(mod.stats.downloads, locale)} />
+        {mod.stats ? <dl className="mb-4 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+          <Stat label={t("mods.card.siteDownloads")} value={formatCompact(mod.stats.downloads, locale)} />
           <Stat label={t("mods.card.favorites")} value={formatCompact(mod.stats.favorites, locale)} />
           <div className={expanded ? "contents" : "hidden sm:contents"}>
-            <Stat label={t("mods.card.rating")} value={mod.stats.rating.toFixed(1)} />
+            {mod.stats.ratingCount > 0 && mod.stats.rating != null ? <Stat label={t("mods.card.rating")} value={mod.stats.rating.toFixed(1)} /> : null}
             <Stat label={t("mods.card.comments")} value={formatCompact(mod.stats.comments, locale)} />
           </div>
-        </div>
-        <p className="mt-2 text-[10px] font-semibold text-[var(--muted)]">{t("mods.card.downloadSource", { source: mod.stats.downloadSource })}</p>
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        </dl> : null}
+        <div className="grid grid-cols-2 gap-2">
           <button className="button-primary focus-ring col-span-2 px-3 py-2 text-sm" type="button" onClick={stopAnd(openDetails)}>{t("mods.card.details")}</button>
           <button className="button-secondary focus-ring px-2 py-2 text-xs" type="button" aria-pressed={favorite} onClick={stopAnd(onToggleFavorite)}>{t(favorite ? "mods.card.favorited" : "mods.card.favorite")}</button>
           <button className="button-secondary focus-ring px-2 py-2 text-xs" type="button" onClick={stopAnd(onViewDownloads)}>{t("mods.card.viewDownloads")}</button>
@@ -578,7 +577,7 @@ function Tag({ children, accent = false }: { children: React.ReactNode; accent?:
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
-  return <div><span className="block text-[10px] font-bold text-[var(--muted)]">{label}</span><span className="font-black tabular-nums">{value}</span></div>;
+  return <div><dt className="text-[10px] font-bold text-[var(--muted)]">{label}</dt><dd className="font-black tabular-nums">{value}</dd></div>;
 }
 
 

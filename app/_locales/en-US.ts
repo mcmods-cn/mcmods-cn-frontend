@@ -1557,7 +1557,7 @@ const en = {
       favorites: "Favorites",
       rating: "Rating",
       comments: "Comments",
-      downloadSource: "{source} download count",
+      siteDownloads: "On-site downloads",
       details: "View details",
       favorite: "Favorite",
       favorited: "Favorited",

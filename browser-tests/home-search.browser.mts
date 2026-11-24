@@ -80,3 +80,55 @@ test("the homepage renders settled sections immediately and retries only failed 
     await browser.close();
   }
 });
+
+for (const collection of ["mods", "modpacks"]) {
+  test(`the ${collection} catalog shows measured site activity and keeps an absent projection distinct from zero`, async () => {
+    const base = {
+      secondaryName: "", abbreviation: "CAT", summary: "Synthetic public catalog item", environment: "bothRequired",
+      primaryCategory: "technology", officialStatus: "active", sourceStatus: "open", license: "MIT", defaultLocale: "en-US",
+      updatedAt: "2026-11-20T12:00:00Z", createdAt: "2026-11-20T12:00:00Z", reviewStatus: "approved",
+      modrinthProjectId: "example-provider-id", tags: [], authors: [], compatibilities: [], searchKeywords: [],
+      modIds: [], galleryImages: [], relationshipGroups: [], links: [], hasGallery: false,
+    };
+    const samples = [
+      { name: "Measured project", stats: { downloads: 73, views: 10, favorites: 0, comments: 2, rating: 4.5, ratingCount: 2 } },
+      { name: "Unrated project", stats: { downloads: 0, views: 0, favorites: 0, comments: 0, rating: null, ratingCount: 0 } },
+      { name: "Unmeasured project" },
+    ];
+    const reads: string[] = [];
+    const browser = await fixture.page(request => {
+      if (request.path.startsWith("/api/v1/content-metrics/")) reads.push(request.path);
+      if (request.path !== `/api/v1/${collection}`) return publicCatalog(request);
+      return { data: { total: samples.length, items: samples.map(({ name, ...projection }, i) => ({
+        ...base, id: `entry000${i}`, uniqueId: `entry000${i}`, siteId: `entry-${i}`, primaryName: name, ...projection,
+      })) } };
+    }, { viewport: { width: 1366, height: 900 } });
+    try {
+      const { page } = browser;
+      await page.goto(`${fixture.origin}/${collection}`);
+      const card = (name: string) => page.locator('article[role="link"]').filter({ hasText: name });
+      const measured = card(samples[0].name);
+      const unrated = card(samples[1].name);
+      const unmeasured = card(samples[2].name);
+      await unmeasured.waitFor();
+      const evidence = process.env.MCMODS_CATALOG_STATS_SCREENSHOTS;
+      if (evidence) {
+        await measured.screenshot({ path: `${evidence}/${collection}-desktop.png` });
+        await page.setViewportSize({ width: 390, height: 844 });
+        await measured.screenshot({ path: `${evidence}/${collection}-mobile.png` });
+        await page.setViewportSize({ width: 1366, height: 900 });
+      }
+      // Each term and value belongs to one metric, independent of hidden mobile actions.
+      const metric = (row: typeof measured, label: string) => row.locator("dt").filter({ hasText: new RegExp(`^${label}$`) }).locator("+ dd");
+      assert.equal(await metric(measured, "On-site downloads").textContent({ timeout: 4000 }), "73");
+      assert.equal(await metric(measured, "Favorites").textContent(), "0");
+      assert.equal(await metric(measured, "Comments").textContent(), "2");
+      assert.equal(await metric(measured, "Rating").textContent(), "4.5");
+      assert.equal(await metric(unrated, "On-site downloads").textContent(), "0");
+      assert.equal(await unrated.locator("dt").filter({ hasText: /^Rating$/ }).count(), 0);
+      assert.equal(await unmeasured.locator("dl, dt").count(), 0);
+      assert.equal(await unmeasured.getByText(/Modrinth download count/i).count(), 0);
+      assert.deepEqual(reads, []);
+    } finally { await browser.close(); }
+  });
+}

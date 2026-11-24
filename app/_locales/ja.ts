@@ -119,6 +119,7 @@ const ja = {
   skins: { ...en.skins, title: "スキンライブラリ", subtitle: "コミュニティのスキンとケープを閲覧・保存し、プレイヤープロフィールに適用できます。", upload: "外観をアップロード", kindSkin: "スキン", kindCape: "ケープ", playerProfiles: "プレイヤープロフィール", wardrobe: "マイワードローブ", launcherLogin: "サードパーティーランチャーログイン", saveProfile: "プロフィールを保存", deleteProfile: "プロフィールを削除", visibilityPublic: "公開", visibilityUnlisted: "限定公開", visibilityPrivate: "非公開", copyAddress: "コピー", copied: "コピー済み" },
   assetEditor: { ...en.assetEditor, back: "詳細に戻る", skinTitle: "スキンを編集", blueprintTitle: "ブループリントを編集", submit: "編集を送信", name: "名前", introduction: "紹介", tags: "タグ", visibility: "公開範囲", visibilityPublic: "公開", visibilityUnlisted: "限定公開", visibilityPrivate: "非公開", armModel: "腕モデル", modelClassic: "クラシック", modelSlim: "スリム", reason: "変更内容", loginRequired: "編集するにはログインしてください。", submitted: "送信しました。審査が必要な言語版は承認後に公開されます。", saveFailed: "変更を保存できませんでした。", loadFailed: "編集データを読み込めませんでした。", defaultReason: "ローカライズ内容の編集" },
   mods: { ...en.mods,
+    card: { ...en.mods.card, siteDownloads: "サイト内のダウンロード数" },
     exportImport: {
       ...en.mods.exportImport,
       modalDescription: "取り込む前に ZIP と対象の資料バージョンを確認します。",

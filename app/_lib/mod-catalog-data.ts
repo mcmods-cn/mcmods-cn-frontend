@@ -39,6 +39,15 @@ type ModRelationshipGroup = {
 
 type ModLoaderCompatibility = { loader: string; versions: string[] };
 
+export type ProjectCatalogStats = {
+  downloads: number;
+  views: number;
+  favorites: number;
+  comments: number;
+  ratingCount: number;
+  rating: number | null;
+};
+
 export type ModCatalogEntry = {
   siteId: string;
   uniqueId: string;
@@ -76,17 +85,11 @@ export type ModCatalogEntry = {
   links?: Array<{ type: string; url: string; note: string }>;
   relationshipGroups?: ModRelationshipGroup[];
   galleryImages?: Array<{ publicId?: string; name?: string; url?: string }>;
-  stats: {
-    downloads: number;
-    views: number;
-    favorites: number;
-    rating: number;
-    comments: number;
-    downloadSource: "Modrinth" | "CurseForge" | "Internal";
-  };
+  stats?: ProjectCatalogStats;
 };
 
 type BaseCatalogProjectSource = {
+  stats?: ProjectCatalogStats;
   siteId: string;
   primaryName: string;
   secondaryName: string;
@@ -112,7 +115,7 @@ type BaseCatalogProjectSource = {
   galleryImages?: ModCatalogEntry["galleryImages"];
 };
 
-type BaseCatalogProjectEntry = Omit<ModCatalogEntry, "uniqueId" | "modId" | "icon" | "features" | "relationshipGroups" | "stats">;
+type BaseCatalogProjectEntry = Omit<ModCatalogEntry, "uniqueId" | "modId" | "icon" | "features" | "relationshipGroups">;
 
 export const emptyModFeatures: Record<ModFeature, boolean> = {
   tutorials: false,
@@ -129,6 +132,7 @@ export const emptyModFeatures: Record<ModFeature, boolean> = {
 export function baseProjectCatalogEntry(record: BaseCatalogProjectSource): BaseCatalogProjectEntry {
   return {
     siteId: record.siteId,
+    stats: record.stats,
     name: record.primaryName,
     localizedName: record.secondaryName || record.primaryName,
     abbreviation: record.abbreviation || record.primaryName,

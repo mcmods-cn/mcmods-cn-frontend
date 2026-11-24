@@ -120,6 +120,7 @@ const zhTW = {
   skins: { ...zhCN.skins, title: "造型庫", subtitle: "瀏覽、收藏並套用社群皮膚與披風，也可透過第三方啟動器登入玩家檔案。", upload: "上傳造型", kindSkin: "皮膚", kindCape: "披風", playerProfiles: "玩家檔案", wardrobe: "我的衣櫃", launcherLogin: "第三方啟動器登入", saveProfile: "儲存檔案", deleteProfile: "刪除玩家檔案", visibilityPublic: "公開", visibilityUnlisted: "不公開列出", visibilityPrivate: "僅自己可見", copyAddress: "複製", copied: "已複製" },
   assetEditor: { ...zhCN.assetEditor, back: "返回詳情", skinTitle: "編輯皮膚", blueprintTitle: "編輯藍圖", submit: "提交編輯", name: "名稱", introduction: "介紹", tags: "標籤", visibility: "可見性", visibilityPublic: "公開", visibilityUnlisted: "不列出", visibilityPrivate: "私密", armModel: "手臂模型", modelClassic: "經典", modelSlim: "纖細", reason: "修改說明", loginRequired: "請先登入後再編輯。", submitted: "已提交；需要審核的語言版本會在審核通過後發佈。", saveFailed: "儲存失敗。", loadFailed: "讀取編輯資料失敗。", defaultReason: "編輯本地化內容" },
   mods: { ...zhCN.mods,
+    card: { ...zhCN.mods.card, siteDownloads: "站內下載次數" },
     exportImport: {
       ...zhCN.mods.exportImport,
       modalDescription: "匯入前會檢查 ZIP 與目標資料版本。",

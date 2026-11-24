@@ -119,6 +119,7 @@ const es = {
   skins: { ...en.skins, title: "Biblioteca de skins", subtitle: "Explora, guarda y equipa skins y capas de la comunidad en tus perfiles de jugador.", upload: "Subir apariencia", kindSkin: "Skin", kindCape: "Capa", playerProfiles: "Perfiles de jugador", wardrobe: "Mi armario", launcherLogin: "Inicio de sesión en lanzadores externos", saveProfile: "Guardar perfil", deleteProfile: "Eliminar perfil", visibilityPublic: "Público", visibilityUnlisted: "No listado", visibilityPrivate: "Privado", copyAddress: "Copiar", copied: "Copiado" },
   assetEditor: { ...en.assetEditor, back: "Volver a los detalles", skinTitle: "Editar skin", blueprintTitle: "Editar plano", submit: "Enviar cambios", name: "Nombre", introduction: "Introducción", tags: "Etiquetas", visibility: "Visibilidad", visibilityPublic: "Público", visibilityUnlisted: "No listado", visibilityPrivate: "Privado", armModel: "Modelo de brazos", modelClassic: "Clásico", modelSlim: "Delgado", reason: "Resumen de cambios", loginRequired: "Inicia sesión antes de editar.", submitted: "Cambios enviados. Las versiones de idioma que requieran revisión se publicarán tras su aprobación.", saveFailed: "No se pudieron guardar los cambios.", loadFailed: "No se pudieron cargar los datos de edición.", defaultReason: "Edición de contenido localizado" },
   mods: { ...en.mods,
+    card: { ...en.mods.card, siteDownloads: "Descargas en el sitio" },
     exportImport: {
       ...en.mods.exportImport,
       modalDescription: "Se comprueban el ZIP y la versión de destino antes de la importación.",

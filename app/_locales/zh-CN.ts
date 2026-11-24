@@ -1557,7 +1557,7 @@ const zhCN = {
       favorites: "收藏数",
       rating: "评分",
       comments: "评论数",
-      downloadSource: "{source} 下载量",
+      siteDownloads: "站内下载量",
       details: "查看详情",
       favorite: "收藏",
       favorited: "已收藏",

@@ -60,7 +60,7 @@ export type BackendModpackCard = Pick<BackendModpackRecord,
   "environment" | "primaryCategory" | "compatibilities" | "tags" | "searchKeywords" | "officialStatus" |
   "sourceStatus" | "license" | "curseforgeProjectId" | "modrinthProjectId" | "iconUrl" | "reviewStatus" |
   "createdAt" | "updatedAt" | "publishedAt"
-> & {
+> & Pick<ModCatalogEntry, "stats"> & {
   authors: Array<Pick<BackendModAuthor, "name" | "role">>;
   hasGallery: boolean;
 };
@@ -103,7 +103,6 @@ export function backendModpackToCatalogEntry(record: BackendModpackCard): ModCat
     icon: modpackIconURL(record),
     features: { ...emptyModFeatures, reviewed: record.reviewStatus === "approved", downloads: true, gallery: record.hasGallery },
     relationshipGroups: [],
-    stats: { downloads: 0, views: 0, favorites: 0, rating: 0, comments: 0, downloadSource: record.modrinthProjectId ? "Modrinth" : record.curseforgeProjectId ? "CurseForge" : "Internal" },
   };
 }
 

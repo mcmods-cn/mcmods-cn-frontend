@@ -119,6 +119,7 @@ const de = {
   skins: { ...en.skins, title: "Skin-Bibliothek", subtitle: "Community-Skins und Umhänge durchsuchen, sammeln und Spielerprofilen zuweisen.", upload: "Aussehen hochladen", kindSkin: "Skin", kindCape: "Umhang", playerProfiles: "Spielerprofile", wardrobe: "Meine Garderobe", launcherLogin: "Drittanbieter-Launcher-Anmeldung", saveProfile: "Profil speichern", deleteProfile: "Profil löschen", visibilityPublic: "Öffentlich", visibilityUnlisted: "Nicht gelistet", visibilityPrivate: "Privat", copyAddress: "Kopieren", copied: "Kopiert" },
   assetEditor: { ...en.assetEditor, back: "Zurück zu den Details", skinTitle: "Skin bearbeiten", blueprintTitle: "Bauplan bearbeiten", submit: "Änderungen einreichen", name: "Name", introduction: "Beschreibung", tags: "Tags", visibility: "Sichtbarkeit", visibilityPublic: "Öffentlich", visibilityUnlisted: "Nicht gelistet", visibilityPrivate: "Privat", armModel: "Armmodell", modelClassic: "Klassisch", modelSlim: "Schmal", reason: "Änderungsübersicht", loginRequired: "Bitte vor dem Bearbeiten anmelden.", submitted: "Eingereicht. Prüfpflichtige Sprachversionen werden nach der Freigabe veröffentlicht.", saveFailed: "Änderungen konnten nicht gespeichert werden.", loadFailed: "Editor-Daten konnten nicht geladen werden.", defaultReason: "Lokalisierte Inhalte bearbeitet" },
   mods: { ...en.mods,
+    card: { ...en.mods.card, siteDownloads: "Downloads auf dieser Website" },
     exportImport: {
       ...en.mods.exportImport,
       modalDescription: "Die ZIP-Datei und die Zielversion werden vor dem Import geprüft.",
