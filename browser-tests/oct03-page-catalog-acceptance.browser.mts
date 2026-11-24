@@ -86,11 +86,14 @@ test("BUG144 FP057 PERF068 recipe edits preserve nested definitions and picker s
 test("FP046 character bio remains unsaved across UI locale and successful appearance updates", { timeout: 30_000 }, async () => {
   const texture = { publicId: "skin0001", kind: "skin", model: "default", name: "Synthetic wardrobe skin", description: "", tags: [], visibility: "public", reviewStatus: "approved", textureHash: "", canEdit: false, canUse: true, inWardrobe: true, downloads: 0, createdAt: stamp };
   const profile = { publicId: "player01", uuid: "synthetic-uuid", name: "PlayerOne", bio: "Server character bio", visibility: "public", isDefault: true, skin: null, cape: null, createdAt: stamp, updatedAt: stamp };
+  const other = { ...profile, publicId: "player02", name: "PlayerTwo", isDefault: false };
   const writes: Array<Record<string, unknown>> = [];
   let profileReads = 0;
   const browser = await controlled(({ path, method, body }) => {
-    if (path === "/api/v1/skin-service") return { data: { enabled: false } };
-    if (path === "/api/v1/users/me/player-profiles") { profileReads++; return { data: { items: [profile] } }; }
+    if (path === "/api/v1/skin-service") return { data: { enabled: true, profileLimit: 2 } };
+    if (path === "/api/v1/users/me/player-profiles/player02" && method === "PUT") { assert.equal(JSON.parse(body).isDefault, true); return { data: { ...other, isDefault: true } }; }
+    if (path === "/api/v1/users/me/launcher-credential") { assert.equal(method, "PUT"); assert.equal(JSON.parse(body).password, "🟩".repeat(3)); return { data: { enabled: true } }; }
+    if (path === "/api/v1/users/me/player-profiles") { assert.equal(method, "GET"); profileReads++; return { data: { items: [profile, other] } }; }
     if (path === "/api/v1/users/me/skin-wardrobe") return { data: { items: [texture], total: 1, limit: 100, hasMore: false, nextCursor: "" } };
     if (path === "/api/v1/users/me/launcher-sessions") return { data: { items: [] } };
     if (path === "/api/v1/users/me/player-profiles/player01/textures") { assert.equal(method, "PUT"); writes.push(JSON.parse(body)); return { data: { ...profile, skin: texture } }; }
@@ -99,11 +102,31 @@ test("FP046 character bio remains unsaved across UI locale and successful appear
     const { page } = browser;
     await page.goto(`${fixture.origin}/user?section=players`);
     const bio = page.getByRole("textbox", { name: "Character bio", exact: true });
-    await bio.waitFor(); await bio.fill("Unsaved player biography");
+    await bio.waitFor();
+    await page.getByRole("button", { name: /PlayerTwo/ }).click();
+    await page.getByRole("checkbox", { name: "Make default character" }).check();
+    await page.getByRole("button", { name: "Save profile", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Close", exact: true }).click();
+    assert.equal(await page.getByText("Default character", { exact: true }).count(), 1);
+    assert.match(await page.getByRole("button", { name: /PlayerTwo/ }).innerText(), /Default character/);
+    await page.getByRole("button", { name: /PlayerOne/ }).click();
+    const save = page.getByRole("button", { name: "Save profile", exact: true });
+    await bio.fill("🟩".repeat(500)); assert.equal(await save.isEnabled(), true);
+    await bio.fill("🟩".repeat(501)); assert.equal(await save.isDisabled(), true);
+    await bio.fill("Unsaved player biography");
+    const password = page.locator('input[autocomplete="new-password"]');
+    const credential = page.getByRole("button", { name: "Set / rotate password", exact: true });
+    await password.fill("🟩".repeat(65)); assert.equal(await credential.isDisabled(), true);
+    await password.fill("🟩".repeat(3)); await credential.click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Close", exact: true }).click();
+    assert.equal(await password.inputValue(), "");
+    const name = page.getByPlaceholder("Character name", { exact: true });
+    await name.fill("AnotherPlayer"); await name.press("Enter");
+    assert.equal(await page.getByRole("button", { name: "Create", exact: true }).isDisabled(), true);
     const readsBefore = profileReads;
     await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("zh-CN");
     await page.waitForFunction(() => document.documentElement.lang === "zh-CN");
-    const chineseBio = page.locator('textarea[maxlength="500"]');
+    const chineseBio = page.getByRole("textbox", { name: "角色介绍", exact: true });
     assert.equal(await chineseBio.inputValue(), "Unsaved player biography");
     assert.equal(profileReads, readsBefore);
     await page.locator('select:has(option[value="skin0001"])').selectOption("skin0001");

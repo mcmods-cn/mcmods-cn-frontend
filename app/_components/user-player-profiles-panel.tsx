@@ -61,6 +61,13 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState("");
+  const [readable, setReadable] = useState({ service: false, profiles: false, wardrobe: false, sessions: false });
+  const alive = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const validBio = Array.from(draft.bio.trim()).length <= 500;
+  const passwordBytes = new TextEncoder().encode(launcherPassword).length;
+  const validPassword = passwordBytes >= 12 && passwordBytes <= 256;
+  const canCreate = readable.profiles && readable.service && (!service?.profileLimit || profiles.length < service.profileLimit) && playerProfileNamePattern.test(newProfileName.trim());
   const inFlight = useRef(false);
   const refreshing = useRef(false);
 
@@ -74,7 +81,9 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
       loadWardrobe(token, { limit: 100 }),
       loadLauncherSessions(token),
     ]);
+    if (!alive.current) return;
     const [serviceResult, profileResult, wardrobeResult, sessionResult] = results;
+    setReadable({ service: serviceResult.status === "fulfilled", profiles: profileResult.status === "fulfilled", wardrobe: wardrobeResult.status === "fulfilled", sessions: sessionResult.status === "fulfilled" });
     if (serviceResult.status === "fulfilled") setService(serviceResult.value);
     if (profileResult.status === "fulfilled") {
       setProfiles(profileResult.value);
@@ -126,6 +135,7 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
     setBusy("wardrobe:more");
     try {
       const page = await loadWardrobe(token, { limit: 100, cursor: wardrobeNextCursor });
+      if (!alive.current) return;
       setWardrobe((items) => {
         const byID = new Map(items.map((item) => [item.publicId, item]));
         for (const item of page.items) byID.set(item.publicId, item);
@@ -135,6 +145,7 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
       setWardrobeHasMore(page.hasMore);
       setWardrobeNextCursor(page.nextCursor);
     } catch (reason) {
+      if (!alive.current) return;
       notifySite(errorMessage(reason, t("skins.profileLoadFailed")), t("skins.wardrobe"), "danger");
     } finally {
       inFlight.current = false;
@@ -143,16 +154,18 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
   }
 
   async function createProfile() {
-    if (busy || inFlight.current || refreshing.current || !playerProfileNamePattern.test(newProfileName.trim())) return;
+    if (busy || inFlight.current || refreshing.current || !canCreate) return;
     inFlight.current = true;
     setBusy("create");
     try {
       const created = await createPlayerProfile({ name: newProfileName.trim(), visibility: "public" }, token);
+      if (!alive.current) return;
       setProfiles((items) => [...items, created]);
       setSelectedId(created.publicId);
       setNewProfileName("");
       notifySite(t("skins.profileCreated"), created.name, "success");
     } catch (reason) {
+      if (!alive.current) return;
       notifySite(errorMessage(reason, t("skins.createFailed")), t("skins.playerProfiles"), "danger");
     } finally {
       inFlight.current = false;
@@ -161,14 +174,19 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
   }
 
   async function saveProfile() {
-    if (busy || inFlight.current || refreshing.current || !selected || !playerProfileNamePattern.test(draft.name.trim())) return;
+    if (busy || inFlight.current || refreshing.current || !selected || !validBio || !playerProfileNamePattern.test(draft.name.trim())) return;
     inFlight.current = true;
     setBusy("profile");
     try {
       const updated = await updatePlayerProfile(selected.publicId, { ...draft, name: draft.name.trim() }, token);
+      if (!alive.current) return;
       replaceProfile(updated);
+      setDraft({ name: updated.name, bio: updated.bio || "", visibility: updated.visibility, isDefault: updated.isDefault });
+      if (!updated.isDefault && selected.isDefault) await reloadProfiles();
+      if (!alive.current) return;
       notifySite(t("skins.profileSaved"), updated.name, "success");
     } catch (reason) {
+      if (!alive.current) return;
       notifySite(errorMessage(reason, t("skins.saveFailed")), selected.name, "danger");
     } finally {
       inFlight.current = false;
@@ -182,9 +200,11 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
     setBusy("textures");
     try {
       const updated = await updatePlayerTextures(selected.publicId, { skinPublicId: skinId || null, capePublicId: capeId || null }, token);
+      if (!alive.current) return;
       replaceProfile(updated);
       notifySite(t("skins.textureAssignmentSaved"), updated.name, "success");
     } catch (reason) {
+      if (!alive.current) return;
       notifySite(errorMessage(reason, t("skins.saveFailed")), selected.name, "danger");
     } finally {
       inFlight.current = false;
@@ -198,11 +218,15 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
     setBusy("delete-profile");
     try {
       await deletePlayerProfile(selected.publicId, token);
+      if (!alive.current) return;
       const remaining = profiles.filter((item) => item.publicId !== selected.publicId);
       setProfiles(remaining);
       setSelectedId(remaining[0]?.publicId || "");
+      if (selected.isDefault && remaining.length) await reloadProfiles();
+      if (!alive.current) return;
       notifySite(t("skins.profileDeleted"), selected.name, "success");
     } catch (reason) {
+      if (!alive.current) return;
       notifySite(errorMessage(reason, t("skins.deleteFailed")), selected.name, "danger");
     } finally {
       inFlight.current = false;
@@ -216,10 +240,12 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
     setBusy(`wardrobe:${texture.publicId}`);
     try {
       await removeFromWardrobe(texture.publicId, token);
+      if (!alive.current) return;
       setWardrobe((items) => items.filter((item) => item.publicId !== texture.publicId));
       setWardrobeTotal((total) => Math.max(0, total - 1));
       notifySite(t("skins.wardrobeRemoved"), texture.name, "success");
     } catch (reason) {
+      if (!alive.current) return;
       notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
     } finally {
       inFlight.current = false;
@@ -233,14 +259,15 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
       setMessage(t("skins.launcherServiceUnavailable"));
       return;
     }
-    if (launcherPassword.length < 12) {
-      setMessage(t("skins.launcherPasswordTooShort"));
+    if (!validPassword) {
+      setMessage(t("skins.launcherPasswordHint"));
       return;
     }
     inFlight.current = true;
     setBusy("credential");
     try {
       const result = await saveLauncherCredential(launcherPassword, token);
+      if (!alive.current) return;
       setService((current) => current ? {
         ...current,
         launcher: {
@@ -254,6 +281,7 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
       setMessage(t("skins.credentialSaved"));
       notifySite(t("skins.credentialSaved"), t("skins.launcherLogin"), "success");
     } catch (reason) {
+      if (!alive.current) return;
       setMessage(errorMessage(reason, t("skins.saveFailed")));
     } finally {
       inFlight.current = false;
@@ -267,6 +295,7 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
     setBusy("revoke-credential");
     try {
       await deleteLauncherCredential(token);
+      if (!alive.current) return;
       setService((current) => current ? {
         ...current,
         launcher: { ...current.launcher, enabled: false },
@@ -274,6 +303,7 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
       setSessions([]);
       setMessage(t("skins.credentialRevoked"));
     } catch (reason) {
+      if (!alive.current) return;
       setMessage(errorMessage(reason, t("skins.deleteFailed")));
     } finally {
       inFlight.current = false;
@@ -287,8 +317,10 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
     setBusy(`session:${session.id}`);
     try {
       await deleteLauncherSession(session.id, token);
+      if (!alive.current) return;
       setSessions((items) => items.filter((item) => String(item.id) !== String(session.id)));
     } catch (reason) {
+      if (!alive.current) return;
       setMessage(errorMessage(reason, t("skins.deleteFailed")));
     } finally {
       inFlight.current = false;
@@ -296,13 +328,23 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
     }
   }
 
+  async function reloadProfiles() {
+    try {
+      const fresh = await loadMyPlayerProfiles(token);
+      if (alive.current) setProfiles(fresh);
+    } catch (error) {
+      if (alive.current) setMessage(errorMessage(error, t("skins.profileLoadFailed")));
+    }
+  }
+
   function replaceProfile(updated: PlayerProfile) {
-    setProfiles((items) => items.map((item) => item.publicId === updated.publicId ? updated : item));
+    setProfiles(items => items.map(item => item.publicId === updated.publicId ? updated : updated.isDefault && item.isDefault ? { ...item, isDefault: false } : item));
   }
 
   async function copyValue(kind: "root" | "authlib", value: string) {
     try {
       await navigator.clipboard.writeText(value);
+      if (!alive.current) return;
       setCopied(kind);
       window.setTimeout(() => setCopied((current) => current === kind ? "" : current), 1600);
     } catch {
@@ -326,9 +368,9 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
           <aside className="space-y-3">
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <input className="field" maxLength={16} minLength={3} pattern="[A-Za-z0-9_]{3,16}" placeholder={t("skins.profileName")} value={newProfileName} onChange={(event) => setNewProfileName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void createProfile(); } }} />
-              <button aria-label={t("common.create")} className="button-primary focus-ring" disabled={!playerProfileNamePattern.test(newProfileName.trim()) || busy === "create" || Boolean(service?.profileLimit && profiles.length >= service.profileLimit)} type="button" onClick={() => void createProfile()}>+</button>
+              <button aria-label={t("common.create")} className="button-primary focus-ring" disabled={!canCreate || busy === "create"} type="button" onClick={() => void createProfile()}>+</button>
             </div>
-            {service?.profileLimit ? <p className="text-xs text-[var(--muted)]">{t("skins.profileLimit", { used: profiles.length, limit: service.profileLimit })}</p> : null}
+            {readable.profiles && readable.service && service?.profileLimit ? <p className="text-xs text-[var(--muted)]">{t("skins.profileLimit", { used: profiles.length, limit: service.profileLimit })}</p> : null}
             <div className="grid gap-2">
               {profiles.map((profile) => (
                 <button className={`focus-ring flex items-center gap-3 rounded-lg border p-3 text-left ${selectedId === profile.publicId ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--line)] hover:border-[var(--accent)]"}`} key={profile.publicId} type="button" onClick={() => setSelectedId(profile.publicId)}>
@@ -336,7 +378,7 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
                   <span className="min-w-0"><span className="block truncate font-black">{profile.name}</span><code className="mt-1 block truncate text-[10px] text-[var(--muted)]">{profile.uuid}</code>{profile.isDefault ? <span className="mt-1 inline-block rounded bg-[var(--accent)] px-1.5 py-0.5 text-[10px] font-bold text-[var(--on-accent)]">{t("skins.defaultProfile")}</span> : null}</span>
                 </button>
               ))}
-              {!loading && profiles.length === 0 ? <p className="rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">{t("skins.noProfiles")}</p> : null}
+              {!loading && readable.profiles && profiles.length === 0 ? <p className="rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">{t("skins.noProfiles")}</p> : null}
             </div>
           </aside>
 
@@ -350,10 +392,10 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
                 <h3 className="font-black">{t("skins.profileSettings")}</h3>
                 <div className="mt-3 grid gap-3">
                   <label className="text-sm font-bold">{t("skins.profileName")}<input className="field mt-1" maxLength={16} minLength={3} pattern="[A-Za-z0-9_]{3,16}" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
-                  <label className="text-sm font-bold">{t("skins.profileBio")}<textarea className="field mt-1 min-h-20" maxLength={500} value={draft.bio} onChange={(event) => setDraft({ ...draft, bio: event.target.value })} /></label>
+                  <label className="text-sm font-bold">{t("skins.profileBio")}<textarea className="field mt-1 min-h-20" aria-invalid={!validBio} value={draft.bio} onChange={(event) => setDraft({ ...draft, bio: event.target.value })} />{!validBio && <span role="alert">{t("skins.profileBioLimit")}</span>}</label>
                   <label className="text-sm font-bold">{t("skins.visibility")}<select className="field mt-1" value={draft.visibility} onChange={(event) => setDraft({ ...draft, visibility: event.target.value as SkinVisibility })}><option value="public">{t("skins.visibilityPublic")}</option><option value="unlisted">{t("skins.visibilityUnlisted")}</option><option value="private">{t("skins.visibilityPrivate")}</option></select></label>
                   <label className="flex items-center gap-2 text-sm font-bold"><input checked={draft.isDefault} type="checkbox" onChange={(event) => setDraft({ ...draft, isDefault: event.target.checked })} />{t("skins.makeDefault")}</label>
-                  <button className="button-primary focus-ring" disabled={!playerProfileNamePattern.test(draft.name.trim()) || busy === "profile"} type="button" onClick={() => void saveProfile()}>{busy === "profile" ? t("skins.saving") : t("skins.saveProfile")}</button>
+                  <button className="button-primary focus-ring" disabled={!validBio || !playerProfileNamePattern.test(draft.name.trim()) || busy === "profile"} type="button" onClick={() => void saveProfile()}>{busy === "profile" ? t("skins.saving") : t("skins.saveProfile")}</button>
                 </div>
               </section>
               <section className="rounded-lg border border-[var(--line)] p-4">
@@ -371,30 +413,30 @@ function UserPlayerProfilesSession({ token }: { token: string }) {
       </div>
 
       <section className="surface rounded-lg p-5">
-        <div className="flex flex-wrap items-baseline justify-between gap-3"><h2 className="text-xl font-black">{t("skins.wardrobe")}</h2><span className="text-xs text-[var(--muted)]">{t("skins.wardrobeLoaded", { loaded: wardrobe.length, total: wardrobeTotal })}</span></div>
+        <div className="flex flex-wrap items-baseline justify-between gap-3"><h2 className="text-xl font-black">{t("skins.wardrobe")}</h2>{readable.wardrobe && <span className="text-xs text-[var(--muted)]">{t("skins.wardrobeLoaded", { loaded: wardrobe.length, total: wardrobeTotal })}</span>}</div>
         <p className="mt-1 text-sm text-[var(--muted)]">{t("skins.wardrobeDescription")}</p>
-        {wardrobe.length ? <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{wardrobe.map((texture) => <article className="overflow-hidden rounded-lg border border-[var(--line)]" key={texture.publicId}><Link href={`/skins/${texture.publicId}`}><SkinPreview2D className="h-48 w-full p-4" kind={texture.kind} label={texture.name} model={texture.model} src={skinTextureURL(texture)} /></Link><div className="p-3"><div className="flex items-start justify-between gap-2"><span className="min-w-0"><Link className="block truncate font-black hover:text-[var(--accent)]" href={`/skins/${texture.publicId}`}>{texture.name}</Link><span className="text-xs text-[var(--muted)]">{texture.kind === "cape" ? t("skins.kindCape") : texture.model === "slim" ? t("skins.modelSlim") : t("skins.modelDefault")}</span></span><button className="text-xs font-bold text-[var(--red)]" disabled={busy === `wardrobe:${texture.publicId}`} type="button" onClick={() => void removeWardrobeItem(texture)}>{t("common.delete")}</button></div></div></article>)}</div> : <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-10 text-center text-sm text-[var(--muted)]">{t("skins.wardrobeEmpty")}</p>}
+        {wardrobe.length ? <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{wardrobe.map((texture) => <article className="overflow-hidden rounded-lg border border-[var(--line)]" key={texture.publicId}><Link href={`/skins/${texture.publicId}`}><SkinPreview2D className="h-48 w-full p-4" kind={texture.kind} label={texture.name} model={texture.model} src={skinTextureURL(texture)} /></Link><div className="p-3"><div className="flex items-start justify-between gap-2"><span className="min-w-0"><Link className="block truncate font-black hover:text-[var(--accent)]" href={`/skins/${texture.publicId}`}>{texture.name}</Link><span className="text-xs text-[var(--muted)]">{texture.kind === "cape" ? t("skins.kindCape") : texture.model === "slim" ? t("skins.modelSlim") : t("skins.modelDefault")}</span></span><button className="text-xs font-bold text-[var(--red)]" disabled={busy === `wardrobe:${texture.publicId}`} type="button" onClick={() => void removeWardrobeItem(texture)}>{t("common.delete")}</button></div></div></article>)}</div> : readable.wardrobe ? <p className="mt-5 rounded-lg border border-dashed border-[var(--line)] p-10 text-center text-sm text-[var(--muted)]">{t("skins.wardrobeEmpty")}</p> : null}
         {wardrobeHasMore ? <div className="mt-5 text-center"><button className="button-secondary focus-ring" disabled={Boolean(busy)} type="button" onClick={() => void loadMoreWardrobe()}>{busy === "wardrobe:more" ? t("common.loading") : t("skins.wardrobeLoadMore")}</button></div> : null}
       </section>
 
       <section className="surface rounded-lg p-5">
-        <div className="flex flex-wrap items-center gap-3"><h2 className="text-xl font-black">{t("skins.launcherLogin")}</h2><span className={`rounded-full px-2.5 py-1 text-xs font-black ${service?.launcher?.enabled ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-[var(--panel-subtle)] text-[var(--muted)]"}`}>{service?.launcher?.enabled ? t("skins.launcherCredentialEnabled") : t("skins.launcherCredentialDisabled")}</span></div>
+        <div className="flex flex-wrap items-center gap-3"><h2 className="text-xl font-black">{t("skins.launcherLogin")}</h2>{readable.service && <span className={`rounded-full px-2.5 py-1 text-xs font-black ${service?.launcher?.enabled ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-[var(--panel-subtle)] text-[var(--muted)]"}`}>{service?.launcher?.enabled ? t("skins.launcherCredentialEnabled") : t("skins.launcherCredentialDisabled")}</span>}</div>
         <p className="mt-1 max-w-4xl text-sm leading-6 text-[var(--muted)]">{t("skins.launcherDescription")}</p>
         {service?.launcher?.accountUuid ? <p className="mt-2 text-xs text-[var(--muted)]">{t("skins.launcherAccountId")}: <code>{service.launcher.accountUuid}</code></p> : null}
-        {!launcherServiceEnabled ? <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm leading-6 text-amber-800 dark:text-amber-200">{t("skins.launcherServiceUnavailable")}</p> : null}
+        {readable.service && !launcherServiceEnabled ? <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm leading-6 text-amber-800 dark:text-amber-200">{t("skins.launcherServiceUnavailable")}</p> : null}
         <div className="mt-5 grid gap-5 xl:grid-cols-2">
           <div className="grid content-start gap-4">
             {launcherServiceEnabled ? <><CopyCard copied={copied === "root"} label={t("skins.serviceAddress")} value={apiRoot} onCopy={() => void copyValue("root", apiRoot)} /><CopyCard copied={copied === "authlib"} draggable label={t("skins.authlibValue")} value={authlibValue} onCopy={() => void copyValue("authlib", authlibValue)} /></> : null}
             <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm leading-6 text-amber-800 dark:text-amber-200">{t("skins.launcherPasswordSecurity")}</p>
             <label className="text-sm font-black">{t("skins.launcherPassword")}
-              <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2"><input autoComplete="new-password" className="field" disabled={!launcherServiceEnabled} maxLength={256} minLength={12} type={showPassword ? "text" : "password"} value={launcherPassword} onChange={(event) => setLauncherPassword(event.target.value)} /><button className="button-secondary focus-ring" disabled={!launcherServiceEnabled} type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? t("login.hidePassword") : t("login.showPassword")}</button></div>
+              <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-2"><input autoComplete="new-password" className="field" disabled={!launcherServiceEnabled} aria-invalid={Boolean(launcherPassword) && !validPassword} type={showPassword ? "text" : "password"} value={launcherPassword} onChange={(event) => setLauncherPassword(event.target.value)} /><button className="button-secondary focus-ring" disabled={!launcherServiceEnabled} type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? t("login.hidePassword") : t("login.showPassword")}</button></div>
               <span className="mt-2 block text-xs font-normal text-[var(--muted)]">{t("skins.launcherPasswordHint")}</span>
             </label>
-            <div className="flex flex-wrap gap-2"><button className="button-primary focus-ring" disabled={!launcherServiceEnabled || launcherPassword.length < 12 || launcherPassword.length > 256 || busy === "credential"} type="button" onClick={() => void updateCredential()}>{t("skins.saveCredential")}</button><button className="button-secondary focus-ring border-[var(--red)] text-[var(--red)]" disabled={!service?.launcher?.enabled || busy === "revoke-credential"} type="button" onClick={() => void revokeCredential()}>{t("skins.revokeCredential")}</button></div>
+            <div className="flex flex-wrap gap-2"><button className="button-primary focus-ring" disabled={!launcherServiceEnabled || !validPassword || busy === "credential"} type="button" onClick={() => void updateCredential()}>{t("skins.saveCredential")}</button><button className="button-secondary focus-ring border-[var(--red)] text-[var(--red)]" disabled={!service?.launcher?.enabled || busy === "revoke-credential"} type="button" onClick={() => void revokeCredential()}>{t("skins.revokeCredential")}</button></div>
           </div>
           <div>
             <h3 className="font-black">{t("skins.launcherSessions")}</h3>
-            <div className="mt-3 grid gap-2">{sessions.map((session) => <div className="rounded-lg border border-[var(--line)] p-3" key={String(session.id)}><div className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate">{session.deviceName || session.userAgent || t("skins.unknownDevice")}</strong><span className="mt-1 block text-xs text-[var(--muted)]">{t("skins.lastSeen")}: {formatTime(session.lastSeenAt || session.updatedAt || session.createdAt, locale)}{session.ip ? ` · ${session.ip}` : ""}</span></span><button className="text-xs font-bold text-[var(--red)]" disabled={busy === `session:${session.id}`} type="button" onClick={() => void revokeSession(session)}>{t("skins.revokeSession")}</button></div></div>)}{sessions.length === 0 ? <p className="rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("skins.noSessions")}</p> : null}</div>
+            <div className="mt-3 grid gap-2">{sessions.map((session) => <div className="rounded-lg border border-[var(--line)] p-3" key={String(session.id)}><div className="flex items-start justify-between gap-3"><span className="min-w-0"><strong className="block truncate">{session.deviceName || session.userAgent || t("skins.unknownDevice")}</strong><span className="mt-1 block text-xs text-[var(--muted)]">{t("skins.lastSeen")}: {formatTime(session.lastSeenAt || session.updatedAt || session.createdAt, locale)}{session.ip ? ` · ${session.ip}` : ""}</span></span><button className="text-xs font-bold text-[var(--red)]" disabled={busy === `session:${session.id}`} type="button" onClick={() => void revokeSession(session)}>{t("skins.revokeSession")}</button></div></div>)}{readable.sessions && sessions.length === 0 ? <p className="rounded-lg border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">{t("skins.noSessions")}</p> : null}</div>
           </div>
         </div>
       </section>
