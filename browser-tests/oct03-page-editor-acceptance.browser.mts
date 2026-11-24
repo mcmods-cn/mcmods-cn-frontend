@@ -16,6 +16,30 @@ const common: APIHandler = ({ path }) => {
 const controlled = (handler: APIHandler) => fixture.page(async request => await handler(request) ?? common(request));
 const actor = (id: string) => ({ id, username: id, roleCodes: [], permissionRules: [], permissionVersion: 1, rbacVersion: 1 });
 
+test("Markdown playground renders editable inline and display formulas with the shipped math font", async () => {
+  const browser = await controlled(({ path }) => {
+    if (path === "/api/v1/auth/me") return { status: 401, error: "Guest workspace" };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/tools/playground`);
+    const editor = page.locator('textarea[spellcheck="false"]');
+    const preview = page.locator("article.markdown-preview");
+    await editor.fill("Water $H_2O$\n\n$$\n\\frac{1}{2}\n$$");
+    await preview.locator("math msub").waitFor();
+    await preview.locator('math[display="block"] mfrac').waitFor();
+    assert.deepEqual(await preview.locator("math annotation").allTextContents(), ["H_2O", "\\frac{1}{2}"]);
+    const fonts = await page.evaluate(async () => (await document.fonts.load("16px KaTeX_Main", "x")).map(font => font.status));
+    assert(fonts.length > 0 && fonts.every(status => status === "loaded"), "the bundled math font must load");
+    await editor.fill("$x_{1$");
+    await preview.locator(".katex-error").waitFor();
+    await editor.fill("Corrected $x^2$");
+    await preview.locator("math msup").waitFor();
+    assert.equal(await preview.locator(".katex-error").count(), 0);
+  } finally { await browser.close(); }
+});
+
+
 // Browser components are shipped production code. All backend writes, revision
 // conflicts and vendor messages are explicit synthetic transport fixtures.
 test("BUG151 playground read failure disables writes and CAS conflict requires an explicit version choice", { timeout: 30_000 }, async () => {

@@ -109,7 +109,7 @@ HOSTNAME=127.0.0.1 PORT=3000 node .next/standalone/server.js
 
 2026-11-21 锁文件审查将 Next 升到 16.4.6、sharp 升到 0.35.5。自托管应用提供 Next 图片优化接口，允许的远端主机由 `next.config.ts` 限定。站点 Logo 接口先向后端确认设置写权限，再核对文件大小和 PNG、JPEG、GIF、WebP 的文件头。只有匹配后才调用原生解码器，随后校验实际格式、尺寸和动画帧预算。[Next 图片优化公告](https://github.com/advisories/GHSA-2464-fhr4-w9xw) · [sharp 公告](https://github.com/advisories/GHSA-wq5f-xc86-pv6w) · [站点 Logo 净化](app/_lib/site-logo-image.mts)
 
-该次 `npm audit` 报告的受影响包条目从 15 降至 4。剩余 4 条来自同一个 KaTeX 低危公告，涉及数学标记解析和 Markdown 展示。这条通告的前提是运行环境已受原型污染。当前渲染器显式传入 `trust: false`。插件声明兼容 KaTeX 0.16，升级时需核对它们的版本范围并重新验证公式渲染。本次没有复现该前提条件。[KaTeX 公告](https://github.com/advisories/GHSA-238p-pmpm-9mq7) · [Markdown 渲染](app/_components/markdown-renderer.tsx)
+2026-11-21 的 `npm audit` 从 15 条降为 4 条，均来自同一项 KaTeX 低危公告。2026-11-24 的锁文件统一使用修复后的 KaTeX 0.18.2，`npm audit --audit-level=low` 报告 0 条。两个数学插件仍声明依赖 0.16，由 `package.json` 的 `$katex` 约束统一版本。更新这项约束时，运行 Markdown 编辑器的 Chromium 用例，核对行内和块级 MathML、字体与公式错误恢复。渲染器继续显式使用 `trust: false`。[KaTeX 公告](https://github.com/advisories/GHSA-238p-pmpm-9mq7) · [Markdown 渲染](app/_components/markdown-renderer.tsx)
 
 ## 文档与验收证据
 
