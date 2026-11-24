@@ -229,6 +229,8 @@ const zhCN = {
     "next": "下一块"
   },
   "commentFeedback": {
+    publishedWithoutDetails: "评论已发布，详情暂时无法显示。",
+    noLongerVisible: "这条投稿已处理，评论目前不可见。",
     "moderation": "评论已提交并进入审核，通过后会公开显示。",
     "floorInvalid": "请输入有效的正整数楼层。",
     "floorNotFound": "未找到该楼层。",

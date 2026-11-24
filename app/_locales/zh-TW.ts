@@ -1,6 +1,11 @@
 import zhCN from "./zh-CN";
 const zhTW = {
   ...zhCN,
+  commentFeedback: {
+    ...zhCN.commentFeedback,
+    publishedWithoutDetails: "留言已發布，暫時無法顯示詳細內容。",
+    noLongerVisible: "這筆投稿已處理，留言目前無法顯示。",
+  },
   tools: { ...zhCN.tools,
     playground: { ...zhCN.tools.playground,
       sendDiagramPreview: "將此圖傳送至 diagrams.net 以產生預覽",

@@ -617,3 +617,34 @@ test("a committed comment deletion clears attachments, actions and loaded reply 
     assert.equal(deletes, 1);
   } finally { await browser.close(); }
 });
+
+test("comment submission receipts distinguish published, pending review and no longer visible", { timeout: 30_000 }, async () => {
+  const statuses = ["published", "pending", "hidden"] as const;
+  let writes = 0;
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/comment-targets/community_post/post00001/comments" && request.method === "POST") {
+      const status = statuses[writes++];
+      return status === "pending"
+        ? { status: 202, data: { id: "receipt02", status, moderation: true } }
+        : { status: status === "published" ? 201 : 200, data: { id: "receipt01", status, moderation: false, detailsUnavailable: true } };
+    }
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/discussions/post00001`);
+    const editor = page.getByPlaceholder("Write a comment. Markdown is supported.");
+    for (const [index, message] of [
+      "Comment published. Its details are temporarily unavailable.",
+      "The comment was submitted for review and will be public after approval.",
+      "This submission has already been processed. The comment is no longer visible.",
+    ].entries()) {
+      await editor.fill(`Synthetic submitted text ${index}`);
+      await page.getByRole("button", { name: "Comment", exact: true }).click();
+      await page.getByText(message, { exact: true }).waitFor({ timeout: 6000 });
+      assert.equal(await editor.inputValue(), "");
+      assert.equal(await page.locator("[data-comment-id]").count(), 1);
+      assert.equal(writes, index + 1);
+    }
+  } finally { await browser.close(); }
+});

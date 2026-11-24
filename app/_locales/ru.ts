@@ -1,6 +1,11 @@
 import en from "./en-US";
 const ru = {
   ...en,
+  commentFeedback: {
+    ...en.commentFeedback,
+    publishedWithoutDetails: "Комментарий опубликован. Подробности временно недоступны.",
+    noLongerVisible: "Запрос уже обработан. Комментарий больше не виден.",
+  },
   tools: { ...en.tools,
     playground: { ...en.tools.playground,
       sendDiagramPreview: "Отправить диаграмму на diagrams.net для предпросмотра",

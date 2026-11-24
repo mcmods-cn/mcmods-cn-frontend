@@ -229,6 +229,8 @@ const en = {
     "next": "Next chunk"
   },
   "commentFeedback": {
+    publishedWithoutDetails: "Comment published. Its details are temporarily unavailable.",
+    noLongerVisible: "This submission has already been processed. The comment is no longer visible.",
     "moderation": "The comment was submitted for review and will be public after approval.",
     "floorInvalid": "Enter a valid positive integer floor number.",
     "floorNotFound": "This floor was not found.",

@@ -1,6 +1,11 @@
 import en from "./en-US";
 const es = {
   ...en,
+  commentFeedback: {
+    ...en.commentFeedback,
+    publishedWithoutDetails: "El comentario se ha publicado. Los detalles no están disponibles por el momento.",
+    noLongerVisible: "El envío ya se ha procesado. El comentario ya no está visible.",
+  },
   tools: { ...en.tools,
     playground: { ...en.tools.playground,
       sendDiagramPreview: "Enviar este diagrama a diagrams.net para obtener una vista previa",

@@ -124,7 +124,12 @@ export function createComment(
   antiAbuse: { idempotencyKey: string; formToken?: string; honeypot?: string; challengeProof?: string },
   attachmentFileIds: string[] = [],
 ) {
-  return apiRequest<CommentItem | { watchOnly: true; watch: CommentWatchState } | { id: string; status: "pending"; moderation: true }>(
+  return apiRequest<
+    CommentItem
+    | { watchOnly: true; watch: CommentWatchState }
+    | { id: string; status: "pending"; moderation: true }
+    | { id: string; status: "published" | "hidden" | "deleted" | "spam"; moderation: false; detailsUnavailable: true }
+  >(
     targetCommentsPath(targetType, targetKey),
     {
       method: "POST",
