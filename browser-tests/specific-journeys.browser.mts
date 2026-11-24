@@ -520,3 +520,43 @@ test("registration measures username code points and lets the backend decide res
     assert.deepEqual(submissions, ["administrator", joined, "🧑".repeat(32), "settings"]);
   } finally { await browser.close(); }
 });
+
+test("a committed Mod ID confirmation recovers the job without resending the decision", { timeout: 35_000 }, async () => {
+  const root = "/api/v1/mods/fixture-mod/export-imports";
+  const id = "8f5bb7b3-0541-4eb1-9471-77cc7e8a5d1f";
+  const pending = {
+    id, modSiteId: "fixture-mod", targetVersionPublicId: "version01", status: "confirmation_required", progress: 30,
+    currentStage: "confirmation_required", modidConfirmationRequired: true, modidAnalysisHash: "fixture-analysis",
+    primaryDetectedModid: "fixtureother", configuredModids: ["fixturemod"], detectedModids: [], errorDetail: {}, reviewRequired: true,
+  };
+  let writes = 0;
+  let readsAfterConfirmation = 0;
+  const browser = await controlled(({ path, method, body }) => {
+    if (path === "/api/v1/mods/fixture-mod/editor") return { data: { uniqueId: "fixturemod", siteId: "fixture-mod", primaryName: "Fixture mod", compatibilities: [] } };
+    if (path === "/api/v1/mods/fixture-mod/content-versions") return { data: { items: [{ publicId: "version01", label: "Fixture version", minecraftVersions: ["1.21"], loaders: [], modVersion: "1", status: "active" }] } };
+    if (path === "/api/v1/mods/fixture-mod/content-templates" || path === "/api/v1/mods/fixture-mod/content-sections") return { data: { items: [] } };
+    if (path === root + "/active") return { data: { job: pending } };
+    if (path === root + "/" + id + "/confirm-modid" && method === "POST") {
+      writes++;
+      assert.deepEqual(body, { confirmModidMismatch: true, analysisHash: pending.modidAnalysisHash });
+      return { status: 500, error: "Decision accepted", code: "import_job_accepted_status_unavailable", details: { jobId: id } };
+    }
+    if (path === root + "/" + id && method === "GET") {
+      if (!writes) return { data: pending };
+      if (++readsAfterConfirmation === 1) return { status: 503, error: "Temporary status outage" };
+      return { data: { ...pending, status: "ready", progress: 100, currentStage: "ready", modidConfirmationRequired: false } };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/mods/fixture-mod/data/edit?version=version01&import=exporter`);
+    const confirm = page.getByRole("button", { name: "Continue import anyway" });
+    await confirm.click();
+    await page.getByText(`Import ${id} was accepted. Its status is temporarily unavailable.`, { exact: true }).waitFor();
+    assert.equal(await confirm.count(), 0);
+    await page.getByRole("button", { name: "Check import status", exact: true }).click();
+    await page.getByText(/This import is awaiting review/).first().waitFor();
+    assert.equal(writes, 1);
+    assert.equal(readsAfterConfirmation, 2);
+  } finally { await browser.close(); }
+});

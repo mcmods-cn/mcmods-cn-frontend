@@ -308,9 +308,8 @@ export function retryModExportJob(siteId: string, jobId: string, token: string) 
 }
 
 export function confirmModExportMODIDMismatch(siteId: string, job: ModExportJob, token: string) {
-  return apiRequest<ModExportJob>(`/api/v1/mods/${encodeURIComponent(siteId)}/export-imports/${encodeURIComponent(job.id)}/confirm-modid`, {
-    method: "POST",
-    body: JSON.stringify({ confirmModidMismatch: true, analysisHash: job.modidAnalysisHash }),
+  return submitImportJob(`/api/v1/mods/${encodeURIComponent(siteId)}/export-imports/${encodeURIComponent(job.id)}/confirm-modid`, {
+    confirmModidMismatch: true, analysisHash: job.modidAnalysisHash,
   }, token);
 }
 
