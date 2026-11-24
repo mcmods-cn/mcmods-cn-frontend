@@ -699,3 +699,90 @@ test("OCT03 FS011 all six corrected upload notices wait for security scanning an
     } finally { await browser.close(); }
   }
 });
+
+test("community read-only panels keep records and translations browsable", { timeout: 40_000 }, async () => {
+  const permissions = ["admin.access", "economy.read", "shop.read", "level.read", "task.read"];
+  const currency = { publicId: "coin001", code: "coin", name: "Fixture coin", description: "", icon: "", translations: { "en-US": { name: "Fixture coin" } }, status: "active", transferTaxBps: 0, displayOrder: 0 };
+  const browser = await fixture.page(({ path }) => {
+    if (path === "/api/v1/auth/me") return { data: actor("reader001", permissions) };
+    if (path === "/api/v1/admin/economy/config") return { data: { checkin: { enabled: true, currency: "coin", amount: 3, minimumHours: 24 }, downloadRewards: [] } };
+    if (path === "/api/v1/admin/economy/currencies") return { data: { items: [currency] } };
+    if (path === "/api/v1/admin/shop/items") return { data: { items: [{ ...currency, name: "Shop fixture", translations: {}, itemType: "profile_background", priceCurrency: "coin", priceAmount: 3, config: {}, purchasePermission: "", usePermission: "" }] } };
+    if (path === "/api/v1/admin/levels/config") return { data: { roleTrackCode: "levels", levelThresholds: [5, 15] } };
+    if (path === "/api/v1/admin/tasks") return { data: { items: [task] } };
+  });
+  try {
+    const page = browser.page;
+    for (const [name, group, selected] of [
+      ["economy-config", "economy", ""], ["currencies", "economy", "Fixture coin"], ["shop-items", "economy", "Shop fixture"],
+      ["level-config", "progression", ""], ["tasks", "progression", "Synthetic task"],
+    ]) {
+      await panel(page, name, group);
+      await page.getByText("You have read-only access.", { exact: true }).waitFor();
+      if (selected) {
+        await page.getByRole("button", { name: new RegExp(selected) }).click();
+        const locale = page.locator("select").filter({ has: page.locator("option", { hasText: "Target language" }) });
+        await locale.selectOption("en-US");
+        assert.equal(await page.getByRole("textbox", { name: "en-US Name", exact: true }).isEditable(), false);
+      }
+      assert.equal(await page.getByRole("button", { name: "Save", exact: true }).isDisabled(), true);
+      if (name === "level-config") {
+        assert.equal(await page.getByText("levels", { exact: true }).count(), 1);
+        const levels = page.getByRole("spinbutton", { name: "Required experience" });
+        assert.deepEqual(await levels.evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value)), ["5", "15"]);
+      }
+    }
+  } finally { await browser.close(); }
+});
+
+test("shop and task editors display the public currency catalog with domain-specific access", { timeout: 25_000 }, async () => {
+  const publicReads: string[] = [];
+  const browser = await fixture.page(({ path }) => {
+    if (path === "/api/v1/auth/me") return { data: actor("catalog001", ["admin.access", "shop.read", "shop.write", "task.read", "task.write"]) };
+    if (path === "/api/v1/economy/currencies") { publicReads.push(path); return { data: { items: [{ publicId: "coin001", code: "coin", name: "Fixture coin", translations: {} }] } }; }
+    if (path === "/api/v1/admin/shop/items") return { data: { items: [] } };
+    if (path === "/api/v1/admin/tasks") return { data: { items: [task] } };
+  });
+  try {
+    const page = browser.page;
+    await panel(page, "shop-items", "economy");
+    await page.getByRole("button", { name: "New shop item", exact: true }).click();
+    await page.getByRole("combobox", { name: "Price currency", exact: true }).selectOption("coin");
+    await panel(page, "tasks", "progression");
+    await page.getByRole("button", { name: /Synthetic task/ }).click();
+    assert.equal(await page.getByRole("button", { name: "Save", exact: true }).isEnabled(), true);
+    assert.equal(publicReads.length, 2);
+  } finally { await browser.close(); }
+});
+
+test("activity monitor shows the latest filter, retries failures and omits empty ranges", { timeout: 25_000 }, async () => {
+  const initialStarted = Promise.withResolvers<void>();
+  const initialRelease = Promise.withResolvers<void>();
+  let reads = 0;
+  const browser = await fixture.page(async ({ path, url }) => {
+    if (path === "/api/v1/auth/me") return { data: actor("activity001", ["admin.access", "activity.read"]) };
+    if (path === "/api/v1/admin/activity") {
+      reads++;
+      if (!url.searchParams.has("userId")) {
+        initialStarted.resolve(); await initialRelease.promise;
+        return { data: { items: [{ id: "old", username: "Previous filter", action: "view", objectType: "mod", markdownAddedBytes: 0, occurredAt: "2026-10-03T00:00:00Z" }] } };
+      }
+      if (reads === 2) return { status: 503, error: "Activity read unavailable" };
+      return { data: { items: [] } };
+    }
+  });
+  try {
+    const page = browser.page;
+    await panel(page, "activity-monitor", "monitoring");
+    await initialStarted.promise;
+    await page.getByRole("textbox", { name: "User ID", exact: true }).fill("sample");
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await page.getByRole("alert").waitFor();
+    initialRelease.resolve();
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await page.getByText("No activity events match the current filters.", { exact: true }).waitFor();
+    assert.equal(await page.getByText("Previous filter", { exact: true }).count(), 0);
+    assert.equal(await page.getByText("Showing 1-0", { exact: true }).count(), 0);
+    assert.equal(reads, 3);
+  } finally { initialRelease.resolve(); await browser.close(); }
+});

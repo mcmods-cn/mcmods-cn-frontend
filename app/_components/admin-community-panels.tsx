@@ -266,6 +266,8 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
   const { t } = useI18n();
   const [items, setItems] = useState<ActivityEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failure, setFailure] = useState<unknown>(null);
+  const [attempt, setAttempt] = useState(0);
   const [offset, setOffset] = useState(0);
   const [filters, setFilters] = useState({
     userId: "",
@@ -278,8 +280,10 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
   const [appliedFilters, setAppliedFilters] = useState(filters);
   const pageSize = 100;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
+    setItems([]);
+    setFailure(null);
     try {
       const query = new URLSearchParams({ limit: String(pageSize), offset: String(offset) });
       if (appliedFilters.userId.trim()) query.set("userId", appliedFilters.userId.trim());
@@ -290,18 +294,22 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
       if (appliedFilters.to) query.set("to", new Date(appliedFilters.to).toISOString());
       const response = await apiRequest<{ items: ActivityEvent[] }>(
         `/api/v1/admin/activity?${query.toString()}`,
-        {},
+        { signal },
         token,
       );
-      setItems(response.items);
+      if (!signal.aborted) setItems(response.items);
     } catch (error) {
-      notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
+      if (!signal.aborted) setFailure(error);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
-  }, [appliedFilters, offset, t, token]);
+  }, [appliedFilters, offset, token]);
 
-  useInitialLoad(load);
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [attempt, load]);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -418,11 +426,15 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
           </tbody>
         </table>
         {loading ? <PanelState>{t("common.loading")}</PanelState> : null}
-        {!loading && items.length === 0 ? <PanelState>{t("admin.community.noActivity")}</PanelState> : null}
+        {failure ? <div role="alert" className="flex items-center justify-center gap-3 py-6">
+          <span>{apiErrorMessage(failure, t, t("admin.community.loadFailed"))}</span>
+          <button className="button-secondary focus-ring" type="button" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button>
+        </div> : null}
+        {!loading && !failure && items.length === 0 ? <PanelState>{t("admin.community.noActivity")}</PanelState> : null}
       </div>
       <div className="mt-4 flex items-center justify-between">
         <span className="text-sm text-[var(--muted)]">
-          {t("admin.community.activityRange", { start: offset + 1, end: offset + items.length })}
+          {items.length > 0 ? t("admin.community.activityRange", { start: offset + 1, end: offset + items.length }) : null}
         </span>
         <div className="flex gap-2">
           <button
@@ -447,7 +459,7 @@ export function ActivityMonitorPanel({ token }: { token: string }) {
   );
 }
 
-export function EconomyConfigPanel({ token }: { token: string }) {
+export function EconomyConfigPanel({ token, canWrite }: { token: string; canWrite: boolean }) {
   const { locale, t } = useI18n();
   const [config, setConfig] = useState<EconomyConfig | null>(null);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -469,7 +481,7 @@ export function EconomyConfigPanel({ token }: { token: string }) {
   useInitialLoad(load, token);
 
   async function save() {
-    if (!config) return;
+    if (!canWrite || !config) return;
     setSaving(true);
     try {
       const saved = await apiRequest<EconomyConfig>(
@@ -492,15 +504,16 @@ export function EconomyConfigPanel({ token }: { token: string }) {
 
   return (
     <AdminPanel
+      readOnly={!canWrite}
       title={t("admin.community.economyConfig")}
       description={t("admin.community.economyConfigDescription")}
       action={
-        <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>
+        <button className="button-primary focus-ring" disabled={!canWrite || saving} type="button" onClick={() => void save()}>
           {saving ? t("common.saving") : t("common.save")}
         </button>
       }
     >
-      <section>
+      <fieldset disabled={!canWrite}>
         <h3 className="text-lg font-black">{t("admin.community.checkin")}</h3>
         <div className="mt-4 grid gap-4 lg:grid-cols-4">
           <label className="flex min-h-12 items-center gap-3 rounded-lg border border-[var(--line)] px-4">
@@ -555,9 +568,9 @@ export function EconomyConfigPanel({ token }: { token: string }) {
             />
           </Field>
         </div>
-      </section>
+      </fieldset>
 
-      <section className="mt-8 border-t border-[var(--line)] pt-6">
+      <fieldset disabled={!canWrite} className="mt-8 border-t border-[var(--line)] pt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-black">{t("admin.community.downloadRewards")}</h3>
@@ -680,12 +693,12 @@ export function EconomyConfigPanel({ token }: { token: string }) {
             <PanelState>{t("admin.community.noDownloadRewards")}</PanelState>
           ) : null}
         </div>
-      </section>
+      </fieldset>
     </AdminPanel>
   );
 }
 
-export function CurrencyManagementPanel({ token }: { token: string }) {
+export function CurrencyManagementPanel({ token, canWrite }: { token: string; canWrite: boolean }) {
   const { locale, t } = useI18n();
   const [items, setItems] = useState<Currency[]>([]);
   const [draft, setDraft] = useState<Currency>({ ...emptyCurrency });
@@ -707,6 +720,7 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
   useInitialLoad(load, token);
 
   async function save() {
+    if (!canWrite) return;
     setSaving(true);
     try {
       const payload = withLocalizedPersistenceFields(draft, locale);
@@ -730,10 +744,11 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
 
   return (
     <AdminPanel
+      readOnly={!canWrite}
       title={t("admin.community.currencies")}
       description={t("admin.community.currenciesDescription")}
       action={
-        <button className="button-secondary focus-ring" type="button" onClick={() => setDraft({ ...emptyCurrency })}>
+        <button className="button-secondary focus-ring" disabled={!canWrite} type="button" onClick={() => setDraft({ ...emptyCurrency })}>
           {t("admin.community.newCurrency")}
         </button>
       }
@@ -753,7 +768,7 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
           }}
         />
         <div className="grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <fieldset disabled={!canWrite} className="grid min-w-0 gap-4 md:grid-cols-2">
             <Field label={t("admin.community.code")}>
               <input
                 className="field font-mono"
@@ -797,15 +812,16 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
                 onChange={(event) => setDraft({ ...draft, displayOrder: numberValue(event.target.value) })}
               />
             </Field>
-          </div>
+          </fieldset>
           <LocalizedFieldsEditor
+            readOnly={!canWrite}
             translations={draft.translations}
             onChange={(translations) => setDraft({ ...draft, translations })}
           />
           <div className="flex justify-end">
             <button
               className="button-primary focus-ring"
-              disabled={saving || !draft.code.trim() || !localizedPersistenceFields(draft.translations, locale).name}
+              disabled={!canWrite || saving || !draft.code.trim() || !localizedPersistenceFields(draft.translations, locale).name}
               type="button"
               onClick={() => void save()}
             >
@@ -818,7 +834,7 @@ export function CurrencyManagementPanel({ token }: { token: string }) {
   );
 }
 
-export function ShopManagementPanel({ token }: { token: string }) {
+export function ShopManagementPanel({ token, canWrite, canReadAllCurrencies }: { token: string; canWrite: boolean; canReadAllCurrencies: boolean }) {
   const { locale, t } = useI18n();
   const [items, setItems] = useState<ShopItem[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -830,7 +846,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
     try {
       const [shopResponse, currencyResponse] = await Promise.all([
         apiRequest<{ items: ShopItem[] }>("/api/v1/admin/shop/items", {}, token),
-        apiRequest<{ items: Currency[] }>("/api/v1/admin/economy/currencies", {}, token),
+        apiRequest<{ items: Currency[] }>(canReadAllCurrencies ? "/api/v1/admin/economy/currencies" : "/api/v1/economy/currencies", {}, token),
       ]);
       setItems(shopResponse.items);
       setCurrencies(currencyResponse.items);
@@ -842,7 +858,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
     } catch (error) {
       notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     }
-  }, [t, token]);
+  }, [canReadAllCurrencies, t, token]);
 
   useInitialLoad(load, token);
 
@@ -854,6 +870,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
   }
 
   async function save() {
+    if (!canWrite) return;
     let config: Record<string, unknown>;
     try {
       config = JSON.parse(configText || "{}") as Record<string, unknown>;
@@ -883,12 +900,14 @@ export function ShopManagementPanel({ token }: { token: string }) {
 
   return (
     <AdminPanel
+      readOnly={!canWrite}
       title={t("admin.community.shopItems")}
       description={t("admin.community.shopItemsDescription")}
       action={
         <button
           className="button-secondary focus-ring"
           type="button"
+          disabled={!canWrite}
           onClick={() => {
             setDraft({
               ...emptyShopItem,
@@ -913,7 +932,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
           onSelect={selectItem}
         />
         <div className="grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <fieldset disabled={!canWrite} className="grid min-w-0 gap-4 md:grid-cols-2">
             <Field label={t("admin.community.code")}>
               <input
                 className="field font-mono"
@@ -946,6 +965,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
                 value={draft.priceCurrency}
                 onChange={(event) => setDraft({ ...draft, priceCurrency: event.target.value })}
               >
+                {draft.priceCurrency && !currencies.some(currency => currency.code === draft.priceCurrency) ? <option value={draft.priceCurrency}>{draft.priceCurrency}</option> : null}
                 {currencies.map((currency) => (
                   <option key={currency.publicId} value={currency.code}>
                     {translatedRecord(currency.translations, locale, "name", currency.name)} ({currency.code})
@@ -986,8 +1006,9 @@ export function ShopManagementPanel({ token }: { token: string }) {
                 <option value="disabled">{t("admin.disabled")}</option>
               </select>
             </Field>
-          </div>
+          </fieldset>
           <LocalizedFieldsEditor
+            readOnly={!canWrite}
             translations={draft.translations}
             onChange={(translations) => setDraft({ ...draft, translations })}
           />
@@ -995,6 +1016,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
             <textarea
               className="field min-h-28 font-mono text-xs"
               spellCheck={false}
+              readOnly={!canWrite}
               value={configText}
               onChange={(event) => setConfigText(event.target.value)}
             />
@@ -1002,7 +1024,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
           <div className="flex justify-end">
             <button
               className="button-primary focus-ring"
-              disabled={saving || !draft.code.trim() || !localizedPersistenceFields(draft.translations, locale).name}
+              disabled={!canWrite || saving || !draft.code.trim() || !localizedPersistenceFields(draft.translations, locale).name}
               type="button"
               onClick={() => void save()}
             >
@@ -1015,7 +1037,7 @@ export function ShopManagementPanel({ token }: { token: string }) {
   );
 }
 
-export function LevelConfigPanel({ token }: { token: string }) {
+export function LevelConfigPanel({ token, canWrite, canReadTracks }: { token: string; canWrite: boolean; canReadTracks: boolean }) {
   const { t } = useI18n();
   const [config, setConfig] = useState<LevelConfig | null>(null);
   const [tracks, setTracks] = useState<RoleTrack[]>([]);
@@ -1025,21 +1047,22 @@ export function LevelConfigPanel({ token }: { token: string }) {
     try {
       const [nextConfig, nextTracks] = await Promise.all([
         apiRequest<LevelConfig>("/api/v1/admin/levels/config", {}, token),
-        apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", {}, token),
+        canReadTracks ? apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", {}, token) : [],
       ]);
       setConfig(nextConfig);
       setTracks(nextTracks);
     } catch (error) {
       notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     }
-  }, [t, token]);
+  }, [canReadTracks, t, token]);
 
   useInitialLoad(load, token);
 
   const selectedTrack = tracks.find((track) => track.code === config?.roleTrackCode);
+  const roles = selectedTrack?.roles ?? config?.levelThresholds.map(() => "") ?? [];
 
   async function save() {
-    if (!config) return;
+    if (!canWrite || !config) return;
     setSaving(true);
     try {
       const saved = await apiRequest<LevelConfig>(
@@ -1060,10 +1083,11 @@ export function LevelConfigPanel({ token }: { token: string }) {
 
   return (
     <AdminPanel
+      readOnly={!canWrite}
       title={t("admin.community.levelConfig")}
       description={t("admin.community.levelConfigDescription")}
       action={
-        <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>
+        <button className="button-primary focus-ring" disabled={!canWrite || saving} type="button" onClick={() => void save()}>
           {saving ? t("common.saving") : t("common.save")}
         </button>
       }
@@ -1071,35 +1095,36 @@ export function LevelConfigPanel({ token }: { token: string }) {
       <section className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
         <h3 className="font-black">{t("admin.community.roleTrack")}</h3>
         <p className="mt-2 font-mono text-sm">
-          {selectedTrack ? `${selectedTrack.name} (${selectedTrack.code})` : t("admin.community.noRoleTrack")}
+          {selectedTrack ? `${selectedTrack.name} (${selectedTrack.code})` : config.roleTrackCode || t("admin.community.noRoleTrack")}
         </p>
         <p className="mt-2 text-sm text-[var(--muted)]">{t("admin.community.roleTrackManagedInPermissionSettings")}</p>
       </section>
-      {selectedTrack ? (
+      {config.roleTrackCode ? (
         <div className="mt-6 overflow-hidden rounded-lg border border-[var(--line)]">
           <div className="grid grid-cols-[90px_minmax(180px,1fr)_minmax(160px,240px)] gap-3 bg-[var(--panel-subtle)] px-4 py-3 text-sm font-black">
             <span>{t("admin.community.level")}</span>
             <span>{t("admin.community.permissionGroup")}</span>
             <span>{t("admin.community.requiredExperience")}</span>
           </div>
-          {selectedTrack.roles.map((role, index) => (
+          {roles.map((role, index) => (
             <div
               className="grid grid-cols-[90px_minmax(180px,1fr)_minmax(160px,240px)] items-center gap-3 border-t border-[var(--line)] px-4 py-3"
-              key={role}
+              key={role || index}
             >
               <strong>{index + 1}</strong>
-              <span className="font-mono text-sm">{role}</span>
+              <span className="font-mono text-sm">{role || "—"}</span>
               <input
                 aria-label={t("admin.community.requiredExperience")}
                 className="field"
                 min={0}
                 type="number"
+                readOnly={!canWrite}
                 value={config.levelThresholds[index] ?? 0}
                 onChange={(event) =>
                   setConfig({
                     ...config,
                     levelThresholds: updateAt(
-                      config.levelThresholds,
+                      roles.map((_, i) => config.levelThresholds[i] ?? 0),
                       index,
                       numberValue(event.target.value),
                     ),
@@ -1116,7 +1141,7 @@ export function LevelConfigPanel({ token }: { token: string }) {
   );
 }
 
-export function TaskManagementPanel({ token }: { token: string }) {
+export function TaskManagementPanel({ token, canWrite, canReadAllCurrencies }: { token: string; canWrite: boolean; canReadAllCurrencies: boolean }) {
   const { locale, t } = useI18n();
   const [items, setItems] = useState<TaskDefinition[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -1127,7 +1152,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
     try {
       const [taskResponse, currencyResponse] = await Promise.all([
         apiRequest<{ items: TaskDefinition[] }>("/api/v1/admin/tasks", {}, token),
-        apiRequest<{ items: Currency[] }>("/api/v1/admin/economy/currencies", {}, token),
+        apiRequest<{ items: Currency[] }>(canReadAllCurrencies ? "/api/v1/admin/economy/currencies" : "/api/v1/economy/currencies", {}, token),
       ]);
       setItems(taskResponse.items);
       setCurrencies(currencyResponse.items);
@@ -1138,11 +1163,12 @@ export function TaskManagementPanel({ token }: { token: string }) {
     } catch (error) {
       notifyAdmin(apiErrorMessage(error, t, t("admin.community.loadFailed")), t("admin.noticeTitle"), "danger");
     }
-  }, [t, token]);
+  }, [canReadAllCurrencies, t, token]);
 
   useInitialLoad(load, token);
 
   async function save() {
+    if (!canWrite) return;
     if (!taskRewardCurrencyCodesAreUnique(draft.rewards.currencies ?? {})) {
       notifyAdmin(t("admin.community.duplicateTaskCurrencyReward"), t("admin.noticeTitle"), "danger");
       return;
@@ -1168,7 +1194,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
 
   async function remove() {
     const taskName = translatedRecord(draft.translations, locale, "name", draft.code);
-    if (!draft.publicId || !window.confirm(t("admin.community.deleteTaskConfirm", { name: taskName }))) return;
+    if (!canWrite || !draft.publicId || !window.confirm(t("admin.community.deleteTaskConfirm", { name: taskName }))) return;
     setSaving(true);
     try {
       await apiRequest(`/api/v1/admin/tasks/${draft.publicId}`, { method: "DELETE" }, token);
@@ -1189,10 +1215,11 @@ export function TaskManagementPanel({ token }: { token: string }) {
 
   return (
     <AdminPanel
+      readOnly={!canWrite}
       title={t("admin.community.tasks")}
       description={t("admin.community.tasksDescription")}
       action={
-        <button className="button-secondary focus-ring" type="button" onClick={() => setDraft(cloneTask(emptyTask))}>
+        <button className="button-secondary focus-ring" disabled={!canWrite} type="button" onClick={() => setDraft(cloneTask(emptyTask))}>
           {t("admin.community.newTask")}
         </button>
       }
@@ -1212,7 +1239,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
           }}
         />
         <div className="grid gap-5">
-          <div className="grid gap-4 md:grid-cols-2">
+          <fieldset disabled={!canWrite} className="grid min-w-0 gap-4 md:grid-cols-2">
             <Field label={t("admin.community.code")}>
               <input
                 className="field font-mono"
@@ -1253,13 +1280,14 @@ export function TaskManagementPanel({ token }: { token: string }) {
                 <option value="disabled">{t("admin.disabled")}</option>
               </select>
             </Field>
-          </div>
+          </fieldset>
           <LocalizedFieldsEditor
+            readOnly={!canWrite}
             translations={draft.translations}
             onChange={(translations) => setDraft({ ...draft, translations })}
           />
 
-          <section className="rounded-lg border border-[var(--line)] p-4">
+          <fieldset disabled={!canWrite} className="rounded-lg border border-[var(--line)] p-4">
             <h3 className="font-black">{t("admin.community.taskCondition")}</h3>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label={t("admin.community.action")}>
@@ -1337,9 +1365,9 @@ export function TaskManagementPanel({ token }: { token: string }) {
                 />
               </Field>
             </div>
-          </section>
+          </fieldset>
 
-          <section className="rounded-lg border border-[var(--line)] p-4">
+          <fieldset disabled={!canWrite} className="rounded-lg border border-[var(--line)] p-4">
             <h3 className="font-black">{t("admin.community.taskRewards")}</h3>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label={t("admin.community.experience")}>
@@ -1372,6 +1400,7 @@ export function TaskManagementPanel({ token }: { token: string }) {
                       setDraft({ ...draft, rewards: { ...draft.rewards, currencies: next } });
                     }}
                   >
+                    {!currencies.some(currency => currency.code === code) ? <option value={code}>{code}</option> : null}
                     {currencies.map((currency) => (
                       <option disabled={!canUseTaskRewardCurrency(draft.rewards.currencies ?? {}, code, currency.code)} key={currency.publicId} value={currency.code}>
                         {translatedRecord(currency.translations, locale, "name", currency.name)}
@@ -1430,17 +1459,17 @@ export function TaskManagementPanel({ token }: { token: string }) {
                 {t("admin.community.addCurrencyReward")}
               </button>
             </div>
-          </section>
+          </fieldset>
 
           <div className="flex justify-end gap-2">
             {draft.publicId ? (
-              <button className="button-secondary focus-ring" disabled={saving} type="button" onClick={() => void remove()}>
+              <button className="button-secondary focus-ring" disabled={!canWrite || saving} type="button" onClick={() => void remove()}>
                 {t("common.delete")}
               </button>
             ) : null}
             <button
               className="button-primary focus-ring"
-              disabled={saving || !draft.code.trim() || !localizedPersistenceFields(draft.translations, locale).name}
+              disabled={!canWrite || saving || !draft.code.trim() || !localizedPersistenceFields(draft.translations, locale).name}
               type="button"
               onClick={() => void save()}
             >
@@ -1456,20 +1485,24 @@ export function TaskManagementPanel({ token }: { token: string }) {
 function AdminPanel({
   title,
   description,
+  readOnly = false,
   action,
   children,
 }: {
   title: string;
   description: string;
+  readOnly?: boolean;
   action?: ReactNode;
   children: ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <section className="surface rounded-lg">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-[var(--line)] p-5">
         <div>
           <h2 className="text-xl font-black">{title}</h2>
           <p className="mt-1 max-w-4xl text-sm text-[var(--muted)]">{description}</p>
+          {readOnly ? <p className="mt-1 text-sm">{t("admin.ai.readOnly")}</p> : null}
         </div>
         {action}
       </header>
@@ -1525,9 +1558,11 @@ function SelectionList({
 }
 
 function LocalizedFieldsEditor({
+  readOnly,
   translations,
   onChange,
 }: {
+  readOnly: boolean;
   translations: Record<string, unknown>;
   onChange: (translations: Record<string, unknown>) => void;
 }) {
@@ -1576,6 +1611,7 @@ function LocalizedFieldsEditor({
         <div className="grid gap-3">
           <strong>{targetLocale}</strong>
           <input
+            readOnly={readOnly}
             key={`${targetLocale}:name`}
             aria-label={`${targetLocale} ${t("admin.community.name")}`}
             className="field"
@@ -1586,6 +1622,7 @@ function LocalizedFieldsEditor({
             }
           />
           <textarea
+            readOnly={readOnly}
             key={`${targetLocale}:description`}
             aria-label={`${targetLocale} ${t("admin.community.description")}`}
             className="field min-h-24"

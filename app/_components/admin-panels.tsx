@@ -188,28 +188,28 @@ const definitions = {
   },
   "economy-config": {
     group: "economy", title: "admin.community.economyConfig", description: "admin.community.economyConfigDescription",
-    read: "economy.read",
-    render: ({ token }) => <EconomyConfigPanel token={token} />,
+    read: "economy.read", write: "economy.write",
+    render: ({ token, access }) => <EconomyConfigPanel token={token} canWrite={access.write} />,
   },
   "currencies": {
     group: "economy", title: "admin.community.currencies", description: "admin.community.currenciesDescription",
-    read: "economy.read",
-    render: ({ token }) => <CurrencyManagementPanel token={token} />,
+    read: "economy.read", write: "economy.write",
+    render: ({ token, access }) => <CurrencyManagementPanel token={token} canWrite={access.write} />,
   },
   "shop-items": {
     group: "economy", title: "admin.community.shopItems", description: "admin.community.shopItemsDescription",
-    read: "shop.read",
-    render: ({ token }) => <ShopManagementPanel token={token} />,
+    read: "shop.read", write: "shop.write",
+    render: ({ token, user, access }) => <ShopManagementPanel token={token} canWrite={access.write} canReadAllCurrencies={hasPermission(user, "economy.read")} />,
   },
   "level-config": {
     group: "progression", title: "admin.community.levelConfig", description: "admin.community.levelConfigDescription",
-    read: "level.read",
-    render: ({ token }) => <LevelConfigPanel token={token} />,
+    read: "level.read", write: "level.write",
+    render: ({ token, user, access }) => <LevelConfigPanel token={token} canWrite={access.write} canReadTracks={hasPermission(user, "permission.read")} />,
   },
   "tasks": {
     group: "progression", title: "admin.community.tasks", description: "admin.community.tasksDescription",
-    read: "task.read",
-    render: ({ token }) => <TaskManagementPanel token={token} />,
+    read: "task.read", write: "task.write",
+    render: ({ token, user, access }) => <TaskManagementPanel token={token} canWrite={access.write} canReadAllCurrencies={hasPermission(user, "economy.read")} />,
   },
   "activity-monitor": {
     group: "monitoring", title: "admin.community.activity", description: "admin.community.activityDescription",
