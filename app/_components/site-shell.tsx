@@ -125,6 +125,7 @@ function RealtimeBridge() {
     let source: EventSource | null = null;
     let timer: number | null = null;
     let retryIndex = 0;
+    let needsCatchUp = document.visibilityState !== "visible";
     const seenEventIds = new Set<string>();
     const delays = [2_000, 5_000, 10_000, 30_000] as const;
     const eventTypes = ["message.created", "notification.created", "notification.changed", "unread.changed"];
@@ -132,10 +133,19 @@ function RealtimeBridge() {
     const connect = () => {
       close();
       if (cancelled || document.visibilityState !== "visible") return;
-      source = new EventSource(`${API_BASE_URL}/api/v1/realtime/events`, { withCredentials: true });
-      source.onopen = () => { retryIndex = 0; };
+      const connection = new EventSource(`${API_BASE_URL}/api/v1/realtime/events`, { withCredentials: true });
+      source = connection;
+      connection.onopen = () => {
+        if (cancelled || source !== connection) return;
+        retryIndex = 0;
+        if (needsCatchUp) {
+          needsCatchUp = false;
+          realtimeQueryCoordinator.refreshAfterReconnect(user.id);
+        }
+      };
       for (const type of eventTypes) {
-        source.addEventListener(type, (event) => {
+        connection.addEventListener(type, (event) => {
+          if (cancelled || source !== connection) return;
           const message = event as MessageEvent<string>;
           if (message.lastEventId) {
             if (seenEventIds.has(message.lastEventId)) return;
@@ -150,13 +160,22 @@ function RealtimeBridge() {
           realtimeQueryCoordinator.routeRealtimeEvent(user.id, { id: message.lastEventId, type, data });
         });
       }
-      source.onerror = () => {
-        source?.close(); source = null;
+      connection.onerror = () => {
+        if (cancelled || source !== connection) return;
+        needsCatchUp = true;
+        close();
         const delay = delays[Math.min(retryIndex++, delays.length - 1)];
         timer = window.setTimeout(connect, delay);
       };
     };
-    const visibility = () => { if (document.visibilityState === "visible") connect(); else close(); };
+    const visibility = () => {
+      if (document.visibilityState === "visible") {
+        connect();
+      } else {
+        needsCatchUp = true;
+        close();
+      }
+    };
     connect();
     document.addEventListener("visibilitychange", visibility);
     return () => { cancelled = true; close(); document.removeEventListener("visibilitychange", visibility); };
