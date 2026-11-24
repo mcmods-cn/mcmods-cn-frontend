@@ -414,7 +414,7 @@ function ModContentResourceEditorSession({
     setUploadingAsset("icon");
     setError("");
     try {
-      const result = await processOSSUploadBatch(tasks, {
+      const result = await processOSSUploadBatch<File, OSSFileRecord>(tasks, {
         upload: (file, task) => uploadUserFileToOSS(file, token, `mod_resource:${siteId}:${kindCode.trim() || "resource"}:${task.key.replace("-", "_")}`, undefined, request.signal),
         shouldProcess: (task) => !request.signal.aborted && (!retryKey || task.key === retryKey),
         onChange: (next) => { if (!request.signal.aborted) setIconUploadTasks(next); },
