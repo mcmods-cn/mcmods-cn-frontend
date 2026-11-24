@@ -1,20 +1,22 @@
 import assert from "node:assert/strict";
-import { registerHooks } from "node:module";
+import { readFile } from "node:fs/promises";
+import ts from "typescript";
 import test from "node:test";
 import * as THREE from "three";
 import type { AssetSource } from "../../lib/mcmods-exporter/renderer/types";
 import type { StructureBlueprint } from "../../lib/mcmods-exporter/renderer/blueprint";
 
 const rendererDirectory = new URL("../../lib/mcmods-exporter/renderer/", import.meta.url).href;
-const hooks = registerHooks({
-  resolve(specifier, context, next) {
-    if (context.parentURL?.startsWith(rendererDirectory) && /^\.\/[a-zA-Z]+$/.test(specifier)) return next(specifier + ".ts", context);
-    return next(specifier, context);
-  },
+// Node's test runner requires explicit file extensions for the two bundler imports.
+const scene = await readFile(new URL("structureScene.ts", rendererDirectory), "utf8");
+const resolvedScene = scene.replace(/from '([^']+)'/g, (_, name: string) => {
+  if (name === "three") return `from ${JSON.stringify(import.meta.resolve(name))}`;
+  const suffix = name === "./minecraftBlockModel" || name === "./blueprint" ? ".ts" : "";
+  return `from ${JSON.stringify(new URL(name + suffix, rendererDirectory).href)}`;
 });
-const { buildStructureScene, disposeStructureGroup } = await import(new URL("structureScene.ts", rendererDirectory).href);
+const { outputText } = ts.transpileModule(resolvedScene, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } });
+const { buildStructureScene, disposeStructureGroup } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString("base64")}`);
 const { buildMinecraftBlockModel } = await import(new URL("minecraftBlockModel.ts", rendererDirectory).href);
-hooks.deregister();
 
 function assets(files: Record<string, string | object>, textureURLs: Record<string, string>): AssetSource {
   return {
