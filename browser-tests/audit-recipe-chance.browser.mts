@@ -43,7 +43,8 @@ test("unknown candidates suppress old slot percentages while a semantic byproduc
     if (path === `/api/v1/catalog/recipes/${publicId}/render`) return { data: {
       publicId, recipeTypePublicId: "bounds", recipeId: "sample:bounds", recipeIdSource: "registered",
       layout: { canvas: { width: 128, height: 64 }, slots: [
-        { role: "output", chance: .8, rect: { x: 32, y: 8, width: 16, height: 16 }, alternatives: [{ id: "sample:unknown", chance_available: false }] },
+        { role: "input", rect: { x: 8, y: 8, width: 16, height: 16 }, alternatives: [{ id: "sample:empty", amount: 0, unit: "mB" }] },
+        { role: "output", chance: .8, rect: { x: 32, y: 8, width: 16, height: 16 }, alternatives: [{ id: "sample:unknown", amount: null, unit: "mB", chance_available: false }] },
         { semantic_role: "byproduct", rect: { x: 64, y: 8, width: 16, height: 16 }, alternatives: [{ id: "sample:fluid", amount: 250, unit: "mB", chance_comparator: "less_than", probability: .01, chance_text: "Below one percent" }] },
       ] },
     } };
@@ -53,6 +54,7 @@ test("unknown candidates suppress old slot percentages while a semantic byproduc
     const card = browser.page.locator(`#recipe-${publicId}`);
     await card.getByText("<1%", { exact: true }).waitFor();
     assert.equal(await card.getByTitle("Below one percent", { exact: true }).count(), 1);
+    assert.equal(await card.getByText("0 mB", { exact: true }).count(), 1, "Only the candidate with a reported quantity of zero receives this badge");
     assert.equal(await card.getByText("250 mB", { exact: true }).count(), 1);
     assert.equal(await card.getByText("80%", { exact: true }).count(), 0);
   } finally { await browser.close(); }
