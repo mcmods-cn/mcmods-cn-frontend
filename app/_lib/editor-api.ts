@@ -106,6 +106,7 @@ export async function loadOwnedResolvedContent(
   locale: string,
   token: string,
   secondaryLocale = "",
+  signal?: AbortSignal,
 ) {
   const parameters = new URLSearchParams();
   if (locale.trim()) parameters.set("locale", locale.trim());
@@ -113,7 +114,7 @@ export async function loadOwnedResolvedContent(
   const query = parameters.size ? `?${parameters}` : "";
   const value = await apiRequest<unknown>(
     `/api/v1/${collection}/${encodeURIComponent(publicId)}/content${query}`,
-    { cache: "no-store" },
+    { cache: "no-store", signal },
     token,
   );
   return normalizeResolvedContent(value);

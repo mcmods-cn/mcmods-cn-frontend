@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 import { loadOwnedResolvedContent, loadResolvedContent } from "../_lib/editor-api";
@@ -39,7 +39,11 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
   const { locale, t } = useI18n();
   const { ready, token } = useAuthSnapshot();
   const router = useRouter();
-  const [texture, setTexture] = useState<SkinTexture | null>(null);
+  const [baseTexture, setTexture] = useState<SkinTexture | null>(null);
+  const [localization, setLocalization] = useState<{ locale: string; name?: string; summary?: string }>();
+  const texture = baseTexture && localization?.locale === locale
+    ? { ...baseTexture, name: localization.name || baseTexture.name, description: localization.summary || baseTexture.description }
+    : baseTexture;
   const [profiles, setProfiles] = useState<PlayerProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState("");
   const [view3D, setView3D] = useState(true);
@@ -51,53 +55,73 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
   const [profileError, setProfileError] = useState("");
   const [loadAttempt, setLoadAttempt] = useState(0);
 
+  const [profileAttempt, setProfileAttempt] = useState(0);
+  const alive = useRef(false);
+  const mutating = useRef(false);
+  const showFailure = useEffectEvent((reason: unknown, profiles: boolean) => {
+    if (profiles) setProfileError(errorMessage(reason, t("skins.profileLoadFailed")));
+    else setError(errorMessage(reason, t("skins.loadFailed")));
+  });
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+
   useEffect(() => {
     if (!ready) return;
-    let cancelled = false;
-    queueMicrotask(() => { if (!cancelled) { setLoading(true); setError(""); setProfileError(""); } });
-    Promise.allSettled([
-      loadSkin(publicId, token || undefined).then(async (baseTexture) => {
-        const content = baseTexture.canEdit && token
-          ? await loadOwnedResolvedContent("skins", publicId, locale, token, "en-US").catch(() => undefined)
-          : await loadResolvedContent(publicId, locale, "en-US", token).catch(() => undefined);
-        return [baseTexture, content] as const;
-      }),
-      token ? loadMyPlayerProfiles(token) : Promise.resolve([]),
-    ]).then(([textureResult, profileResult]) => {
-      if (cancelled) return;
-      if (textureResult.status === "rejected") {
-        setError(textureResult.reason instanceof Error ? textureResult.reason.message : t("skins.loadFailed"));
-      } else {
-        const [baseTexture, content] = textureResult.value;
-        const fields = content?.localization?.fields;
-        const nextTexture = fields ? { ...baseTexture, name: fields.name || baseTexture.name, description: fields.summary || baseTexture.description } : baseTexture;
-        setTexture(nextTexture);
-      }
-      if (profileResult.status === "fulfilled") {
-        setProfiles(profileResult.value);
-        setSelectedProfile((value) => profileResult.value.some((profile) => profile.publicId === value) ? value : profileResult.value[0]?.publicId || "");
-      } else setProfileError(errorMessage(profileResult.reason, t("skins.profileLoadFailed")));
-    }).finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [loadAttempt, locale, publicId, ready, t, token]);
+    const controller = new AbortController();
+    loadSkin(publicId, token || undefined, controller.signal).then(value => {
+      if (!controller.signal.aborted) { setTexture(value); setError(""); }
+    }).catch(reason => {
+      if (!controller.signal.aborted) showFailure(reason, false);
+    }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [loadAttempt, publicId, ready, token]);
+
+  const textureId = baseTexture?.publicId;
+  const canEdit = baseTexture?.canEdit;
+  useEffect(() => {
+    if (!textureId) return;
+    const controller = new AbortController();
+    const content = canEdit && token
+      ? loadOwnedResolvedContent("skins", textureId, locale, token, "en-US", controller.signal)
+      : loadResolvedContent(textureId, locale, "en-US", token, controller.signal);
+    content.then(value => {
+      if (!controller.signal.aborted) setLocalization({ locale, ...value.localization?.fields });
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [canEdit, locale, textureId, token]);
+
+  useEffect(() => {
+    if (!ready || !token) return;
+    const controller = new AbortController();
+    loadMyPlayerProfiles(token, controller.signal).then(value => {
+      if (controller.signal.aborted) return;
+      setProfiles(value);
+      setSelectedProfile(current => value.some(profile => profile.publicId === current) ? current : value[0]?.publicId || "");
+      setProfileError("");
+    }).catch(reason => { if (!controller.signal.aborted) showFailure(reason, true); });
+    return () => controller.abort();
+  }, [profileAttempt, ready, token]);
 
   async function toggleWardrobe() {
-    if (!token || !texture || busy) return;
+    if (!token || !texture || mutating.current) return;
+    mutating.current = true;
     setBusy("wardrobe");
     try {
       if (texture.inWardrobe) await removeFromWardrobe(texture.publicId, token);
       else await addToWardrobe(texture.publicId, token);
+      if (!alive.current) return;
       setTexture((current) => current ? { ...current, inWardrobe: !texture.inWardrobe } : current);
       notifySite(t(texture.inWardrobe ? "skins.wardrobeRemoved" : "skins.wardrobeAdded"), texture.name, "success");
     } catch (reason) {
-      notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
+      if (alive.current) notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
     } finally {
-      setBusy("");
+      mutating.current = false;
+      if (alive.current) setBusy("");
     }
   }
 
   async function applyTexture() {
-    if (!token || !texture || !selectedProfile || busy) return;
+    if (!token || !texture || !selectedProfile || mutating.current) return;
+    mutating.current = true;
     setBusy("apply");
     try {
       const updated = await updatePlayerTextures(
@@ -105,29 +129,33 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
         texture.kind === "skin" ? { skinPublicId: texture.publicId } : { capePublicId: texture.publicId },
         token,
       );
+      if (!alive.current) return;
       setProfiles((items) => items.map((item) => item.publicId === updated.publicId ? updated : item));
       notifySite(t("skins.applied"), texture.name, "success");
     } catch (reason) {
-      notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
+      if (alive.current) notifySite(errorMessage(reason, t("skins.actionFailed")), texture.name, "danger");
     } finally {
-      setBusy("");
+      mutating.current = false;
+      if (alive.current) setBusy("");
     }
   }
 
   async function removeTexture() {
-    if (!token || !texture || busy || !window.confirm(t("skins.deleteConfirm", { name: texture.name }))) return;
+    if (!token || !texture || mutating.current || !window.confirm(t("skins.deleteConfirm", { name: texture.name }))) return;
+    mutating.current = true;
     setBusy("delete");
     try {
       await deleteSkin(texture.publicId, token);
-      router.replace("/skins");
+      if (alive.current) router.replace("/skins");
     } catch (reason) {
-      notifySite(errorMessage(reason, t("skins.deleteFailed")), texture.name, "danger");
-      setBusy("");
+      if (alive.current) notifySite(errorMessage(reason, t("skins.deleteFailed")), texture.name, "danger");
+      mutating.current = false;
+      if (alive.current) setBusy("");
     }
   }
 
   if (loading) return <StatePanel text={t("common.loading")} />;
-  if (!texture) return <StatePanel text={error || t("skins.notFound")} action={error ? <button className="button-secondary focus-ring mt-4" type="button" onClick={() => setLoadAttempt((value) => value + 1)}>{t("common.retry")}</button> : undefined} />;
+  if (!texture) return <StatePanel text={error || t("skins.notFound")} action={error ? <button className="button-secondary focus-ring mt-4" type="button" onClick={() => { setLoading(true); setLoadAttempt(value => value + 1); }}>{t("common.retry")}</button> : undefined} />;
 
   const textureURL = skinTextureURL(texture);
   const ownerName = texture.owner?.username || t("skins.anonymous");
@@ -138,7 +166,7 @@ function SkinDetailContent({ publicId }: { publicId: string }) {
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <article className="mx-auto max-w-7xl px-4 py-7">
-        {error || profileError ? <div className="mb-4"><p role="alert" className="text-sm text-[var(--red)]">{error || profileError}</p><button className="button-secondary focus-ring mt-2" type="button" onClick={() => setLoadAttempt((value) => value + 1)}>{t("common.retry")}</button></div> : null}
+        {error || profileError ? <div className="mb-4"><p role="alert" className="text-sm text-[var(--red)]">{error || profileError}</p><button className="button-secondary focus-ring mt-2" type="button" onClick={() => { if (error) setLoadAttempt(value => value + 1); if (profileError) setProfileAttempt(value => value + 1); }}>{t("common.retry")}</button></div> : null}
         <Link className="text-sm font-black text-[var(--accent)] hover:underline" href="/skins">← {t("skins.backLibrary")}</Link>
         <div className="mt-5 grid gap-7 lg:grid-cols-[minmax(0,1fr)_400px]">
           <div className="space-y-5">

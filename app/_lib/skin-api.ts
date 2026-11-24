@@ -138,8 +138,8 @@ export function loadSkins(query: SkinQuery, token?: string) {
   return apiRequest<SkinListResponse>(`/api/v1/skins?${params}`, {}, token);
 }
 
-export function loadSkin(publicId: string, token?: string) {
-  return apiRequest<SkinTexture>(`/api/v1/skins/${encodeURIComponent(publicId)}`, {}, token);
+export function loadSkin(publicId: string, token?: string, signal?: AbortSignal) {
+  return apiRequest<SkinTexture>(`/api/v1/skins/${encodeURIComponent(publicId)}`, { signal }, token);
 }
 
 export function createSkin(input: CreateSkinInput, token: string, signal?: AbortSignal) {
@@ -178,8 +178,8 @@ export function removeFromWardrobe(publicId: string, token: string) {
   return apiRequest<{ removed?: boolean }>(`/api/v1/users/me/skin-wardrobe/${encodeURIComponent(publicId)}`, { method: "DELETE" }, token);
 }
 
-export async function loadMyPlayerProfiles(token: string) {
-  const response = await apiRequest<ItemsResponse<PlayerProfile>>("/api/v1/users/me/player-profiles", {}, token);
+export async function loadMyPlayerProfiles(token: string, signal?: AbortSignal) {
+  const response = await apiRequest<ItemsResponse<PlayerProfile>>("/api/v1/users/me/player-profiles", { signal }, token);
   return normalizeItems(response);
 }
 

@@ -54,13 +54,16 @@ test("OCT02-R-016: skin detail retries the failed texture read without writing",
 });
 
 test("OCT02-R-016: profile-list failure remains visible beside a skin and retry restores application choices", { timeout: 30_000 }, async () => {
-  let reads = 0;
+  let reads = 0, textureReads = 0;
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
   let writes = 0;
-  const browser = await fixture.page(({ path, method }) => {
+  const browser = await fixture.page(async ({ path, method }) => {
     if (path === "/api/v1/auth/me") return { data: reader };
-    if (path === "/api/v1/skins/skin0001") return { data: skin };
+    if (path === "/api/v1/skins/skin0001") { textureReads++; return { data: skin }; }
     if (path === "/api/v1/users/me/player-profiles") {
       assert.equal(method, "GET");
+      started.resolve(); await release.promise;
       return ++reads === 1 ? { status: 503, error: "Synthetic profile list unavailable" } : { data: [profile] };
     }
     if (path === "/api/v1/content/skin0001") return { status: 404, error: "No localized fixture" };
@@ -71,7 +74,9 @@ test("OCT02-R-016: profile-list failure remains visible beside a skin and retry 
   try {
     const { page } = browser;
     await page.goto(`${fixture.origin}/skins/skin0001`);
+    await started.promise;
     await page.getByRole("heading", { name: skin.name, exact: true }).waitFor();
+    release.resolve();
     await page.getByRole("alert").filter({ hasText: "Synthetic profile list unavailable" }).waitFor();
     assert.equal(await page.getByRole("combobox", { name: "Apply to player profile", exact: true }).count(), 0);
     await page.getByRole("button", { name: "Retry", exact: true }).click();
@@ -79,9 +84,9 @@ test("OCT02-R-016: profile-list failure remains visible beside a skin and retry 
     await select.waitFor();
     assert.equal(await select.inputValue(), profile.publicId);
     assert.equal(await page.getByRole("alert").filter({ hasText: "Synthetic profile list unavailable" }).count(), 0);
-    assert.equal(reads, 2);
+    assert.equal(reads, 2); assert.equal(textureReads, 1);
     assert.equal(writes, 0);
-  } finally { await browser.close(); }
+  } finally { release.resolve(); await browser.close(); }
 });
 
 test("OCT02-R-016: player detail retries a failed read and renders the persisted identifier", { timeout: 30_000 }, async () => {
