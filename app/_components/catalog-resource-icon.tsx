@@ -148,5 +148,5 @@ function placeholderResource(reference: CatalogIconReference, name: string, loca
 function resolveCatalogResource(reference: CatalogIconReference, locale: string) {
   const query = reference.publicId || reference.identifier || "";
   const key = `${query}\u0000${locale}`;
-  return resourceCache.get(key, () => loadCatalogResourcePresentation(query, locale));
+  return resourceCache.get(key, () => loadCatalogResourcePresentation(query, locale, reference.identifier ? "minecraft.item" : undefined));
 }

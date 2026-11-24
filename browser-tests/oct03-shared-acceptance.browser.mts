@@ -700,6 +700,37 @@ test("OCT03 FS011 all six corrected upload notices wait for security scanning an
   }
 });
 
+test("currency icons resolve raw item identifiers by kind and exact resource IDs independently", async () => {
+  const currencies = [{ code: "plate", icon: "fixture:copper" }, { code: "fluid", icon: "catalog:fluid00001" }];
+  const requests = new Map<string, string | null>();
+  const browser = await fixture.page(({ path, url }) => {
+    if (path === "/api/v1/auth/me") return { data: actor("reader001", ["admin.access", "economy.read"]) };
+    if (path === "/api/v1/admin/economy/currencies") return { data: { items: currencies.map(({ code, icon }) => ({
+      publicId: code, code, name: code, icon, description: "", translations: {}, status: "active", transferTaxBps: 0, displayOrder: 0,
+    })) } };
+    if (path === "/api/v1/catalog/resource-presentation") {
+      const ref = url.searchParams.get("ref") ?? "";
+      const kind = url.searchParams.get("kind");
+      requests.set(ref, kind);
+      return { data: { publicId: ref === "fluid00001" ? ref : "item00001", kind: kind || "minecraft.fluid", id: "fixture:copper", name: "Copper", registry: kind ? "items" : "fluids" } };
+    }
+  });
+  try {
+    const { page } = browser;
+    await panel(page, "currencies", "economy");
+    for (const { code, icon } of currencies) {
+      const ref = icon.replace(/^catalog:/, "");
+      const viewed = requests.has(ref) ? Promise.resolve() : page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.pathname === "/api/v1/catalog/resource-presentation" && url.searchParams.get("ref") === ref;
+      });
+      await page.getByRole("button", { name: new RegExp(code) }).click();
+      await viewed;
+    }
+    assert.deepEqual([...requests].sort(), [["fixture:copper", "minecraft.item"], ["fluid00001", null]]);
+  } finally { await browser.close(); }
+});
+
 test("community read-only panels keep records and translations browsable", { timeout: 40_000 }, async () => {
   const permissions = ["admin.access", "economy.read", "shop.read", "level.read", "task.read"];
   const currency = { publicId: "coin001", code: "coin", name: "Fixture coin", description: "", icon: "", translations: { "en-US": { name: "Fixture coin" } }, status: "active", transferTaxBps: 0, displayOrder: 0 };

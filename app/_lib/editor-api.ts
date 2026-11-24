@@ -202,8 +202,9 @@ export function loadCatalogResourcePresentations(
   })));
 }
 
-export function loadCatalogResourcePresentation(reference: string, locale = "", signal?: AbortSignal) {
+export function loadCatalogResourcePresentation(reference: string, locale = "", kind?: string, signal?: AbortSignal) {
   const parameters = new URLSearchParams({ ref: reference.trim() });
+  if (kind) parameters.set("kind", kind);
   if (locale.trim()) parameters.set("locale", locale.trim());
   return apiRequest<{
     publicId: string;
