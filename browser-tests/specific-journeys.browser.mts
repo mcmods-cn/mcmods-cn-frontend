@@ -373,6 +373,10 @@ test("removing the only blocked user on the last page returns to the remaining u
 
 test("a rejected community submission shows the review decision to its author", async () => {
   const browser = await controlled(({ path }) => {
+    if (path === "/api/v1/users/me/content-languages") return { data: { primaryLocale: "en-US", secondaryLocale: "", editableLocales: ["en-US"] } };
+    if (path === "/api/v1/review-locks/community_post/testpost1") return { data: { blocked: false } };
+    if (path === "/api/v1/projects/testpost1/follow") return { data: { following: false } };
+    if (path === "/api/v1/comment-targets/community_post/testpost1/comments") return { data: { items: [], total: 0, capabilities: { canCreate: false } } };
     if (path === "/api/v1/community/posts/testpost1") return { data: { id: "testpost1", kind: "tutorial", title: "My submission", sourceLocale: "en-US",
       bodyMarkdown: "Tutorial draft", minecraftVersions: [], authorId: "test048u1", authorName: "Test reviewer", reviewStatus: "rejected",
       projects: [], resources: [], canEdit: true, canResolve: false } };
