@@ -1,5 +1,34 @@
 # 前端截图与界面验收
 
+## 战利品 JSON 保存与举报附件首选
+
+2026 年 11 月 24 日 UTC，Chromium 在前端生产构建 `8e04f9f`、修复写入时序的 `b84979d` 和补齐保存按钮禁用外观的 `c3ca2f2` 上重复相同操作。改前使用 Next standalone，后两版通过本机 HTTPS 加载各自 Dockerfile 构建的 OCI 镜像。页面使用合成数据和受控 API 响应。[改前 CI 失败记录](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/runs/45400170972) · [时序修复镜像](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/runs/45402664698) · [最终镜像构建](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/runs/45403447980)
+
+| 使用同一输入的场景 | 改前 `8e04f9f` | 改后 `b84979d` |
+| --- | --- | --- |
+| 高级战利品 JSON 输入 `null`，首次显示错误 | [输入框与提示](loot-json-before-field.png) · [保存按钮](loot-json-before-actions.png) | [输入框与提示](loot-json-after-field.png) · [保存按钮](loot-json-after-actions.png) |
+| 举报窗口首次打开时选择两个附件 | [未开始上传](report-upload-before.png) | [正在处理首个附件](report-upload-after.png) |
+
+**战利品编辑器**的原定义包含空奖池与 `custom.keep=true`。两次运行都在输入框首次出现 `aria-invalid=true` 时截图，再激活同一个原生保存按钮。输入框与操作区的前后裁剪分别逐字节相同。改前按钮的 `disabled` 为 `false`，发送了 1 次空差量 PUT。改后 `disabled` 为 `true`，无效输入产生 0 次 PUT。纠正 JSON 后用 Enter 保存，只发送 1 次 `{"custom":{"edited":true}}` 差量。受控保存失败后，输入框保留原字段与修改。另一条断言核对表和奖池同时无效时，修正整表仍保留奖池错误。
+
+将页面保持在无效状态后，`b84979d` 的保存按钮与可用状态具有相同文字颜色、背景、不透明度和鼠标指针。最终版本使用页面原有的禁用样式。顶部和底部保存按钮的不透明度同步从 1 降至 0.5，鼠标悬停显示禁止指针。修正为有效 JSON 后，两处按钮的不透明度都恢复为 1，键盘可以提交。
+
+| 无效输入时保存按钮的稳定外观 | 时序修复版 `b84979d` | 最终版 `c3ca2f2` |
+| --- | --- | --- |
+| 英文浅色，1280 × 720 | [保存按钮](loot-save-before-desktop.png) | [保存按钮](loot-save-after-desktop.png) |
+| 简中深色，390 × 844 | [保存按钮](loot-save-before-mobile-dark.png) | [保存按钮](loot-save-after-mobile-dark.png) |
+
+**举报附件**用同一讨论、账号及两个文本文件 `first.txt`、`second.txt`。窗口首次进入打开状态即选择两项。改前首次选择发出 0 次上传票据请求，用户重新选择后才开始。改后立即为第一个文件申请 1 次票据并禁用表单。此时切换账号，浏览器取消该请求，第二项发出 0 次票据请求，迟到的回执也没有重新打开原窗口。截图中的文件与账号均为合成数据。
+
+窄屏复验使用 390 × 844 的简体中文深色界面。战利品输入框和保存操作均在视口内，键盘可打开高级编辑、输入、纠错并提交。举报窗换账号后不再提交附件确认或举报，新账号重新打开空窗，可用 Tab 进入文本框并用 Escape 关闭。
+
+在完成生产构建并安装 Chromium 后，可以运行同一组交互断言。[构建与验证](../../README.md#验证与发布)
+
+```sh
+node --test --test-concurrency=1 --test-name-pattern='^FP056|^switching accounts cancels the open report attachment batch' \
+  browser-tests/oct03-page-remaining.browser.mts browser-tests/oct03-cross-legacy-acceptance.browser.mts
+```
+
 ## Mod 与整合包目录卡片
 
 同一组匿名目录记录在改前显示下载量 0，改后显示接口返回的站内下载量 73、评分 4.5 和评论数 2。收藏数 0 仍然显示。未提供作者的卡片保留许可证，缺少版本或加载器时省去对应标签。桌面操作区按实际文字宽度换行，手机上的收藏与下载仍可并排。
