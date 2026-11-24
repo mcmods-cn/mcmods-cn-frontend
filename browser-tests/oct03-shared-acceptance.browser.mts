@@ -30,7 +30,7 @@ async function changeLanguage(page: Page, locale: "zh-CN" | "en-US") {
     // selector, so an action before React hydration cannot be mistaken for a
     // language-sync failure.
     await languagePage.getByRole("button", { name: /^(Register|注册)$/, exact: true }).click();
-    await languagePage.locator('input[maxlength="32"]').waitFor();
+    await languagePage.getByRole("textbox", { name: /^(Username|用户名)$/ }).waitFor();
     await languagePage.waitForFunction(locale => document.documentElement.lang === locale, currentLocale);
     await languagePage.getByRole("combobox", { name: /^(Language|语言)$/, exact: true }).selectOption(locale);
     await languagePage.waitForFunction(locale => document.documentElement.lang === locale, locale);

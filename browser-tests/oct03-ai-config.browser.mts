@@ -45,7 +45,7 @@ async function changeLanguage(page: Page, locale: "zh-CN" | "en-US") {
   try {
     await other.goto(`${fixture.origin}/login`);
     await other.getByRole("button", { name: /^(Register|注册)$/, exact: true }).click();
-    await other.locator('input[maxlength="32"]').waitFor();
+    await other.getByRole("textbox", { name: /^(Username|用户名)$/ }).waitFor();
     await other.waitForFunction(value => document.documentElement.lang === value, current);
     await other.getByRole("combobox", { name: /^(Language|语言)$/, exact: true }).selectOption(locale);
     await page.waitForFunction(value => document.documentElement.lang === value, locale);
