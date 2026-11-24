@@ -22,6 +22,7 @@ export type CreateOSSUploadBatchOptions<TFile> = {
 export type ProcessOSSUploadBatchOptions<TFile, TResult extends OSSUploadRecord> = {
   onChange?: (tasks: OSSUploadBatchTask<TFile, TResult>[]) => void;
   onUploaded?: (task: OSSUploadBatchTask<TFile, TResult>, result: TResult) => void;
+  signal?: AbortSignal;
   shouldProcess?: (task: OSSUploadBatchTask<TFile, TResult>) => boolean;
   upload: (file: TFile, task: OSSUploadBatchTask<TFile, TResult>) => Promise<TResult>;
 };
@@ -62,19 +63,23 @@ export async function processOSSUploadBatch<TFile extends { name: string }, TRes
 
   // Every deterministic local rejection is already represented in this first
   // snapshot, before an OSS request can create a billable user file.
+  if (options.signal?.aborted) return snapshot();
   publish();
   for (let index = 0; index < current.length; index += 1) {
+    if (options.signal?.aborted) break;
     const task = current[index];
     if (task.stage === "invalid" || task.stage === "uploaded" || task.uploadedFileId) continue;
     if (options.shouldProcess && !options.shouldProcess(task)) continue;
     update(index, { error: "", stage: "uploading" });
     try {
       const result = await options.upload(task.file, task);
+      if (options.signal?.aborted) break;
       const uploadedFileId = result.id?.trim();
       if (!uploadedFileId) throw new Error("OSS upload response is missing a file ID");
       update(index, { error: "", result, stage: "uploaded", uploadedFileId });
       options.onUploaded?.({ ...current[index] }, result);
     } catch (error) {
+      if (options.signal?.aborted) break;
       update(index, { error: errorText(error), result: undefined, stage: "failed", uploadedFileId: "" });
     }
   }

@@ -7,14 +7,12 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { ApiError, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import { licenseOptions, maintenanceOptions, sourceOptions } from "../_lib/mod-catalog-data";
-import type { BackendModAuthor, BackendModCompatibility, BackendModGalleryImage, MinecraftVersionConfig } from "../_lib/mod-api";
+import type { BackendModAuthor, BackendModCompatibility, MinecraftVersionConfig } from "../_lib/mod-api";
 import { loadMinecraftVersionConfig } from "../_lib/minecraft-version-api";
 import { modpackCategoryOptions, modpackIconURL, modpackPackagingMethodOptions, modpackTypeOptions, type BackendModpackImportJob, type BackendModpackImportResult, type BackendModpackImportSelection, type BackendModpackMod, type BackendModpackRecord, type CreateModpackPayload } from "../_lib/modpack-api";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { editableContentLanguages } from "../_lib/content-language";
 import { useI18n } from "../_lib/i18n-provider";
-import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
-import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
 import { waitForPolledJob } from "../_lib/job-polling.mts";
 import { CreatorPicker } from "./creator-picker";
@@ -22,9 +20,11 @@ import { FileDropZone } from "./file-drop-zone";
 import { ReviewLockGate } from "./review-edit-lock";
 import { CompatibilityEditor, fallbackMinecraftConfig, ModLinkEditor } from "./mod-editor";
 import { ModResourcePickerDialog } from "./editor/mod-resource-picker";
-import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
+import { SquareImageCropDialog } from "./square-image-crop-dialog";
 import { ToolsPlayground } from "./tools-playground";
 import { useAutoDraft } from "../_lib/use-auto-draft";
+import { useProjectImages } from "./editor/use-project-images";
+import { useEditorWrite } from "./editor/use-editor-write";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { Field, FormSection, SelectField } from "./project-editor-fields";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
@@ -61,16 +61,16 @@ function ModpackEditorForm({ siteId, importMethod, importURL }: { siteId?: strin
   const [importing, setImporting] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [iconCropFile, setIconCropFile] = useState<File>();
-  const [iconUploading, setIconUploading] = useState(false);
-  const [iconPreviewUrl, setIconPreviewUrl] = useState("");
-  const [galleryUploading, setGalleryUploading] = useState(false);
-  const [galleryUploadTasks, setGalleryUploadTasks] = useState<OSSUploadBatchTask<File, OSSFileRecord>[]>([]);
   const automaticImportRef = useRef(false);
   const loadedEditorKey = useRef("");
   const [recordLoaded, setRecordLoaded] = useState(!siteId);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [markdownUploading, setMarkdownUploading] = useState(false);
-  const submitInFlight = useRef(false);
+  const submission = useEditorWrite();
+  const { uploadIcon, iconPreviewUrl, setIconPreviewUrl, iconUploading, uploadGallery, galleryUploading, galleryUploadTasks, retryGalleryUpload } = useProjectImages({
+    token, iconSource: `modpack_icon:${siteId || "draft"}`, gallerySource: `modpack_gallery:${siteId || "draft"}`,
+    gallerySize: draft.galleryImages.length, setDraft, setMessage,
+  });
   const importController = useRef<AbortController | null>(null);
   useEffect(() => () => importController.current?.abort(), [token]);
   const autoDraft = useAutoDraft({
@@ -110,7 +110,7 @@ function ModpackEditorForm({ siteId, importMethod, importURL }: { siteId?: strin
       .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : t("modpacks.editor.loadFailed")); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [loadAttempt, ready, siteId, t, token]);
+  }, [loadAttempt, ready, setIconPreviewUrl, siteId, t, token]);
 
   async function importFromProvider(provider: "modrinth" | "curseforge", url: string) {
     if (!token || importing || !url.trim()) return;
@@ -153,86 +153,40 @@ function ModpackEditorForm({ siteId, importMethod, importURL }: { siteId?: strin
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (submitInFlight.current || submitting || !recordLoaded || iconUploading || galleryUploading || markdownUploading) return;
+    if (submitting || !recordLoaded || iconUploading || galleryUploading || markdownUploading) return;
     if (!token) return;
-    submitInFlight.current = true;
+    const request = submission.beginWrite();
+    if (!request) return;
     setSubmitting(true);
     setMessage("");
     try {
       const snapshot = payloadFromDraft(draft);
       if (siteId) {
-        const result = await apiRequest<{ status: "pending" | "approved"; siteId: string; changeRequestId: string }>(`/api/v1/modpacks/${encodeURIComponent(siteId)}`, { method: "PUT", body: JSON.stringify({ snapshot, baseRevisionId, changeReason }) }, token);
+        const result = await apiRequest<{ status: "pending" | "approved"; siteId: string; changeRequestId: string }>(`/api/v1/modpacks/${encodeURIComponent(siteId)}`, { method: "PUT", signal: request.signal, body: JSON.stringify({ snapshot, baseRevisionId, changeReason }) }, token);
         const targetSiteId = result.siteId || siteId;
+        if (request.signal.aborted) return;
         await autoDraft.completeDraft({
           projectKey: `modpack:${targetSiteId}`,
           projectTitle: snapshot.primaryName,
           targetUrl: `/modpacks/${targetSiteId}`,
           changeRequestId: result.changeRequestId,
-        }).catch(() => { window.alert(t("drafts.completionFailed")); });
-        router.push(`/modpacks/${targetSiteId}`);
+        }).catch(() => { if (!request.signal.aborted) window.alert(t("drafts.completionFailed")); });
+        if (!request.signal.aborted) router.push(`/modpacks/${targetSiteId}`);
       } else {
-        const result = await apiRequest<BackendModpackRecord>("/api/v1/modpacks", { method: "POST", body: JSON.stringify(snapshot) }, token);
+        const result = await apiRequest<BackendModpackRecord>("/api/v1/modpacks", { method: "POST", signal: request.signal, body: JSON.stringify(snapshot) }, token);
+        if (request.signal.aborted) return;
         await autoDraft.completeDraft({
           projectKey: `modpack:${result.siteId}`,
           projectTitle: result.primaryName,
           targetUrl: `/modpacks/${result.siteId}`,
           changeRequestId: result.changeRequestId,
-        }).catch(() => { window.alert(t("drafts.completionFailed")); });
-        router.push(`/modpacks/${result.siteId}`);
+        }).catch(() => { if (!request.signal.aborted) window.alert(t("drafts.completionFailed")); });
+        if (!request.signal.aborted) router.push(`/modpacks/${result.siteId}`);
       }
     } catch (error) {
-      setMessage(error instanceof ApiError ? error.message : t("modpacks.editor.saveFailed"));
+      if (!request.signal.aborted) setMessage(error instanceof ApiError ? error.message : t("modpacks.editor.saveFailed"));
     } finally {
-      submitInFlight.current = false;
-      setSubmitting(false);
-    }
-  }
-
-  async function uploadIcon(output: SquareCropOutput) {
-    const file = output.files.get(128);
-    if (!file || !token) return;
-    setIconUploading(true);
-    try {
-      const stored = await uploadUserFileToOSS(file, token, `modpack_icon:${siteId || "draft"}`);
-      const storageUrl = stored.storageUrl || stored.accessUrl || stored.url || "";
-      setDraft((current) => ({ ...current, iconUrl: storageUrl }));
-      setIconPreviewUrl(stored.accessUrl || stored.url || storageUrl);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.submission.iconUploadFailed"));
-    } finally {
-      URL.revokeObjectURL(output.previewUrl);
-      setIconUploading(false);
-    }
-  }
-
-  async function uploadGallery(files: File[]) {
-    if (!token || galleryUploading) return;
-    const tasks = createOSSUploadBatchTasks<File, OSSFileRecord>(files, {
-      capacity: Math.max(0, 32 - draft.galleryImages.length),
-      capacityError: t("uploadBatch.capacityReached"),
-      identity: (file, index) => `${file.name}:${file.size}:${file.lastModified}:${index}`,
-      validate: (file) => file.type.startsWith("image/") ? "" : t("uploadBatch.imageOnly"),
-    });
-    if (!tasks.length) return;
-    await processGalleryUploadTasks(tasks);
-  }
-
-  async function processGalleryUploadTasks(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string) {
-    if (!token || galleryUploading) return;
-    setGalleryUploading(true);
-    setMessage("");
-    try {
-      const result = await processOSSUploadBatch(tasks, {
-        upload: (file) => uploadUserFileToOSS(file, token, `modpack_gallery:${siteId || "draft"}`),
-        shouldProcess: retryKey ? (task) => task.key === retryKey : undefined,
-        onChange: setGalleryUploadTasks,
-        onUploaded: (_task, record) => setDraft((current) => current.galleryImages.some((image) => image.fileId === record.id)
-          ? current
-          : { ...current, galleryImages: [...current.galleryImages, { fileId: record.id, name: record.originalName, contentType: record.contentType, sizeBytes: record.sizeBytes, url: record.accessUrl } satisfies BackendModGalleryImage].slice(0, 32) }),
-      });
-      if (result.some((task) => task.stage === "failed")) setMessage(t("mods.submission.galleryUploadFailed"));
-    } finally {
-      setGalleryUploading(false);
+      if (submission.finishWrite(request)) setSubmitting(false);
     }
   }
 
@@ -257,7 +211,7 @@ function ModpackEditorForm({ siteId, importMethod, importURL }: { siteId?: strin
     <FormSection title={t("mods.submission.sections.links")} description={t("mods.submission.sections.linksHint")}><ModLinkEditor links={draft.links} onChange={(links) => setDraft({ ...draft, links })} /></FormSection>
     <FormSection title={t("modpacks.editor.modList")} description={t("modpacks.editor.modListHint")}><ModRows mods={draft.mods} onRemove={(index) => setDraft((current) => ({ ...current, mods: current.mods.filter((_, itemIndex) => itemIndex !== index) }))} /><button className="button-secondary focus-ring mt-4" type="button" onClick={() => setPickerOpen(true)}>+ {t("modpacks.editor.selectMods")}</button></FormSection>
     <FormSection title={t("mods.submission.sections.body")}><ToolsPlayground embedded onBusyChange={setMarkdownUploading} documentId={`modpack:${siteId || "draft"}:body`} editorTitle={t("mods.submission.sections.body")} value={draft.bodyMarkdown} onChange={(bodyMarkdown) => setDraft({ ...draft, bodyMarkdown })} /></FormSection>
-    <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={(key) => void processGalleryUploadTasks(galleryUploadTasks, key)} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft((current) => ({ ...current, galleryImages: current.galleryImages.filter((_, itemIndex) => itemIndex !== index) }))}>{t("common.delete")}</button></div>)}</div></FormSection>
+    <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={retryGalleryUpload} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft((current) => ({ ...current, galleryImages: current.galleryImages.filter((_, itemIndex) => itemIndex !== index) }))}>{t("common.delete")}</button></div>)}</div></FormSection>
     {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24" value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
     {message ? <p className="mb-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]" role="alert">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={submitting || iconUploading || galleryUploading || markdownUploading} type="submit">{t("common.save")}</button></div>
     <SquareImageCropDialog file={iconCropFile} minimumSize={128} outputSizes={[128]} onCancel={() => setIconCropFile(undefined)} onConfirm={(output) => { setIconCropFile(undefined); void uploadIcon(output); }} />

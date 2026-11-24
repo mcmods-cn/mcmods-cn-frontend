@@ -8,10 +8,8 @@ import { ApiError, apiRequest } from "../_lib/api";
 import { useAuthSnapshot } from "../_lib/auth";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { supportedLocales, useI18n, type Locale } from "../_lib/i18n-provider";
-import type { BackendModAuthor, BackendModGalleryImage } from "../_lib/mod-api";
+import type { BackendModAuthor } from "../_lib/mod-api";
 import { licenseOptions, maintenanceOptions, sourceOptions } from "../_lib/mod-catalog-data";
-import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
-import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
 import { waitForPolledJob } from "../_lib/job-polling.mts";
 import { normalizeSimpleProjectCollections } from "../_lib/simple-project-normalization.mts";
@@ -22,9 +20,11 @@ import { FileDropZone } from "./file-drop-zone";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
 import { ModLinkEditor } from "./mod-editor";
 import { ReviewLockGate } from "./review-edit-lock";
-import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
+import { SquareImageCropDialog } from "./square-image-crop-dialog";
 import { ToolsPlayground } from "./tools-playground";
 import { useAutoDraft } from "../_lib/use-auto-draft";
+import { useProjectImages } from "./editor/use-project-images";
+import { useEditorWrite } from "./editor/use-editor-write";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { Field, FormSection, SelectField } from "./project-editor-fields";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
@@ -51,10 +51,6 @@ function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL 
   const [iconCropFile, setIconCropFile] = useState<File>();
   const [loading, setLoading] = useState(Boolean(siteId));
   const [submitting, setSubmitting] = useState(false);
-  const [iconUploading, setIconUploading] = useState(false);
-  const [iconPreviewUrl, setIconPreviewUrl] = useState("");
-  const [galleryUploading, setGalleryUploading] = useState(false);
-  const [galleryUploadTasks, setGalleryUploadTasks] = useState<OSSUploadBatchTask<File, OSSFileRecord>[]>([]);
   const [message, setMessage] = useState("");
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
@@ -63,7 +59,11 @@ function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL 
   const [recordLoaded, setRecordLoaded] = useState(!siteId);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [markdownUploading, setMarkdownUploading] = useState(false);
-  const submitInFlight = useRef(false);
+  const submission = useEditorWrite();
+  const { uploadIcon, iconPreviewUrl, setIconPreviewUrl, iconUploading, uploadGallery, galleryUploading, galleryUploadTasks, retryGalleryUpload } = useProjectImages({
+    token, iconSource: `simple_project_icon:${projectType}:${siteId || "draft"}`, gallerySource: `simple_project_gallery:${projectType}:${siteId || "draft"}`,
+    gallerySize: draft.galleryImages.length, setDraft, setMessage,
+  });
   const importController = useRef<AbortController | null>(null);
   useEffect(() => () => importController.current?.abort(), [token]);
 
@@ -87,7 +87,7 @@ function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL 
       .catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : t("largeProjects.editor.loadFailed")); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [loadAttempt, projectType, ready, siteId, t, token]);
+  }, [loadAttempt, projectType, ready, setIconPreviewUrl, siteId, t, token]);
 
   const localization = useMemo(() => localizationFor(draft, selectedLocale), [draft, selectedLocale]);
   const parentPickerValues = useMemo(() => draft.parentProjects.filter((item) => item.type === parentType).map(parentToPickerResource), [draft.parentProjects, parentType]);
@@ -111,51 +111,6 @@ function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL 
   function selectLocale(locale: Locale) {
     setSelectedLocale(locale);
     setDraft((current) => current.localizations.some((item) => item.locale === locale) ? current : { ...current, localizations: [...current.localizations, { locale, name: "", summary: "", bodyMarkdown: "" }] });
-  }
-
-  async function uploadIcon(output: SquareCropOutput) {
-    const file = output.files.get(128);
-    if (!file || !token) { URL.revokeObjectURL(output.previewUrl); return; }
-    setIconUploading(true);
-    try {
-      const stored = await uploadUserFileToOSS(file, token, `simple_project_icon:${projectType}:${siteId || "draft"}`);
-      const storageUrl = stored.storageUrl || stored.accessUrl || stored.url || "";
-      setDraft((current) => ({ ...current, iconUrl: storageUrl }));
-      setIconPreviewUrl(stored.accessUrl || stored.url || storageUrl);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.submission.iconUploadFailed"));
-    } finally { URL.revokeObjectURL(output.previewUrl); setIconUploading(false); }
-  }
-
-  async function uploadGallery(files: File[]) {
-    if (!token || galleryUploading) return;
-    const tasks = createOSSUploadBatchTasks<File, OSSFileRecord>(files, {
-      capacity: Math.max(0, 32 - draft.galleryImages.length),
-      capacityError: t("uploadBatch.capacityReached"),
-      identity: (file, index) => `${file.name}:${file.size}:${file.lastModified}:${index}`,
-      validate: (file) => file.type.startsWith("image/") ? "" : t("uploadBatch.imageOnly"),
-    });
-    if (!tasks.length) return;
-    await processGalleryUploadTasks(tasks);
-  }
-
-  async function processGalleryUploadTasks(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string) {
-    if (!token || galleryUploading) return;
-    setGalleryUploading(true);
-    setMessage("");
-    try {
-      const result = await processOSSUploadBatch(tasks, {
-        upload: (file) => uploadUserFileToOSS(file, token, `simple_project_gallery:${projectType}:${siteId || "draft"}`),
-        shouldProcess: retryKey ? (task) => task.key === retryKey : undefined,
-        onChange: setGalleryUploadTasks,
-        onUploaded: (_task, record) => setDraft((current) => current.galleryImages.some((image) => image.fileId === record.id)
-          ? current
-          : { ...current, galleryImages: [...current.galleryImages, { fileId: record.id, name: record.originalName, contentType: record.contentType, sizeBytes: record.sizeBytes, url: record.accessUrl || record.url } satisfies BackendModGalleryImage].slice(0, 32) }),
-      });
-      if (result.some((task) => task.stage === "failed")) setMessage(t("mods.submission.galleryUploadFailed"));
-    } finally {
-      setGalleryUploading(false);
-    }
   }
 
   async function importFromProvider(provider: SimpleProjectImportProvider, sourceURL: string) {
@@ -211,37 +166,41 @@ function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL 
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (submitInFlight.current || submitting || !recordLoaded || iconUploading || galleryUploading || markdownUploading) return;
+    if (submitting || !recordLoaded || iconUploading || galleryUploading || markdownUploading) return;
     if (!token) return;
-    submitInFlight.current = true;
+    const request = submission.beginWrite();
+    if (!request) return;
     setSubmitting(true);
     setMessage("");
     const snapshot = { ...draft, searchKeywords: splitValues(keywordsInput), projectType };
     try {
       if (siteId) {
-        const result = await apiRequest<{ siteId: string; status: "pending" | "approved"; changeRequestId: string }>(`/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}`, { method: "PUT", body: JSON.stringify({ snapshot, baseRevisionId, changeReason }) }, token);
+        const result = await apiRequest<{ siteId: string; status: "pending" | "approved"; changeRequestId: string }>(`/api/v1/content-projects/${projectType}/${encodeURIComponent(siteId)}`, { method: "PUT", signal: request.signal, body: JSON.stringify({ snapshot, baseRevisionId, changeReason }) }, token);
         const targetSiteId = result.siteId || snapshot.siteId;
+        if (request.signal.aborted) return;
         await autoDraft.completeDraft({
           projectKey: `simple-project:${projectType}:${targetSiteId}`,
           projectTitle: localizationFor(snapshot, snapshot.defaultLocale).name,
           targetUrl: `${config.path}/${targetSiteId}`,
           changeRequestId: result.changeRequestId,
-        }).catch(() => { window.alert(t("drafts.completionFailed")); });
-        router.push(`${config.path}/${targetSiteId}`);
+        }).catch(() => { if (!request.signal.aborted) window.alert(t("drafts.completionFailed")); });
+        if (!request.signal.aborted) router.push(`${config.path}/${targetSiteId}`);
       } else {
-        const result = await apiRequest<SimpleProjectRecord>(`/api/v1/content-projects/${projectType}`, { method: "POST", body: JSON.stringify(snapshot) }, token);
+        const result = await apiRequest<SimpleProjectRecord>(`/api/v1/content-projects/${projectType}`, { method: "POST", signal: request.signal, body: JSON.stringify(snapshot) }, token);
+        if (request.signal.aborted) return;
         await autoDraft.completeDraft({
           projectKey: `simple-project:${projectType}:${result.siteId}`,
           projectTitle: localizationFor(result, result.defaultLocale).name,
           targetUrl: `${config.path}/${result.siteId}`,
           changeRequestId: result.changeRequestId,
-        }).catch(() => { window.alert(t("drafts.completionFailed")); });
-        router.push(`${config.path}/${result.siteId}`);
+        }).catch(() => { if (!request.signal.aborted) window.alert(t("drafts.completionFailed")); });
+        if (!request.signal.aborted) router.push(`${config.path}/${result.siteId}`);
       }
     } catch (error) {
-      setMessage(error instanceof ApiError ? error.message : t("largeProjects.editor.saveFailed"));
-    } finally { submitInFlight.current = false;
-      setSubmitting(false); }
+      if (!request.signal.aborted) setMessage(error instanceof ApiError ? error.message : t("largeProjects.editor.saveFailed"));
+    } finally {
+      if (submission.finishWrite(request)) setSubmitting(false);
+    }
   }
 
   if (!ready || (Boolean(token) && (loading || importing))) return <PageFeedback title={importing ? t("mods.submission.importProgress", { progress: importProgress }) : t("common.loading")} progress={importing ? importProgress : undefined} />;
@@ -262,7 +221,7 @@ function SimpleProjectEditorForm({ projectType, siteId, importMethod, importURL 
     <FormSection title={t("mods.submission.sections.links")} description={t("largeProjects.editor.linksRequired")}><ModLinkEditor links={draft.links} onChange={(links) => setDraft({ ...draft, links })} /></FormSection>
     <FormSection title={t("mods.submission.sections.platformIDs")} description={t("largeProjects.editor.downloadSourcesHint")}><div className="grid gap-4 md:grid-cols-2"><Field label={t("mods.submission.fields.curseforgeProjectId")}><input className="field font-mono" value={draft.curseforgeProjectId} onChange={(event) => setDraft({ ...draft, curseforgeProjectId: event.target.value })} /></Field><Field label={t("mods.submission.fields.modrinthProjectId")}><input className="field font-mono" value={draft.modrinthProjectId} onChange={(event) => setDraft({ ...draft, modrinthProjectId: event.target.value })} /></Field></div></FormSection>
     <FormSection title={t("mods.submission.sections.body")} description={t("mods.submission.sections.bodyHint")}><div className="overflow-hidden rounded-lg border border-[var(--line)]"><ToolsPlayground embedded onBusyChange={setMarkdownUploading} documentId={`simple-project:${projectType}:${siteId || "draft"}:${selectedLocale}:body`} editorTitle={`${t("mods.submission.sections.body")} (${selectedLocale})`} uploadSource={`simple_project_text:${projectType}:${siteId || "draft"}`} value={localization.bodyMarkdown} onChange={(bodyMarkdown) => updateLocalization(setDraft, selectedLocale, { bodyMarkdown })} /></div></FormSection>
-    <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={(key) => void processGalleryUploadTasks(galleryUploadTasks, key)} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft({ ...draft, galleryImages: draft.galleryImages.filter((_, itemIndex) => itemIndex !== index) })}>{t("common.delete")}</button></div>)}</div></FormSection>
+    <FormSection title={t("mods.submission.sections.gallery")}><FileDropZone accept="image/*" disabled={galleryUploading} hint={t("mods.submission.hints.galleryDrop")} multiple title={t("mods.submission.actions.uploadGallery")} onFiles={(files) => void uploadGallery(files)} /><OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={retryGalleryUpload} /><div className="mt-4 grid gap-3 sm:grid-cols-3">{draft.galleryImages.map((image, index) => <div className="rounded-lg border border-[var(--line)] p-2" key={`${image.fileId}-${index}`}><span className="block truncate text-sm">{image.name}</span><button className="mt-2 text-sm font-bold text-[var(--red)]" type="button" onClick={() => setDraft({ ...draft, galleryImages: draft.galleryImages.filter((_, itemIndex) => itemIndex !== index) })}>{t("common.delete")}</button></div>)}</div></FormSection>
     {siteId ? <FormSection title={t("mods.submission.changeReason")}><textarea className="field min-h-24" value={changeReason} onChange={(event) => setChangeReason(event.target.value)} /></FormSection> : null}
     {message ? <p className="mb-5 rounded-xl border border-[var(--red)] p-4 font-bold text-[var(--red)]" role="alert">{message}</p> : null}<div className="flex justify-end"><button className="button-primary focus-ring" disabled={submitting || iconUploading || galleryUploading || markdownUploading} type="submit">{t("common.save")}</button></div>
     <SquareImageCropDialog file={iconCropFile} minimumSize={128} outputSizes={[128]} onCancel={() => setIconCropFile(undefined)} onConfirm={(output) => { setIconCropFile(undefined); void uploadIcon(output); }} />

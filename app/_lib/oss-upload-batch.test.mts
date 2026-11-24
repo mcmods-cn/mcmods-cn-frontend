@@ -106,29 +106,34 @@ test("retry uploads only failed items and retains successful records", async () 
   ]);
 });
 
-test("all affected editors use the shared per-file status boundary", async () => {
-  const names = [
-    "simple-project-editor.tsx",
-    "modpack-editor.tsx",
-    "mod-editor.tsx",
-    "mod-content-resource-editor.tsx",
-  ];
-  for (const name of names) {
-    const source = await readFile(new URL(`../_components/${name}`, import.meta.url), "utf8");
-    assert.match(source, /processOSSUploadBatch/);
-    assert.match(source, /OSSUploadBatchStatus/);
-    assert.match(source, /onUploaded/);
-  }
+test("a cancelled owner stops a batch before a later item or stale publication", async () => {
+  const controller = new AbortController();
+  const events: string[] = [];
+  const results = await processOSSUploadBatch(tasks([file("first"), file("second"), file("last")]), {
+    signal: controller.signal,
+    upload: async item => {
+      events.push("start:" + item.key);
+      if (item.key === "second") controller.abort();
+      return { id: item.key };
+    },
+    onUploaded: (_task, record) => events.push("saved:" + record.id),
+  });
+  assert.deepEqual(events, ["start:first", "saved:first", "start:second"]);
+  assert.deepEqual(results.map(task => task.uploadedFileId), ["first", "", ""]);
+});
 
-  const simple = await readFile(new URL("../_components/simple-project-editor.tsx", import.meta.url), "utf8");
-  const modpack = await readFile(new URL("../_components/modpack-editor.tsx", import.meta.url), "utf8");
-  const mod = await readFile(new URL("../_components/mod-editor.tsx", import.meta.url), "utf8");
+test("all affected editors publish uploaded files through the per-file status boundary", async () => {
+  for (const name of ["simple-project-editor", "modpack-editor", "mod-editor"]) {
+    const source = await readFile(new URL(`../_components/${name}.tsx`, import.meta.url), "utf8");
+    assert.match(source, /useProjectImages/);
+    assert.match(source, /OSSUploadBatchStatus/);
+  }
+  const shared = await readFile(new URL("../_components/editor/use-project-images.ts", import.meta.url), "utf8");
+  assert.match(shared, /processOSSUploadBatch/);
+  assert.match(shared, /current.galleryImages.some/);
   const resource = await readFile(new URL("../_components/mod-content-resource-editor.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(simple, /Promise\.all\([\s\S]{0,500}uploadUserFileToOSS/);
-  assert.doesNotMatch(resource, /Promise\.all\(\[\s*uploadUserFileToOSS/);
-  assert.match(modpack, /galleryImages\.some\(\(image\) => image\.fileId === record\.id\)/);
-  assert.match(mod, /galleryImages\.some\(\(image\) => image\.fileId === record\.id\)/);
-  assert.match(simple, /galleryImages\.some\(\(image\) => image\.fileId === record\.id\)/);
+  assert.match(resource, /OSSUploadBatchStatus/);
+  assert.match(resource, /processOSSUploadBatch/);
   assert.match(resource, /setIconSmallFilePublicId\(record\.id\)/);
   assert.match(resource, /setIconFilePublicId\(record\.id\)/);
 

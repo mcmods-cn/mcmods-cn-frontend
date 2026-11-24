@@ -11,7 +11,6 @@ import {
   BackendModAuthor,
   BackendModImportJob,
   BackendModIdentifier,
-  BackendModGalleryImage,
   BackendModLocalization,
   BackendModRecord,
   BackendModRelationship,
@@ -33,8 +32,6 @@ import {
 } from "../_lib/mod-catalog-data";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import type { Locale } from "../_lib/i18n-provider";
-import { uploadUserFileToOSS, type OSSFileRecord } from "../_lib/oss-upload";
-import { createOSSUploadBatchTasks, processOSSUploadBatch, type OSSUploadBatchTask } from "../_lib/oss-upload-batch.mts";
 import { normalizeProjectSiteIdInput } from "../_lib/project-identifiers";
 import { waitForPolledJob } from "../_lib/job-polling.mts";
 import { MinecraftVersionPicker } from "./minecraft-version-picker";
@@ -42,13 +39,15 @@ import { CreatorPicker } from "./creator-picker";
 import { ToolsPlayground } from "./tools-playground";
 import { ContentLanguageSwitcher } from "./editor/content-language-switcher";
 import { ModResourcePickerDialog } from "./editor/mod-resource-picker";
-import { SquareImageCropDialog, type SquareCropOutput } from "./square-image-crop-dialog";
+import { SquareImageCropDialog } from "./square-image-crop-dialog";
 import type { CatalogResourceRef } from "../_lib/editor-types";
 import { FileDropZone } from "./file-drop-zone";
 import { AntiAbuseChallengeDialog } from "./anti-abuse-challenge";
 import { challengeFromDetails, loadAntiAbuseFormToken, type AntiAbuseFormToken, type AntiAbuseChallenge } from "../_lib/anti-abuse-api";
 import { ReviewLockGate } from "./review-edit-lock";
 import { useAutoDraft } from "../_lib/use-auto-draft";
+import { useProjectImages } from "./editor/use-project-images";
+import { useEditorWrite } from "./editor/use-editor-write";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { Field, FormSection, SelectField } from "./project-editor-fields";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
@@ -153,15 +152,15 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
   const [recordLoaded, setRecordLoaded] = useState(!siteId);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [markdownUploading, setMarkdownUploading] = useState(false);
-  const submitInFlight = useRef(false);
+  const submission = useEditorWrite();
+  const { uploadIcon, iconPreviewUrl, setIconPreviewUrl, iconUploading, uploadGallery, galleryUploading, galleryUploadTasks, retryGalleryUpload } = useProjectImages({
+    token, iconSource: `mod_icon:${siteId || draft.siteId || "draft"}`, gallerySource: `mod_gallery:${siteId || "draft"}`,
+    gallerySize: draft.galleryImages.length, setDraft, setMessage,
+  });
   const [changeReason, setChangeReason] = useState("");
   const [minecraftConfig, setMinecraftConfig] = useState<MinecraftVersionConfig>(() => fallbackMinecraftConfig());
   const [selectedLocale, setSelectedLocale] = useState<Locale>(locale);
-  const [galleryUploading, setGalleryUploading] = useState(false);
-  const [galleryUploadTasks, setGalleryUploadTasks] = useState<OSSUploadBatchTask<File, OSSFileRecord>[]>([]);
   const [iconCropFile, setIconCropFile] = useState<File>();
-  const [iconUploading, setIconUploading] = useState(false);
-  const [iconPreviewUrl, setIconPreviewUrl] = useState("");
   const importLocaleSnapshot = useEffectEvent(() => ({ locale, t }));
 
   const localized = modLocalization(draft, selectedLocale);
@@ -221,7 +220,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [loadAttempt, locale, ready, siteId, t, token]);
+  }, [loadAttempt, locale, ready, setIconPreviewUrl, siteId, t, token]);
 
   useEffect(() => {
     const provider = importMethod === "modrinth" || importMethod === "curseforge" || importMethod === "github" ? importMethod : "";
@@ -286,12 +285,13 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
   }
 
   async function persistSubmission(snapshot: CreateModPayload, reason: string, challengeProof = "", idempotencyKey = crypto.randomUUID()) {
-    if (submitInFlight.current || submitting || !recordLoaded || iconUploading || galleryUploading || markdownUploading) return;
+    if (submitting || !recordLoaded || iconUploading || galleryUploading || markdownUploading) return;
     if (!token) {
       setMessage(t("mods.submission.loginRequired"));
       return;
     }
-    submitInFlight.current = true;
+    const request = submission.beginWrite();
+    if (!request) return;
     setSubmitting(true);
     setMessage("");
     const metadata = formTokenValue.current;
@@ -306,27 +306,30 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
       if (siteId) {
         const revision = await apiRequest<BackendModRevision>(
           `/api/v1/mods/${encodeURIComponent(siteId)}/revisions`,
-          { method: "POST", headers, body: JSON.stringify({ snapshot, changeReason: reason, baseRevisionId }) },
+          { method: "POST", headers, signal: request.signal, body: JSON.stringify({ snapshot, changeReason: reason, baseRevisionId }) },
           token,
         );
+        if (request.signal.aborted) return;
         await autoDraft.completeDraft({
           projectKey: `mod:${snapshot.siteId}`,
           projectTitle: snapshot.primaryName,
           targetUrl: `/mods/${snapshot.siteId}`,
           changeRequestId: revision.changeRequestId,
-        }).catch(() => { window.alert(t("drafts.completionFailed")); });
-        router.push(`/mods/${revision.status === "approved" ? snapshot.siteId : siteId}/history`);
+        }).catch(() => { if (!request.signal.aborted) window.alert(t("drafts.completionFailed")); });
+        if (!request.signal.aborted) router.push(`/mods/${revision.status === "approved" ? snapshot.siteId : siteId}/history`);
       } else {
-        const created = await apiRequest<BackendModRecord>("/api/v1/mods", { method: "POST", headers, body: JSON.stringify(snapshot) }, token);
+        const created = await apiRequest<BackendModRecord>("/api/v1/mods", { method: "POST", headers, signal: request.signal, body: JSON.stringify(snapshot) }, token);
+        if (request.signal.aborted) return;
         await autoDraft.completeDraft({
           projectKey: `mod:${created.siteId}`,
           projectTitle: created.primaryName,
           targetUrl: `/mods/${created.siteId}`,
           changeRequestId: created.changeRequestId,
-        }).catch(() => { window.alert(t("drafts.completionFailed")); });
-        router.push(`/mods/${created.siteId}`);
+        }).catch(() => { if (!request.signal.aborted) window.alert(t("drafts.completionFailed")); });
+        if (!request.signal.aborted) router.push(`/mods/${created.siteId}`);
       }
     } catch (error) {
+      if (request.signal.aborted) return;
       if (error instanceof ApiError && error.code === "challenge_required") {
         const value = challengeFromDetails(error.details);
         if (value) {
@@ -337,65 +340,10 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
       }
       setMessage(error instanceof ApiError ? error.message : t("mods.submission.createFailed"));
     } finally {
-      submitInFlight.current = false;
-      setSubmitting(false);
+      if (submission.finishWrite(request)) setSubmitting(false);
       // Form metadata is single-use, including a challenge/rejection response.
       // Refresh only metadata; the user decides whether to submit again.
-      void refreshSubmissionFormToken();
-    }
-  }
-
-  async function uploadGalleryImages(files: File[]) {
-    if (!files.length || !token || galleryUploading) return;
-    const tasks = createOSSUploadBatchTasks<File, OSSFileRecord>(files, {
-      capacity: Math.max(0, 32 - draft.galleryImages.length),
-      capacityError: t("uploadBatch.capacityReached"),
-      identity: (file, index) => `${file.name}:${file.size}:${file.lastModified}:${index}`,
-      validate: (file) => file.type.startsWith("image/") ? "" : t("uploadBatch.imageOnly"),
-    });
-    await processGalleryUploadTasks(tasks);
-  }
-
-  async function processGalleryUploadTasks(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string) {
-    if (!token || galleryUploading) return;
-    setGalleryUploading(true);
-    setMessage("");
-    try {
-      const result = await processOSSUploadBatch(tasks, {
-        upload: (file) => uploadUserFileToOSS(file, token, `mod_gallery:${siteId || "draft"}`),
-        shouldProcess: retryKey ? (task) => task.key === retryKey : undefined,
-        onChange: setGalleryUploadTasks,
-        onUploaded: (task, record) => setDraft((current) => current.galleryImages.some((image) => image.fileId === record.id)
-          ? current
-          : { ...current, galleryImages: [...current.galleryImages, { fileId: record.id, name: record.originalName || task.file.name, contentType: record.contentType, sizeBytes: record.sizeBytes, url: record.accessUrl } satisfies BackendModGalleryImage].slice(0, 32) }),
-      });
-      if (result.some((task) => task.stage === "failed")) setMessage(t("mods.submission.galleryUploadFailed"));
-    } finally {
-      setGalleryUploading(false);
-    }
-  }
-
-  async function uploadModIcon(output: SquareCropOutput) {
-    if (!token) return;
-    const file = output.files.get(128);
-    if (!file) {
-      URL.revokeObjectURL(output.previewUrl);
-      setMessage(t("mods.submission.iconUploadFailed"));
-      return;
-    }
-    setIconUploading(true);
-    setMessage("");
-    try {
-      const record = await uploadUserFileToOSS(file, token, `mod_icon:${siteId || draft.siteId || "draft"}`);
-      const storageUrl = record.storageUrl || record.accessUrl || record.url || "";
-      if (!storageUrl) throw new Error(t("mods.submission.iconUploadFailed"));
-      setDraft((current) => ({ ...current, iconUrl: storageUrl }));
-      setIconPreviewUrl(record.accessUrl || record.url || storageUrl);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("mods.submission.iconUploadFailed"));
-    } finally {
-      URL.revokeObjectURL(output.previewUrl);
-      setIconUploading(false);
+      if (!request.signal.aborted) void refreshSubmissionFormToken();
     }
   }
 
@@ -546,9 +494,9 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
             hint={t("mods.submission.hints.galleryDrop")}
             multiple
             title={galleryUploading ? t("mods.submission.actions.uploadingGallery") : t("mods.submission.actions.uploadGallery")}
-            onFiles={(files) => void uploadGalleryImages(files)}
+            onFiles={(files) => void uploadGallery(files)}
           />
-          <OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={(key) => void processGalleryUploadTasks(galleryUploadTasks, key)} />
+          <OSSUploadBatchStatus busy={galleryUploading} tasks={galleryUploadTasks} onRetry={retryGalleryUpload} />
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {draft.galleryImages.map((image, index) => <figure className="overflow-hidden rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)]" key={`${image.publicId ?? "new"}-${image.fileId}`}>
             {image.url ? <Image unoptimized alt={image.name || `Gallery ${index + 1}`} className="aspect-video w-full object-cover" height={360} src={apiAssetURL(image.url)} width={640} /> : <div className="grid aspect-video place-items-center text-sm text-[var(--muted)]">{image.name}</div>}
@@ -567,7 +515,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
           onCancel={() => setIconCropFile(undefined)}
           onConfirm={(output) => {
             setIconCropFile(undefined);
-            void uploadModIcon(output);
+            void uploadIcon(output);
           }}
         />
       </fieldset></form>
