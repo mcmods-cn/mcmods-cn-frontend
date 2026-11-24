@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { apiRequest } from "../_lib/api";
 
 export type SiteBrand = {
@@ -15,24 +15,33 @@ const SiteBrandContext = createContext<SiteBrand>(defaultSiteBrand);
 export function SiteBrandProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [brand, setBrand] = useState(defaultSiteBrand);
-  const load = useCallback(() => {
-    void apiRequest<Partial<SiteBrand>>("/api/v1/site/config", { cache: "no-store" })
-      .then((value) => setBrand(normalizeSiteBrand(value)))
-      .catch(() => setBrand(defaultSiteBrand));
-  }, []);
-
-  useEffect(load, [load]);
-  const refreshBrand = useCallback(() => {
-    load();
-    router.refresh();
-  }, [load, router]);
   useEffect(() => {
+    let pending: AbortController | undefined;
+    function load() {
+      pending?.abort();
+      const controller = new AbortController();
+      pending = controller;
+      void apiRequest<Partial<SiteBrand>>("/api/v1/site/config", { cache: "no-store", signal: controller.signal })
+        .then((value) => {
+          if (!controller.signal.aborted) setBrand(normalizeSiteBrand(value));
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) setBrand(defaultSiteBrand);
+        });
+    }
+    function refreshBrand() {
+      load();
+      router.refresh();
+    }
+    load();
     window.addEventListener("mcmods-site-brand-change", refreshBrand);
-    return () => window.removeEventListener("mcmods-site-brand-change", refreshBrand);
-  }, [refreshBrand]);
+    return () => {
+      pending?.abort();
+      window.removeEventListener("mcmods-site-brand-change", refreshBrand);
+    };
+  }, [router]);
 
-  const value = useMemo(() => brand, [brand]);
-  return <SiteBrandContext.Provider value={value}>{children}</SiteBrandContext.Provider>;
+  return <SiteBrandContext.Provider value={brand}>{children}</SiteBrandContext.Provider>;
 }
 
 export function useSiteBrand() {

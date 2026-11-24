@@ -163,3 +163,44 @@ test("TEST024 real Provider and metadata fail back coherently and recover using 
     assert.equal(await actual.locator("head title").textContent(), "Metadata % s Brand");
   } finally { brandFailure = false; await browser.close(); }
 });
+
+test("the public header keeps the newest brand when a previous config read finishes late", { timeout: 30_000 }, async () => {
+  const started = Promise.withResolvers<void>();
+  const oldReply = Promise.withResolvers<void>();
+  let reads = 0;
+  const browser = await fixture.page(async (request) => {
+    if (request.path === "/api/v1/site/config") {
+      if (++reads === 1) {
+        started.resolve();
+        await oldReply.promise;
+        return { data: { siteName: "Superseded name", logoUrl: "" } };
+      }
+      return { data: { siteName: "Current name", logoUrl: "" } };
+    }
+    return browserAPI(request);
+  });
+  const { page: actual } = browser;
+  try {
+    // An already dispatched read can still complete when its owner cancels.
+    await actual.addInitScript(() => {
+      const nativeFetch = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        return nativeFetch(input, url.endsWith("/api/v1/site/config") ? { ...init, signal: undefined } : init);
+      };
+    });
+    await actual.goto(`${fixture.origin}/messages`);
+    await started.promise;
+    await actual.evaluate(() => window.dispatchEvent(new Event("mcmods-site-brand-change")));
+    const header = actual.getByRole("link", { name: "Home", exact: true });
+    await header.getByText("Current name", { exact: true }).waitFor();
+    const staleResponse = actual.waitForResponse(response => response.url().endsWith("/api/v1/site/config"));
+    oldReply.resolve();
+    await (await staleResponse).finished();
+    await actual.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    assert.equal(await header.textContent(), "MCurrent name");
+  } finally {
+    oldReply.resolve();
+    await browser.close();
+  }
+});
