@@ -759,6 +759,7 @@ const en = {
     publicCollections: "Public collections",
     publicCollectionsDescription: "Public collections appear on the user profile and can be browsed by anyone.",
     modpackExport: {
+      savedTask: "Export task {id} is saved.",
       open: "Export as Modrinth modpack",
       title: "Export Modrinth modpack",
       history: "Export history",

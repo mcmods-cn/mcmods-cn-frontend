@@ -45,9 +45,11 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
   const [loader, setLoader] = useState<"neoforge" | "fabric" | "forge">("neoforge");
   const [preview, setPreview] = useState<FavoriteModpackExportPreview | null>(null);
   const [detail, setDetail] = useState<FavoriteModpackExportDetail | null>(null);
+  const [unreadTaskId, setUnreadTaskId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const downloadedTask = useRef("");
+  const [acceptedTaskId, setAcceptedTaskId] = useState("");
   const mutationInFlight = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -80,6 +82,7 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
       .catch((reason) => {
         if (!cancelled) {
           setOpen(true);
+          setUnreadTaskId(initialTaskId);
           setError(reason instanceof Error ? reason.message : String(reason));
         }
       });
@@ -108,19 +111,34 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
   }
 
   async function createExport() {
-    if (!preview || busy || mutationInFlight.current || preview.minecraftVersion !== selectedVersion || preview.loader !== loader) return;
+    if (!preview || unreadTaskId || busy || mutationInFlight.current || preview.minecraftVersion !== selectedVersion || preview.loader !== loader) return;
     mutationInFlight.current = true;
     setBusy(true);
     setError("");
     try {
       const result = await createFavoriteModpackExport(token, activeCollectionId, preview, preview.allowCompatibleOnly || hasOmissions);
+      setAcceptedTaskId(result.taskId);
+      setUnreadTaskId(result.taskId);
+      setPreview(null);
       setDetail(await loadFavoriteModpackExport(token, result.taskId));
+      setUnreadTaskId("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("favorites.modpackExport.createFailed"));
     } finally {
       mutationInFlight.current = false;
       setBusy(false);
     }
+  }
+
+  async function retryTask() {
+    if (!unreadTaskId || mutationInFlight.current) return;
+    mutationInFlight.current = true; setBusy(true); setError("");
+    try {
+      const value = await loadFavoriteModpackExport(token, unreadTaskId);
+      setDetail(value); setActiveCollectionId(value.task.collectionId); setUnreadTaskId("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally { mutationInFlight.current = false; setBusy(false); }
   }
 
   async function showExportHistory() {
@@ -130,6 +148,7 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
     setError("");
     setDetail(null);
     setShowHistory(true);
+    setUnreadTaskId("");
     try {
       const page = await loadFavoriteModpackExports(token, { status: historyStatus });
       setHistory(page.items);
@@ -264,7 +283,7 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
           setPreview(null);
           setDetail(null);
           setShowHistory(false);
-          setError("");
+          if (!unreadTaskId) setError("");
           setOpen(true);
         }}
       >
@@ -301,7 +320,7 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
               </div>
             </div>
 
-            {!detail && !showHistory ? (
+            {!detail && !showHistory && !unreadTaskId ? (
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <label className="grid gap-2 font-bold">
                   {t("favorites.modpackExport.minecraftVersion")}
@@ -341,7 +360,11 @@ function FavoriteModpackExportSession({ token, collectionId, collectionName, ini
                 {error}
               </p>
             ) : null}
-            {preview && !detail && !showHistory ? <ExportPreview preview={preview} busy={busy} onCreate={() => void createExport()} /> : null}
+            {unreadTaskId && !detail && !showHistory ? <div className="mt-4">
+              <p>{unreadTaskId === acceptedTaskId ? t("favorites.modpackExport.savedTask", { id: unreadTaskId }) : unreadTaskId}</p>
+              <button className="button-secondary focus-ring mt-2" disabled={busy} type="button" onClick={() => void retryTask()}>{t("common.retry")}</button>
+            </div> : null}
+            {preview && !detail && !showHistory && !unreadTaskId ? <ExportPreview preview={preview} busy={busy} onCreate={() => void createExport()} /> : null}
             {showHistory && !detail ? (
               <ExportHistory
                 busy={busy}

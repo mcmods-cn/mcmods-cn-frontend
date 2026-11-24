@@ -759,6 +759,7 @@ const zhCN = {
     publicCollections: "公开收藏夹",
     publicCollectionsDescription: "公开收藏夹会展示在用户主页，其他人可以浏览其中保存的内容。",
     modpackExport: {
+      savedTask: "导出任务 {id} 已保存。",
       open: "导出为 Modrinth 整合包",
       title: "导出 Modrinth 整合包",
       history: "导出历史",

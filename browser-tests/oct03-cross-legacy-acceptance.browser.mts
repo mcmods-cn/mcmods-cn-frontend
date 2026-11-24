@@ -502,7 +502,8 @@ test("OCT03 FP061 export preview is bound to version and loader, busy modal reta
     if (path === "/api/v1/users/me/modpack-exports/task-one") {
       detailReads++;
       if (history) return { data: { task: task("ready"), items: [item], downloadAvailable: false } };
-      return detailReads === 1 ? { data: { task: task("pending"), items: [], downloadAvailable: false } } : { status: 503, error: "Controlled export status unavailable" };
+      if (detailReads === 1) return { status: 503, error: "First export receipt unavailable" };
+      return detailReads === 2 ? { data: { task: task("pending"), items: [], downloadAvailable: false } } : { status: 503, error: "Controlled export status unavailable" };
     }
     if (path === "/api/v1/users/me/modpack-exports") { history = true; return { data: { items: [task("ready")], limit: 30, hasMore: false, nextCursor: "" } }; }
   });
@@ -537,6 +538,11 @@ test("OCT03 FP061 export preview is bound to version and loader, busy modal reta
     assert.equal(creations, 0);
     await dialog.getByRole("button", { name: "Check compatibility", exact: true }).click();
     await dialog.getByRole("button", { name: "Create modpack", exact: true }).click();
+    await dialog.getByText("First export receipt unavailable", { exact: true }).waitFor();
+    assert.equal(await dialog.getByRole("button", { name: "Create modpack", exact: true }).count(), 0);
+    await dialog.getByRole("button", { name: "Close", exact: true }).click(); await trigger.click();
+    await dialog.getByText("Export task task-one is saved.", { exact: true }).waitFor();
+    await dialog.getByRole("button", { name: "Retry", exact: true }).click();
     await dialog.getByText("Waiting", { exact: true }).waitFor();
     await dialog.getByText("Controlled export status unavailable", { exact: true }).waitFor();
     assert.equal(creations, 1);
