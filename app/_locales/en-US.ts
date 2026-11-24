@@ -3699,6 +3699,9 @@ const en = {
       },
     },
     modImport: {
+      credentialPresent: "Credential saved",
+      credentialAbsent: "No saved credential",
+      reviewCredential: "The provider address changed. Review the address and re-enter any credential change for that provider.",
       group: "Content sources",
       navTitle: "Mod import sources",
       navDescription: "Configure Modrinth, CurseForge, and GitHub metadata import",

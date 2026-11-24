@@ -3698,6 +3698,9 @@ const zhCN = {
       },
     },
     modImport: {
+      credentialPresent: "已保存凭据",
+      credentialAbsent: "未保存凭据",
+      reviewCredential: "供应商地址已变更。请核对地址，并重新输入该供应商的凭据更改。",
       group: "内容数据源",
       navTitle: "模组导入数据源",
       navDescription: "配置 Modrinth、CurseForge 与 GitHub 项目资料导入",

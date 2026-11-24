@@ -88,6 +88,7 @@ type ModImportProviderConfig = {
 };
 
 type ModImportConfig = {
+  revision?: string;
   userAgent: string;
   requestTimeoutSeconds: number;
   modrinth: ModImportProviderConfig;

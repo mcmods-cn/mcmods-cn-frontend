@@ -844,3 +844,90 @@ test("ordinary reviewers and sticker managers see only their available actions",
     assert.equal(reasonReads, 0);
   } finally { await browser.close(); }
 });
+
+for (const status of [409, 428] as const) {
+  test(`mod import settings preserve edits across ${status} and send only the reviewed credentials`, { timeout: 30_000 }, async () => {
+    const original = {
+      revision: "a".repeat(64), userAgent: "Original", requestTimeoutSeconds: 20,
+      modrinth: { enabled: true, baseUrl: "https://api.modrinth.com/v2", hasToken: true },
+      curseforge: { enabled: false, baseUrl: "https://api.curseforge.com/v1", hasApiKey: true },
+      github: { enabled: true, baseUrl: "https://api.github.com", hasToken: true },
+    };
+    const latest = { ...original, revision: "b".repeat(64), requestTimeoutSeconds: 60,
+      github: { ...original.github, baseUrl: "https://catalog.example.invalid", hasToken: false } };
+    const revisions: string[] = [];
+    let reads = 0;
+    const browser = await fixture.page(({ path, method, body }) => {
+      if (path !== "/api/v1/admin/config/mod-imports") return;
+      if (method === "GET") {
+        if (++reads === 2) return { status: 503, error: "Read temporarily unavailable" };
+        return { data: reads === 1 ? original : latest };
+      }
+      const update = JSON.parse(body);
+      revisions.push(update.revision);
+      assert.equal(update.modrinth.hasToken, undefined);
+      assert.equal(update.curseforge.hasApiKey, undefined);
+      assert.equal(update.modrinth.token, undefined);
+      assert.equal(update.curseforge.clearApiKey, true);
+      if (revisions.length === 1) {
+        assert.equal(update.github.token, "new-test-value");
+        return { status, code: status === 409 ? "MOD_IMPORT_CONFIG_CONFLICT" : "MOD_IMPORT_CONFIG_REVISION_REQUIRED", error: "Read the latest settings" };
+      }
+      assert.equal(update.github.token, undefined);
+      assert.equal(update.github.baseUrl, latest.github.baseUrl);
+      assert.equal(update.userAgent, "Local");
+      assert.equal(update.requestTimeoutSeconds, 60);
+      return { data: { ...latest, revision: "c".repeat(64), userAgent: "Local", curseforge: { ...latest.curseforge, hasApiKey: false } } };
+    });
+    try {
+      const { page } = browser;
+      await panel(page, "mod-import-settings", "automation");
+      const userAgent = page.getByRole("textbox", { name: "API User-Agent" });
+      await userAgent.fill("Local");
+      await page.getByLabel("Access token (optional)").last().fill("new-test-value");
+      const clear = page.getByRole("checkbox", { name: "Clear saved credential" }).nth(1);
+      await clear.check();
+      const save = page.getByRole("button", { name: "Save source settings" });
+      await save.click();
+      const compare = page.getByRole("button", { name: "Compare with the latest settings" });
+      await compare.waitFor();
+      assert.equal(await save.isDisabled(), true);
+      assert.equal(await page.getByLabel("Access token (optional)").last().inputValue(), "new-test-value");
+      await compare.click();
+      await page.getByText("Read temporarily unavailable", { exact: true }).waitFor();
+      await compare.click();
+      await page.getByRole("button", { name: "Apply my edited fields to the latest settings" }).click();
+      await page.getByText(/The provider address changed/).waitFor();
+      assert.equal(await userAgent.inputValue(), "Local");
+      assert.equal(await page.getByRole("spinbutton", { name: "Request timeout (seconds)" }).inputValue(), "60");
+      assert.equal(await page.getByLabel("Access token (optional)").last().inputValue(), "");
+      assert.equal(await clear.isChecked(), true);
+      assert.equal(revisions.length, 1);
+      await save.click();
+      await page.getByText("Mod source settings saved.", { exact: true }).waitFor();
+      assert.equal(await clear.isChecked(), false);
+      assert.deepEqual(revisions, [original.revision, latest.revision]);
+    } finally { await browser.close(); }
+  });
+}
+
+test("mod import settings load again after a read failure and stay read-only for viewers", { timeout: 25_000 }, async () => {
+  let reads = 0;
+  const browser = await fixture.page(({ path }) => {
+    if (path === "/api/v1/auth/me") return { data: actor("importviewer", ["admin.access", "admin.config.read"]) };
+    if (path !== "/api/v1/admin/config/mod-imports") return;
+    if (++reads === 1) return { status: 503, error: "Settings briefly unavailable" };
+    const provider = { baseUrl: "https://catalog.example.invalid", enabled: false };
+    return { data: { revision: "c".repeat(64), userAgent: "Read only", requestTimeoutSeconds: 30, modrinth: provider, curseforge: provider, github: provider } };
+  });
+  try {
+    await panel(browser.page, "mod-import-settings", "automation");
+    await browser.page.getByRole("button", { name: "Retry", exact: true }).click();
+    const field = browser.page.getByRole("textbox", { name: "API User-Agent" });
+    await field.waitFor();
+    assert.equal(await field.inputValue(), "Read only");
+    assert.equal(await field.isDisabled(), true);
+    assert.equal(await browser.page.getByRole("button", { name: "Save source settings" }).isDisabled(), true);
+    assert.equal(reads, 2);
+  } finally { await browser.close(); }
+});

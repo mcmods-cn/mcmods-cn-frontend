@@ -133,8 +133,8 @@ const definitions = {
   },
   "mod-import-settings": {
     group: "automation", title: "admin.modImport.navTitle", description: "admin.modImport.navDescription",
-    read: "admin.config.read",
-    render: ({ token }) => <ModImportConfigPanel token={token} />,
+    read: "admin.config.read", write: "admin.config.write",
+    render: ({ token, access }) => <ModImportConfigPanel token={token} canWrite={access.write} />,
   },
   "site-about": {
     group: "site-affairs", title: "admin.governance.about", description: "admin.governance.aboutDescription",

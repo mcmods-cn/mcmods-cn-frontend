@@ -2,8 +2,8 @@
 
 /* eslint-disable @next/next/no-img-element */
 
-import { FormEvent, ReactNode, useCallback, useEffect, useEffectEvent, useState } from "react";
-import { apiRequest } from "../_lib/api";
+import { FormEvent, ReactNode, useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { ApiError, apiRequest } from "../_lib/api";
 import type { LevelConfig, RoleTrack } from "../_lib/community-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { MarkdownRendererConfig, normalizeMarkdownConfig } from "../_lib/markdown-config";
@@ -219,53 +219,155 @@ function NATSConfigPanel({ initialConfig, token, canWrite }: { initialConfig: NA
   );
 }
 
-function ModImportConfigPanel({ token }: { token: string }) {
+const importProviders = ["modrinth", "curseforge", "github"] as const;
+const importConfigPath = "/api/v1/admin/config/mod-imports";
+const validImportRevision = (revision?: string) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision);
+
+function readImportConfig(value: ModImportConfig, invalidMessage: string): ModImportConfig {
+  if (!value || typeof value.userAgent !== "string" || !Number.isSafeInteger(value.requestTimeoutSeconds) ||
+    importProviders.some(key => !value[key] || typeof value[key].enabled !== "boolean" || typeof value[key].baseUrl !== "string")) {
+    throw new Error(invalidMessage);
+  }
+  const clean = (provider: ModImportProviderConfig) => ({
+    enabled: provider.enabled, baseUrl: provider.baseUrl, hasToken: provider.hasToken === true, hasApiKey: provider.hasApiKey === true,
+  });
+  return {
+    revision: value.revision, userAgent: value.userAgent, requestTimeoutSeconds: value.requestTimeoutSeconds,
+    modrinth: clean(value.modrinth), curseforge: clean(value.curseforge), github: clean(value.github),
+  };
+}
+
+function providerUpdate(provider: ModImportProviderConfig, key: typeof importProviders[number]) {
+  const { enabled, baseUrl, token, apiKey, clearToken, clearApiKey } = provider;
+  return {
+    enabled, baseUrl,
+    ...(key === "curseforge" ? (clearApiKey ? { clearApiKey: true } : apiKey ? { apiKey } : {}) :
+      (clearToken ? { clearToken: true } : token ? { token } : {})),
+  };
+}
+
+function ModImportConfigPanel({ token, canWrite }: { token: string; canWrite: boolean }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState<ModImportConfig | null>(null);
+  const [base, setBase] = useState<ModImportConfig>();
+  const [draft, setDraft] = useState<ModImportConfig>();
+  const [latest, setLatest] = useState<ModImportConfig>();
+  const [conflict, setConflict] = useState(false);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const inFlight = useRef(false);
+  const readFailure = useEffectEvent(() => t("common.loadFailed"));
 
   useEffect(() => {
-    let cancelled = false;
-    apiRequest<ModImportConfig>("/api/v1/admin/config/mod-imports", {}, token)
-      .then((config) => { if (!cancelled) setDraft(config); })
-      .catch((error) => { if (!cancelled) setMessage(cleanError(error)); });
-    return () => { cancelled = true; };
-  }, [token]);
+    const controller = new AbortController();
+    apiRequest<ModImportConfig>(importConfigPath, { signal: controller.signal, cache: "no-store" }, token)
+      .then(value => {
+        if (controller.signal.aborted) return;
+        const config = readImportConfig(value, readFailure());
+        setBase(config); setDraft(config); setMessage("");
+      }).catch(error => { if (!controller.signal.aborted) setMessage(cleanError(error) || readFailure()); });
+    return () => controller.abort();
+  }, [attempt, token]);
 
-  function updateProvider(provider: "modrinth" | "curseforge" | "github", patch: Partial<ModImportProviderConfig>) {
-    if (!draft) return;
-    setDraft({ ...draft, [provider]: { ...draft[provider], ...patch } });
+  function updateProvider(provider: typeof importProviders[number], patch: Partial<ModImportProviderConfig>) {
+    if (draft) setDraft({ ...draft, [provider]: { ...draft[provider], ...patch } });
   }
 
-  async function save() {
-    if (!draft) return;
-    setSaving(true);
+  async function compare() {
+    if (inFlight.current) return;
+    inFlight.current = true; setSaving(true); setLatest(undefined); setMessage("");
     try {
-      const saved = await apiRequest<ModImportConfig>("/api/v1/admin/config/mod-imports", {
-        method: "PUT",
-        body: JSON.stringify(draft),
-      }, token);
-      setDraft(saved);
-      notifyAdminNotice(t("admin.modImport.saved"));
-    } catch (error) {
-      notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
-    } finally {
-      setSaving(false);
-    }
+      const config = readImportConfig(await apiRequest<ModImportConfig>(importConfigPath, { cache: "no-store" }, token), t("common.loadFailed"));
+      if (!validImportRevision(config.revision)) { setMessage(t("admin.ai.noRevision")); return; }
+      setLatest(config);
+    } catch (error) { setMessage(cleanError(error) || t("common.loadFailed")); }
+    finally { inFlight.current = false; setSaving(false); }
   }
 
-  if (!draft) return <EmptyState text={message || t("common.loading")} />;
+  function acceptLatest(keepChanges: boolean) {
+    if (!latest || !base || !draft) return;
+    const merged = { ...latest };
+    let targetChanged = false;
+    if (keepChanges) {
+      if (draft.userAgent !== base.userAgent) merged.userAgent = draft.userAgent;
+      if (draft.requestTimeoutSeconds !== base.requestTimeoutSeconds) merged.requestTimeoutSeconds = draft.requestTimeoutSeconds;
+      for (const key of importProviders) {
+        const edited = draft[key], previous = base[key], current = latest[key];
+        const baseUrl = edited.baseUrl === previous.baseUrl ? current.baseUrl : edited.baseUrl;
+        const enabled = edited.enabled === previous.enabled ? current.enabled : edited.enabled;
+        const next = { ...current, baseUrl, enabled };
+        // Explicit credential changes belong to the endpoint the administrator saw.
+        if (baseUrl === edited.baseUrl) Object.assign(next, providerUpdate({ ...edited, baseUrl, enabled }, key));
+        else if (edited.token || edited.apiKey || edited.clearToken || edited.clearApiKey) targetChanged = true;
+        merged[key] = next;
+      }
+    }
+    setBase(latest); setDraft(merged); setLatest(undefined); setConflict(false);
+    setMessage(targetChanged ? t("admin.modImport.reviewCredential") : "");
+  }
+
+  const writable = canWrite && validImportRevision(base?.revision) && !conflict;
+  async function save() {
+    if (!base || !draft || !writable || inFlight.current) return;
+    inFlight.current = true; setSaving(true); setMessage("");
+    function consumeWrite(committed: ModImportConfig) {
+      const cleared = readImportConfig({ ...committed, revision: undefined }, t("common.loadFailed"));
+      setBase(cleared); setDraft(cleared); setLatest(undefined);
+      notifyAdminNotice(t("admin.modImport.saved"));
+    }
+    try {
+      const saved = await apiRequest<ModImportConfig>(importConfigPath, {
+        method: "PUT",
+        body: JSON.stringify({
+          revision: base.revision, userAgent: draft.userAgent, requestTimeoutSeconds: draft.requestTimeoutSeconds,
+          modrinth: providerUpdate(draft.modrinth, "modrinth"), curseforge: providerUpdate(draft.curseforge, "curseforge"), github: providerUpdate(draft.github, "github"),
+        }),
+      }, token);
+      // A successful write consumes the credential changes even if its receipt is incomplete.
+      consumeWrite(draft);
+      const snapshot = readImportConfig(saved, t("common.loadFailed"));
+      setBase(snapshot); setDraft(snapshot);
+    } catch (error) {
+      if (error instanceof ApiError && ((error.status === 409 && error.code === "MOD_IMPORT_CONFIG_CONFLICT") ||
+          (error.status === 428 && error.code === "MOD_IMPORT_CONFIG_REVISION_REQUIRED"))) {
+        setConflict(true); setLatest(undefined);
+      } else if (error instanceof ApiError && error.status >= 200 && error.status < 300 && error.code === "API_RESPONSE_EMPTY") {
+        consumeWrite(draft);
+        setMessage(t("admin.ai.noRevision"));
+      } else { setMessage(cleanError(error) || t("common.loadFailed")); }
+    } finally { inFlight.current = false; setSaving(false); }
+  }
+
+  if (!draft) return <div><EmptyState text={message || t("common.loading")} />{message ? <button className="button-secondary focus-ring" type="button" onClick={() => { setMessage(""); setAttempt(value => value + 1); }}>{t("common.retry")}</button> : null}</div>;
 
   return (
     <div className="grid gap-4">
+      {!canWrite && <p className="surface p-4" role="status">{t("admin.ai.readOnly")}</p>}
+      {message && <p className="surface p-4" role="status">{message}</p>}
+      {canWrite && !validImportRevision(base?.revision) && <section className="surface p-4">
+        <p>{t("admin.ai.noRevision")}</p><button className="button-secondary focus-ring mt-2" type="button" disabled={saving} onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button>
+      </section>}
+      {conflict && <section className="surface grid gap-3 p-5" role="alert">
+        <strong>{t("admin.ai.configConflict")}</strong>
+        <button className="button-secondary focus-ring w-fit" type="button" disabled={saving} onClick={() => void compare()}>{t("admin.ai.compareLatest")}</button>
+        {latest && <><h3 className="font-bold">{t("admin.ai.serverVersion")}</h3>
+          <dl className="grid gap-3"><div><dt>{t("admin.modImport.userAgent")}</dt><dd>{latest.userAgent}</dd></div>
+            <div><dt>{t("admin.modImport.timeout")}</dt><dd>{latest.requestTimeoutSeconds}</dd></div>
+            {importProviders.map(key => <div key={key}><dt>{t(`admin.modImport.providers.${key}`)}</dt>
+              <dd>{latest[key].baseUrl} · {t(latest[key].enabled ? "common.enabled" : "common.disabled")} · {t("admin.modImport." + (latest[key].hasToken || latest[key].hasApiKey ? "credentialPresent" : "credentialAbsent"))}</dd></div>)}
+          </dl><div className="flex flex-wrap gap-2">
+            <button className="button-primary focus-ring" type="button" disabled={saving} onClick={() => acceptLatest(true)}>{t("admin.ai.applyEdits")}</button>
+            <button className="button-secondary focus-ring" type="button" disabled={saving} onClick={() => acceptLatest(false)}>{t("admin.ai.discardEdits")}</button>
+          </div></>}
+      </section>}
+      <fieldset className="grid min-w-0 gap-4" aria-label={t("admin.modImport.title")} disabled={!writable || saving}>
       <section className="surface p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold">{t("admin.modImport.title")}</h2>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("admin.modImport.description")}</p>
           </div>
-          <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>
+          <button className="button-primary focus-ring" disabled={!writable || saving} type="button" onClick={() => void save()}>
             {saving ? t("admin.saving") : t("admin.modImport.save")}
           </button>
         </div>
@@ -281,7 +383,7 @@ function ModImportConfigPanel({ token }: { token: string }) {
         </div>
       </section>
       <section className="surface overflow-hidden">
-        {(["modrinth", "curseforge", "github"] as const).map((provider) => {
+        {importProviders.map((provider) => {
           const config = draft[provider];
           const secretKind = provider === "curseforge" ? "apiKey" : "token";
           const hasSecret = provider === "curseforge" ? config.hasApiKey : config.hasToken;
@@ -320,6 +422,7 @@ function ModImportConfigPanel({ token }: { token: string }) {
           );
         })}
       </section>
+      </fieldset>
     </div>
   );
 }
