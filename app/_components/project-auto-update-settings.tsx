@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { apiRequest } from "../_lib/api";
-import { useAuthSnapshot } from "../_lib/auth";
+import { hasPermission, useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
 
 type Source = {
@@ -51,54 +51,66 @@ type AutomationData = {
 
 const updateIntervals: UpdateInterval[] = ["week", "month", "quarter", "half_year", "year", "never"];
 
-export function ProjectAutoUpdateSettings(props: Parameters<typeof ProjectAutoUpdateSettingsSession>[0]) {
+type SettingsProps = { projectType: string; projectId: string; token: string };
+
+export function ProjectAutoUpdateSettings(props: SettingsProps) {
   const { user } = useAuthSnapshot();
-  return <ProjectAutoUpdateSettingsSession key={`${user?.id || "guest"}:${props.token}:${props.projectType}:${props.projectId}`} {...props} />;
+  const scoped = hasPermission(user, `project.edit.${props.projectId}`) || hasPermission(user, "admin.*");
+  const allowed = (permission: string) => scoped || hasPermission(user, permission);
+  const canRead = allowed("project.auto_update.view");
+  const canWrite = canRead && allowed("project.auto_update.configure");
+  const canBind = allowed("project.external_source.bind");
+  const canRun = allowed("project.auto_update.run");
+  const canReadLogs = allowed("project.auto_update.view_logs");
+  const canOverride = hasPermission(user, "project.auto_update.redistribution_override");
+  if (!canRead && !canReadLogs && !canBind && !canRun) return null;
+  return <ProjectAutoUpdateSettingsSession key={`${user?.id || "guest"}:${props.token}:${props.projectType}:${props.projectId}:${canRead}${canReadLogs}${canOverride}${canWrite}${canBind}${canRun}`}
+    {...props} canRead={canRead} canWrite={canWrite} canBind={canBind} canRun={canRun} canReadLogs={canReadLogs} canOverride={canOverride} />;
 }
 
-function ProjectAutoUpdateSettingsSession({
-  projectType,
-  projectId,
-  token,
-}: {
-  projectType: string;
-  projectId: string;
-  token: string;
+function ProjectAutoUpdateSettingsSession({ projectType, projectId, token, canRead, canWrite, canBind, canRun, canReadLogs, canOverride }: SettingsProps & {
+  canRead: boolean; canWrite: boolean; canBind: boolean; canRun: boolean; canReadLogs: boolean; canOverride: boolean;
 }) {
   const { t } = useI18n();
   const [data, setData] = useState<AutomationData>();
-  const [runs, setRuns] = useState<AutomationRun[]>([]);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const mutation = useRef(false);
+  const pendingRead = useRef<AbortController | null>(null);
+  const [readError, setReadError] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const base = `/api/v1/projects/${encodeURIComponent(projectType)}/${encodeURIComponent(projectId)}/automation`;
 
   const load = useCallback(async () => {
+    if (!canRead) return true;
+    pendingRead.current?.abort();
+    const controller = new AbortController();
+    pendingRead.current = controller;
     setLoading(true);
     try {
-      const [value, history] = await Promise.all([
-        apiRequest<AutomationData>(base, {}, token),
-        apiRequest<{ items: AutomationRun[] }>(`${base}/runs`, {}, token),
-      ]);
+      const value = await apiRequest<AutomationData>(base, { signal: controller.signal }, token);
+      if (controller.signal.aborted) return false;
       setData({ ...value, settings: normalizeSettings(value.settings, value.sources) });
-      setRuns(history.items);
-      setMessage("");
+      setReadError("");
       return true;
     } catch (error) {
-      setMessage(errorMessage(error));
+      if (!controller.signal.aborted) setReadError(errorMessage(error));
       return false;
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  }, [base, token]);
+  }, [base, canRead, token]);
 
   useEffect(() => {
-    queueMicrotask(() => void load());
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => { window.clearTimeout(timer); pendingRead.current?.abort(); };
   }, [load]);
 
   async function bind(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (saving) return;
+    if (mutation.current || !canBind) return;
+    mutation.current = true; setMessage("");
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     setSaving(true);
@@ -112,12 +124,13 @@ function ProjectAutoUpdateSettingsSession({
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
-      setSaving(false);
+      mutation.current = false; setSaving(false);
     }
   }
 
   async function save() {
-    if (!data || saving) return;
+    if (!data || mutation.current || !canWrite) return;
+    mutation.current = true; setMessage("");
     setSaving(true);
     try {
       await apiRequest(base, {
@@ -138,20 +151,22 @@ function ProjectAutoUpdateSettingsSession({
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
-      setSaving(false);
+      mutation.current = false; setSaving(false);
     }
   }
 
   async function run(kind: UpdateKind) {
-    if (saving) return;
+    if (mutation.current || !canRun) return;
+    mutation.current = true; setMessage("");
     setSaving(true);
     try {
       await apiRequest(`${base}/runs`, { method: "POST", body: JSON.stringify({ kind }) }, token);
+      setHistoryVersion(value => value + 1);
       if (await load()) setMessage(t("projectAutomation.queued"));
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
-      setSaving(false);
+      mutation.current = false; setSaving(false);
     }
   }
 
@@ -163,22 +178,14 @@ function ProjectAutoUpdateSettingsSession({
     });
   }
 
-  if (!data) {
-    return <section className="mt-6 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5">
-      <h2 className="text-xl font-black">{t("projectAutomation.title")}</h2>
-      <p role={message ? "alert" : undefined} className={`mt-3 text-sm ${message ? "text-[var(--red)]" : "text-[var(--muted)]"}`}>
-        {message || t("common.loading")}
-      </p>
-      {message ? <button className="button-secondary focus-ring mt-3" disabled={loading} type="button" onClick={() => void load()}>{t("common.retry")}</button> : null}
-    </section>;
-  }
-
   return <section className="mt-6 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5">
     <h2 className="text-xl font-black">{t("projectAutomation.title")}</h2>
     <p className="mt-2 text-sm text-[var(--muted)]">{t("projectAutomation.description")}</p>
     {message ? <p role="alert" className="mt-3 rounded-lg border border-[var(--line)] p-3 text-sm font-bold">{message}</p> : null}
 
-    <form className="mt-5 flex flex-wrap gap-2" onSubmit={bind}>
+    {canRead && !data && !readError && <p role="status">{t("common.loading")}</p>}
+    {readError && <div role="alert" className="mt-3 text-sm"><p>{readError}</p><button className="button-secondary focus-ring mt-2" disabled={loading || saving} type="button" onClick={() => void load()}>{t("common.retry")}</button></div>}
+    {canBind && <form className="mt-5 flex flex-wrap gap-2" onSubmit={bind}>
       <select aria-label={t("projectAutomation.source")} disabled={saving} className="field w-auto" name="sourceType">
         <option value="modrinth">Modrinth</option>
         <option value="curseforge">CurseForge</option>
@@ -186,9 +193,9 @@ function ProjectAutoUpdateSettingsSession({
       </select>
       <input aria-label={t("projectAutomation.sourceUrl")} disabled={saving} className="field min-w-64 flex-1" name="url" required type="url" placeholder={t("projectAutomation.sourceUrl")} />
       <button className="button-secondary focus-ring" disabled={saving} type="submit">{t("projectAutomation.verifySource")}</button>
-    </form>
+    </form>}
 
-    <div className="mt-3 flex flex-wrap gap-2">
+    {data && <><div className="mt-3 flex flex-wrap gap-2">
       {data.sources.map((source) => <a
         className="rounded-full border border-[var(--line)] px-3 py-1 text-xs font-bold text-[var(--accent)]"
         href={source.externalProjectUrl}
@@ -209,14 +216,14 @@ function ProjectAutoUpdateSettingsSession({
               {item.lastStatus}{item.lastError ? ` · ${item.lastError}` : ""}
             </p>
           </div>
-          <button className="button-secondary focus-ring" disabled={saving || !item.sourceType} type="button" onClick={() => void run(item.updateKind)}>
+          <button className="button-secondary focus-ring" disabled={saving || !canRun || !item.sourceType} type="button" onClick={() => void run(item.updateKind)}>
             {t("projectAutomation.runNow")}
           </button>
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-3">
           <label className="grid gap-1 text-sm font-bold">
             {t("projectAutomation.source")}
-            <select disabled={saving} className="field" value={item.sourceType} onChange={(event) => update(item.updateKind, { sourceType: event.target.value })}>
+            <select disabled={saving || !canWrite} className="field" value={item.sourceType} onChange={(event) => update(item.updateKind, { sourceType: event.target.value })}>
               <option value="">—</option>
               {data.sources
                 .filter((source) => item.updateKind !== "minecraft_versions" || source.sourceType !== "github")
@@ -225,40 +232,56 @@ function ProjectAutoUpdateSettingsSession({
           </label>
           <label className="grid gap-1 text-sm font-bold">
             {t("projectAutomation.interval")}
-            <select disabled={saving} className="field" value={item.interval} onChange={(event) => update(item.updateKind, { interval: event.target.value as UpdateInterval })}>
+            <select disabled={saving || !canWrite} className="field" value={item.interval} onChange={(event) => update(item.updateKind, { interval: event.target.value as UpdateInterval })}>
               {updateIntervals.map((value) => <option key={value} value={value}>{t(`projectAutomation.intervals.${value}`)}</option>)}
             </select>
           </label>
           <label className="mt-7 flex gap-2 font-bold">
-            <input disabled={saving} checked={item.enabled} type="checkbox" onChange={(event) => update(item.updateKind, { enabled: event.target.checked })} />
+            <input disabled={saving || !canWrite} checked={item.enabled} type="checkbox" onChange={(event) => update(item.updateKind, { enabled: event.target.checked })} />
             {t("common.enabled")}
           </label>
         </div>
         {item.updateKind === "site_downloads" ? <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <label className="flex gap-2 font-bold">
-            <input disabled={saving} checked={item.licenseOverride} type="checkbox" onChange={(event) => update(item.updateKind, { licenseOverride: event.target.checked })} />
+            <input disabled={saving || !canWrite || !canOverride} checked={item.licenseOverride} type="checkbox" onChange={(event) => update(item.updateKind, { licenseOverride: event.target.checked })} />
             {t("projectAutomation.licenseOverride")}
           </label>
           {item.licenseOverride ? <>
-            <input aria-label={t("projectAutomation.overrideReason")} disabled={saving} className="field" value={item.licenseOverrideReason} onChange={(event) => update(item.updateKind, { licenseOverrideReason: event.target.value })} placeholder={t("projectAutomation.overrideReason")} />
-            <input aria-label={t("projectAutomation.overrideSource")} disabled={saving} className="field sm:col-span-2" value={item.licenseOverrideSource} onChange={(event) => update(item.updateKind, { licenseOverrideSource: event.target.value })} placeholder={t("projectAutomation.overrideSource")} />
+            <input aria-label={t("projectAutomation.overrideReason")} disabled={saving || !canWrite || !canOverride} className="field" value={item.licenseOverrideReason} onChange={(event) => update(item.updateKind, { licenseOverrideReason: event.target.value })} placeholder={t("projectAutomation.overrideReason")} />
+            <input aria-label={t("projectAutomation.overrideSource")} disabled={saving || !canWrite || !canOverride} className="field sm:col-span-2" value={item.licenseOverrideSource} onChange={(event) => update(item.updateKind, { licenseOverrideSource: event.target.value })} placeholder={t("projectAutomation.overrideSource")} />
           </> : null}
         </div> : null}
       </article>)}
     </div>
 
-    <button className="button-primary focus-ring mt-5" disabled={saving} type="button" onClick={() => void save()}>
+    <button className="button-primary focus-ring mt-5" disabled={saving || !canWrite} type="button" onClick={() => void save()}>
       {saving ? t("common.saving") : t("common.save")}
     </button>
-    <details className="mt-6">
-      <summary className="cursor-pointer font-black">{t("projectAutomation.runHistory")}</summary>
-      <div className="mt-3 grid gap-2">
-        {runs.map((run) => <pre className="overflow-auto rounded-lg bg-[var(--panel-subtle)] p-3 text-xs" key={run.id}>
-          {JSON.stringify(run, null, 2)}
-        </pre>)}
-      </div>
-    </details>
+    </>}
+    {!canRead && canRun && <div className="mt-4 grid gap-2">{(["minecraft_versions", "changelog", "site_downloads"] as const).map(kind =>
+      <button className="button-secondary focus-ring" key={kind} disabled={saving} type="button" onClick={() => void run(kind)}>{t("projectAutomation.runNow")} · {t(`projectAutomation.kinds.${kind}`)}</button>)}</div>}
+    {canReadLogs && <AutomationHistory base={base} token={token} version={historyVersion} />}
+
   </section>;
+}
+
+function AutomationHistory({ base, token, version }: { base: string; token: string; version: number }) {
+  const { t } = useI18n();
+  const [runs, setRuns] = useState<AutomationRun[]>([]);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    apiRequest<{ items: AutomationRun[] }>(`${base}/runs`, { signal: controller.signal }, token)
+      .then(value => { if (!controller.signal.aborted) { setRuns(value.items); setError(""); } })
+      .catch(reason => { if (!controller.signal.aborted) setError(errorMessage(reason)); });
+    return () => controller.abort();
+  }, [attempt, base, token, version]);
+  return <details className="mt-4 rounded-lg border border-[var(--line)] p-3">
+    <summary className="cursor-pointer font-bold">{t("projectAutomation.runHistory")}</summary>
+    {error && <div role="alert" className="mt-2"><p>{error}</p><button className="button-secondary focus-ring" type="button" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button></div>}
+    <div className="mt-3 grid gap-2">{runs.map(run => <pre className="overflow-auto rounded-md bg-[var(--panel-subtle)] p-3 text-xs" key={run.id}>{JSON.stringify(run, null, 2)}</pre>)}</div>
+  </details>;
 }
 
 function normalizeSettings(settings: Setting[], sources: Source[]) {

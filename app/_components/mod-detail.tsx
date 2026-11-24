@@ -92,7 +92,7 @@ export function ModDetail({ mod }: { mod: ModCatalogEntry }) {
         </div>
         <ContentMetricsPanel publicId={mod.uniqueId} />
         <RatingPanel targetId={mod.uniqueId} targetName={displayName} targetType="mod" />
-        {canEdit && token ? <ProjectAutoUpdateSettings projectId={mod.uniqueId} projectType="mod" token={token} /> : null}
+        {token ? <ProjectAutoUpdateSettings projectId={mod.uniqueId} projectType="mod" token={token} /> : null}
         <CommentSection targetKey={mod.uniqueId} targetType="mod" />
       </div>
     </main>

@@ -491,3 +491,41 @@ test("OCT02-FP-045: a saved popup closes once without a second dirty confirmatio
     assert.deepEqual(errors, []);
   } finally { patch.resolve({ status: 503, error: "Synthetic finalizer" }); await browser.close(); }
 });
+
+
+test("project automation viewers read configuration or history independently of editing the project", { timeout: 40_000 }, async () => {
+  const base = "/api/v1/projects/plugin/plugin0001/automation";
+  for (const permission of ["project.auto_update.view", "project.auto_update.view_logs"]) {
+    const paths: string[] = [];
+    const browser = await providerPage(({ path, method }) => {
+      if (path === "/api/v1/auth/me") return { data: { ...reader, permissionRules: [{ code: permission, allow: true, priority: 100 }] } };
+    if (path === "/api/v1/content-projects/plugin/automation-acceptance") return { data: { id: "plugin0001", projectType: "plugin", siteId: "automation-acceptance", primaryName: "Synthetic automation project", abbreviation: "", defaultLocale: "en-US", localizations: [], summary: "Synthetic project", bodyMarkdown: "", reviewStatus: "approved", canEdit: false, minecraftVersions: [], loaders: [], categories: [], features: [], authors: [], links: [], galleryImages: [], parentProjects: [], license: "MIT", iconUrl: "" } };
+      if (path === base || path === base + "/runs") {
+        assert.equal(method, "GET");
+        paths.push(path);
+        return path === base
+          ? { data: { project: { id: "plugin0001", type: "plugin", url: "/plugins/automation-acceptance" }, settings: [], sources: [] } }
+          : { data: { items: [{ id: "visible-run", updateKind: "changelog", status: "completed" }] } };
+      }
+    });
+    try {
+      const { page } = browser;
+      await page.goto(`${fixture.origin}/plugins/automation-acceptance`);
+      const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Project auto updates", exact: true }) });
+      await panel.getByRole("heading", { name: "Project auto updates", exact: true }).waitFor();
+      if (permission.endsWith("logs")) {
+        await panel.locator("summary").click();
+        await panel.getByText(/visible-run/).waitFor();
+        assert.deepEqual(paths, [base + "/runs"]);
+        assert.equal(await panel.getByRole("button", { name: "Save", exact: true }).count(), 0);
+      } else {
+        const save = panel.getByRole("button", { name: "Save", exact: true });
+        await save.waitFor();
+        assert.equal(await save.isDisabled(), true);
+        assert.equal(await panel.locator("summary").count(), 0);
+        assert.deepEqual(paths, [base]);
+      }
+      assert.equal(await panel.locator('input[name="url"]').count(), 0);
+    } finally { await browser.close(); }
+  }
+});

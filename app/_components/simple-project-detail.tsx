@@ -79,7 +79,7 @@ function SimpleProjectDetail({ record }: { record: SimpleProjectRecord }) {
       </aside></div>
       <ContentMetricsPanel publicId={record.id} />
       <RatingPanel targetId={record.id} targetName={name} targetType={record.projectType} />
-      {record.canEdit && token ? <ProjectAutoUpdateSettings projectId={record.id} projectType={record.projectType} token={token} /> : null}
+      {token ? <ProjectAutoUpdateSettings projectId={record.id} projectType={record.projectType} token={token} /> : null}
       <CommentSection targetKey={record.id} targetType={record.projectType} />
     </div>
   </main>;
