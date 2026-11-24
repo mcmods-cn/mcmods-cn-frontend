@@ -303,6 +303,11 @@ test("loot quantity edits preserve additive functions and the following conditio
     const edited = JSON.parse(await textarea.inputValue()).pools[0].entries[0];
     assert.deepEqual(edited.functions, [{ ...entry.functions[0], count: 0 }, nextRule]);
     await page.getByRole("button", { name: "Remove this count rule" }).click();
+    const advancedInput = await textarea.elementHandle();
+    await page.waitForFunction((input) => {
+      const draft = JSON.parse((input as HTMLTextAreaElement).value);
+      return draft.pools[0].entries[0].functions.length === 1;
+    }, advancedInput);
     assert.deepEqual(JSON.parse(await textarea.inputValue()).pools[0].entries[0].functions, [nextRule]);
   } finally {
     await browser.close();
