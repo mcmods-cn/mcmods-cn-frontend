@@ -657,6 +657,46 @@ test("a committed comment edit receipt preserves its author and advances the nex
   } finally { await browser.close(); }
 });
 
+test("comment edits send the rendered version and require a new action after a conflict", async () => {
+  const updatedAt = "2026-10-03T01:15:00Z";
+  const latest = "Concurrent published edit";
+  const writes: Array<{ body: string; baseUpdatedAt: string }> = [];
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/comment-targets/community_post/post00001/comments") {
+      return { data: comments([{ ...comment("comment01", "Initial published edit"), canEdit: true }]) };
+    }
+    if (request.path === "/api/v1/comments/comment01" && request.method === "PATCH") {
+      const payload = JSON.parse(request.body);
+      writes.push(payload);
+      return writes.length === 1
+        ? { status: 409, code: "COMMENT_EDIT_CONFLICT", error: "Version changed", details: { body: latest, updatedAt, deleted: false } }
+        : { data: { ...comment("comment01", payload.body), canEdit: true, updatedAt: "2026-10-03T01:30:00Z" } };
+    }
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/discussions/post00001");
+    const card = page.locator('[data-comment-id="comment01"]');
+    const edit = card.getByRole("button", { name: "Edit", exact: true });
+    page.once("dialog", dialog => dialog.accept("\u0085First proposal\u3000"));
+    await edit.click();
+    await card.getByText(latest, { exact: true }).waitFor();
+    await page.getByText("The comment changed elsewhere. The latest content is loaded; review it and try again.", { exact: true }).waitFor();
+    assert.deepEqual(writes, [{ body: "First proposal", baseUpdatedAt: stamp }]);
+    const alerted = page.waitForEvent("dialog");
+    const click = edit.click();
+    const dialog = await alerted;
+    const initial = dialog.defaultValue();
+    await dialog.accept("Second proposal");
+    await click;
+    assert.equal(initial, latest);
+    await card.getByText("Second proposal", { exact: true }).waitFor();
+    assert.deepEqual(writes[1], { body: "Second proposal", baseUpdatedAt: updatedAt });
+    assert.equal(writes.length, 2);
+  } finally { await browser.close(); }
+});
+
 test("a failed comment edit keeps the latest corrected draft for its original version", async () => {
   const original = "Published comment";
   const corrected = "Corrected comment draft";
