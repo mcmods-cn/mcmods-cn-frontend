@@ -33,6 +33,9 @@ test("UI locale registry normalizes aliases and round-trips the request cookie",
   assert.equal(normalizeUILocale("zh_Hant"), "zh-TW");
   assert.equal(normalizeUILocale("EN-us"), "en-US");
   assert.equal(normalizeUILocale("pt-BR"), undefined);
+  for (const name of Object.getOwnPropertyNames(Object.prototype)) {
+    assert.equal(normalizeUILocale(name), undefined, `unregistered UI locale ${name}`);
+  }
 
   const serialized = serializeUILocaleCookie("fr-FR");
   assert.match(serialized, new RegExp(`^${uiLocaleCookieName}=fr-FR;`));

@@ -27,7 +27,7 @@ const localeAliases: Record<string, UILocale> = {
 
 export function normalizeUILocale(value: string | null | undefined): UILocale | undefined {
   const normalized = value?.trim().replaceAll("_", "-").toLowerCase();
-  return normalized ? localeAliases[normalized] : undefined;
+  return normalized && Object.hasOwn(localeAliases, normalized) ? localeAliases[normalized] : undefined;
 }
 
 export function readUILocaleCookie(cookieHeader: string): UILocale | undefined {
