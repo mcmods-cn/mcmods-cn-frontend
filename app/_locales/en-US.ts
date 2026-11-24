@@ -2228,6 +2228,7 @@ const en = {
     },
   },
   creators: {
+      nameByteLimit: "The name cannot exceed {count} UTF-8 bytes.",
     kicker: "Creators",
     title: "Authors and teams",
     description: "Browse the authors and development teams behind projects collected on mcmods.cn.",

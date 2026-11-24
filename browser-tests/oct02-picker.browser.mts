@@ -304,3 +304,27 @@ test("cancelling a creator insertion drops pending team details and new searches
     assert.deepEqual(queries, [["", ""], ["filtered", ""]]);
   } finally { release.resolve(); await browser.close(); }
 });
+
+test("creator name limit counts UTF-8 bytes before saving a multibyte name", { timeout: 30_000 }, async () => {
+  const writes: string[] = [];
+  const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/creators" && request.method === "POST") {
+      writes.push(JSON.parse(request.body).name);
+      return { status: 503, error: "End of name limit fixture" };
+    }
+    return editorAPI(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/authors/new`);
+    const name = page.locator('form input[required][maxlength="160"]');
+    const save = page.getByRole("button", { name: "Create", exact: true });
+    await name.fill("🌲".repeat(41));
+    await page.getByText("The name cannot exceed 160 UTF-8 bytes.", { exact: true }).waitFor();
+    assert.equal(await save.isDisabled(), true); assert.equal(writes.length, 0);
+    await name.fill("🌲".repeat(40));
+    const response = page.waitForResponse(value => new URL(value.url()).pathname === "/api/v1/creators" && value.request().method() === "POST");
+    await save.click(); await response;
+    assert.deepEqual(writes, ["🌲".repeat(40)]);
+  } finally { await browser.close(); }
+});

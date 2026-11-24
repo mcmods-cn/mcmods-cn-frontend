@@ -2228,6 +2228,7 @@ const zhCN = {
     },
   },
   creators: {
+      nameByteLimit: "名称的 UTF-8 编码最多允许 {count} 字节。",
     kicker: "创作者资料",
     title: "作者与团队",
     description: "查看 mcmods.cn 已收录项目背后的作者、开发团队与合作关系。",

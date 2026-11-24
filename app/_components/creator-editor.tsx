@@ -28,6 +28,9 @@ import { SquareImageCropDialog } from "./square-image-crop-dialog";
 import { ReviewLockGate } from "./review-edit-lock";
 import { LoginRequiredState, PageFeedback } from "./page-feedback";
 
+const creatorNameMaxBytes = 160;
+const nameEncoder = new TextEncoder();
+
 export function CreatorEditorPage({ initialKind, publicId = "" }: { initialKind: CreatorKind; publicId?: string }) {
   const { token, user } = useAuthSnapshot();
   return <CreatorEditorPageContent key={`${user?.id || "guest"}:${initialKind}:${publicId}:${token}`} initialKind={initialKind} publicId={publicId} />;
@@ -158,6 +161,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
   }));
 
   const returnHref = detail ? creatorHref(detail.creator) : "/authors";
+  const nameTooLong = nameEncoder.encode(name.trim()).length > creatorNameMaxBytes;
   const snapshot = useMemo<CreatorSnapshot>(() => ({
     kind,
     name: name.trim(),
@@ -249,7 +253,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (!snapshot.name || busy || mutationInFlight.current) return;
+    if (!snapshot.name || nameTooLong || busy || mutationInFlight.current) return;
     if (avatarReferenceNeedsVerification) {
       notifySite(creatorAvatarVerificationMessage(locale), t("creators.avatar"), "danger");
       return;
@@ -297,7 +301,7 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
           <div className="flex gap-2">
             <DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} />
             <Link className="button-secondary focus-ring" href={returnHref}>{t("common.cancel")}</Link>
-            <button className="button-primary focus-ring" disabled={busy || !name.trim()} type="submit">{saving ? t("common.loading") : t(editing ? "common.save" : "common.create")}</button>
+            <button className="button-primary focus-ring" disabled={busy || !name.trim() || nameTooLong} type="submit">{saving ? t("common.loading") : t(editing ? "common.save" : "common.create")}</button>
           </div>
         </header>
 
@@ -326,7 +330,8 @@ function CreatorEditorForm({ detail, initialKind, token }: { detail: CreatorDeta
 
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           {!editing ? <label className="block"><span className="mb-1 block text-sm font-black">{t("creators.kind")}</span><select className="field" value={kind} onChange={(event) => { setKind(event.target.value as CreatorKind); setImportedAvatarPreviewUrl(""); setImportedMemberPreviews([]); }}><option value="author">{t("creators.kinds.author")}</option><option value="team">{t("creators.kinds.team")}</option></select></label> : null}
-          <label className={`block ${editing ? "lg:col-span-2" : ""}`}><span className="mb-1 block text-sm font-black">{t("creators.name")}</span><input className="field" autoFocus={!editing} maxLength={160} required value={name} onChange={(event) => setName(event.target.value)} /></label>
+          <label className={`block ${editing ? "lg:col-span-2" : ""}`}><span className="mb-1 block text-sm font-black">{t("creators.name")}</span><input className="field" autoFocus={!editing} maxLength={creatorNameMaxBytes} aria-invalid={nameTooLong || undefined} aria-describedby={nameTooLong ? "creator-name-limit" : undefined} required value={name} onChange={(event) => setName(event.target.value)} />
+            {nameTooLong && <small id="creator-name-limit" role="status" className="text-[var(--danger)]">{t("creators.nameByteLimit", { count: creatorNameMaxBytes })}</small>}</label>
         </div>
 
         <div className="mt-6 grid gap-3 lg:grid-cols-[1fr_260px]">
