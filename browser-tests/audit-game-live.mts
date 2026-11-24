@@ -52,13 +52,19 @@ test("LIVE-GAME-20261024 unchanged supported game package -> browser upload -> J
   }
   assert(frontend.pathname === "/" && oss.pathname === "/", "Site and storage must be loopback roots");
   assert(backend.pathname === "/" || (backend.protocol === "https:" && backend.origin === frontend.origin && backend.pathname === "/service"), "The API must be the declared loopback root or HTTPS service path");
-  if (frontend.protocol === "https:") assert(backend.origin === frontend.origin && oss.origin === frontend.origin, "The release uses its verified same-origin TLS gateway");
+  if (frontend.protocol === "https:") assert(oss.origin === frontend.origin, "Storage must use the same verified TLS gateway as the release");
   const config = await fetch(new URL("/authentication-write-config", frontend), { redirect: "error", signal: AbortSignal.timeout(10_000) });
   assert.equal(config.status, 200);
   const { apiBaseURL } = await config.json();
   assert.equal(typeof apiBaseURL, "string");
   const api = new URL(apiBaseURL);
-  assert([backend.href, frontend.href].includes(api.href), "The frontend must use the owned backend or its same-origin gateway");
+  if (frontend.protocol === "https:") {
+    assert.equal(runtime.frontendProductionBuild?.embeddedSiteOrigin, frontend.origin);
+    assert.equal(apiBaseURL.replace(/\/$/, ""), runtime.frontendProductionBuild?.embeddedAPIOrigin);
+    assert(api.origin === frontend.origin && ["/", "/service"].includes(api.pathname) && !api.username && !api.password && !api.search && !api.hash, "The production frontend must use its pinned same-origin HTTPS API");
+  } else {
+    assert([backend.href, frontend.href].includes(api.href), "The development frontend must use the declared loopback API or site");
+  }
   const apiPrefix = api.pathname.replace(/\/$/, "");
   const apiBase = api.origin + apiPrefix;
   const apiPath = (path: string) => apiPrefix + path;
