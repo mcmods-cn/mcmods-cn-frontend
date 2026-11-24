@@ -124,3 +124,22 @@ test("guests keep the published project, tab history and language fallback", { t
     await browser.close();
   }
 });
+
+test("the project data tab renders a custom construction template under its own section", { timeout: 25_000 }, async () => {
+  const localization = { locale: "en-US", name: "Construction guide", summary: "Building instructions", contentMarkdown: "" };
+  const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/auth/me") return { status: 401, error: "Guest" };
+    const root = `/api/v1/mods/${publicSlug}`;
+    if (request.path === root) return { data: syntheticMod(false) };
+    if (request.path === root + "/content-versions") return { data: { items: [{ publicId: "version01", label: "Fixture version", status: "active" }] } };
+    if (request.path === root + "/content-sections") return { data: { items: [{ publicId: "section01", versionPublicId: "version01", templateCode: "constructor", templatePublicId: "template01", localizations: [], resourceCount: 0 }] } };
+    if (request.path === root + "/content-templates") return { data: { items: [{ publicId: "template01", code: "constructor", localizations: [localization] }] } };
+    return supportEndpoints(request);
+  });
+  try {
+    await browser.page.goto(`${fixture.origin}/mods/${publicSlug}?tab=data`);
+    const category = browser.page.getByRole("button", { name: /Construction guide/ });
+    await category.waitFor();
+    assert.match(await category.innerText(), /Building instructions/);
+  } finally { await browser.close(); }
+});

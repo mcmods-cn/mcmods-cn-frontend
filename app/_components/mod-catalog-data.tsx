@@ -161,7 +161,7 @@ function buildCatalogCategories(sections: ModContentSection[], templates: ModCon
   const merged = new Map<string, UnifiedCatalogCategory>();
   for (const section of sections) {
     if (section.parentPublicId) continue;
-    const key = contentTemplateCategoryMap[section.templateCode] ?? `custom:${section.publicId}`;
+    const key = Object.hasOwn(contentTemplateCategoryMap, section.templateCode) ? contentTemplateCategoryMap[section.templateCode] : `custom:${section.publicId}`;
     const template = templates.find((item) => item.publicId === section.templatePublicId);
     const localization = localizedSection(section, template, locale);
     const appearance = contentCategoryAppearance[key] ?? { icon: "database", tone: "text-emerald-700 bg-emerald-500/10" };
