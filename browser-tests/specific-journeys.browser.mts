@@ -455,3 +455,35 @@ test("switching the skin uploader account cancels before skin metadata creation"
     assert.equal(await page.getByRole("textbox", { name: "Name (en-US)", exact: true }).inputValue(), "");
   } finally { presign.resolve({ status: 503, error: "Test finished" }); await browser.close(); }
 });
+
+test("a confirmed block with an unavailable profile refresh offers a read-only retry", async () => {
+  const operations: string[] = [];
+  let profileReads = 0;
+  const browser = await controlled(({ path, method }) => {
+    if (path === "/api/v1/users/testother/profile") {
+      profileReads++;
+      if (profileReads === 2) return { status: 503, error: "Profile refresh unavailable" };
+      const blocked = operations.length > 0;
+      return { data: { id: "testother", username: "Community member", createdAt: "2026-10-01", onlineStatus: "hidden",
+        canBlock: true, canMessage: !blocked, canFollow: !blocked, isFollowing: !blocked, isBlocked: blocked, followers: blocked ? 1 : 2, following: 0 } };
+    }
+    if (path === "/api/v1/users/testother/block") { operations.push(method); return { data: { blocked: true } }; }
+    if (path === "/api/v1/users/testother/player-profiles") return { data: { items: [] } };
+    if (path === "/api/v1/users/testother/showcase") return { data: { claimedAuthors: [], developerProjects: [], editorProjects: [], uploads: [], posts: [] } };
+    if (path === "/api/v1/users/testother/favorite-collections") return { data: { items: [], hasMore: false, nextCursor: "" } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/user/testother");
+    page.once("dialog", dialog => dialog.accept());
+    await page.getByRole("button", { name: "Block", exact: true }).click();
+    await page.getByText("Profile refresh unavailable", { exact: true }).waitFor();
+    await page.getByText("User blocked.", { exact: true }).waitFor({ timeout: 5_000 });
+    assert.equal(await page.getByRole("button", { name: "Unblock", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("link", { name: "Private message", exact: true }).count(), 0);
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some(button => button.textContent?.trim() === "Unblock" && !button.disabled));
+    assert.equal(await page.getByRole("link", { name: "Private message", exact: true }).count(), 0);
+    assert.deepEqual(operations, ["PUT"]); assert.equal(profileReads, 3);
+  } finally { await browser.close(); }
+});

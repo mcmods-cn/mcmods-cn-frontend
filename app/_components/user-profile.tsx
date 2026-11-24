@@ -31,6 +31,8 @@ function UserProfileSession({ userId }: { userId: string }) {
   const [playersError, setPlayersError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [mutating, setMutating] = useState(false);
+  const [relationshipNeedsRefresh, setRelationshipNeedsRefresh] = useState(false);
+  const [blockNotice, setBlockNotice] = useState("");
   const mutationInFlight = useRef(false);
   const loadErrorText = useEffectEvent((error: unknown, key: string) => error instanceof Error ? error.message : t(key));
 
@@ -46,6 +48,7 @@ function UserProfileSession({ userId }: { userId: string }) {
         if (cancelled) return;
         if (profileResult.status === "fulfilled") {
           setProfile(profileResult.value);
+          setRelationshipNeedsRefresh(false);
           setMessage("");
         } else {
           setMessage(loadErrorText(profileResult.reason, "user.profileLoadFailed"));
@@ -58,7 +61,7 @@ function UserProfileSession({ userId }: { userId: string }) {
   }, [attempt, ready, token, userId]);
 
   async function toggleFollow() {
-    if (!token || !profile || mutationInFlight.current) return;
+    if (!token || !profile || relationshipNeedsRefresh || mutationInFlight.current) return;
     mutationInFlight.current = true;
     setMutating(true);
     setMessage("");
@@ -79,20 +82,21 @@ function UserProfileSession({ userId }: { userId: string }) {
   }
 
   async function toggleBlock() {
-    if (!token || !profile || !profile.canBlock || mutationInFlight.current) return;
+    if (!token || !profile || !profile.canBlock || relationshipNeedsRefresh || mutationInFlight.current) return;
     if (!profile.isBlocked && !window.confirm(t("user.blockConfirm", { name: profile.username }))) return;
     mutationInFlight.current = true;
     setMutating(true);
     setMessage("");
     try {
-      await apiRequest<{ blocked: boolean }>(
+      const result = await apiRequest<{ blocked: boolean }>(
         `/api/v1/users/${profile.id}/block`,
         { method: profile.isBlocked ? "DELETE" : "PUT" },
         token,
       );
-      const nextProfile = await loadPublicUserProfile(profile.id, token);
-      setProfile(nextProfile);
-      setMessage(t(profile.isBlocked ? "user.unblockSucceeded" : "user.blockSucceeded"));
+      setProfile(current => current ? { ...current, isBlocked: result.blocked, isFollowing: result.blocked ? false : current.isFollowing } : current);
+      setBlockNotice(t(result.blocked ? "user.blockSucceeded" : "user.unblockSucceeded"));
+      setRelationshipNeedsRefresh(true);
+      setAttempt(value => value + 1);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t(profile.isBlocked ? "user.unblockFailed" : "user.blockFailed"));
     } finally { mutationInFlight.current = false; setMutating(false); }
@@ -140,14 +144,14 @@ function UserProfileSession({ userId }: { userId: string }) {
                 </Link>
               ) : user ? (
                 <>
-                  <button className="button-primary focus-ring" disabled={mutating || !profile.canFollow && !profile.isFollowing} type="button" onClick={() => void toggleFollow()}>
+                  <button className="button-primary focus-ring" disabled={mutating || relationshipNeedsRefresh || !profile.canFollow && !profile.isFollowing} type="button" onClick={() => void toggleFollow()}>
                     {profile.isFollowing ? t("user.unfollow") : t("user.follow")}
                   </button>
-                  <Link className={`button-secondary focus-ring ${profile.canMessage ? "" : "pointer-events-none opacity-50"}`} href={`/messages?user=${profile.id}`}>
-                    {t("user.privateMessage")}
-                  </Link>
+                  {profile.canMessage && !relationshipNeedsRefresh
+                    ? <Link className="button-secondary focus-ring" href={`/messages?user=${profile.id}`}>{t("user.privateMessage")}</Link>
+                    : <button className="button-secondary focus-ring" disabled type="button">{t("user.privateMessage")}</button>}
                   {profile.canBlock ? (
-                    <button className="button-secondary focus-ring text-[var(--danger)]" disabled={mutating} type="button" onClick={() => void toggleBlock()}>
+                    <button className="button-secondary focus-ring text-[var(--danger)]" disabled={mutating || relationshipNeedsRefresh} type="button" onClick={() => void toggleBlock()}>
                       {profile.isBlocked ? t("user.unblock") : t("user.block")}
                     </button>
                   ) : null}
@@ -160,17 +164,18 @@ function UserProfileSession({ userId }: { userId: string }) {
               )}
             </div>
           </div>
-          {message ? <p className="relative z-10 mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}</p> : null}
+          {blockNotice ? <p className="relative z-10 mt-4 text-sm font-bold" role="status">{blockNotice}</p> : null}
+          {message ? <p className="relative z-10 mt-4 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-3 py-2 text-sm">{message}{relationshipNeedsRefresh ? <button className="button-secondary focus-ring ml-3" type="button" onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button> : null}</p> : null}
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <Link className="surface focus-ring p-5 transition hover:-translate-y-0.5 hover:border-[var(--accent)]" href={`/user/${encodeURIComponent(profile.id)}/followers`}>
             <div className="text-sm font-semibold text-[var(--muted)]">{t("user.followers")}</div>
-            <div className="mt-1 text-3xl font-black">{profile.followers}</div>
+            <div className="mt-1 text-3xl font-black">{relationshipNeedsRefresh ? "—" : profile.followers}</div>
           </Link>
           <Link className="surface focus-ring p-5 transition hover:-translate-y-0.5 hover:border-[var(--accent)]" href={`/user/${encodeURIComponent(profile.id)}/following`}>
             <div className="text-sm font-semibold text-[var(--muted)]">{t("user.following")}</div>
-            <div className="mt-1 text-3xl font-black">{profile.following}</div>
+            <div className="mt-1 text-3xl font-black">{relationshipNeedsRefresh ? "—" : profile.following}</div>
           </Link>
         </div>
 
