@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { apiRequest } from "../_lib/api";
+import { ApiError, apiRequest } from "../_lib/api";
 import { useI18n } from "../_lib/i18n-provider";
 
 export type AdminYggdrasilConfig = {
+  revision?: string;
   enabled: boolean;
   publicBaseUrl: string;
   textureBaseUrl: string;
@@ -35,9 +36,24 @@ export const defaultAdminYggdrasilConfig: AdminYggdrasilConfig = {
   available: false,
 };
 
+const writableFields = ["enabled", "publicBaseUrl", "textureBaseUrl", "serverName", "trustedProxyCidrs",
+  "tokenTtlHours", "maxTokens", "joinTtlSeconds", "textureMaxBytes"] as const;
+const revisionIsValid = (revision?: string) => typeof revision === "string" && /^[a-f0-9]{64}$/.test(revision);
+
+export function readYggdrasilSettings(value: AdminYggdrasilConfig): AdminYggdrasilConfig {
+  if (!value || !Array.isArray(value.trustedProxyCidrs) || !value.trustedProxyCidrs.every(item => typeof item === "string") ||
+    !(Object.keys(defaultAdminYggdrasilConfig) as (keyof AdminYggdrasilConfig)[]).every(key => typeof value[key] === typeof defaultAdminYggdrasilConfig[key])) {
+    throw new Error("Incomplete Yggdrasil settings");
+  }
+  return value;
+}
+
 export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: AdminYggdrasilConfig; token: string }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState(() => normalizeAdminYggdrasilConfig(initialConfig));
+  const [base, setBase] = useState(initialConfig);
+  const [draft, setDraft] = useState(initialConfig);
+  const [conflict, setConflict] = useState(false);
+  const [latest, setLatest] = useState<AdminYggdrasilConfig>();
   const [proxyList, setProxyList] = useState(() => initialConfig.trustedProxyCidrs.join("\n"));
   const inFlight = useRef(false);
   const [privateKeyBase64, setPrivateKeyBase64] = useState("");
@@ -45,8 +61,30 @@ export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: A
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  async function save() {
+  const writable = revisionIsValid(base.revision) && !conflict;
+  function accept(next: AdminYggdrasilConfig, edited = next) {
+    setBase(next); setDraft(edited); setProxyList(edited.trustedProxyCidrs.join("\n"));
+    setLatest(undefined); setConflict(false); setMessage("");
+    if (edited === next) { setPrivateKeyBase64(""); setRotatePrivateKey(false); }
+  }
+
+  async function compare() {
     if (inFlight.current) return;
+    inFlight.current = true; setSaving(true); setMessage("");
+    try {
+      setLatest(readYggdrasilSettings(await apiRequest<AdminYggdrasilConfig>("/api/v1/admin/config/yggdrasil", { cache: "no-store" }, token)));
+    } catch (error) { setMessage(error instanceof Error ? error.message : t("common.loadFailed")); }
+    finally { inFlight.current = false; setSaving(false); }
+  }
+
+  function applyEdits(current: AdminYggdrasilConfig) {
+    const local = { ...draft, trustedProxyCidrs: splitLines(proxyList) };
+    const changed = writableFields.filter(field => JSON.stringify(local[field]) !== JSON.stringify(base[field]));
+    accept(current, { ...current, ...Object.fromEntries(changed.map(field => [field, local[field]])) });
+  }
+
+  async function save() {
+    if (inFlight.current || !writable) return;
     inFlight.current = true;
     setSaving(true);
     setMessage("");
@@ -54,26 +92,25 @@ export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: A
       const saved = await apiRequest<AdminYggdrasilConfig>("/api/v1/admin/config/yggdrasil", {
         method: "PUT",
         body: JSON.stringify({
-          enabled: draft.enabled,
-          publicBaseUrl: draft.publicBaseUrl,
-          textureBaseUrl: draft.textureBaseUrl,
-          serverName: draft.serverName,
-          tokenTtlHours: draft.tokenTtlHours,
-          maxTokens: draft.maxTokens,
-          joinTtlSeconds: draft.joinTtlSeconds,
-          textureMaxBytes: draft.textureMaxBytes,
+          ...Object.fromEntries(writableFields.map(field => [field, draft[field]])),
+          revision: base.revision,
           trustedProxyCidrs: splitLines(proxyList),
           privateKeyBase64: privateKeyBase64.trim(),
           rotatePrivateKey,
         }),
       }, token);
-      setDraft(normalizeAdminYggdrasilConfig(saved));
-      setProxyList(saved.trustedProxyCidrs.join("\n"));
-      setPrivateKeyBase64("");
-      setRotatePrivateKey(false);
+      // The write has committed. A malformed acknowledgement must never enable another rotation.
+      setConflict(true);
+      setPrivateKeyBase64(""); setRotatePrivateKey(false);
+      const snapshot = readYggdrasilSettings(saved);
+      if (!revisionIsValid(snapshot.revision)) { setLatest(snapshot); return; }
+      accept(snapshot);
       setMessage(t("admin.yggdrasil.saved"));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("admin.yggdrasil.saveFailed"));
+      if (error instanceof ApiError && (error.status === 409 && error.code === "YGGDRASIL_CONFIG_CONFLICT" ||
+        error.status === 428 && error.code === "YGGDRASIL_CONFIG_REVISION_REQUIRED")) {
+        setConflict(true); setLatest(undefined);
+      } else setMessage(error instanceof Error ? error.message : t("admin.yggdrasil.saveFailed"));
     } finally {
       inFlight.current = false;
       setSaving(false);
@@ -87,10 +124,25 @@ export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: A
           <h2 className="text-xl font-bold">{t("admin.yggdrasil.title")}</h2>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("admin.yggdrasil.description")}</p>
         </div>
-        <button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button>
+        <button className="button-primary focus-ring" disabled={saving || !writable} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button>
       </header>
 
-      <fieldset className="grid min-w-0 gap-5 p-5" disabled={saving}>
+      {!revisionIsValid(base.revision) ? <p className="p-5" role="status">{t("admin.ai.noRevision")}</p> : null}
+      {conflict ? <section className="grid gap-3 p-5" role="alert">
+        <strong>{t("admin.ai.configConflict")}</strong>
+        <button className="button-secondary focus-ring w-fit" disabled={saving} type="button" onClick={() => void compare()}>{t("admin.ai.compareLatest")}</button>
+        {latest && <><h3 className="font-bold">{t("admin.ai.serverVersion")}</h3><dl className="grid gap-2 sm:grid-cols-2">{writableFields.map(field => <div key={field}>
+          <dt>{t(`admin.yggdrasil.${field}`)}</dt><dd className="whitespace-pre-wrap break-words font-mono text-sm">{Array.isArray(latest[field]) ? latest[field].join("\n") : String(latest[field])}</dd>
+        </div>)}</dl>
+          {revisionIsValid(latest.revision) && <div className="flex flex-wrap gap-2">
+            <button className="button-secondary focus-ring" type="button" onClick={() => applyEdits(latest)}>{t("admin.ai.applyEdits")}</button>
+            <button className="button-secondary focus-ring" type="button" onClick={() => accept(latest)}>{t("admin.ai.discardEdits")}</button>
+          </div>}
+        </>}
+      </section> : null}
+      {message ? <p role="status" className="mx-5 mt-3 rounded-lg border border-[var(--line)] px-4 py-3 text-sm">{message}</p> : null}
+      <fieldset className="grid min-w-0 gap-5 p-5" disabled={saving || !writable}>
+        {conflict ? <legend>{t("admin.ai.localDraft")}</legend> : null}
         <section className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] p-4">
           <span className={`rounded-full px-3 py-1 text-sm font-bold ${draft.available ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
             {draft.available ? t("admin.yggdrasil.available") : t("admin.yggdrasil.unavailable")}
@@ -128,7 +180,6 @@ export function AdminYggdrasilPanel({ initialConfig, token }: { initialConfig: A
           </label>
         </section>
 
-        {message ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel-subtle)] px-4 py-3 text-sm font-bold">{message}</p> : null}
       </fieldset>
     </section>
   );
@@ -144,12 +195,4 @@ function NumberField({ label, min, max, value, onChange }: { label: string; min:
 
 function splitLines(value: string) {
   return value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
-}
-
-function normalizeAdminYggdrasilConfig(value: AdminYggdrasilConfig): AdminYggdrasilConfig {
-  return {
-    ...defaultAdminYggdrasilConfig,
-    ...value,
-    trustedProxyCidrs: Array.isArray(value?.trustedProxyCidrs) ? value.trustedProxyCidrs : [],
-  };
 }

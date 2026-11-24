@@ -294,7 +294,7 @@ for (const canWrite of [false, true]) {
 }
 
 test("Yggdrasil settings submit writable fields and keep multiline proxy edits and key intent", { timeout: 30_000 }, async () => {
-  const stored = { enabled: true, publicBaseUrl: "https://api.example.test/api/yggdrasil/", textureBaseUrl: "https://api.example.test/api/yggdrasil/textures/",
+  const stored = { revision: "a".repeat(64), enabled: true, publicBaseUrl: "https://api.example.test/api/yggdrasil/", textureBaseUrl: "https://api.example.test/api/yggdrasil/textures/",
     serverName: "Synthetic", trustedProxyCidrs: ["127.0.0.1"], tokenTtlHours: 80, maxTokens: 3, joinTtlSeconds: 20, textureMaxBytes: 65536 };
   const health = { hasPrivateKey: true, persistentPrivateKey: true, available: true, disabledReason: "" };
   const allowed = new Set([...Object.keys(stored), "privateKeyBase64", "rotatePrivateKey"]);
@@ -325,5 +325,39 @@ test("Yggdrasil settings submit writable fields and keep multiline proxy edits a
     assert.equal(writes.length, 2);
     assert.equal(writes[1].rotatePrivateKey, true);
     assert.equal(writes[1].privateKeyBase64, "");
+  } finally { await browser.close(); }
+});
+
+test("conflicting Yggdrasil settings preserve the draft and rebase only explicit edits without replaying a rotation", { timeout: 30_000 }, async () => {
+  const a = "a".repeat(64), b = "b".repeat(64), c = "c".repeat(64);
+  const initial = { revision: a, enabled: true, publicBaseUrl: "https://api.example.test/api/yggdrasil/", textureBaseUrl: "https://api.example.test/textures/",
+    serverName: "Original", trustedProxyCidrs: [], tokenTtlHours: 80, maxTokens: 3, joinTtlSeconds: 20, textureMaxBytes: 65536,
+    hasPrivateKey: true, persistentPrivateKey: true, available: true };
+  let reads = 0;
+  const writes: Record<string, unknown>[] = [];
+  const browser = await fixture.page(({ path, method, body }) => {
+    if (path !== "/api/v1/admin/config/yggdrasil") return;
+    if (method === "GET") return { data: ++reads === 1 ? initial : { ...initial, revision: b, maxTokens: 8 } };
+    writes.push(JSON.parse(body));
+    if (writes.length === 1) return { status: 409, code: "YGGDRASIL_CONFIG_CONFLICT", error: "Configuration changed" };
+    return { data: { ...initial, revision: c, serverName: "Local name", maxTokens: 8 } };
+  });
+  try {
+    const { page } = browser;
+    await panel(page, "yggdrasil", "system");
+    const service = page.getByRole("textbox", { name: "Service name", exact: true });
+    await service.fill("Local name");
+    await page.getByRole("checkbox", { name: /Generate and activate/ }).check();
+    const save = page.getByRole("button", { name: "Save", exact: true });
+    await save.click();
+    await page.getByText("The configuration changed. Your draft is preserved.", { exact: true }).waitFor();
+    assert.equal(await service.inputValue(), "Local name"); assert.equal(await save.isDisabled(), true);
+    await page.getByRole("button", { name: "Compare with the latest settings" }).click();
+    await page.getByRole("button", { name: "Apply my edited fields to the latest settings" }).click();
+    assert.equal(await page.getByRole("spinbutton", { name: "Maximum active tokens per user" }).inputValue(), "8");
+    assert.equal(await service.inputValue(), "Local name");
+    assert.equal(writes.length, 1);
+    await save.click(); await page.getByText("Yggdrasil settings saved and applied.").waitFor();
+    assert.deepEqual(writes.map(write => [write.revision, write.serverName, write.maxTokens, write.rotatePrivateKey]), [[a, "Local name", 3, true], [b, "Local name", 8, true]]);
   } finally { await browser.close(); }
 });

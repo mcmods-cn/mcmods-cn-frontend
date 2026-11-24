@@ -9,7 +9,7 @@ import { validateServerCatalogSettings } from "../_lib/server-api";
 import { AdminDeadLetterPanel } from "./admin-dead-letter-panel";
 import { AdminDashboardPanel, type AdminDashboardData } from "./admin-dashboard-panel";
 import { ServerSettingsPanel } from "./admin-server-panels";
-import { AdminYggdrasilPanel, defaultAdminYggdrasilConfig, type AdminYggdrasilConfig } from "./admin-yggdrasil-panel";
+import { AdminYggdrasilPanel, readYggdrasilSettings } from "./admin-yggdrasil-panel";
 import { AuthPanelV2, GeneralSettingsPanel, MailPanelV2, MarkdownConfigPanel, NATSConfigPanel, PermissionSettingsPanel, ProfileSettingsPanel, RoleTracksPanel } from "./admin-console-infrastructure";
 import { PermissionCatalogEditor, PermissionGroupEditor, UserRolePanel } from "./admin-console-permissions";
 import { emptyCatalog, normalizePermissionCatalog, type AdminConfig, type MailConfig, type PermissionCatalog, type User } from "./admin-console-shared";
@@ -105,8 +105,6 @@ const readAuth = readSettings((config: AuthConfig) => hasCompleteOAuthConfig(con
 const readProfile = readSettings((config: AdminConfig["profile"]) => Number.isFinite(config.signatureMaxBytes));
 const readMarkdown = readSettings((config: MarkdownRendererConfig) =>
   (Object.keys(defaultMarkdownConfig) as (keyof MarkdownRendererConfig)[]).every(key => typeof config[key] === typeof defaultMarkdownConfig[key]));
-const readYggdrasil = readSettings((config: AdminYggdrasilConfig) => Array.isArray(config.trustedProxyCidrs)
-  && (Object.keys(defaultAdminYggdrasilConfig) as (keyof AdminYggdrasilConfig)[]).every(key => typeof config[key] === typeof defaultAdminYggdrasilConfig[key]));
 const readNATS = readSettings((config: NATSConfig) => Boolean(config.status && config.jetStream && Array.isArray(config.tasks)));
 
 function SettingsRead<T>({ path, token, validate, editable, children }: {
@@ -134,7 +132,7 @@ export function AdminSettingsEditor({ panel, token, canWrite }: { panel: Setting
     case "server-settings": return <SettingsRead path="/api/v1/admin/server-settings" token={token} validate={validateServerCatalogSettings} editable={canWrite}>
       {settings => <ServerSettingsPanel initialConfig={settings} token={token} canWrite={canWrite} />}
     </SettingsRead>;
-    case "yggdrasil": return <SettingsRead path="/api/v1/admin/config/yggdrasil" token={token} validate={readYggdrasil} editable={canWrite}>
+    case "yggdrasil": return <SettingsRead path="/api/v1/admin/config/yggdrasil" token={token} validate={readYggdrasilSettings} editable={canWrite}>
       {settings => <AdminYggdrasilPanel initialConfig={settings} token={token} />}
     </SettingsRead>;
     case "markdown": return <SettingsRead path="/api/v1/admin/config/markdown" token={token} validate={readMarkdown} editable={canWrite}>
