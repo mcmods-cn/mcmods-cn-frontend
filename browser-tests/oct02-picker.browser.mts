@@ -245,6 +245,7 @@ test("creator details keep the recorded member role while its translated role li
       return { data: { creator: { publicId: "team001", kind: "team", name: "Recorded team" }, descriptionMarkdown: "", members: [{ creatorId: "member01", name: "Recorded member", role }],
         links: [], collaborators: [], teams: [], works: [], canEditProfile: false, canManageMembers: false } };
     }
+    if (request.path === "/api/v1/comment-targets/creator/team001/comments") return { data: { items: [], total: 0, nextCursor: "", capabilities: { canCreate: false } } };
     if (request.path === "/api/v1/creator-roles") {
       if (++roles === 1) return { status: 503, code: "HTTP_503", error: "Temporary roles failure" };
       return { data: { items: [role] } };
