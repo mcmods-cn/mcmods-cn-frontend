@@ -8,10 +8,12 @@ import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { EmptyState, InlineMessage, LocalizedTextPairEditor, Permission, PermissionCatalog, Role, RolePermissionEntry, User, UserPermissionDetails, UserPermissionEntry, buildNewPermissionPayload, cleanError, cloneRole, editableLocalizedText, localizedText, normalizeLocalizedTexts, notifyAdminNotice, parsePermissionInput, permissionInfoForCode, permissionModule, permissionSuggestions, permissionTemplateCode, setLocalizedText, splitCodes, withFallbackLocalizedText } from "./admin-console-shared";
 
 function PermissionGroupEditor({
+  canWrite,
   catalog,
   token,
   refreshCatalog,
 }: {
+  canWrite: boolean;
   catalog: PermissionCatalog;
   token: string;
   refreshCatalog: () => Promise<void>;
@@ -108,6 +110,7 @@ function PermissionGroupEditor({
 
   async function saveRole(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canWrite) return;
     if (!currentDraft || !token) {
       setMessage(t("admin.permissionLoginRequired"));
       return;
@@ -143,6 +146,7 @@ function PermissionGroupEditor({
   }
 
   async function deleteRole() {
+    if (!canWrite) return;
     if (!currentDraft || !selectedCode || !token) {
       setMessage(t("admin.selectExistingRole"));
       return;
@@ -164,6 +168,7 @@ function PermissionGroupEditor({
   }
 
   async function addPermissionEntriesFromInput() {
+    if (!canWrite) return;
     if (!currentDraft || !token) {
       setMessage(t("admin.selectRoleAndLoginRequired"));
       return;
@@ -219,7 +224,7 @@ function PermissionGroupEditor({
             <h2 className="text-lg font-bold">{t("admin.roleGroup")}</h2>
             <p className="text-sm text-[var(--muted)]">{t("admin.roleCount", { count: 0 })}</p>
           </div>
-          <button className="button-primary focus-ring" type="button" onClick={startCreateRole}>
+          <button className="button-primary focus-ring" disabled={!canWrite} type="button" onClick={startCreateRole}>
             {t("admin.newRole")}
           </button>
         </div>
@@ -260,7 +265,7 @@ function PermissionGroupEditor({
             <h2 className="text-lg font-bold">{t("admin.roleGroup")}</h2>
             <p className="text-sm text-[var(--muted)]">{t("admin.roleCount", { count: catalog.roles.length })}</p>
           </div>
-          <button className="button-secondary focus-ring px-3 py-2" type="button" onClick={startCreateRole}>
+          <button className="button-secondary focus-ring px-3 py-2" disabled={!canWrite} type="button" onClick={startCreateRole}>
             {t("admin.newRole")}
           </button>
         </div>
@@ -289,7 +294,7 @@ function PermissionGroupEditor({
 
       <section className="grid gap-4">
         <form className="surface overflow-hidden rounded-lg p-4" onSubmit={saveRole}>
-            <fieldset disabled={saving} className="contents">
+            <fieldset disabled={!canWrite || saving} className="contents">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="grid gap-3 lg:grid-cols-[auto_minmax(220px,360px)_auto] lg:items-center">
@@ -362,13 +367,13 @@ function PermissionGroupEditor({
           </div>
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--line)] px-4 py-3 text-sm">
             <span className="font-semibold text-[var(--muted)]">{t("admin.selectedCount", { count: selectedPermissionIndexes.length })}</span>
-            <button className="button-secondary focus-ring px-3 py-2" disabled={selectedPermissionIndexes.length === 0} type="button" onClick={() => bulkUpdatePermissionAllow(true)}>
+            <button className="button-secondary focus-ring px-3 py-2" disabled={!canWrite || saving || selectedPermissionIndexes.length === 0} type="button" onClick={() => bulkUpdatePermissionAllow(true)}>
               {t("admin.bulkSetTrue")}
             </button>
-            <button className="button-secondary focus-ring px-3 py-2" disabled={selectedPermissionIndexes.length === 0} type="button" onClick={() => bulkUpdatePermissionAllow(false)}>
+            <button className="button-secondary focus-ring px-3 py-2" disabled={!canWrite || saving || selectedPermissionIndexes.length === 0} type="button" onClick={() => bulkUpdatePermissionAllow(false)}>
               {t("admin.bulkSetFalse")}
             </button>
-            <button className="button-secondary focus-ring border-red-500/40 px-3 py-2 text-red-600" disabled={selectedPermissionIndexes.length === 0} type="button" onClick={bulkRemovePermissions}>
+            <button className="button-secondary focus-ring border-red-500/40 px-3 py-2 text-red-600" disabled={!canWrite || saving || selectedPermissionIndexes.length === 0} type="button" onClick={bulkRemovePermissions}>
               {t("admin.bulkDelete")}
             </button>
           </div>
@@ -396,7 +401,7 @@ function PermissionGroupEditor({
                 </button>
               ))}
             </div>
-            <div className="max-h-[520px] overflow-y-auto">
+            <fieldset disabled={!canWrite || saving} className="min-w-0 max-h-[520px] overflow-y-auto">
               <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
                 <thead className="text-[var(--muted)]">
                   <tr>
@@ -483,9 +488,9 @@ function PermissionGroupEditor({
                   ) : null}
                 </tbody>
               </table>
-            </div>
+            </fieldset>
           </div>
-          <PermissionBulkAdder
+          {canWrite && <PermissionBulkAdder
             allow={bulkPermissionAllow}
             description={bulkPermissionDescription}
             expiresAt={bulkPermissionExpiresAt}
@@ -499,7 +504,7 @@ function PermissionGroupEditor({
             onExpiresAtChange={setBulkPermissionExpiresAt}
             onInputChange={setBulkPermissionInput}
             onNameChange={setBulkPermissionName}
-          />
+          />}
         </section>
 
       </section>
@@ -884,10 +889,12 @@ function PermissionBulkAdder({
 }
 
 function PermissionCatalogEditor({
+  canWrite,
   canTranslate, catalog,
   token,
   refreshCatalog,
 }: {
+  canWrite: boolean;
   canTranslate: boolean;
   catalog: PermissionCatalog;
   token: string;
@@ -925,6 +932,7 @@ function PermissionCatalogEditor({
   }
 
   async function savePermissions() {
+    if (!canWrite) return;
     if (!token) {
       setMessage(t("admin.permissionLoginRequired"));
       return;
@@ -1045,7 +1053,7 @@ function PermissionCatalogEditor({
           <button className="button-secondary focus-ring whitespace-nowrap" disabled={!canTranslate || aiCompleting} type="button" onClick={completePermissionTranslations}>
             {aiCompleting ? t("admin.ai.completingTranslation") : t("admin.ai.completeTranslation")}
           </button>
-          <button className="button-primary focus-ring" disabled={saving} type="button" onClick={savePermissions}>
+          <button className="button-primary focus-ring" disabled={!canWrite || saving} type="button" onClick={savePermissions}>
             {saving ? t("admin.saving") : t("admin.savePermissionList")}
           </button>
         </div>
@@ -1067,6 +1075,7 @@ function PermissionCatalogEditor({
             <div className="font-mono text-sm font-bold">{permission.code}</div>
             <input
               className="field px-3 py-2"
+              readOnly={!canWrite}
               value={permission.module}
               onChange={(event) => updatePermissionDraft(permission.code, { module: event.target.value })}
             />
@@ -1079,6 +1088,7 @@ function PermissionCatalogEditor({
               </span>
             </div>
             <input
+              readOnly={!canWrite}
               key={`${targetLocale}:${permission.code}:name`}
               className="field px-3 py-2"
               value={editableLocalizedText(permission, targetLocale).name}
@@ -1089,6 +1099,7 @@ function PermissionCatalogEditor({
               }
             />
             <input
+              readOnly={!canWrite}
               key={`${targetLocale}:${permission.code}:description`}
               className="field px-3 py-2"
               value={editableLocalizedText(permission, targetLocale).description}
@@ -1106,11 +1117,13 @@ function PermissionCatalogEditor({
 }
 
 function UserRolePanel({
+  canWrite,
   catalog,
   token,
   users,
   refreshUsers,
 }: {
+  canWrite: boolean;
   catalog: PermissionCatalog;
   token: string;
   users: User[];
@@ -1179,7 +1192,7 @@ function UserRolePanel({
   }, [identity, loadAttempt, userId, token]);
 
   async function saveUserPermissions() {
-    if (!selectedUser || !hasLoadedPermissions || savePending.current) return;
+    if (!canWrite || !selectedUser || !hasLoadedPermissions || savePending.current) return;
     if (!token) {
       setMessage(t("admin.permissionLoginRequired"));
       return;
@@ -1205,6 +1218,7 @@ function UserRolePanel({
   }
 
   async function addUserPermissionEntriesFromInput() {
+    if (!canWrite) return;
     if (!token) {
       setMessage(t("admin.permissionLoginRequired"));
       return;
@@ -1316,13 +1330,13 @@ function UserRolePanel({
               <p className="mt-2 text-sm text-[var(--muted)]">{t("admin.noRoleAssigned")}</p>
             )}
           </div>
-          <button className="button-primary focus-ring" disabled={!selectedUser || !hasLoadedPermissions || saving} type="button" onClick={saveUserPermissions}>
+          <button className="button-primary focus-ring" disabled={!canWrite || !selectedUser || !hasLoadedPermissions || saving} type="button" onClick={saveUserPermissions}>
             {saving ? t("admin.saving") : t("admin.saveUserPermissions")}
           </button>
         </div>
         {message ? <div className="px-4"><InlineMessage text={message} /></div> : null}
         {!hasLoadedPermissions && selectedUser ? <div className="p-4" role="status"><p>{message || t("common.loading")}</p>{message ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => { setMessage(""); setLoadAttempt((value) => value + 1); }}>{t("common.retry")}</button> : null}</div> : null}
-        <fieldset disabled={!hasLoadedPermissions || saving} className="contents">
+        <fieldset disabled={!canWrite || !hasLoadedPermissions || saving} className="contents">
       {users.length === 0 ? (
         <EmptyState text={t("admin.noUsers")} />
       ) : (

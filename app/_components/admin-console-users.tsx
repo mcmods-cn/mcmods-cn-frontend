@@ -14,6 +14,8 @@ function UsersPanelV2({
   users,
   refreshUsers,
   canCreateUsers,
+  canReadBalances,
+  canAdjustBalances,
   canAssignInitialRoles,
 }: {
   catalog: PermissionCatalog;
@@ -21,6 +23,8 @@ function UsersPanelV2({
   users: User[];
   refreshUsers: () => Promise<void>;
   canCreateUsers: boolean;
+  canReadBalances: boolean;
+  canAdjustBalances: boolean;
   canAssignInitialRoles: boolean;
 }) {
   const { t } = useI18n();
@@ -32,6 +36,8 @@ function UsersPanelV2({
   const [searching, setSearching] = useState(false);
   const [selectedUserDetails, setSelectedUserDetails] = useState<AdminUserDetails | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const detailRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => detailRequest.current?.abort(), []);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -57,14 +63,18 @@ function UsersPanelV2({
   }, [searchQuery, t, token]);
 
   async function openUserDetails(userID: string) {
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
     setSelectedUserDetails(null);
     setDetailsLoading(true);
     try {
-      setSelectedUserDetails(await apiRequest<AdminUserDetails>(`/api/v1/admin/users/${userID}`, {}, token));
+      const details = await apiRequest<AdminUserDetails>(`/api/v1/admin/users/${userID}`, { signal: controller.signal }, token);
+      if (!controller.signal.aborted) setSelectedUserDetails(details);
     } catch (error) {
-      notifyAdminNotice(cleanError(error), t("admin.userDetailsLoadFailed"), "danger");
+      if (!controller.signal.aborted) notifyAdminNotice(cleanError(error), t("admin.userDetailsLoadFailed"), "danger");
     } finally {
-      setDetailsLoading(false);
+      if (!controller.signal.aborted) setDetailsLoading(false);
     }
   }
 
@@ -208,12 +218,17 @@ function UsersPanelV2({
       {detailsLoading ? <UserDetailsLoadingDialog /> : null}
       {selectedUserDetails ? (
         <AdminUserDetailsDialog
+          key={selectedUserDetails.user.id}
           details={selectedUserDetails}
+          canWriteStatus={canCreateUsers}
+          canReadBalances={canReadBalances}
+          canAdjustBalances={canAdjustBalances}
           token={token}
-          onClose={() => setSelectedUserDetails(null)}
+          onClose={() => { detailRequest.current?.abort(); setSelectedUserDetails(null); }}
           onStatusChanged={async () => {
+            const request = detailRequest.current;
             await refreshUsers();
-            await openUserDetails(selectedUserDetails.user.id);
+            if (request && !request.signal.aborted && request === detailRequest.current) await openUserDetails(selectedUserDetails.user.id);
           }}
         />
       ) : null}
@@ -235,10 +250,16 @@ function UserDetailsLoadingDialog() {
 function AdminUserDetailsDialog({
   details,
   token,
+  canWriteStatus,
+  canReadBalances,
+  canAdjustBalances,
   onClose,
   onStatusChanged,
 }: {
   details: AdminUserDetails;
+  canWriteStatus: boolean;
+  canReadBalances: boolean;
+  canAdjustBalances: boolean;
   token: string;
   onClose: () => void;
   onStatusChanged: () => Promise<void>;
@@ -251,6 +272,7 @@ function AdminUserDetailsDialog({
   const lastLoginLocation = formatUserLocation(details.lastLogin?.countryCode, details.lastLogin?.city);
 
   async function saveStatus() {
+    if (!canWriteStatus || savingStatus || status === user.status) return;
     setSavingStatus(true);
     try {
       await apiRequest(`/api/v1/admin/users/${user.id}/status`, { method: "PUT", body: JSON.stringify({ status }) }, token);
@@ -284,7 +306,7 @@ function AdminUserDetailsDialog({
         </header>
 
         <div className="min-h-0 overflow-y-auto">
-          <section className="flex flex-wrap items-end gap-3 border-b border-[var(--line)] px-5 py-4">
+          {canWriteStatus && <section className="flex flex-wrap items-end gap-3 border-b border-[var(--line)] px-5 py-4">
             <label className="min-w-52 text-sm font-semibold">{t("admin.status")}
               <select className="field mt-2" value={status} onChange={(event) => setStatus(event.target.value)}>
                 <option value="active">{t("admin.active")}</option>
@@ -294,7 +316,7 @@ function AdminUserDetailsDialog({
               </select>
             </label>
             <button className="button-primary focus-ring" disabled={savingStatus || status === user.status} type="button" onClick={() => void saveStatus()}>{savingStatus ? t("admin.saving") : t("common.save")}</button>
-          </section>
+          </section>}
           <section className="grid gap-x-8 gap-y-4 px-5 py-5 sm:grid-cols-2 lg:grid-cols-3">
             <UserDetailValue label={t("admin.status")} value={user.status} />
             <UserDetailValue label={t("admin.registeredAt")} value={formatDateTime(user.createdAt)} />
@@ -312,7 +334,7 @@ function AdminUserDetailsDialog({
             <UserDetailValue label={t("admin.lastLoginDevice")} value={details.lastLogin?.userAgent || "-"} wide />
           </section>
 
-          <AdminUserBalanceEditor token={token} userID={user.id} />
+          {canReadBalances && <AdminUserBalanceEditor token={token} userID={user.id} canWrite={canAdjustBalances} />}
 
           <section className="border-t border-[var(--line)] px-5 py-5">
             <h3 className="font-bold">{t("admin.roleList")}</h3>
@@ -366,7 +388,7 @@ function AdminUserDetailsDialog({
   );
 }
 
-function AdminUserBalanceEditor({ token, userID }: { token: string; userID: string }) {
+function AdminUserBalanceEditor({ token, userID, canWrite }: { token: string; userID: string; canWrite: boolean }) {
   const { locale, t } = useI18n();
   const [balances, setBalances] = useState<AdminUserBalance[]>([]);
   const [currencyCode, setCurrencyCode] = useState("");
@@ -374,6 +396,8 @@ function AdminUserBalanceEditor({ token, userID }: { token: string; userID: stri
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(true);
+  const [readError, setReadError] = useState<unknown>(null);
+  const [attempt, setAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const selected = balances.find((item) => item.code === currencyCode);
@@ -384,21 +408,23 @@ function AdminUserBalanceEditor({ token, userID }: { token: string; userID: stri
       .then((result) => {
         if (cancelled) return;
         const items = result.items ?? [];
+        setReadError(null);
         setBalances(items);
         setCurrencyCode(items[0]?.code || "");
         setAmount(items[0] ? String(items[0].balance) : "");
       })
       .catch((error) => {
-        if (!cancelled) notifyAdminNotice(cleanError(error), t("admin.userBalancesLoadFailed"), "danger");
+        if (!cancelled) setReadError(error);
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [t, token, userID]);
+  }, [attempt, token, userID]);
 
   async function saveBalance(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canWrite || saving || !reason.trim() || !amount.trim() || !currencyCode) return;
     const parsedAmount = Number(amount);
     if (!Number.isSafeInteger(parsedAmount)) {
       notifyAdminNotice(t("admin.invalidBalanceAmount"), t("admin.noticeTitle"), "danger");
@@ -430,10 +456,15 @@ function AdminUserBalanceEditor({ token, userID }: { token: string; userID: stri
         </div>
         {selected ? <strong className="rounded-lg bg-[var(--panel-subtle)] px-4 py-2 text-lg tabular-nums">{new Intl.NumberFormat(locale).format(selected.balance)} {selected.code}</strong> : null}
       </div>
-      {loading ? <p className="mt-4 text-sm text-[var(--muted)]">{t("common.loading")}</p> : balances.length === 0 ? <p className="mt-4 text-sm text-[var(--muted)]">{t("admin.noActiveCurrencies")}</p> : (
+      {loading ? <p className="mt-4 text-sm text-[var(--muted)]">{t("common.loading")}</p> : readError ? (
+        <div role="alert" className="mt-4 flex items-center gap-3">
+          <span>{cleanError(readError)}</span>
+          <button className="button-secondary focus-ring" type="button" onClick={() => { setLoading(true); setAttempt(value => value + 1); }}>{t("common.retry")}</button>
+        </div>
+      ) : balances.length === 0 ? <p className="mt-4 text-sm text-[var(--muted)]">{t("admin.noActiveCurrencies")}</p> : (
         <form className="mt-4 grid gap-3 lg:grid-cols-[minmax(180px,1fr)_150px_minmax(160px,1fr)_minmax(240px,2fr)_auto]" onSubmit={saveBalance}>
           <label className="text-sm font-semibold">{t("admin.currency")}
-            <select className="field mt-2" value={currencyCode} onChange={(event) => {
+            <select className="field mt-2" disabled={saving} value={currencyCode} onChange={(event) => {
               const nextCode = event.target.value;
               setCurrencyCode(nextCode);
               const nextBalance = balances.find((item) => item.code === nextCode)?.balance ?? 0;
@@ -442,6 +473,7 @@ function AdminUserBalanceEditor({ token, userID }: { token: string; userID: stri
               {balances.map((item) => <option key={item.publicId} value={item.code}>{item.name || item.code} ({item.code})</option>)}
             </select>
           </label>
+          {canWrite && <fieldset className="contents" disabled={saving}>
           <label className="text-sm font-semibold">{t("admin.balanceMode")}
             <select className="field mt-2" value={mode} onChange={(event) => {
               const nextMode = event.target.value as "set" | "adjust";
@@ -459,6 +491,7 @@ function AdminUserBalanceEditor({ token, userID }: { token: string; userID: stri
             <input className="field mt-2" maxLength={500} required value={reason} onChange={(event) => setReason(event.target.value)} />
           </label>
           <button className="button-primary focus-ring self-end" disabled={saving || !currencyCode || !reason.trim()} type="submit">{saving ? t("admin.saving") : t("common.save")}</button>
+          </fieldset>}
         </form>
       )}
     </section>
@@ -667,7 +700,7 @@ type ReviewSettings = {
   modContentSectionCreate: boolean;
 };
 
-function ReviewSettingsPanel({ token }: { token: string }) {
+function ReviewSettingsPanel({ token, canWrite }: { token: string; canWrite: boolean }) {
   const { t } = useI18n();
   const [settings, setSettings] = useState<ReviewSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -680,7 +713,7 @@ function ReviewSettingsPanel({ token }: { token: string }) {
     return () => { cancelled = true; };
   }, [token]);
   async function save() {
-    if (!settings) return;
+    if (!canWrite || !settings || saving) return;
     setSaving(true);
     try {
       setSettings(await apiRequest<ReviewSettings>("/api/v1/admin/config/reviews", { method: "PUT", body: JSON.stringify(settings) }, token));
@@ -728,7 +761,7 @@ function ReviewSettingsPanel({ token }: { token: string }) {
     { key: "teamEdit", title: t("admin.reviewSettings.teamEdit"), description: t("admin.reviewSettings.teamEditDescription") },
     { key: "modContentSectionCreate", title: t("admin.reviewSettings.modContentSectionCreate"), description: t("admin.reviewSettings.modContentSectionCreateDescription") },
   ];
-  return <section className="space-y-4"><header className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-black">{t("admin.reviewSettings.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.reviewSettings.description")}</p></div><button className="button-primary focus-ring" disabled={saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></header><div className="surface divide-y divide-[var(--line)] rounded-lg px-5">{options.map((option) => <label className="flex items-center justify-between gap-5 py-5" key={option.key}><span><span className="block font-black">{option.title}</span><span className="mt-1 block text-sm text-[var(--muted)]">{option.description}</span></span><input checked={settings[option.key]} type="checkbox" onChange={(event) => setSettings((current) => current ? { ...current, [option.key]: event.target.checked } : current)} /></label>)}</div></section>;
+  return <section className="space-y-4"><header className="flex flex-wrap items-end justify-between gap-4"><div><h2 className="text-2xl font-black">{t("admin.reviewSettings.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("admin.reviewSettings.description")}</p></div><button className="button-primary focus-ring" disabled={!canWrite || saving} type="button" onClick={() => void save()}>{saving ? t("admin.saving") : t("common.save")}</button></header><div className="surface divide-y divide-[var(--line)] rounded-lg px-5">{options.map((option) => <label className="flex items-center justify-between gap-5 py-5" key={option.key}><span><span className="block font-black">{option.title}</span><span className="mt-1 block text-sm text-[var(--muted)]">{option.description}</span></span><input disabled={!canWrite || saving} checked={settings[option.key]} type="checkbox" onChange={(event) => setSettings((current) => current ? { ...current, [option.key]: event.target.checked } : current)} /></label>)}</div></section>;
 }
 
 function isResourceDataPageTranslationKey(key: string) {

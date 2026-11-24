@@ -149,9 +149,10 @@ export function AdminSettingsEditor({ panel, token, canWrite }: { panel: Setting
 
 type AccessPanel = "roles" | "user-roles" | "role-tracks" | "permission-list" | "permission-settings" | "users";
 
-export function AdminAccessEditor({ panel, token, canReadUsers, canReadCatalog, canTranslate = false, canCreateUsers = false, canAssignInitialRoles = false }: {
+export function AdminAccessEditor({ panel, token, canReadUsers, canReadCatalog, canWrite, canReadLevels = false, canWriteLevels = false, canReadBalances = false, canAdjustBalances = false, canTranslate = false, canCreateUsers = false, canAssignInitialRoles = false }: {
   panel: AccessPanel; token: string; canTranslate?: boolean; canReadUsers: boolean; canReadCatalog: boolean;
-  canCreateUsers?: boolean; canAssignInitialRoles?: boolean;
+  canCreateUsers?: boolean; canAssignInitialRoles?: boolean; canWrite: boolean;
+  canReadLevels?: boolean; canWriteLevels?: boolean; canReadBalances?: boolean; canAdjustBalances?: boolean;
 }) {
   const needsUsers = panel === "user-roles" || panel === "users";
   const catalog = usePanelRead<PermissionCatalog>("/api/v1/admin/permissions", canReadCatalog ? token : undefined, normalizePermissionCatalog);
@@ -163,16 +164,18 @@ export function AdminAccessEditor({ panel, token, canReadUsers, canReadCatalog, 
   const list = users.value ?? [];
   let editor: ReactNode;
   switch (panel) {
-    case "roles": editor = <PermissionGroupEditor catalog={permissions} token={token} refreshCatalog={catalog.refresh} />; break;
-    case "user-roles": editor = <UserRolePanel catalog={permissions} token={token} users={list} refreshUsers={users.refresh} />; break;
-    case "role-tracks": editor = <RoleTracksPanel catalog={permissions} token={token} users={list} refreshUsers={users.refresh} />; break;
-    case "permission-list": editor = <PermissionCatalogEditor canTranslate={canTranslate} key={JSON.stringify(permissions.permissions)} catalog={permissions} token={token} refreshCatalog={catalog.refresh} />; break;
-    case "permission-settings": editor = <PermissionSettingsPanel catalog={permissions} token={token} />; break;
+    case "roles": editor = <PermissionGroupEditor canWrite={canWrite} catalog={permissions} token={token} refreshCatalog={catalog.refresh} />; break;
+    case "user-roles": editor = <UserRolePanel canWrite={canWrite} catalog={permissions} token={token} users={list} refreshUsers={users.refresh} />; break;
+    case "role-tracks": editor = <RoleTracksPanel canWrite={canWrite} catalog={permissions} token={token} users={list} refreshUsers={users.refresh} />; break;
+    case "permission-list": editor = <PermissionCatalogEditor canWrite={canWrite} canTranslate={canTranslate} key={JSON.stringify(permissions.permissions)} catalog={permissions} token={token} refreshCatalog={catalog.refresh} />; break;
+    case "permission-settings": editor = <PermissionSettingsPanel canWrite={canWrite} canReadLevels={canReadLevels} canWriteLevels={canWriteLevels} catalog={permissions} token={token} />; break;
     case "users": editor = <UsersPanelV2
       catalog={permissions}
       token={token}
       users={list}
       refreshUsers={users.refresh}
+      canReadBalances={canReadBalances}
+      canAdjustBalances={canAdjustBalances}
       canCreateUsers={canCreateUsers}
       canAssignInitialRoles={canAssignInitialRoles}
     />; break;

@@ -113,8 +113,8 @@ const definitions = {
   },
   "review-settings": {
     group: "reviews", title: "admin.reviewSettings.title", description: "admin.reviewSettings.navDescription",
-    read: "admin.config.read",
-    render: ({ token }) => <ReviewSettingsPanel token={token} />,
+    read: "admin.config.read", write: "admin.config.write",
+    render: ({ token, access }) => <ReviewSettingsPanel token={token} canWrite={access.write} />,
   },
   "server-settings": {
     group: "reviews", title: "admin.serverSettings.title", description: "admin.serverSettings.navDescription",
@@ -163,28 +163,28 @@ const definitions = {
   },
   "roles": {
     group: "permission", title: "admin.roles", description: "admin.rolesDesc",
-    read: "permission.read",
-    render: ({ token, user }) => <AdminAccessEditor canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} panel="roles" token={token} />,
+    read: "permission.read", write: "permission.write",
+    render: ({ token, user, access }) => <AdminAccessEditor canWrite={access.write} canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} panel="roles" token={token} />,
   },
   "user-roles": {
     group: "permission", title: "admin.userRoles", description: "admin.userRolesDesc",
-    read: (user) => hasPermission(user, "user.read") && hasPermission(user, "permission.read"),
-    render: ({ token, user }) => <AdminAccessEditor canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} panel="user-roles" token={token} />,
+    read: (user) => hasPermission(user, "user.read") && hasPermission(user, "permission.read"), write: "permission.write",
+    render: ({ token, user, access }) => <AdminAccessEditor canWrite={access.write} canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} panel="user-roles" token={token} />,
   },
   "permission-list": {
     group: "permission", title: "admin.permissionList", description: "admin.permissionListDesc",
-    read: "permission.read", execute: canTranslate,
-    render: ({ token, user, access }) => <AdminAccessEditor canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} canTranslate={access.execute} panel="permission-list" token={token} />,
+    read: "permission.read", write: "permission.write", execute: canTranslate,
+    render: ({ token, user, access }) => <AdminAccessEditor canWrite={access.write} canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} canTranslate={access.execute} panel="permission-list" token={token} />,
   },
   "role-tracks": {
     group: "permission", title: "admin.roleTracks.title", description: "admin.roleTracks.navDescription",
-    read: "permission.read",
-    render: ({ token, user }) => <AdminAccessEditor canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} panel="role-tracks" token={token} />,
+    read: "permission.read", write: "permission.write",
+    render: ({ token, user, access }) => <AdminAccessEditor canWrite={access.write} canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} panel="role-tracks" token={token} />,
   },
   "permission-settings": {
     group: "permission", title: "admin.permissionSettings.title", description: "admin.permissionSettings.navDescription",
-    read: "permission.read",
-    render: ({ token, user }) => <AdminAccessEditor canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} panel="permission-settings" token={token} />,
+    read: "permission.read", write: "permission.write",
+    render: ({ token, user, access }) => <AdminAccessEditor canWrite={access.write} canReadCatalog={hasPermission(user, "permission.read")} canReadUsers={hasPermission(user, "user.read")} canReadLevels={hasPermission(user, "level.read")} canWriteLevels={hasPermission(user, "level.write")} panel="permission-settings" token={token} />,
   },
   "economy-config": {
     group: "economy", title: "admin.community.economyConfig", description: "admin.community.economyConfigDescription",
@@ -327,6 +327,9 @@ const definitions = {
       token={token}
       canReadCatalog={hasPermission(user, "permission.read")}
       canReadUsers={access.read}
+      canWrite={access.write}
+      canReadBalances={hasPermission(user, "economy.read")}
+      canAdjustBalances={hasPermission(user, "economy.balance.write")}
       canCreateUsers={access.write}
       canAssignInitialRoles={hasPermission(user, "permission.write")}
     />,

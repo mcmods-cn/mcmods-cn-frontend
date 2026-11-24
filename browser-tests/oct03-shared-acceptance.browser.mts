@@ -786,3 +786,33 @@ test("activity monitor shows the latest filter, retries failures and omits empty
     assert.equal(reads, 3);
   } finally { initialRelease.resolve(); await browser.close(); }
 });
+
+test("user details and account defaults load with their own read capabilities", { timeout: 25_000 }, async () => {
+  const account = { id: "u001", username: "Account fixture", email: "u@example.invalid", roleCodes: [], status: "active" };
+  const reads: string[] = [];
+  const browser = await fixture.page(({ path }) => {
+    reads.push(path);
+    if (path === "/api/v1/auth/me") return { data: actor("observer001", ["admin.access", "user.read", "permission.read"]) };
+    if (path === "/api/v1/admin/users") return { data: [account] };
+    if (path === "/api/v1/admin/users/u001") return { data: { user: account, oauthProviders: [], rootPermissions: [], primaryLanguage: "en-US" } };
+    if (path === "/api/v1/admin/permissions") return { data: { roles: [role], permissions: [] } };
+    if (path === "/api/v1/admin/permission-defaults") return { data: { registeredRole: role.code, bannedRole: "" } };
+    if (path === "/api/v1/admin/role-tracks") return { data: [] };
+  });
+  try {
+    const page = browser.page;
+    await panel(page, "users", "users");
+    await page.getByRole("button", { name: account.username, exact: true }).click();
+    const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: account.username, exact: true }) });
+    await dialog.getByText("en-US", { exact: true }).waitFor();
+    assert.equal(await dialog.getByRole("button", { name: "Save", exact: true }).count(), 0);
+    await dialog.getByTitle("Close", { exact: true }).click();
+    await panel(page, "permission-settings", "permission");
+    const registered = page.locator("select").filter({ has: page.locator('option[value="fixture_role"]') }).first();
+    await page.waitForFunction(() => [...document.querySelectorAll("select")].some(input => input.value === "fixture_role"));
+    assert.equal(await registered.isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Save", exact: true }).isDisabled(), true);
+    assert.ok(!reads.includes("/api/v1/admin/users/u001/balances"));
+    assert.ok(!reads.includes("/api/v1/admin/levels/config"));
+  } finally { await browser.close(); }
+});

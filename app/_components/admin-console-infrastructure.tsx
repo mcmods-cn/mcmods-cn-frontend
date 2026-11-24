@@ -346,12 +346,14 @@ function AuthPanelV2({ config, token }: { config: Pick<AdminConfig, "auth" | "oa
   );
 }
 
-function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalog; token: string }) {
+function PermissionSettingsPanel({ catalog, token, canWrite, canReadLevels, canWriteLevels }: { catalog: PermissionCatalog; token: string; canWrite: boolean; canReadLevels: boolean; canWriteLevels: boolean }) {
   const { t } = useI18n();
   const [defaults, setDefaults] = useState<PermissionDefaults>({ registeredRole: "", bannedRole: "" });
   const [levelConfig, setLevelConfig] = useState<LevelConfig | null>(null);
   const [roleTracks, setRoleTracks] = useState<RoleTrack[]>([]);
   const [saving, setSaving] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [levelSaved, setLevelSaved] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [loadAttempt, setLoadAttempt] = useState(0);
 
@@ -361,11 +363,12 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
     const controller = new AbortController();
     Promise.all([
       apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", { signal: controller.signal }, token),
-      apiRequest<LevelConfig>("/api/v1/admin/levels/config", { signal: controller.signal }, token),
+      canReadLevels ? apiRequest<LevelConfig>("/api/v1/admin/levels/config", { signal: controller.signal }, token) : null,
       apiRequest<RoleTrack[]>("/api/v1/admin/role-tracks", { signal: controller.signal }, token),
     ])
       .then(([nextDefaults, nextLevelConfig, nextRoleTracks]) => {
         if (cancelled) return;
+        setReady(true);
         setDefaults(nextDefaults);
         setLevelConfig(nextLevelConfig);
         setRoleTracks(nextRoleTracks);
@@ -378,9 +381,10 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
         controller.abort();
       });
     return () => { cancelled = true; controller.abort(); };
-  }, [token, loadAttempt]);
+  }, [canReadLevels, token, loadAttempt]);
 
   function selectLevelRoleTrack(code: string) {
+    setLevelSaved(false);
     const track = roleTracks.find((item) => item.code === code);
     if (!track) {
       setLevelConfig({ roleTrackCode: "", levelThresholds: [] });
@@ -398,17 +402,18 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
   }
 
   async function save() {
-    if (!levelConfig) return;
+    if (!ready || saving || (!canWrite && !(canWriteLevels && levelConfig))) return;
     setSaving(true);
     try {
-      const savedLevelConfig = await apiRequest<LevelConfig>(
-        "/api/v1/admin/levels/config",
-        { method: "PUT", body: JSON.stringify(levelConfig) },
-        token,
-      );
-      const result = await apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", { method: "PUT", body: JSON.stringify(defaults) }, token);
-      setLevelConfig(savedLevelConfig);
-      setDefaults(result);
+      if (canWriteLevels && levelConfig && !levelSaved) {
+        const saved = await apiRequest<LevelConfig>("/api/v1/admin/levels/config", { method: "PUT", body: JSON.stringify(levelConfig) }, token);
+        setLevelConfig(saved);
+        setLevelSaved(true);
+      }
+      if (canWrite) {
+        const saved = await apiRequest<PermissionDefaults>("/api/v1/admin/permission-defaults", { method: "PUT", body: JSON.stringify(defaults) }, token);
+        setDefaults(saved);
+      }
       notifyAdminNotice(t("admin.permissionSettings.saved"));
     } catch (error) {
       notifyAdminNotice(cleanError(error), t("admin.noticeTitle"), "danger");
@@ -422,12 +427,12 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
     <PanelShell title={t("admin.permissionSettings.title")}>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--line)] pb-5">
         <p className="max-w-3xl text-sm leading-6 text-[var(--muted)]">{t("admin.permissionSettings.description")}</p>
-        <button className="button-primary focus-ring" disabled={saving || !levelConfig} type="button" onClick={() => void save()}>
+        <button className="button-primary focus-ring" disabled={!ready || saving || (!canWrite && !(canWriteLevels && levelConfig))} type="button" onClick={() => void save()}>
           {t("common.save")}
         </button>
       </div>
 
-      {!levelConfig ? (
+      {!ready ? (
         <div className="pt-5">
           {loadError ? (
             <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-[var(--danger)]">
@@ -446,7 +451,7 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
         <PermissionRoleSelect
           label={t("admin.permissionSettings.registeredRole")}
           value={defaults.registeredRole}
-          disabled={!levelConfig || saving}
+          disabled={!ready || !canWrite || saving}
           onChange={(registeredRole) => setDefaults((current) => ({ ...current, registeredRole }))}
         >
           {roleOptions(catalog.roles)}
@@ -454,14 +459,14 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
         <PermissionRoleSelect
           label={t("admin.permissionSettings.bannedRole")}
           value={defaults.bannedRole}
-          disabled={!levelConfig || saving}
+          disabled={!ready || !canWrite || saving}
           onChange={(bannedRole) => setDefaults((current) => ({ ...current, bannedRole }))}
         >
           {roleOptions(catalog.roles)}
         </PermissionRoleSelect>
       </section>
 
-      <section className="grid gap-4 pt-5">
+      {canReadLevels && <section className="grid gap-4 pt-5">
         <div>
           <h3 className="font-black">{t("admin.permissionSettings.levelRoleTrack")}</h3>
           <p className="mt-1 text-sm text-[var(--muted)]">{t("admin.permissionSettings.levelRoleTrackDescription")}</p>
@@ -470,7 +475,7 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
           {t("admin.community.roleTrack")}
           <select
             className="field mt-2"
-            disabled={!levelConfig || saving}
+            disabled={!levelConfig || !canWriteLevels || saving}
             value={levelConfig?.roleTrackCode ?? ""}
             onChange={(event) => selectLevelRoleTrack(event.target.value)}
           >
@@ -485,7 +490,7 @@ function PermissionSettingsPanel({ catalog, token }: { catalog: PermissionCatalo
         {levelConfig && roleTracks.length === 0 ? (
           <p className="text-sm font-bold text-[var(--warning)]">{t("admin.permissionSettings.noRoleTracks")}</p>
         ) : null}
-      </section>
+      </section>}
     </PanelShell>
   );
 }
@@ -496,11 +501,13 @@ function PermissionRoleSelect({ label, value, disabled, onChange, children }: { 
 }
 
 function RoleTracksPanel({
+  canWrite,
   catalog,
   token,
   users,
   refreshUsers,
 }: {
+  canWrite: boolean;
   catalog: PermissionCatalog;
   token: string;
   users: User[];
@@ -539,6 +546,7 @@ function RoleTracksPanel({
   }
 
   async function saveTrack() {
+    if (!canWrite) return;
     setSaving(true);
     try {
       const endpoint = selectedCode ? `/api/v1/admin/role-tracks/${encodeURIComponent(selectedCode)}` : "/api/v1/admin/role-tracks";
@@ -555,7 +563,7 @@ function RoleTracksPanel({
   }
 
   async function deleteTrack() {
-    if (!selectedCode || !window.confirm(t("admin.roleTracks.deleteConfirm", { code: selectedCode }))) return;
+    if (!canWrite || !selectedCode || !window.confirm(t("admin.roleTracks.deleteConfirm", { code: selectedCode }))) return;
     setSaving(true);
     try {
       await apiRequest(`/api/v1/admin/role-tracks/${encodeURIComponent(selectedCode)}`, { method: "DELETE" }, token);
@@ -570,7 +578,7 @@ function RoleTracksPanel({
   }
 
   async function moveUser(direction: "upgrade" | "downgrade") {
-    if (!selectedUser || !selectedTrack) return;
+    if (!canWrite || !selectedUser || !selectedTrack) return;
     setSaving(true);
     try {
       const result = await apiRequest<{ changed: boolean; roles: string[] }>(
@@ -605,17 +613,17 @@ function RoleTracksPanel({
     <PanelShell title={t("admin.roleTracks.title")}>
       <section className="grid min-h-[520px] gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
         <aside className="border-r border-[var(--line)] pr-4">
-          <button className="button-primary focus-ring mb-3 w-full" type="button" onClick={newTrack}>{t("admin.roleTracks.newTrack")}</button>
+          <button className="button-primary focus-ring mb-3 w-full" disabled={!canWrite || saving} type="button" onClick={newTrack}>{t("admin.roleTracks.newTrack")}</button>
           <div className="grid gap-1">
             {tracks.map((track) => (
-              <button key={track.code} className={`focus-ring rounded-md px-3 py-2 text-left ${selectedCode === track.code ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => selectTrack(track.code)}>
+              <button disabled={saving} key={track.code} className={`focus-ring rounded-md px-3 py-2 text-left ${selectedCode === track.code ? "bg-[var(--accent)] text-[var(--on-accent)]" : "hover:bg-[var(--panel-subtle)]"}`} type="button" onClick={() => selectTrack(track.code)}>
                 <span className="block font-semibold">{track.name}</span><span className="block font-mono text-xs opacity-75">{track.code}</span>
               </button>
             ))}
             {tracks.length === 0 ? <p className="py-4 text-sm text-[var(--muted)]">{t("admin.roleTracks.noTracks")}</p> : null}
           </div>
         </aside>
-        <div className="min-w-0">
+        <fieldset className="min-w-0" disabled={!canWrite || saving}>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div><h3 className="text-lg font-bold">{selectedCode ? t("admin.roleTracks.editTrack") : t("admin.roleTracks.newTrack")}</h3><p className="text-sm text-[var(--muted)]">{t("admin.roleTracks.orderHint")}</p></div>
             <div className="flex gap-2">
@@ -651,7 +659,7 @@ function RoleTracksPanel({
               <button className="button-secondary focus-ring" disabled={saving || !selectedUser || !selectedTrack} type="button" onClick={() => void moveUser("downgrade")}>{t("admin.roleTracks.downgrade")}</button>
             </div>
           </div>
-        </div>
+        </fieldset>
       </section>
     </PanelShell>
   );
