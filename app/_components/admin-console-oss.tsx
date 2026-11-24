@@ -6,19 +6,14 @@ import { useI18n } from "../_lib/i18n-provider";
 import { abortMultipartUpload, completeOSSUpload, computeFileSHA256, formatBytes, putFileToOSS, type OSSDirectUploadTicket } from "../_lib/oss-upload";
 import { EmptyState, InlineMessage, LogPage, LogRetentionConfig, LogRow, OSSConfig, OSSFile, RuntimeLogEntry, RuntimeLogResponse, cleanError, cleanOSSError, displayCell, defaultOSSConfig, formatDateTime, logCategoryTitle } from "./admin-console-shared";
 
-function normalizeOSSConfigForUI(config: OSSConfig): OSSConfig {
-  const region = config.region || "cn-beijing";
-  const endpoint = config.endpoint || `https://oss-${region}.aliyuncs.com`;
-  const customEndpoint = endpoint && !endpoint.includes(".aliyuncs.com") && !endpoint.includes(".aliyun.com");
+function ossConfigDraft({ allowedExtensions, ...config }: OSSConfig) {
   return {
     ...config,
-    region,
-    endpoint: customEndpoint ? `https://oss-${region}.aliyuncs.com` : endpoint,
-    publicEndpoint: config.publicEndpoint || (customEndpoint ? endpoint : "https://oss.mcmods.cn"),
-    useCName: customEndpoint ? false : config.useCName,
     downloadUrlTtlMinutes: Math.min(60, Math.max(1, config.downloadUrlTtlMinutes || 10)),
     downloadUrlMode: "oss_presigned",
-    allowedExtensions: normalizeExtensionList(config.allowedExtensions),
+    extensionText: normalizeExtensionList(allowedExtensions).join(", "),
+    accessKeySecret: "",
+    securityToken: "",
   };
 }
 
@@ -52,9 +47,9 @@ function isAllowedFileName(fileName: string, allowedExtensions: string[]) {
   return normalizeExtensionList(allowedExtensions).some((ext) => lowerName.endsWith(ext));
 }
 
-function OSSConfigPanelV2({ token }: { token: string }) {
+function OSSConfigPanelV2({ token, canWrite }: { token: string; canWrite: boolean }) {
   const { t } = useI18n();
-  const [draft, setDraft] = useState({ ...normalizeOSSConfigForUI(defaultOSSConfig), accessKeySecret: "", securityToken: "" });
+  const [draft, setDraft] = useState(() => ossConfigDraft(defaultOSSConfig));
   const [message, setMessage] = useState("");
   const [loadedToken, setLoadedToken] = useState<string>();
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -69,7 +64,7 @@ function OSSConfigPanelV2({ token }: { token: string }) {
     apiRequest<OSSConfig>("/api/v1/admin/config/oss", {}, token)
       .then((config) => {
         if (!cancelled) {
-          setDraft({ ...normalizeOSSConfigForUI(config), accessKeySecret: "", securityToken: "" });
+          setDraft(ossConfigDraft(config));
           setLoadedToken(token);
           setMessage("");
         }
@@ -83,7 +78,7 @@ function OSSConfigPanelV2({ token }: { token: string }) {
   }, [loadAttempt, token]);
 
   async function save() {
-    if (loadedToken !== token || savePending.current) return;
+    if (!canWrite || loadedToken !== token || savePending.current) return;
     savePending.current = true;
     setSaving(true);
     setMessage("");
@@ -101,14 +96,14 @@ function OSSConfigPanelV2({ token }: { token: string }) {
         prefix: draft.prefix,
         downloadUrlTtlMinutes: draft.downloadUrlTtlMinutes,
         downloadUrlMode: draft.downloadUrlMode,
-        allowedExtensions: normalizeExtensionList(draft.allowedExtensions),
+        allowedExtensions: splitExtensionText(draft.extensionText),
       };
       const saved = await apiRequest<OSSConfig>(
         "/api/v1/admin/config/oss",
         { method: "PUT", body: JSON.stringify(payload) },
         token,
       );
-      setDraft({ ...normalizeOSSConfigForUI(saved), accessKeySecret: "", securityToken: "" });
+      setDraft(ossConfigDraft(saved));
       setMessage(t("admin.oss.configSaved"));
     } catch (error) {
       setMessage(cleanError(error));
@@ -141,9 +136,9 @@ function OSSConfigPanelV2({ token }: { token: string }) {
               {t("admin.oss.configIntro")}
             </p>
           </div>
-          <button className="button-primary focus-ring" disabled={loadedToken !== token || saving} type="button" onClick={save}>
+          {canWrite && <button className="button-primary focus-ring" disabled={loadedToken !== token || saving} type="button" onClick={save}>
             {t("admin.oss.saveConfig")}
-          </button>
+          </button>}
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-4">
@@ -167,7 +162,7 @@ function OSSConfigPanelV2({ token }: { token: string }) {
       </div>
 
       {loadedToken !== token ? <div role="status" className="surface rounded-lg p-4"><p>{message || t("common.loading")}</p>{message ? <button className="button-secondary focus-ring mt-2" type="button" onClick={() => { setMessage(""); setLoadAttempt((value) => value + 1); }}>{t("common.retry")}</button> : null}</div> : null}
-      <fieldset disabled={loadedToken !== token || saving} className="contents">
+      <fieldset disabled={!canWrite || loadedToken !== token || saving} className="contents">
       <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
         <div className="surface rounded-lg p-5">
           <div className="mb-4">
@@ -314,8 +309,8 @@ function OSSConfigPanelV2({ token }: { token: string }) {
             {t("admin.oss.allowedExtensions")}
             <textarea
               className="field min-h-28 font-mono"
-              value={draft.allowedExtensions.join(", ")}
-              onChange={(event) => setDraft((current) => ({ ...current, allowedExtensions: splitExtensionText(event.target.value) }))}
+              value={draft.extensionText}
+              onChange={(event) => setDraft((current) => ({ ...current, extensionText: event.target.value }))}
             />
             <span className="text-xs font-normal text-[var(--muted)]">{t("admin.oss.allowedExtensionsDesc")}</span>
           </label>
@@ -332,7 +327,7 @@ function OSSConfigPanelV2({ token }: { token: string }) {
   );
 }
 
-function OSSFilesPanel({ token }: { token: string }) {
+function OSSFilesPanel({ token, canWrite }: { token: string; canWrite: boolean }) {
   const { t } = useI18n();
   const [files, setFiles] = useState<OSSFile[]>([]);
   const [message, setMessage] = useState("");
@@ -340,6 +335,7 @@ function OSSFilesPanel({ token }: { token: string }) {
   const [source, setSource] = useState("admin");
   const [allowedExtensions, setAllowedExtensions] = useState(defaultOSSConfig.allowedExtensions);
   const [uploading, setUploading] = useState(false);
+  const uploadPending = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -352,15 +348,17 @@ function OSSFilesPanel({ token }: { token: string }) {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void load();
+      if (!canWrite) return;
       void apiRequest<OSSConfig>("/api/v1/admin/config/oss", {}, token)
         .then((config) => setAllowedExtensions(normalizeExtensionList(config.allowedExtensions)))
         .catch(() => setAllowedExtensions(defaultOSSConfig.allowedExtensions));
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [load, token]);
+  }, [canWrite, load, token]);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canWrite || uploadPending.current) return;
     const form = event.currentTarget;
     const data = new FormData(form);
     const file = data.get("file");
@@ -372,6 +370,7 @@ function OSSFilesPanel({ token }: { token: string }) {
       setMessage(t("admin.oss.fileTypeNotAllowed"));
       return;
     }
+    uploadPending.current = true;
     setUploading(true);
     setMessage("");
     try {
@@ -408,6 +407,7 @@ function OSSFilesPanel({ token }: { token: string }) {
     } catch (error) {
       setMessage(cleanOSSError(error));
     } finally {
+      uploadPending.current = false;
       setUploading(false);
     }
   }
@@ -432,14 +432,14 @@ function OSSFilesPanel({ token }: { token: string }) {
         <h2 className="text-lg font-bold">{t("admin.oss.filesTitle")}</h2>
         <p className="text-sm text-[var(--muted)]">{t("admin.oss.filesDesc")}</p>
       </div>
-      <form className="mb-4 grid gap-3 rounded-lg border border-[var(--line)] p-3 lg:grid-cols-[1fr_160px_160px_auto]" onSubmit={upload}>
+      {canWrite && <form className="mb-4 grid gap-3 rounded-lg border border-[var(--line)] p-3 lg:grid-cols-[1fr_160px_160px_auto]" onSubmit={upload}>
         <input className="field" accept={allowedExtensions.join(",")} name="file" required type="file" />
         <input className="field" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="category" />
         <input className="field" value={source} onChange={(event) => setSource(event.target.value)} placeholder="source" />
         <button className="button-primary focus-ring" disabled={uploading} type="submit">
           {uploading ? t("admin.oss.uploading") : t("admin.oss.uploadFile")}
         </button>
-      </form>
+      </form>}
       {message ? <InlineMessage text={message} /> : null}
       <div className="mt-4 overflow-x-auto">
         <table className="w-full min-w-[960px] text-left text-sm">

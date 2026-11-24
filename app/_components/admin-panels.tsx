@@ -226,13 +226,13 @@ const definitions = {
   },
   "oss-config": {
     group: "oss", title: "admin.panels.ossConfig", description: "admin.nav.ossConfigDesc",
-    read: "oss.read",
-    render: ({ token }) => <OSSConfigPanelV2 token={token} />,
+    read: "oss.read", write: "oss.write",
+    render: ({ token, access }) => <OSSConfigPanelV2 token={token} canWrite={access.write} />,
   },
   "oss-files": {
     group: "oss", title: "admin.panels.ossFiles", description: "admin.nav.ossFilesDesc",
-    read: "oss.read",
-    render: ({ token }) => <OSSFilesPanel token={token} />,
+    read: "oss.read", write: "oss.write",
+    render: ({ token, access }) => <OSSFilesPanel token={token} canWrite={access.write} />,
   },
   "oss-uploads": {
     group: "oss", title: "admin.panels.ossUploads", description: "admin.nav.ossUploadsDesc",

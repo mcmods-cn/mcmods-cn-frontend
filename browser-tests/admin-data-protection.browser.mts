@@ -243,3 +243,52 @@ test("OCT02 invalid typed cleanup filters never request previews and changed fil
     assert.equal(executions, 0);
   } finally { await browser.close(); }
 });
+
+for (const canWrite of [false, true]) {
+  test(`OSS ${canWrite ? "writers preserve explicit endpoints and editable extension lists" : "readers can inspect stored files without upload or save actions"}`, { timeout: 30_000 }, async () => {
+    const stored = { enabled: true, region: "cn-shanghai", endpoint: "https://uploads.example.test", publicEndpoint: "https://media.example.test", useCName: true, bucket: "owned-objects", prefix: "uploads", allowedExtensions: [".png"], downloadUrlMode: "oss_presigned", downloadUrlTtlMinutes: 10, hasAccessKeySecret: true, hasSecurityToken: false, accessKeyId: "fixture" };
+    const writes: Array<typeof stored> = [];
+    let settingsReads = 0;
+    const browser = await fixture.page(({ path, method, body }) => {
+      if (path === "/api/v1/auth/me") return { data: {
+        id: "ossuser1", username: "OSS reviewer", permissionVersion: 1, rbacVersion: 1, roleCodes: [],
+        permissionRules: ["admin.access", "oss.read", ...(canWrite ? ["oss.write"] : [])].map(code => ({ code, allow: true, priority: 1 })),
+      } };
+      if (path === "/api/v1/admin/config/oss") {
+        if (method === "PUT") { writes.push(JSON.parse(body)); return { data: writes.at(-1) }; }
+        settingsReads++;
+        return { data: stored };
+      }
+      if (path === "/api/v1/admin/oss/files") return { data: [{ id: "ossfile1", objectKey: "fixture/example.png", originalName: "example.png", source: "fixture", category: "project", sizeBytes: 10, scanStatus: "clean", createdAt: "2026-11-01T00:00:00Z" }] };
+    });
+    try {
+      const { page } = browser;
+      await panel(page, "oss-config", "oss");
+      await page.locator('input[value="owned-objects"]').waitFor();
+      const save = page.getByRole("button", { name: "Save OSS config", exact: true });
+      assert.equal(await page.locator('input[value="https://uploads.example.test"]').count(), 1);
+      const extensions = page.locator("fieldset textarea");
+      if (canWrite) {
+        await extensions.press("End");
+        await extensions.pressSequentially(", .ZIP");
+        assert.equal(await extensions.inputValue(), ".png, .ZIP");
+        await Promise.all([page.waitForResponse(response => response.request().method() === "PUT"), save.click()]);
+        assert.equal(writes.length, 1);
+        assert.equal(writes[0].endpoint, stored.endpoint);
+        assert.equal(writes[0].publicEndpoint, stored.publicEndpoint);
+        assert.equal(writes[0].useCName, true);
+        assert.deepEqual(writes[0].allowedExtensions, [".png", ".zip"]);
+      } else {
+        assert.equal(await extensions.isDisabled(), true);
+        assert.equal(await save.count(), 0);
+        const before = settingsReads;
+        await page.locator('[data-admin-panel="oss-files"]').click();
+        await page.getByText("example.png", { exact: true }).waitFor();
+        assert.equal(await page.locator('input[type="file"]').count(), 0);
+        assert.equal(await page.getByRole("button", { name: "Copy temporary URL" }).isEnabled(), true);
+        assert.equal(settingsReads, before);
+        assert.equal(writes.length, 0);
+      }
+    } finally { await browser.close(); }
+  });
+}
