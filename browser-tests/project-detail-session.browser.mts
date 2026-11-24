@@ -143,3 +143,47 @@ test("the project data tab renders a custom construction template under its own 
     assert.match(await category.innerText(), /Building instructions/);
   } finally { await browser.close(); }
 });
+
+test("a changelog category link pages its project group and follows browser history", { timeout: 30_000 }, async () => {
+  const category = { id: "cat000001", name: "LTS releases", defaultLocale: "en-US", names: { "en-US": "LTS releases" } };
+  const other = { id: "cat000002", name: "Stable releases", defaultLocale: "en-US", names: { "en-US": "Stable releases" } };
+  const stamp = "2026-11-01T00:00:00Z";
+  const item = (id: string, name: string, group: typeof category) => ({ id, projectVersion: name, category: group, eventAt: stamp, minecraftVersions: ["1.20.1"], bodyExcerpt: "Published", bodyTruncated: false, createdById: "member01", createdByName: "Reviewer" });
+  const requests: Array<[string, string]> = [];
+  const browser = await fixture.page(request => {
+    if (request.path === "/api/v1/auth/me") return { status: 401, error: "Guest" };
+    if (request.path === `/api/v1/mods/${publicSlug}`) return { data: syntheticMod(false) };
+    if (request.path === "/api/v1/changelogs") {
+      assert.equal(request.url.searchParams.get("targetId"), "r3publicmod");
+      const group = request.url.searchParams.get("categoryId") ?? "";
+      const cursor = request.url.searchParams.get("cursor") ?? "";
+      requests.push([group, cursor]);
+      const older = cursor === "opaque+/=";
+      const items = group === category.id ? [item(older ? "entry02" : "entry01", older ? "Previous LTS" : "Current LTS", category)] : [item("other01", "Stable release", other)];
+      return { data: { target: { id: "r3publicmod", type: "mod", canEdit: false }, categories: cursor ? [] : [category, other],
+        items, limit: 20, hasMore: group === category.id && !older, nextCursor: group === category.id && !older ? "opaque+/=" : "" } };
+    }
+    return supportEndpoints(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/mods/${publicSlug}?preview=1&tab=changelog&categoryId=${category.id}#changelog`);
+    const groups = page.getByRole("navigation", { name: "Changelog groups" });
+    await page.getByRole("link", { name: "Current LTS", exact: true }).waitFor();
+    assert.equal(await groups.getByRole("button", { name: category.name }).getAttribute("aria-pressed"), "true");
+    await page.getByRole("button", { name: "Load more changelogs" }).click();
+    await page.getByRole("link", { name: "Previous LTS", exact: true }).waitFor();
+    await groups.getByRole("button", { name: other.name }).click();
+    await page.getByRole("link", { name: "Stable release", exact: true }).waitFor();
+    assert.equal(new URL(page.url()).searchParams.get("categoryId"), other.id);
+    assert.equal(await page.getByRole("link", { name: "Previous LTS" }).count(), 0);
+    await groups.getByRole("button", { name: "All", exact: true }).click();
+    await page.waitForURL(url => !url.searchParams.has("categoryId") && url.searchParams.get("preview") === "1" && url.hash === "#changelog");
+    await page.goBack();
+    await page.waitForURL(url => url.searchParams.get("categoryId") === other.id);
+    await page.goBack();
+    await page.getByRole("link", { name: "Current LTS", exact: true }).waitFor();
+    assert.equal(await groups.getByRole("button", { name: category.name }).getAttribute("aria-pressed"), "true");
+    assert.ok(requests.some(([group, cursor]) => group === category.id && cursor === "opaque+/="));
+  } finally { await browser.close(); }
+});

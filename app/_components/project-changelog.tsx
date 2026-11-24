@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuthSnapshot } from "../_lib/auth";
 import { useI18n } from "../_lib/i18n-provider";
@@ -12,42 +13,69 @@ import { PageFeedback } from "./page-feedback";
 type ChangelogGroup = { id: string; label: string; kind: "category" | "minecraft" };
 
 export function ProjectChangelog({ targetId, targetType }: { targetId: string; targetType: ChangelogTargetType }) {
+  const { locale } = useI18n();
+  const auth = useAuthSnapshot();
+  const pathname = usePathname();
+  const router = useRouter();
+  const query = useSearchParams();
+  const categoryId = query.get("categoryId") || "";
+  const minecraftVersion = query.get("changelogVersion") || "";
+  const activeGroup = categoryId ? `tag:${categoryId}` : minecraftVersion ? `mc:${minecraftVersion}` : "";
+
+  function selectGroup(group: string) {
+    if (group === activeGroup) return;
+    const params = new URLSearchParams(query.toString());
+    params.delete("categoryId");
+    params.delete("changelogVersion");
+    if (group.startsWith("tag:")) params.set("categoryId", group.slice(4));
+    else if (group.startsWith("mc:")) params.set("changelogVersion", group.slice(3));
+    router.push(pathname + (params.size ? "?" + params : "") + window.location.hash, { scroll: false });
+  }
+
+  return <div id="changelog"><ChangelogTimeline key={JSON.stringify([targetType, targetId, auth.generation, locale, categoryId])}
+    activeGroup={activeGroup} categoryId={categoryId} onSelectGroup={selectGroup} ready={auth.ready}
+    targetId={targetId} targetType={targetType} token={auth.token} /></div>;
+}
+
+function ChangelogTimeline({ targetId, targetType, activeGroup, categoryId, onSelectGroup, ready, token }: {
+  targetId: string; targetType: ChangelogTargetType; activeGroup: string; categoryId: string;
+  onSelectGroup: (group: string) => void; ready: boolean; token: string;
+}) {
   const { locale, t } = useI18n();
-  const { ready, token } = useAuthSnapshot();
   const [collection, setCollection] = useState<ChangelogCollection>();
-  const [activeGroup, setActiveGroup] = useState("");
   const [message, setMessage] = useState("");
   const [loadingMore, setLoadingMore] = useState(false);
-  const requestVersion = useRef(0);
+  const pageRequest = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (!ready || !targetId) return;
-    const version = ++requestVersion.current;
     const controller = new AbortController();
-    loadProjectChangelogs(targetType, targetId, locale, token, controller.signal)
-      .then((value) => { if (requestVersion.current === version) { setCollection(value); setMessage(""); } })
-      .catch((error) => { if (requestVersion.current === version) setMessage(error instanceof Error ? error.message : t("changelog.loadFailed")); });
-    return () => controller.abort();
-  }, [locale, ready, t, targetId, targetType, token]);
+    loadProjectChangelogs(targetType, targetId, locale, token, controller.signal, "", 20, categoryId)
+      .then((value) => { if (!controller.signal.aborted) { setCollection(value); setMessage(""); } })
+      .catch((error) => { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : t("changelog.loadFailed")); });
+    return () => { controller.abort(); pageRequest.current?.abort(); };
+  }, [categoryId, locale, ready, t, targetId, targetType, token]);
 
   async function loadMore() {
-    if (!collection?.nextCursor || loadingMore) return;
+    if (!collection?.nextCursor || pageRequest.current) return;
     setLoadingMore(true);
     setMessage("");
-    const version = requestVersion.current;
+    const controller = new AbortController();
+    pageRequest.current = controller;
     try {
-      const page = await loadProjectChangelogs(targetType, targetId, locale, token, undefined, collection.nextCursor, collection.limit);
+      const page = await loadProjectChangelogs(targetType, targetId, locale, token, controller.signal, collection.nextCursor, collection.limit, categoryId);
       setCollection((current) => {
-        if (requestVersion.current !== version) return current;
+        if (controller.signal.aborted) return current;
         if (!current) return page;
         const items = new Map(current.items.map((item) => [item.id, item]));
         page.items.forEach((item) => items.set(item.id, item));
         return { ...page, categories: page.categories.length ? page.categories : current.categories, items: [...items.values()] };
       });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("changelog.loadFailed"));
+      if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : t("changelog.loadFailed"));
     } finally {
-      setLoadingMore(false);
+      pageRequest.current = null;
+      if (!controller.signal.aborted) setLoadingMore(false);
     }
   }
 
@@ -67,9 +95,9 @@ export function ProjectChangelog({ targetId, targetType }: { targetId: string; t
       {collection.target.canEdit ? <Link className="button-primary focus-ring" href={`/changelogs/new?targetType=${encodeURIComponent(targetType)}&targetId=${encodeURIComponent(targetId)}`}>{t("changelog.create")}</Link> : null}
     </header>
     {message ? <p className="mt-4 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{message}</p> : null}
-    {groups.length ? <nav className="mt-5 flex gap-2 overflow-x-auto pb-2" aria-label={t("changelog.groups")}>
-      <GroupButton active={!activeGroup} label={t("common.all")} onClick={() => setActiveGroup("")} />
-      {groups.map((group) => <GroupButton active={activeGroup === group.id} key={group.id} label={group.label} onClick={() => setActiveGroup(group.id)} />)}
+    {groups.length || activeGroup ? <nav className="mt-5 flex gap-2 overflow-x-auto pb-2" aria-label={t("changelog.groups")}>
+      <GroupButton active={!activeGroup} label={t("common.all")} onClick={() => onSelectGroup("")} />
+      {groups.map((group) => <GroupButton active={activeGroup === group.id} key={group.id} label={group.label} onClick={() => onSelectGroup(group.id)} />)}
     </nav> : null}
     {visibleItems.length ? <div className="relative mt-6 grid gap-0 before:absolute before:bottom-4 before:left-[6.25rem] before:top-4 before:w-px before:bg-[var(--line)] sm:before:left-[8.5rem]">
       {visibleItems.map((item) => <article className="relative grid grid-cols-[5.25rem_minmax(0,1fr)] gap-5 py-5 first:pt-0 sm:grid-cols-[7.5rem_minmax(0,1fr)]" key={item.id}>
@@ -94,6 +122,13 @@ export function ProjectChangelog({ targetId, targetType }: { targetId: string; t
 function buildGroups(collection?: ChangelogCollection): ChangelogGroup[] {
   if (!collection) return [];
   const groups: ChangelogGroup[] = collection.categories.map((category) => ({ id: `tag:${category.id}`, label: category.name, kind: "category" }));
+  const categoryIds = new Set(collection.categories.map(category => category.id));
+  for (const { category } of collection.items) {
+    if (category && !categoryIds.has(category.id)) {
+      groups.push({ id: `tag:${category.id}`, label: category.name, kind: "category" });
+      categoryIds.add(category.id);
+    }
+  }
   const versions = new Set<string>();
   collection.items.forEach((item) => { if (!item.category) item.minecraftVersions.forEach((version) => versions.add(version)); });
   [...versions].sort(compareMinecraftVersions).forEach((version) => groups.push({ id: `mc:${version}`, label: version, kind: "minecraft" }));

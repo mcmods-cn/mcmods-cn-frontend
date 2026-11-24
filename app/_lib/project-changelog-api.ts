@@ -77,9 +77,10 @@ export type ChangelogDraft = {
   reason?: string;
 };
 
-export function loadProjectChangelogs(targetType: ChangelogTargetType, targetId: string, locale: string, token = "", signal?: AbortSignal, cursor = "", limit = 20) {
+export function loadProjectChangelogs(targetType: ChangelogTargetType, targetId: string, locale: string, token = "", signal?: AbortSignal, cursor = "", limit = 20, categoryId = "") {
   const query = new URLSearchParams({ targetType, targetId, locale, limit: String(limit) });
   if (cursor) query.set("cursor", cursor);
+  if (categoryId) query.set("categoryId", categoryId);
   return apiRequest<ChangelogCollection>(`/api/v1/changelogs?${query}`, { cache: "no-store", signal }, token || undefined);
 }
 
