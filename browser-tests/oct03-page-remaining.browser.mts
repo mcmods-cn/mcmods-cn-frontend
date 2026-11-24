@@ -237,6 +237,35 @@ test("FP056 loot advanced JSON rejects primitive/array roots without erasing its
   }finally{await browser.close();}
 });
 
+test("loot quantity edits preserve additive functions and the following conditional rule", { timeout: 30_000 }, async () => {
+  const conditions = [{ condition: "minecraft:survives_explosion" }];
+  const nextRule = { function: "minecraft:set_count", count: 7, conditions };
+  const entry = { type: "minecraft:item", name: "minecraft:stone", functions: [
+    { function: "minecraft:set_count", count: 2, add: true, conditions }, nextRule,
+  ] };
+  const definition = { pools: [{ rolls: 1, entries: [entry] }] };
+  const browser = await controlled(({ path }) => {
+    if (path === "/api/v1/mods/fixture-mod/content-sections") return { data: { items: [{ ...rootSection, templateCode: "loot_table" }] } };
+    if (path === "/api/v1/mods/fixture-mod/content-templates") return { data: { items: [{ ...rangeTemplate, code: "loot_table", definition: { resourceKinds: ["minecraft.loot_table"], entryTypes: [{ code: "default", kindCodes: ["minecraft.loot_table"], names: { "en-US": "Loot table" }, groups: [] }] } }] } };
+    if (path === "/api/v1/mods/fixture-mod/content-resources/resource01") return { data: resourceSnapshot("minecraft.loot_table", definition) };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/mods/fixture-mod/resources/resource01/edit?version=version01&section=section01`);
+    const advanced = page.locator("details").filter({ has: page.getByText("Advanced loot table JSON", { exact: true }) });
+    await advanced.locator("summary").click();
+    const quantity = page.locator("div.grid").filter({ has: page.locator(":scope > span", { hasText: /^Quantity$/ }) }).getByRole("spinbutton");
+    await quantity.fill("0");
+    const textarea = advanced.locator("textarea");
+    const edited = JSON.parse(await textarea.inputValue()).pools[0].entries[0];
+    assert.deepEqual(edited.functions, [{ ...entry.functions[0], count: 0 }, nextRule]);
+    await page.getByRole("button", { name: "Use default quantity" }).click();
+    assert.deepEqual(JSON.parse(await textarea.inputValue()).pools[0].entries[0].functions, [nextRule]);
+  } finally {
+    await browser.close();
+  }
+});
+
 for (const draft of ["none", "legacy", "clear-summary"] as const) test(`project resource field edits preserve locale summaries (${draft})`, { timeout: 30_000 }, async () => {
   const englishSummary = "Existing English summary";
   const importedSummary = "Resumo existente";

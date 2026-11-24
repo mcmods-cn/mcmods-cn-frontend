@@ -4,11 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { namespaceFromIdentifier } from "../../_lib/catalog-resource-identifiers";
 import type { CatalogResourceRef } from "../../_lib/editor-types";
 import {
-  isLootSetCountFunction,
   lootEntryFamily,
   lootEntryIdentifier,
   lootSetCountFunction,
   lootTablePools,
+  withLootEntryIdentifier,
+  withLootEntryQuantity,
   type LootEntryFamily,
   type LootTableRecord,
 } from "../../_lib/loot-table-model";
@@ -208,21 +209,6 @@ function LootEntryEditor({
     onUpdate(changeLootEntryFamily(entry, nextFamily));
   }
 
-  function updateQuantity(value: unknown) {
-    const functions = arrayRecords(entry.functions);
-    const index = functions.findIndex(isLootSetCountFunction);
-    const nextFunction = { ...(index >= 0 ? functions[index] : {}), function: "minecraft:set_count", count: value, add: false };
-    onUpdate({ ...entry, functions: index >= 0 ? replaceItem(functions, index, nextFunction) : [...functions, nextFunction] });
-  }
-
-  function clearQuantity() {
-    const functions = arrayRecords(entry.functions).filter((item) => !isLootSetCountFunction(item));
-    const next = { ...entry };
-    if (functions.length) next.functions = functions;
-    else delete next.functions;
-    onUpdate(next);
-  }
-
   function updateChildren(nextChildren: LootTableRecord[]) {
     onUpdate({ ...entry, children: nextChildren });
   }
@@ -253,11 +239,11 @@ function LootEntryEditor({
         pickerKind={pickerKind}
         source={record(sources[identifier])}
         token={token}
-        onSelect={(nextIdentifier) => onUpdate(setLootEntryIdentifier(entry, family, nextIdentifier))}
+        onSelect={(nextIdentifier) => onUpdate(withLootEntryIdentifier(entry, family, nextIdentifier))}
       /> : null}
       {family === "dynamic" ? <label className="grid gap-2 text-xs font-bold md:col-span-1">
         <span>{t("resourceEditor.lootEditor.dynamicName")}</span>
-        <input className="field font-mono" value={identifier} onChange={(event) => onUpdate(setLootEntryIdentifier(entry, family, event.target.value))} />
+        <input className="field font-mono" value={identifier} onChange={(event) => onUpdate(withLootEntryIdentifier(entry, family, event.target.value))} />
       </label> : null}
       {!isCompositeFamily(family) && family !== "empty" ? <>
         <label className="grid gap-2 text-xs font-bold">
@@ -272,8 +258,8 @@ function LootEntryEditor({
     </div>
     {(family === "item" || family === "tag") ? <div className="border-t border-[var(--line)] p-3">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-64 flex-1"><LootNumberProviderEditor editorID={`${editorID}:quantity`} label={t("resourceEditor.lootEditor.quantity")} value={quantityFunction?.count ?? 1} onChange={updateQuantity} onValidityChange={onValidityChange} /></div>
-        {quantityFunction ? <button className="button-secondary focus-ring" type="button" onClick={clearQuantity}>{t("resourceEditor.lootEditor.clearQuantity")}</button> : null}
+        <div className="min-w-64 flex-1"><LootNumberProviderEditor editorID={`${editorID}:quantity`} label={t("resourceEditor.lootEditor.quantity")} value={quantityFunction?.count ?? 1} onChange={(count) => onUpdate(withLootEntryQuantity(entry, count))} onValidityChange={onValidityChange} /></div>
+        {quantityFunction ? <button className="button-secondary focus-ring" type="button" onClick={() => onUpdate(withLootEntryQuantity(entry, undefined))}>{t("resourceEditor.lootEditor.clearQuantity")}</button> : null}
       </div>
     </div> : null}
     {isCompositeFamily(family) ? <div className="space-y-3 border-t border-[var(--line)] p-3">
@@ -495,20 +481,13 @@ function changeLootEntryFamily(entry: LootTableRecord, family: LootEntryFamily):
   return next;
 }
 
-function setLootEntryIdentifier(entry: LootTableRecord, family: LootEntryFamily, identifier: string): LootTableRecord {
-  const next = { ...entry };
-  if (family === "loot_table") next.value = identifier;
-  else next.name = identifier;
-  return next;
-}
-
 function isCompositeFamily(family: LootEntryFamily) {
   return family === "alternatives" || family === "group" || family === "sequence";
 }
 
 function lootNumberProviderMode(value: unknown): "constant" | "uniform" | "binomial" | "advanced" {
   if (typeof value === "number" || typeof value === "string" && Number.isFinite(Number(value))) return "constant";
-  const type = stringValue(record(value).type).replace(/^.*:/, "");
+  const type = stringValue(record(value).type).replace(/^minecraft:/, "");
   if (type === "uniform" || type === "binomial") return type;
   return "advanced";
 }

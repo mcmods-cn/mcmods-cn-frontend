@@ -30,11 +30,10 @@ export function lootTablePools(data: LootTableRecord) {
 }
 
 export function lootEntryFamily(entry: LootTableRecord): LootEntryFamily {
-  const type = text(entry.type ?? entry.entry_type).toLowerCase().replace(/^.*:/, "");
-  if (knownEntryFamilies.has(type as LootEntryFamily)) return type as LootEntryFamily;
-  const kind = text(entry.entry_kind).toLowerCase().replace(/^.*:/, "");
-  if (knownEntryFamilies.has(kind as LootEntryFamily)) return kind as LootEntryFamily;
-  return "custom";
+  // A mod can register its own entry with the same path as a vanilla type.
+  const type = text(entry.type) || text(entry.entry_type) || text(entry.entry_kind);
+  const family = type.toLowerCase().replace(/^minecraft:/, "") as LootEntryFamily;
+  return knownEntryFamilies.has(family) ? family : "custom";
 }
 
 export function lootEntryIdentifier(entry: LootTableRecord, family = lootEntryFamily(entry)) {
@@ -45,6 +44,25 @@ export function lootEntryIdentifier(entry: LootTableRecord, family = lootEntryFa
     return text(entry.loot_table_id) || text(entry.loot_table) || text(entry.value) || text(entry.name);
   }
   return fallback.replace(/^#/, "");
+}
+
+type LootIdentifierFamily = "item" | "tag" | "loot_table" | "dynamic";
+const identifierAliases: Record<LootIdentifierFamily, string> = {
+  item: "item_id", tag: "tag_id", loot_table: "loot_table_id", dynamic: "dynamic_id",
+};
+
+export function withLootEntryIdentifier(entry: LootTableRecord, family: LootIdentifierFamily, identifier: string) {
+  const next = { ...entry };
+  if (family === "loot_table") {
+    if ("name" in next) next.name = identifier;
+    if ("value" in next || !("name" in next)) next.value = identifier;
+    if (typeof next.loot_table === "string") next.loot_table = identifier;
+  } else {
+    next.name = identifier;
+  }
+  const alias = identifierAliases[family];
+  if (alias in next) next[alias] = identifier;
+  return next;
 }
 
 export function lootEntryItemID(entry: LootTableRecord) {
@@ -83,7 +101,24 @@ export function lootSetCountFunction(entry: LootTableRecord) {
 
 export function isLootSetCountFunction(value: LootTableRecord) {
   const kind = text(value.function) || text(value.type);
-  return /(^|:)set_count$/.test(kind);
+  return kind === "minecraft:set_count" || kind === "set_count";
+}
+
+export function withLootEntryQuantity(entry: LootTableRecord, count: unknown): LootTableRecord {
+  const functions = Array.isArray(entry.functions) ? [...entry.functions] : [];
+  const index = functions.findIndex((value) => isLootSetCountFunction(record(value)));
+  if (count === undefined) {
+    if (index < 0) return entry;
+    functions.splice(index, 1);
+  } else if (index < 0) {
+    functions.push({ function: "minecraft:set_count", count });
+  } else {
+    functions[index] = { ...record(functions[index]), count };
+  }
+  const next = { ...entry };
+  if (functions.length) next.functions = functions;
+  else delete next.functions;
+  return next;
 }
 
 export function lootEntryQuantity(entry: LootTableRecord) {
