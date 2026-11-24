@@ -25,10 +25,11 @@ function actor(id: string, permissions: string[], version = 1) {
 }
 async function openProviders(page: Page) {
   await page.goto(fixture.origin + "/admin");
-  await page.locator("h1").waitFor();
+  const aiGroup = page.locator('[data-admin-group="ai"]');
+  await aiGroup.waitFor({ state: "attached" });
   const menu = page.locator('button[aria-controls="admin-navigation"]');
   if (await menu.isVisible()) await menu.click();
-  await page.locator('[data-admin-group="ai"]').click();
+  await aiGroup.click();
   await page.locator('[data-admin-panel="ai-providers"]').click();
   await page.getByPlaceholder("Name", { exact: true }).waitFor();
 }
@@ -44,8 +45,12 @@ test("AI readers on desktop light and mobile dark can inspect credentials metada
     ["desktop", {width:1440,height:900}, "light"], ["mobile",{width:390,height:844}, "dark"],
   ] as const) {
     let writes = 0, reads = 0;
-    const owned = await fixture.page(request => {
-      if (request.path === "/api/v1/auth/me") return { data: actor("reader0001", ["ai.read"]) };
+    const identity = Promise.withResolvers<void>();
+    const owned = await fixture.page(async request => {
+      if (request.path === "/api/v1/auth/me") {
+        await identity.promise;
+        return { data: actor("reader0001", ["ai.read"]) };
+      }
       if (request.path === path) {
         if (request.method !== "GET") { writes++; return { status: 403, error: "Read only" }; }
         reads++; return { data: settings() };
@@ -53,7 +58,14 @@ test("AI readers on desktop light and mobile dark can inspect credentials metada
     }, {viewport, colorScheme});
     try {
       const page = owned.page;
-      await openProviders(page);
+      await Promise.all([
+        openProviders(page),
+        (async () => {
+          await page.getByText("Checking login state", { exact: true }).waitFor();
+          assert.equal(await page.locator('[data-admin-group="ai"]').count(), 0);
+          identity.resolve();
+        })(),
+      ]);
       await page.getByRole("status").filter({hasText:"You have read-only access."}).waitFor();
       assert(await save(page).isDisabled());
       assert.equal(await save(page).evaluate(button => getComputedStyle(button).cursor), "not-allowed");
@@ -68,7 +80,10 @@ test("AI readers on desktop light and mobile dark can inspect credentials metada
         await mkdir(process.env.MCMODS_ADMIN_AI_SCREENSHOTS, {recursive:true});
         await page.screenshot({path:join(process.env.MCMODS_ADMIN_AI_SCREENSHOTS,`ai-readonly-after-${variant}.png`)});
       }
-    } finally {await owned.close();}
+    } finally {
+      identity.resolve();
+      await owned.close();
+    }
   }
 });
 
