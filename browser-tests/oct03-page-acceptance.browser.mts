@@ -127,7 +127,7 @@ test("FP009 BUG127 follows cursor deduplication, filter cancellation and mutatio
 
 test("FP049 contribution dates remain UTC calendar dates in negative and positive browser time zones", { timeout: 30_000 }, async () => {
   const browser = await controlled(({ path }) => {
-    if (path === "/api/v1/users/test048u1/showcase") return { data: { claimedAuthors: [], developerProjects: [], editorProjects: [], uploads: [], posts: [], contributions: { year: 2025, from: "2025-01-01", to: "2025-12-31", total: 3, days: [{ date: "2025-01-02", count: 3 }], years: [2025], recentActivity: [], recentActivityTruncated: false } } };
+    if (path === "/api/v1/users/test048u1/showcase") return { data: { claimedAuthors: [], developerProjects: [], editorProjects: [], uploads: [], posts: [], contributions: { year: 2025, from: "2025-01-01", to: "2025-12-31", total: 3, days: [{ date: "2025-01-02", count: 3 }], years: [2025], recentActivity: [{ id: "activity1", entityType: "mod", action: "edited", name: "March contribution", href: "", occurredAt: "2025-03-01T01:00:00Z" }], recentActivityTruncated: false } } };
     if (path === "/api/v1/users/test048u1/favorite-collections") return { data: { items: [], hasMore: false, nextCursor: "", limit: 50 } };
   });
   try {
@@ -138,6 +138,7 @@ test("FP049 contribution dates remain UTC calendar dates in negative and positiv
       await page.goto(`${fixture.origin}/user?section=overview`);
       const day = page.getByRole("button", { name: "Jan 2, 2025: 3 contributions", exact: true });
       await day.waitFor();
+      await page.getByRole("heading", { name: "March 2025", exact: true }).waitFor();
       assert.equal(await day.getAttribute("title"), "Jan 2, 2025: 3 contributions");
       await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("zh-CN");
       await page.getByRole("button", { name: "2025年1月2日：3 次贡献", exact: true }).waitFor();

@@ -580,3 +580,36 @@ test("changing resource editors cancels the previous write before draft completi
     assert.equal(completions, 0);
   } finally { held.resolve({ status: 503, error: "Fixture closed" }); await browser.close(); }
 });
+
+test("resource properties display reported zero, fractional and missing values distinctly", async () => {
+  const browser = await controlled(({ path, url }) => {
+    if (path.startsWith("/api/v1/mods/fixture-mod/content-resources/") && !path.endsWith("/similar")) {
+      const numeric = path.endsWith("/resource01");
+      const resource = resourceSnapshot("minecraft.item", numeric ? { health: 0, armor: 0.5 } : {
+        attributeModifiers: [{ modifiers: [{ name: "fixture:missing" }, { name: "fixture:zero", amount: 0, operation_id: 0 }] }],
+      });
+      if (numeric) Object.assign(resource.details[0], { schemaDefinition: { entryTypes: [{ code: "default", names: {}, groups: [{
+        code: "numbers", names: { "en-US": "Reported numbers" }, fields: [
+          { code: "health", names: { "en-US": "Reported health" }, format: "health" },
+          { code: "armor", names: { "en-US": "Reported armor" }, format: "armor" },
+        ],
+      }] }] } });
+      return { data: resource };
+    }
+    if (path.endsWith("/similar")) return { data: { items: [] } };
+    if (path.startsWith("/api/v1/content-metrics/")) return { status: 404, error: "No metrics" };
+    if (path.startsWith("/api/v1/comment-targets/")) return { data: { items: [], capabilities: { canCreate: false }, total: 0, nextCursor: "" } };
+    if (path === "/api/v1/projects/follows" || url.pathname.endsWith("/follow")) return { data: { following: false } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/mods/fixture-mod/resources/resource01");
+    await page.getByRole("heading", { name: "Reported numbers", exact: true }).waitFor();
+    assert.equal(await page.getByText("Reported health", { exact: true }).locator("+ dd").innerText(), "0");
+    assert.equal(await page.getByText("Reported armor", { exact: true }).locator("+ dd").innerText(), "0.5");
+    await page.goto(fixture.origin + "/mods/fixture-mod/resources/resource02");
+    await page.getByText("fixture:missing", { exact: true }).waitFor();
+    assert.equal(await page.getByText("fixture:missing", { exact: true }).locator("+ span").innerText(), "Not provided · Not provided");
+    assert.equal(await page.getByText("fixture:zero", { exact: true }).locator("+ span").innerText(), "0 · 0");
+  } finally { await browser.close(); }
+});

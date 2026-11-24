@@ -355,11 +355,11 @@ function contributionMonthLabels(contribution: ContributionsPayload, locale: str
 }
 
 function groupContributionActivities(items: ContributionActivity[], locale: string) {
-  const formatter = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" });
+  const formatter = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric", timeZone: "UTC" });
   const groups = new Map<string, { key: string; label: string; items: ContributionActivity[] }>();
   for (const item of items) {
     const date = new Date(item.occurredAt);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
     const group = groups.get(key) ?? { key, label: formatter.format(date), items: [] };
     group.items.push(item);
     groups.set(key, group);

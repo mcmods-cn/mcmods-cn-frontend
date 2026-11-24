@@ -15,6 +15,7 @@ import {
   lootTablePools,
   lootTableReferenceIDs,
 } from "../_lib/loot-table-model";
+import { normalizeInternalPath } from "../_lib/navigation";
 import { minecraftLocale, modExportAssetURL } from "../_lib/mod-export-api";
 import { useI18n } from "../_lib/i18n-provider";
 import type { ModContentEntryField, ModContentEntryType } from "../_lib/mod-content-api";
@@ -260,12 +261,13 @@ function schemaLocalizedName(names: Record<string, string>, locale: string, fall
 }
 
 function SchemaNumericIcons({ kind, value }: { kind: "health" | "armor"; value: number }) {
-  const normalized = Math.max(0, Math.trunc(value));
+  if (!Number.isInteger(value) || value <= 0) return <span>{value}</span>;
+  const normalized = value;
   const fullCount = Math.floor(normalized / 2);
   const hasHalf = normalized % 2 === 1;
   const source = (variant: "full" | "half") => `/mc-icons/icon-${kind}-${variant}.svg`;
   if (fullCount > 10) return <span className="inline-flex items-center gap-1" title={String(value)}><Image unoptimized alt="" height={18} src={source("full")} width={18} /><span>× {normalized / 2}</span></span>;
-  return <span className="inline-flex flex-wrap gap-0.5" title={String(value)}>{Array.from({ length: fullCount }, (_, index) => <Image unoptimized alt="" height={18} key={index} src={source("full")} width={18} />)}{hasHalf ? <Image unoptimized alt="" height={18} src={source("half")} width={18} /> : null}</span>;
+  return <span className="inline-flex flex-wrap gap-0.5" title={String(value)}>{Array.from({ length: fullCount }, (_, index) => <Image unoptimized alt="" height={18} key={index} src={source("full")} width={18} />)}{hasHalf ? <Image unoptimized alt="" height={18} src={source("half")} width={18} /> : null}<span className="sr-only">{value}</span></span>;
 }
 
 function property(key: string, value: unknown): PropertyRow {
@@ -357,12 +359,14 @@ function PropertyValue({ row }: { row: PropertyRow }) {
 }
 
 function AttributeSlot({ slot }: { slot: Record<string, unknown> }) {
+  const { t } = useI18n();
+  const missing = t("mods.detail.notProvided");
   const modifiers = arrayRecords(slot.modifiers);
   return <div className="px-4 py-3">
-    <strong className="text-sm">{stringValue(slot.slot) || "any"}</strong>
+    <strong className="text-sm">{stringValue(slot.slot) || missing}</strong>
     <div className="mt-2 grid gap-2">{modifiers.map((modifier, index) => <div className="rounded bg-[var(--panel-subtle)] p-2 text-xs" key={index}>
       <code className="break-all">{stringValue(modifier.attribute) || stringValue(modifier.name)}</code>
-      <span className="mt-1 block text-[var(--muted)]">{String(modifier.amount ?? 0)} · {String(modifier.operation ?? modifier.operation_id ?? "add")}</span>
+      <span className="mt-1 block text-[var(--muted)]">{String(modifier.amount ?? missing)} · {String(modifier.operation ?? modifier.operation_id ?? missing)}</span>
     </div>)}</div>
   </div>;
 }
@@ -414,7 +418,7 @@ export function ModLootTableView({ data }: { data: Record<string, unknown> }) {
       <h3 className="text-sm font-black">{t("mods.exportImport.entry.loot.references")}</h3>
       <div className="mt-3 flex flex-wrap gap-2">{referencedLootTables.map((referenceID) => {
         const source = record(sources[referenceID]);
-        const href = stringValue(source.detailUrl);
+        const href = normalizeInternalPath(source.detailUrl);
         return href
           ? <Link className="rounded bg-[var(--accent-soft)] px-2.5 py-1.5 font-mono text-xs font-bold text-[var(--accent)] hover:underline" href={href} key={referenceID} rel="noopener noreferrer" target="_blank">{referenceID}</Link>
           : <code className="rounded bg-[var(--panel-subtle)] px-2.5 py-1.5 text-xs" key={referenceID}>{referenceID}</code>;
@@ -470,7 +474,7 @@ function LootEntryCard({
   const source = record(sources[sourceID]);
   const href = tagID
     ? `/mods-tag?registry=minecraft:item&tagId=${encodeURIComponent(tagID)}`
-    : stringValue(source.detailUrl);
+    : normalizeInternalPath(source.detailUrl);
   const title = localizedRecordValue(source.names, minecraftLocale(locale))
     || (tagID ? `#${tagID}` : sourceID || rawName || type || kind || "?");
   const iconPath = stringValue(source.iconPath);
@@ -510,7 +514,7 @@ function LootResourceChip({
   const iconPath = stringValue(source.iconPath);
   const revisionID = stringValue(source.sourceRevisionId);
   const iconURL = iconPath && revisionID ? modExportAssetURL(revisionID, iconPath) : "";
-  const href = stringValue(source.detailUrl);
+  const href = normalizeInternalPath(source.detailUrl);
   const content = <><span className="grid h-10 w-10 shrink-0 place-items-center rounded bg-[var(--panel-subtle)]">{iconURL ? <Image unoptimized alt="" className="h-9 w-9 object-contain [image-rendering:pixelated]" height={36} src={iconURL} width={36} /> : <span className="text-xs font-black text-[var(--muted)]">?</span>}</span><span className="min-w-0"><strong className="block truncate text-sm">{name}</strong><code className="block truncate text-[10px] text-[var(--muted)]">{id}</code></span></>;
   return href
     ? <Link className="focus-ring flex min-w-0 items-center gap-2 rounded-lg border border-[var(--line)] p-2 hover:border-[var(--accent)]" href={href} rel="noopener noreferrer" target="_blank">{content}</Link>
@@ -653,7 +657,7 @@ function ModRecipeSlot({
     >{content}</Link>;
   }
   if (itemId) {
-    const href = stringValue(item.detailUrl)
+    const href = normalizeInternalPath(item.detailUrl)
       || canonicalImportedResourceHref(
         sourceSiteId,
         stringValue(item.sourceVersionPublicId),
@@ -675,7 +679,7 @@ function modRecipeMaterialHref(slot: Record<string, unknown>, item: Record<strin
   const itemId = stringValue(item.item) || stringValue(item.resource_location);
   const sourceSiteId = stringValue(item.sourceModSiteId);
   if (!itemId) return undefined;
-  return stringValue(item.detailUrl)
+  return normalizeInternalPath(item.detailUrl)
     || canonicalImportedResourceHref(
       sourceSiteId,
       stringValue(item.sourceVersionPublicId),
@@ -694,7 +698,7 @@ function canonicalImportedResourceHref(
 }
 
 function resourceSourceHref(source: Record<string, unknown>) {
-  return stringValue(source.detailUrl)
+  return normalizeInternalPath(source.detailUrl)
     || canonicalImportedResourceHref(
       stringValue(source.sourceModSiteId),
       stringValue(source.sourceVersionPublicId),
