@@ -33,12 +33,12 @@ export function CommunityPostCatalog({ kind }: { kind: CommunityPostKind }) {
 
 function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
   const { t } = useI18n();
-  const { token, user } = useAuthSnapshot();
+  const { token, user, generation } = useAuthSnapshot();
   const resultsTopRef = useRef<HTMLElement | null>(null);
   const [items, setItems] = useState<CommunityPostSummary[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [page, setPage] = useState<{ hasMore: boolean; nextCursor: string } | null>(null);
-  const [communityPostCursorHistory, setCommunityPostCursorHistory] = useState<string[]>([]);
+  const [cursorPage, setCursorPage] = useState<{ scope: string; history: string[] }>({ scope: "", history: [] });
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
@@ -55,14 +55,9 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
     onPageChange: () => resultsTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
   });
   const filters = useMemo(() => parseCommunityFilters(new URLSearchParams(paramsKey), preferences), [paramsKey, preferences]);
+  const filterScope = JSON.stringify([kind, user?.id, generation, filters]);
+  const communityPostCursorHistory = cursorPage.scope === filterScope ? cursorPage.history : [];
   const currentCursor = communityPostCursorHistory.at(-1) ?? "";
-  const filterScope = useMemo(() => JSON.stringify(filters), [filters]);
-
-  useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => { if (!cancelled) setCommunityPostCursorHistory([]); });
-    return () => { cancelled = true; };
-  }, [filterScope, kind]);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,7 +85,7 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
       .catch((error) => { if (!cancelled) setMessage(error instanceof Error ? error.message : String(error)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; controller.abort(); };
-  }, [currentCursor, filters.category, filters.pageSize, filters.projects, filters.query, filters.sort, filters.sortDirection, filters.versionMode, filters.versions, kind, reload, token]);
+  }, [generation, user?.id, currentCursor, filters.category, filters.pageSize, filters.projects, filters.query, filters.sort, filters.sortDirection, filters.versionMode, filters.versions, kind, reload, token]);
 
   const canCreate = hasPermission(user, `community.${kind}.create`);
   const filterPanel = (onClose?: () => void) => <CatalogFilterPanel
@@ -137,7 +132,7 @@ function CommunityPostCatalogContent({ kind }: { kind: CommunityPostKind }) {
           {loading ? <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label={t("common.loading")}>{Array.from({ length: 6 }, (_, index) => <div className="h-72 animate-pulse rounded-xl border border-[var(--line)] bg-[var(--panel)]" key={index} />)}</div> : null}
           {!loading && !message && items.length ? <div className="mt-4 grid gap-5 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <CommunityPostCard item={item} key={item.id} />)}</div> : null}
           {!loading && !message && !items.length ? <CatalogEmptyState clearLabel={t("communityPosts.catalog.clear")} description={t("communityPosts.catalog.emptyHint")} title={t("communityPosts.empty")} onClear={clearFilters} /> : null}
-          {!loading && !message && page && (communityPostCursorHistory.length > 0 || page.hasMore) ? <div className="mt-6 flex items-center justify-between gap-3"><button className="button-secondary focus-ring" disabled={communityPostCursorHistory.length === 0} type="button" onClick={() => setCommunityPostCursorHistory((history) => history.slice(0, -1))}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("communityPosts.catalog.cursorPage", { page: communityPostCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={!page.hasMore || !page.nextCursor} type="button" onClick={() => setCommunityPostCursorHistory((history) => [...history, page.nextCursor])}>{t("common.next")}</button></div> : null}
+          {!loading && !message && page && (communityPostCursorHistory.length > 0 || page.hasMore) ? <div className="mt-6 flex items-center justify-between gap-3"><button className="button-secondary focus-ring" disabled={communityPostCursorHistory.length === 0} type="button" onClick={() => setCursorPage({ scope: filterScope, history: communityPostCursorHistory.slice(0, -1) })}>{t("common.previous")}</button><span className="text-sm font-bold text-[var(--muted)]">{t("communityPosts.catalog.cursorPage", { page: communityPostCursorHistory.length + 1 })}</span><button className="button-secondary focus-ring" disabled={!page.hasMore || !page.nextCursor} type="button" onClick={() => setCursorPage({ scope: filterScope, history: [...communityPostCursorHistory, page.nextCursor] })}>{t("common.next")}</button></div> : null}
         </section>
       </div>
     </div>
@@ -228,33 +223,32 @@ function CommunityPostCard({ item }: { item: CommunityPostSummary }) {
   </Link>;
 }
 
-export function RelatedCommunityPosts({ modId, resourceId, compact = false, kind }: { modId?: string; resourceId?: string; compact?: boolean; kind?: CommunityPostKind }) {
+export function RelatedCommunityPosts({ modId, kind }: { modId: string; kind: CommunityPostKind }) {
+  const { token, user, generation } = useAuthSnapshot();
+  return <RelatedPostList key={JSON.stringify([modId, kind, user?.id, generation])} modId={modId} kind={kind} token={token} />;
+}
+
+function RelatedPostList({ modId, kind, token }: { modId: string; kind: CommunityPostKind; token: string }) {
   const { t } = useI18n();
-  const { token } = useAuthSnapshot();
-  const [groups, setGroups] = useState<Record<CommunityPostKind, CommunityPostSummary[]>>({ tutorial: [], issue: [], news: [], discussion: [] });
+  const [items, setItems] = useState<CommunityPostSummary[]>();
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    const options = { modId, resourceId, limit: compact ? 8 : 12 };
-    const requestedKinds: CommunityPostKind[] = kind ? [kind] : ["tutorial", "issue", "news", "discussion"];
-    Promise.all(requestedKinds.map(async (requestedKind) => [requestedKind, (await loadCommunityPosts(requestedKind, options, token, controller.signal)).items] as const))
-      .then((results) => setGroups({ tutorial: [], issue: [], news: [], discussion: [], ...Object.fromEntries(results) }))
-      .catch(() => undefined);
+    loadCommunityPosts(kind, { modId, limit: 12 }, token, controller.signal)
+      .then(result => { if (!controller.signal.aborted) setItems(result.items); })
+      .catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : String(reason)); });
     return () => controller.abort();
-  }, [compact, kind, modId, resourceId, token]);
-  const visibleKinds: CommunityPostKind[] = kind ? [kind] : ["tutorial", "issue", "news", "discussion"];
-  if (!visibleKinds.some((value) => groups[value].length)) return <div className="rounded-lg border border-dashed border-[var(--line)] p-8 text-center font-bold text-[var(--muted)]">{t("communityPosts.empty")}</div>;
-  if (compact) return <section className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4"><h2 className="font-black">{t("communityPosts.related")}</h2><div className="mt-3 grid gap-3">{visibleKinds.map((value) => <RelatedLinkList key={value} title={t(relatedTitleKey(value))} items={groups[value]} />)}</div></section>;
-  return <div className="grid gap-8">{visibleKinds.map((value) => <RelatedCardGroup key={value} title={t(relatedTitleKey(value))} items={groups[value]} />)}</div>;
-}
-
-function RelatedCardGroup({ title, items }: { title: string; items: CommunityPostSummary[] }) {
-  if (!items.length) return null;
-  return <section><h2 className="mb-4 text-xl font-black">{title}</h2><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map((item) => <CommunityPostCard item={item} key={item.id} />)}</div></section>;
-}
-
-function RelatedLinkList({ title, items }: { title: string; items: CommunityPostSummary[] }) {
-  if (!items.length) return null;
-  return <div><h3 className="text-sm font-black text-[var(--muted)]">{title}</h3><div className="mt-1 grid">{items.map((item) => <Link className="truncate py-1.5 font-bold hover:text-[var(--accent)] hover:underline" href={`/${communityPostCollection(item.kind)}/${item.id}`} key={item.id} title={item.title}>{item.title}</Link>)}</div></div>;
+  }, [attempt, kind, modId, token]);
+  if (error) return <div role="alert" className="rounded-lg border border-[var(--line)] p-4">
+    <p className="text-[var(--red)]">{error}</p>
+    <button className="button-secondary focus-ring mt-3" type="button" onClick={() => { setError(""); setAttempt(value => value + 1); }}>{t("communityPosts.catalog.retry")}</button>
+  </div>;
+  if (!items) return <p role="status" className="p-4 text-[var(--muted)]">{t("common.loading")}</p>;
+  if (!items.length) return <p className="rounded-lg border border-dashed border-[var(--line)] p-8 text-center font-bold text-[var(--muted)]">{t("communityPosts.empty")}</p>;
+  return <section><h2 className="mb-4 text-xl font-black">{t(relatedTitleKey(kind))}</h2>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{items.map(item => <CommunityPostCard item={item} key={item.id} />)}</div>
+  </section>;
 }
 
 function relatedTitleKey(kind: CommunityPostKind) {

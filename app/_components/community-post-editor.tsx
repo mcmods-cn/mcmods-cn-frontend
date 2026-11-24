@@ -13,6 +13,7 @@ import { supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { uploadUserFileToOSS } from "../_lib/oss-upload";
 import { useAutoDraft } from "../_lib/use-auto-draft";
 import { AspectImageCropDialog } from "./aspect-image-crop-dialog";
+import { useEditorWrite } from "./editor/use-editor-write";
 import { DraftAutosaveStatus } from "./draft-autosave-status";
 import { ResourcePickerDialog } from "./editor/resource-picker-dialog";
 import { ModResourceSelectionField } from "./editor/mod-resource-picker";
@@ -54,12 +55,15 @@ function CommunityPostEditorContent({ kind, id }: { kind: CommunityPostKind; id:
   const [coverCropFile, setCoverCropFile] = useState<File>();
   const [coverPreview, setCoverPreview] = useState("");
   const [busy, setBusy] = useState(false);
+  const [markdownUploading, setMarkdownUploading] = useState(false);
+  const write = useEditorWrite();
   const [loading, setLoading] = useState(Boolean(id));
   const [recordLoaded, setRecordLoaded] = useState(!id);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [message, setMessage] = useState("");
   const [baseRevisionId, setBaseRevisionId] = useState("");
   const [currencies, setCurrencies] = useState<Currency[]>([]);
+  const selectedCurrency = currencies.find(currency => currency.code === draft.bountyCurrency);
   const projectValues = draft.projects.map(referenceToPickerResource);
   const resourceValues = draft.resources.map(referenceToPickerResource);
   const resourceKindOptions = resourceKindIds.map((value) => ({
@@ -118,50 +122,56 @@ function CommunityPostEditorContent({ kind, id }: { kind: CommunityPostKind; id:
   }, [id, kind, loadAttempt, token]);
 
   async function submit() {
-    if (!token || busy || loading || !recordLoaded) return;
+    if (!token || busy || loading || !recordLoaded || markdownUploading) return;
     if (!draft.title.trim() || !draft.bodyMarkdown.trim()) { setMessage(t("communityPosts.validation.content")); return; }
     if (!draft.sourceLocale) { setMessage(t("communityPosts.validation.sourceLocale")); return; }
     if (draft.projects.length > communityPostProjectReferenceLimit || draft.resources.length > communityPostResourceReferenceLimit) { setMessage(t("communityPosts.validation.referenceLimit", { projects: communityPostProjectReferenceLimit, resources: communityPostResourceReferenceLimit })); return; }
     if (kind === "issue" && !draft.projects.length) { setMessage(t("communityPosts.validation.issueProject")); return; }
     if (kind === "issue" && (!draft.minecraftVersions.length || (!(draft.modVersionMin || "").trim() && !(draft.modVersionMax || "").trim()))) { setMessage(t("communityPosts.validation.issueVersions")); return; }
     if (kind === "discussion" && Boolean(draft.bountyCurrency) !== ((draft.bountyAmount || 0) > 0)) { setMessage(t("communityPosts.validation.bounty")); return; }
+    const request = write.beginWrite();
+    if (!request) return;
     setBusy(true);
     setMessage("");
     try {
-      const result = await saveCommunityPost(draft, token, id, baseRevisionId);
+      const result = await saveCommunityPost(draft, token, id, baseRevisionId, request.signal);
+      if (request.signal.aborted) return;
       const targetUrl = `/${communityPostCollection(kind)}/${result.id}`;
       await autoDraft.completeDraft({
         projectKey: `community:${kind}:${result.id}`,
         projectTitle: draft.title.trim(),
         targetUrl,
         changeRequestId: result.changeRequestId,
-      }).catch(() => { window.alert(t("drafts.completionFailed")); });
-      router.push(targetUrl);
+      }).catch(() => { if (!request.signal.aborted) window.alert(t("drafts.completionFailed")); });
+      if (!request.signal.aborted) router.push(targetUrl);
     } catch (error) {
+      if (request.signal.aborted) return;
       if (error instanceof ApiError && error.status === 409 && error.code === "COMMUNITY_POST_EDIT_CONFLICT") {
         setMessage(t("communityPosts.validation.editConflict"));
         return;
       }
       setMessage(error instanceof Error ? error.message : t("communityPosts.validation.saveFailed"));
     } finally {
-      setBusy(false);
+      if (write.finishWrite(request)) setBusy(false);
     }
   }
 
   async function confirmCoverCrop(output: { files: Map<string, File>; previewUrl: string }) {
     const file = output.files.get("cover");
-    if (!file || !token) { URL.revokeObjectURL(output.previewUrl); return; }
+    const request = file && token ? write.beginWrite() : null;
+    if (!file || !request) { URL.revokeObjectURL(output.previewUrl); return; }
     setCoverCropFile(undefined);
     setBusy(true);
     try {
-      const uploaded = await uploadUserFileToOSS(file, token, "community_cover");
+      const uploaded = await uploadUserFileToOSS(file, token, "community_cover", undefined, request.signal);
+      if (request.signal.aborted) { URL.revokeObjectURL(output.previewUrl); return; }
       setDraft((current) => ({ ...current, coverFileId: uploaded.id }));
       setCoverPreview(output.previewUrl);
     } catch (error) {
       URL.revokeObjectURL(output.previewUrl);
-      setMessage(error instanceof Error ? error.message : String(error));
+      if (!request.signal.aborted) setMessage(error instanceof Error ? error.message : String(error));
     } finally {
-      setBusy(false);
+      if (write.finishWrite(request)) setBusy(false);
     }
   }
 
@@ -172,7 +182,7 @@ function CommunityPostEditorContent({ kind, id }: { kind: CommunityPostKind; id:
 
   const editor = <main className="min-h-screen bg-[var(--background)] px-4 py-7 text-[var(--foreground)]">
     <article className="mx-auto max-w-6xl">
-      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="font-bold text-[var(--accent)] hover:underline" href={`/${communityPostCollection(kind)}`}>← {t(`communityPosts.${kind}.title`)}</Link><h1 className="mt-2 text-3xl font-black">{id ? t("common.edit") : t(`communityPosts.${kind}.create`)}</h1></div><div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={busy || loading} type="button" onClick={() => void submit()}>{busy ? t("common.loading") : t("common.submit")}</button></div></header>
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-[var(--line)] pb-5"><div><Link className="font-bold text-[var(--accent)] hover:underline" href={`/${communityPostCollection(kind)}`}>← {t(`communityPosts.${kind}.title`)}</Link><h1 className="mt-2 text-3xl font-black">{id ? t("common.edit") : t(`communityPosts.${kind}.create`)}</h1></div><div className="grid justify-items-end gap-2"><DraftAutosaveStatus error={autoDraft.error} savedAt={autoDraft.savedAt} status={autoDraft.status} /><button className="button-primary focus-ring" disabled={busy || loading || markdownUploading} type="button" onClick={() => void submit()}>{busy ? t("common.loading") : t("common.submit")}</button></div></header>
       {message ? <p role="alert" className="mt-5 rounded-lg border border-[var(--red)] p-3 font-bold text-[var(--red)]">{message}</p> : null}
       <div className="mt-6 grid gap-6">
         <label className="block font-black">{t("communityPosts.fields.title")}<input className="field mt-2" maxLength={160} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
@@ -186,11 +196,11 @@ function CommunityPostEditorContent({ kind, id }: { kind: CommunityPostKind; id:
           <label className="flex items-center gap-3 self-end rounded-lg border border-[var(--line)] px-4 py-3 font-black"><input checked={draft.hasFix} type="checkbox" onChange={(event) => setDraft({ ...draft, hasFix: event.target.checked })} />{t("communityPosts.fields.hasFix")}</label>
           <label className="font-black md:col-span-2">{t("communityPosts.fields.issueUrl")}<input className="field mt-2" type="url" value={draft.issueUrl} onChange={(event) => setDraft({ ...draft, issueUrl: event.target.value })} /></label>
         </section> : null}
-        {kind === "discussion" ? <section className="grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 md:grid-cols-2"><div className="md:col-span-2"><h2 className="text-xl font-black">{t("communityPosts.bounty.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{id ? t("communityPosts.bounty.immutable") : t("communityPosts.bounty.description")}</p></div><label className="font-black">{t("communityPosts.bounty.currency")}<select className="field mt-2" disabled={Boolean(id)} value={draft.bountyCurrency || ""} onChange={(event) => setDraft({ ...draft, bountyCurrency: event.target.value, bountyAmount: event.target.value ? draft.bountyAmount || 1 : 0 })}><option value="">{t("communityPosts.bounty.none")}</option>{currencies.map((currency) => <option key={currency.publicId} value={currency.code}>{localizedCurrencyName(currency, locale)}</option>)}</select></label><label className="font-black">{t("communityPosts.bounty.amount")}<input className="field mt-2" disabled={Boolean(id) || !draft.bountyCurrency} max={1_000_000_000_000} min={draft.bountyCurrency ? 1 : 0} step={1} type="number" value={draft.bountyAmount || 0} onChange={(event) => setDraft({ ...draft, bountyAmount: Math.max(0, Math.trunc(Number(event.target.value) || 0)) })} /></label>{draft.bountyCurrency ? <p className="md:col-span-2 text-sm font-bold text-[var(--warning)]">{t("communityPosts.bounty.taxHint", { rate: ((currencies.find((currency) => currency.code === draft.bountyCurrency)?.transferTaxBps || 0) / 100).toFixed(2) })}</p> : null}</section> : null}
+        {kind === "discussion" ? <section className="grid gap-4 rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5 md:grid-cols-2"><div className="md:col-span-2"><h2 className="text-xl font-black">{t("communityPosts.bounty.title")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{id ? t("communityPosts.bounty.immutable") : t("communityPosts.bounty.description")}</p></div><label className="font-black">{t("communityPosts.bounty.currency")}<select className="field mt-2" disabled={Boolean(id)} value={draft.bountyCurrency || ""} onChange={(event) => setDraft({ ...draft, bountyCurrency: event.target.value, bountyAmount: event.target.value ? draft.bountyAmount || 1 : 0 })}><option value="">{t("communityPosts.bounty.none")}</option>{currencies.map((currency) => <option key={currency.publicId} value={currency.code}>{localizedCurrencyName(currency, locale)}</option>)}</select></label><label className="font-black">{t("communityPosts.bounty.amount")}<input className="field mt-2" disabled={Boolean(id) || !draft.bountyCurrency} max={1_000_000_000_000} min={draft.bountyCurrency ? 1 : 0} step={1} type="number" value={draft.bountyAmount || 0} onChange={(event) => setDraft({ ...draft, bountyAmount: Math.max(0, Math.trunc(Number(event.target.value) || 0)) })} /></label>{selectedCurrency ? <p className="md:col-span-2 text-sm font-bold text-[var(--warning)]">{t("communityPosts.bounty.taxHint", { rate: (selectedCurrency.transferTaxBps / 100).toFixed(2) })}</p> : null}</section> : null}
         <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("communityPosts.fields.projects")}{kind === "issue" ? " *" : ""}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("communityPosts.fields.projectsHint")}</p><div className="mt-4"><ModResourceSelectionField buttonLabel={t("communityPosts.fields.selectProjects")} projectTypes={communityProjectTypes} token={token} value={projectValues} onChange={(values) => { if (values.length > communityPostProjectReferenceLimit) { setMessage(t("communityPosts.validation.referenceLimit", { projects: communityPostProjectReferenceLimit, resources: communityPostResourceReferenceLimit })); return; } setDraft({ ...draft, projects: values.map(pickerResourceToProjectReference) }); }} /></div></section>
-        <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("communityPosts.fields.resources")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("communityPosts.fields.resourcesHint")}</p><div className="mt-4 grid gap-3"><SelectedResourceList items={resourceValues} onRemove={(resource) => setDraft({ ...draft, resources: draft.resources.filter((item) => item.publicId !== resource.publicId) })} /><button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => setSmallPickerOpen(true)}>{t("communityPosts.fields.selectResources")}</button></div></section>
+        <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("communityPosts.fields.resources")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("communityPosts.fields.resourcesHint")}</p><div className="mt-4 grid gap-3"><SelectedResourceList items={resourceValues} onRemove={(resource) => setDraft({ ...draft, resources: draft.resources.filter((item) => referenceToPickerResource(item).publicId !== resource.publicId) })} /><button className="button-secondary focus-ring justify-self-start" type="button" onClick={() => setSmallPickerOpen(true)}>{t("communityPosts.fields.selectResources")}</button></div></section>
         {kind !== "issue" ? <section className="rounded-xl border border-[var(--line)] bg-[var(--panel)] p-5"><h2 className="text-xl font-black">{t("communityPosts.fields.cover")}</h2><p className="mt-1 text-sm text-[var(--muted)]">{t("communityPosts.fields.coverHint")}</p><div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_360px] md:items-start"><input className="field" accept="image/png,image/jpeg,image/webp" type="file" onChange={(event) => setCoverCropFile(event.target.files?.[0])} /><div className="relative aspect-[121/75] overflow-hidden rounded-lg bg-[var(--panel-subtle)]">{coverPreview ? <Image unoptimized fill alt="" className="object-cover" src={coverPreview} /> : <span className="grid h-full place-items-center font-bold text-[var(--muted)]">121 : 75</span>}</div></div></section> : null}
-        <section><div className="mb-2 flex items-center justify-between"><h2 className="text-xl font-black">{t("communityPosts.fields.content")}</h2><span className="text-sm text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded documentId={`community-post:${kind}:${id || "draft"}:body`} editorTitle={t("communityPosts.fields.content")} uploadSource="community_post_text:draft" value={draft.bodyMarkdown} onChange={(bodyMarkdown) => setDraft({ ...draft, bodyMarkdown })} /></section>
+        <section><div className="mb-2 flex items-center justify-between"><h2 className="text-xl font-black">{t("communityPosts.fields.content")}</h2><span className="text-sm text-[var(--muted)]">Markdown</span></div><ToolsPlayground embedded onBusyChange={setMarkdownUploading} documentId={`community-post:${kind}:${id || "draft"}:body`} editorTitle={t("communityPosts.fields.content")} uploadSource="community_post_text:draft" value={draft.bodyMarkdown} onChange={(bodyMarkdown) => setDraft({ ...draft, bodyMarkdown })} /></section>
       </div>
     </article>
     <ResourcePickerDialog allowUnresolved multiple initialKind="minecraft.item" kindOptions={resourceKindOptions} open={smallPickerOpen} token={token} value={resourceValues} labels={{ title: t("communityPosts.fields.selectResources"), kind: t("communityPosts.fields.resourceKind"), manualPlaceholder: "minecraft:resource_id" }} onClose={() => setSmallPickerOpen(false)} onConfirm={(values) => { if (values.length > communityPostResourceReferenceLimit) { setMessage(t("communityPosts.validation.referenceLimit", { projects: communityPostProjectReferenceLimit, resources: communityPostResourceReferenceLimit })); return; } setDraft({ ...draft, resources: values.map(pickerResourceToSmallReference) }); setSmallPickerOpen(false); }} />

@@ -138,9 +138,10 @@ export async function loadCommunityPost(id: string, token = "", signal?: AbortSi
   return normalizeCommunityPost(post);
 }
 
-export function saveCommunityPost(draft: CommunityPostDraft, token: string, id = "", baseRevisionId = "") {
+export function saveCommunityPost(draft: CommunityPostDraft, token: string, id = "", baseRevisionId = "", signal?: AbortSignal) {
   return apiRequest<{ id: string; reviewStatus: CommunityPost["reviewStatus"]; revisionId: string; changeRequestId: string }>(id ? `/api/v1/community/posts/${encodeURIComponent(id)}` : "/api/v1/community/posts", {
     method: id ? "PUT" : "POST",
+    signal,
     body: JSON.stringify({ ...draft, baseRevisionId }),
   }, token);
 }

@@ -736,3 +736,94 @@ for (const purpose of ["comment", "report"] as const) test(`switching accounts c
     await browser.close();
   }
 });
+
+for (const collection of ["mods", "modpacks", "plugins"]) test(`the ${collection} gallery retires its upload batch when the editor switches accounts`, { timeout: 20_000 }, async () => {
+  const ticketPath = "/api/v1/users/me/oss/uploads/presign";
+  const held = Promise.withResolvers<APIReply>();
+  const uploads: string[] = [];
+  let actorId = "editor001";
+  const browser = await controlled(({ path, body }) => {
+    if (path === "/api/v1/auth/me") return { data: { id: actorId, username: actorId, roleCodes: [], permissionRules: [] } };
+    if (path === "/api/v1/minecraft/versions") return { data: { versions: [], loaders: [] } };
+    if (path === ticketPath) { uploads.push(JSON.parse(body).originalName); return held.promise; }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/" + collection + "/new");
+    const input = page.locator('input[type="file"][multiple][accept^="image/"]').first();
+    const first = page.waitForRequest(request => new URL(request.url()).pathname === ticketPath);
+    await input.setInputFiles(["one", "two"].map(name => ({ name: name + ".png", mimeType: "image/png", buffer: Buffer.from("synthetic " + name) })));
+    await first;
+    const cancelled = page.waitForEvent("requestfailed", { predicate: request => new URL(request.url()).pathname === ticketPath, timeout: 4000 });
+    void cancelled.catch(() => {});
+    actorId = "editor002";
+    const identity = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/me");
+    await page.evaluate(() => dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:gallery-fixture" })));
+    assert.equal((await (await identity).json()).data.id, actorId);
+    assert.equal((await cancelled).failure()?.errorText, "net::ERR_ABORTED");
+    held.resolve({ data: { uploadRequired: false, file: { id: "gallery01", originalName: "one.png" } } });
+    await settle(page);
+    assert.deepEqual(uploads, ["one.png"]);
+  } finally { held.resolve({ status: 503, error: "Fixture closed" }); await browser.close(); }
+});
+
+test("community edits remove one unresolved resource and retire a pending save with its actor", { timeout: 20_000 }, async () => {
+  const path = "/api/v1/community/posts/post00001";
+  const held = Promise.withResolvers<APIReply>();
+  const requests: { resources: { identifier: string }[] }[] = [];
+  let actorId = "editor001";
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/auth/me") return { data: { id: actorId, username: actorId, roleCodes: [], permissionRules: [] } };
+    if (request.path === path && request.method === "PUT") { requests.push(JSON.parse(request.body)); return held.promise; }
+    if (request.path === path) return { data: { ...post, category: "help", projects: [],
+      resources: ["fixture:first", "fixture:second"].map(identifier => ({ identifier, kind: "minecraft.item", unresolved: true })) } };
+    if (request.path === "/api/v1/community/post-categories") return { data: { items: ["help"] } };
+    if (request.path === "/api/v1/economy/currencies") return { data: { items: [] } };
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/discussions/post00001/edit");
+    const first = page.locator("div.flex.items-center.gap-3.p-3").filter({ has: page.locator("code", { hasText: "fixture:first" }) });
+    await first.getByRole("button", { name: "Delete", exact: true }).click();
+    assert.equal(await first.count(), 0);
+    await page.locator("code", { hasText: "fixture:second" }).waitFor();
+    const started = page.waitForRequest(req => new URL(req.url()).pathname === path && req.method() === "PUT");
+    await page.getByRole("button", { name: "Submit", exact: true }).click();
+    await started;
+    assert.deepEqual(requests.map(item => item.resources.map(resource => resource.identifier)), [["fixture:second"]]);
+    const cancelled = page.waitForEvent("requestfailed", { predicate: req => new URL(req.url()).pathname === path && req.method() === "PUT", timeout: 4000 });
+    void cancelled.catch(() => {});
+    const identity = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/me");
+    actorId = "editor002";
+    await page.evaluate(() => dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:community-fixture" })));
+    assert.equal((await (await identity).json()).data.id, actorId);
+    assert.equal((await cancelled).failure()?.errorText, "net::ERR_ABORTED");
+    held.resolve({ data: { ...post, changeRequestId: "review001" } });
+    await settle(page);
+    assert.equal(new URL(page.url()).pathname, "/discussions/post00001/edit");
+  } finally { held.resolve({ status: 503, error: "Fixture closed" }); await browser.close(); }
+});
+
+test("changing a community catalog query starts at its own first page", { timeout: 20_000 }, async () => {
+  const queries: string[] = [];
+  const browser = await controlled(({ path, url }) => {
+    if (path !== "/api/v1/community/posts") return;
+    const q = url.searchParams.get("q") || "", cursor = url.searchParams.get("cursor") || "";
+    if (q) queries.push(cursor);
+    return { data: { items: [{ ...post, title: q || (cursor ? "Second ordinary page" : "First ordinary page") }],
+      categories: ["help"], nextCursor: cursor || q ? "" : "page-two", hasMore: !q && !cursor } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/discussions");
+    await page.getByRole("heading", { name: "First ordinary page", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await page.getByRole("heading", { name: "Second ordinary page", exact: true }).waitFor();
+    const input = page.locator('main input[type="search"]').first();
+    await input.fill("A new filter");
+    await input.press("Enter");
+    await page.getByRole("heading", { name: "A new filter", exact: true }).waitFor();
+    assert.deepEqual(queries, [""]);
+  } finally { await browser.close(); }
+});
