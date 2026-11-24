@@ -699,7 +699,6 @@ test("an unconfirmed comment response keeps the draft and its idempotency key fo
 for (const purpose of ["comment", "report"] as const) test(`switching accounts cancels the open ${purpose} attachment batch`, { timeout: 20_000 }, async () => {
   let actorId = "account01";
   const firstTicket = Promise.withResolvers<APIReply>();
-  const started = Promise.withResolvers<void>();
   const ticketPath = purpose === "comment" ? "/api/v1/users/me/oss/uploads/presign" : "/api/v1/reports/evidence/uploads";
   const requested: string[] = [];
   const browser = await controlled(request => {
@@ -707,7 +706,6 @@ for (const purpose of ["comment", "report"] as const) test(`switching accounts c
     if (request.path === "/api/v1/reports/reasons") return { data: { items: [{ code: "spam", i18nKey: "reports.reasons.spam", requiresCustomText: false }] } };
     if (request.path === ticketPath) {
       requested.push(JSON.parse(request.body).originalName);
-      started.resolve();
       return firstTicket.promise;
     }
     return postReads(request);
@@ -717,12 +715,40 @@ for (const purpose of ["comment", "report"] as const) test(`switching accounts c
     await page.goto(fixture.origin + "/discussions/post00001");
     const editor = page.getByPlaceholder("Write a comment. Markdown is supported.");
     await editor.waitFor();
-    if (purpose === "report") await page.getByRole("button", { name: "Report", exact: true }).first().click();
-    const input = purpose === "report" ? page.getByRole("dialog").locator('input[type="file"]') : editor.locator("xpath=ancestor::form[1]").locator('input[type="file"]');
-    const cancelled = page.waitForEvent("requestfailed", { predicate: req => new URL(req.url()).pathname === ticketPath, timeout: 6000 });
+    const names = ["first.txt", "second.txt"];
+    if (purpose === "report") {
+      // A native file selection can reach the newly opened dialog before a
+      // second auth subscription has rendered. Select at its first open state.
+      await page.evaluate(fileNames => {
+        const observer = new MutationObserver(() => {
+          const input = document.querySelector<HTMLInputElement>('dialog[open] input[type="file"]');
+          if (!input) return;
+          observer.disconnect();
+          const transfer = new DataTransfer();
+          for (const name of fileNames) transfer.items.add(new File(["synthetic " + name], name, { type: "text/plain" }));
+          input.files = transfer.files;
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+        });
+        observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["open"] });
+      }, names);
+    }
+    const [ticket] = await Promise.all([
+      page.waitForRequest(req => req.method() === "POST" && new URL(req.url()).pathname === ticketPath),
+      purpose === "report"
+        ? page.locator("article > header").getByRole("button", { name: "Report", exact: true }).click()
+        : editor.locator("xpath=ancestor::form[1]").locator('input[type="file"]').setInputFiles(
+          names.map(name => ({ name, mimeType: "text/plain", buffer: Buffer.from("synthetic " + name) })),
+        ),
+    ]);
+    assert.equal(ticket.postDataJSON().originalName, names[0]);
+    if (purpose === "report") {
+      const dialog = page.getByRole("dialog", { name: "Submit report", exact: true });
+      await dialog.locator("fieldset:disabled").waitFor({ state: "attached" });
+      const screenshot = process.env.MCMODS_REPORT_EVIDENCE_SCREENSHOT;
+      if (screenshot) await dialog.screenshot({ path: screenshot });
+    }
+    const cancelled = page.waitForEvent("requestfailed", { predicate: req => req === ticket, timeout: 6000 });
     void cancelled.catch(() => {});
-    await input.setInputFiles(["first", "second"].map(suffix => ({ name: suffix + ".txt", mimeType: "text/plain", buffer: Buffer.from("synthetic " + suffix) })));
-    await started.promise;
     actorId = "account02";
     const identity = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/me");
     await page.evaluate(() => dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:attachment-change" })));
@@ -730,7 +756,9 @@ for (const purpose of ["comment", "report"] as const) test(`switching accounts c
     assert.equal((await cancelled).failure()?.errorText, "net::ERR_ABORTED");
     firstTicket.resolve({ data: { uploadRequired: false, file: { id: "fixture01", originalName: "first.txt", sizeBytes: 7 } } });
     await settle(page);
-    assert.deepEqual(requested, ["first.txt"]);
+    await page.getByRole("link", { name: actorId, exact: true }).first().waitFor();
+    if (purpose === "report") assert.equal(await page.getByRole("dialog").count(), 0);
+    assert.deepEqual(requested, [names[0]]);
   } finally {
     firstTicket.resolve({ status: 503, error: "Fixture closed" });
     await browser.close();

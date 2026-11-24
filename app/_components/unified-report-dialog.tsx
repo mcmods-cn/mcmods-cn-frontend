@@ -74,14 +74,13 @@ export function UnifiedReportButton({
 }
 
 export function UnifiedReportDialog(props: ReportDialogProps) {
-  const { token, user } = useAuthSnapshot();
+  const { generation, token, user } = useAuthSnapshot();
   if (!props.open || !token) return null;
-  return <ReportDialogContent key={`${user?.id || "guest"}:${props.targetType}:${props.targetId}:${token}`} {...props} />;
+  return <ReportDialogContent key={`${generation}:${user?.id || "guest"}:${props.targetType}:${props.targetId}:${token}`} {...props} token={token} />;
 }
 
-function ReportDialogContent({ targetType, targetId, targetSummary, targetAuthor, onClose, onSubmitted }: ReportDialogProps) {
+function ReportDialogContent({ targetType, targetId, targetSummary, targetAuthor, onClose, onSubmitted, token }: ReportDialogProps & { token: string }) {
   const { t } = useI18n();
-  const { token } = useAuthSnapshot();
   const [reasons, setReasons] = useState<ReportReason[]>([]);
   const [reasonCode, setReasonCode] = useState("");
   const [customReason, setCustomReason] = useState("");
