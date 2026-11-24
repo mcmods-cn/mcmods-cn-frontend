@@ -114,13 +114,16 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
   const drawioFrameRef = useRef<HTMLIFrameElement | null>(null);
   const onChangeRef = useRef(onChange);
   const onBusyChangeRef = useRef(onBusyChange);
-  const uploadingRef = useRef(false);
+  const fileTransfer = useRef<AbortController | null>(null);
   const sessionActive = useRef(true);
   useEffect(() => {
     sessionActive.current = true;
     return () => {
       sessionActive.current = false;
-      if (uploadingRef.current) onBusyChangeRef.current?.(false);
+      if (fileTransfer.current) {
+        fileTransfer.current.abort();
+        onBusyChangeRef.current?.(false);
+      }
     };
   }, []);
   const draftSaveSessionIDRef = useRef("");
@@ -419,10 +422,10 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
     const selected = markdown.slice(start, end);
     const before = markdown.slice(0, start);
     const after = markdown.slice(end);
-    const lineStart = markdown.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
-    const blockStart = markdown.slice(0, lineStart);
-    const blockRest = markdown.slice(lineStart);
-    const selectedLines = selected || currentLine(markdown, start);
+    const lineStart = markdown.slice(0, start).lastIndexOf("\n") + 1;
+    const nextBreak = markdown.indexOf("\n", end > start ? end - 1 : end);
+    const lineEnd = nextBreak === -1 ? markdown.length : nextBreak;
+    const selectedLines = markdown.slice(lineStart, lineEnd);
 
     if (command === "bold") return wrapSelection("**", "**", t("tools.playground.sampleBold"));
     if (command === "italic") return wrapSelection("*", "*", t("tools.playground.sampleItalic"));
@@ -433,7 +436,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
     if (command === "orderedList") {
       const lines = selectedLines.split("\n");
       const replacement = lines.map((line, index) => `${index + 1}. ${line.replace(/^\d+\.\s+/, "")}`).join("\n");
-      return replaceSelection(blockStart + replacement + blockRest.slice(selectedLines.length), lineStart, lineStart + replacement.length);
+      return replaceSelection(markdown.slice(0, lineStart) + replacement + markdown.slice(lineEnd), lineStart, lineStart + replacement.length);
     }
     if (command === "codeBlock") {
       const fallback = selected || "console.log(\"mcmods\");";
@@ -458,7 +461,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
     function insertLinePrefix(prefix: string) {
       const lines = selectedLines.split("\n");
       const replacement = lines.map((line) => `${prefix}${line.replace(/^(\s*>|- )/, "")}`).join("\n");
-      replaceSelection(blockStart + replacement + blockRest.slice(selectedLines.length), lineStart, lineStart + replacement.length);
+      replaceSelection(markdown.slice(0, lineStart) + replacement + markdown.slice(lineEnd), lineStart, lineStart + replacement.length);
     }
   }
 
@@ -469,7 +472,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
     const textarea = textareaRef.current;
     if (!textarea) return;
     const start = textarea.selectionStart;
-    const lineStart = markdown.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    const lineStart = markdown.slice(0, start).lastIndexOf("\n") + 1;
     const lineEnd = markdown.indexOf("\n", start);
     const end = lineEnd === -1 ? markdown.length : lineEnd;
     const line = markdown.slice(lineStart, end).replace(/^#{1,6}\s+/, "");
@@ -570,13 +573,14 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
   }
 
   async function uploadFiles(files: File[]) {
-    if (!draftLoaded || files.length === 0 || uploadingRef.current) return;
+    if (!draftLoaded || files.length === 0 || fileTransfer.current) return;
     if (!token) {
       setEditorMessage(t("tools.playground.loginBeforeUpload"));
       return;
     }
     const placeholders = insertUploadPlaceholders(files);
-    uploadingRef.current = true;
+    const controller = new AbortController();
+    fileTransfer.current = controller;
     setUploading(true);
     onBusyChangeRef.current?.(true);
     setEditorMessage(t("tools.playground.uploadingFiles", { count: files.length }));
@@ -586,7 +590,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
         if (!sessionActive.current) return;
         const marker = placeholders[index];
         try {
-          const record = await uploadUserFileToOSS(file, token, uploadSource);
+          const record = await uploadUserFileToOSS(file, token, uploadSource, undefined, controller.signal);
           if (!sessionActive.current) return;
           if (isBlueprintFile(file)) {
             const publicId = record.blueprintId || record.blueprint?.id;
@@ -603,7 +607,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
         }
       }
     } finally {
-      uploadingRef.current = false;
+      fileTransfer.current = null;
       if (sessionActive.current) {
         setUploading(false);
         onBusyChangeRef.current?.(false);
@@ -614,10 +618,8 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
   }
 
   function insertUploadPlaceholders(files: File[]) {
-    const markers = files.map((file, index) => {
-      const suffix = files.length > 1 ? ` #${index + 1}` : "";
-      return `<!-- Uploading "${safeUploadCommentName(file.name)}"${suffix}... -->`;
-    });
+    const batch = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+    const markers = files.map((file, index) => `<!-- Uploading "${safeUploadCommentName(file.name)}" (${batch}/${index + 1})... -->`);
     insertMarkdownSnippet(`\n${markers.join("\n\n")}\n`);
     return markers;
   }
@@ -631,7 +633,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
   }
 
   function replaceMarkdownSnippet(marker: string, replacement: string) {
-    commitMarkdown((current) => current.replace(marker, replacement));
+    commitMarkdown((current) => current.replace(marker, () => replacement));
   }
   function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
     const files = Array.from(event.clipboardData.files);
@@ -1107,12 +1109,6 @@ function DrawioModal({
 
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function currentLine(value: string, index: number) {
-  const start = value.lastIndexOf("\n", Math.max(0, index - 1)) + 1;
-  const end = value.indexOf("\n", index);
-  return value.slice(start, end === -1 ? value.length : end);
 }
 
 function drawioEditorUrl(locale: Locale) {

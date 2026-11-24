@@ -163,14 +163,14 @@ test("OCT02 an embedded upload cannot replace another content-language draft or 
     const file = { name: "repeated.nbt", mimeType: "application/octet-stream", buffer: Buffer.from("NBT!") };
     await page.locator('input[accept=".nbt,.schem,.schematic,.litematic"]').setInputFiles(file);
     await firstStarted.promise;
+    const aborted = page.waitForEvent("requestfailed", request => new URL(request.url()).pathname === "/api/v1/users/me/oss/uploads/presign");
     await page.getByLabel("Editing language", { exact: false }).selectOption("zh-CN");
+    first.resolve(reply("bluep0001"));
+    assert.match((await aborted).failure()?.errorText || "", /ABORTED/);
     const editor = page.locator('textarea[spellcheck="false"]');
     await editor.waitFor();
     assert.match(await editor.inputValue(), /Chinese draft/);
     await page.locator('input[accept=".nbt,.schem,.schematic,.litematic"]').setInputFiles(file);
-    const firstReturned = page.waitForResponse(async response => new URL(response.url()).pathname === "/api/v1/users/me/oss/uploads/presign" && (await response.json()).data?.file?.id === "bluep0001");
-    first.resolve(reply("bluep0001"));
-    await (await firstReturned).finished();
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     assert.equal((await editor.inputValue()).includes("bluep0001"), false);
     await secondStarted.promise;
@@ -178,7 +178,7 @@ test("OCT02 an embedded upload cannot replace another content-language draft or 
     second.resolve(reply("bluep0002"));
     await page.waitForFunction(() => [...document.querySelectorAll("textarea")].some(textarea => textarea.value.includes("[Bluemap:bluep0002]")));
     assert.equal((await editor.inputValue()).includes("bluep0001"), false);
-    assert.match(await editor.inputValue(), /Chinese draft/);
+    assert.ok((await editor.inputValue()).includes(`Chinese draft with the same prior marker ${marker}`));
   } finally { first.resolve(reply("bluep0001")); second.resolve(reply("bluep0002")); await browser.close(); }
 });
 

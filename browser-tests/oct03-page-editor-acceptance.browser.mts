@@ -56,6 +56,31 @@ test("BUG151 playground read failure disables writes and CAS conflict requires a
   } finally { await browser.close(); }
 });
 
+test("Markdown line formatting keeps text outside partial selections and handles a leading blank line", { timeout: 30_000 }, async () => {
+  const browser = await controlled(({ path }) => {
+    if (path === "/api/v1/auth/me") return { status: 401, error: "Guest editor" };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/tools/playground");
+    const editor = page.locator('textarea[spellcheck="false"]');
+    const select = async (value: string, start: number, end: number) => {
+      await editor.fill(value);
+      await editor.evaluate((input: HTMLTextAreaElement, [first, last]) => input.setSelectionRange(first, last), [start, end]);
+    };
+    const body = "alpha beta gamma\ndelta epsilon\ntrailing";
+    await select(body, 6, 10);
+    await page.getByRole("button", { name: "Bulleted list", exact: true }).click();
+    assert.equal(await editor.inputValue(), "- alpha beta gamma\ndelta epsilon\ntrailing");
+    await select(body, 6, body.indexOf("trailing"));
+    await page.getByRole("button", { name: "Numbered list", exact: true }).click();
+    assert.equal(await editor.inputValue(), "1. alpha beta gamma\n2. delta epsilon\ntrailing");
+    await select("\nsecond line", 0, 0);
+    await page.getByRole("combobox", { name: "Heading", exact: true }).selectOption("2");
+    assert.match(await editor.inputValue(), /^## [^\n]+\nsecond line$/);
+  } finally { await browser.close(); }
+});
+
 test("a draft sends only the selected diagram to the preview provider after a user action", { timeout: 30_000 }, async () => {
   const first = '<mxfile><diagram name="First"></diagram></mxfile>';
   const second = '<mxfile><diagram name="Revised"></diagram></mxfile>';
