@@ -25,15 +25,14 @@ test("blackroom API and public page use opaque cursor navigation", () => {
   assert.match(api, /type BlackroomPage/);
   assert.match(api, /hasMore: boolean/);
   assert.match(api, /nextCursor: string/);
-  assert.match(api, /loadBlackroom\(cursor = ""\)/);
+  assert.match(api, /loadBlackroom\(cursor = "", signal\?: AbortSignal\)/);
   assert.match(api, /cursor=\$\{encodeURIComponent\(cursor\)\}/);
 
   const list = publicPages.slice(
     publicPages.indexOf("export function BlackroomListPage"),
     publicPages.indexOf("export function BlackroomDetailPage"),
   );
-  assert.match(list, /cursorHistory/);
-  assert.match(list, /nextCursor/);
+  assert.match(list, /useHistoryPage\(true, loadBlackroom,/);
   assert.doesNotMatch(list, /offset|setOffset/);
 });
 

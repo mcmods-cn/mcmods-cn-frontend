@@ -55,11 +55,11 @@ export function loadAboutPage(locale: string) {
   return apiRequest<SiteAffairsPage>(`/api/v1/site-affairs/about?locale=${encodeURIComponent(locale)}`, { cache: "no-store" });
 }
 
-export function loadSiteChangelogs(locale: string, cursor = "") {
+export function loadSiteChangelogs(locale: string, cursor = "", signal?: AbortSignal) {
   const pageCursor = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
   return apiRequest<SiteChangelogPage>(
     `/api/v1/site-affairs/changelogs?locale=${encodeURIComponent(locale)}&limit=30${pageCursor}`,
-    { cache: "no-store" },
+    { cache: "no-store", signal },
   );
 }
 
@@ -67,11 +67,11 @@ export function loadSiteChangelog(id: string, locale: string) {
   return apiRequest<SiteChangelog>(`/api/v1/site-affairs/changelogs/${encodeURIComponent(id)}?locale=${encodeURIComponent(locale)}`, { cache: "no-store" });
 }
 
-export function loadBlackroom(cursor = "") {
+export function loadBlackroom(cursor = "", signal?: AbortSignal) {
   const pageCursor = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
   return apiRequest<BlackroomWirePage>(
     `/api/v1/site-affairs/blackroom?limit=30${pageCursor}`,
-    { cache: "no-store" },
+    { cache: "no-store", signal },
   ).then((page) => ({ ...page, items: page.items.map(normalizeBlackroomRecord) }));
 }
 

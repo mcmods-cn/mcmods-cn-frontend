@@ -15,10 +15,9 @@ test("site changelog APIs expose bounded opaque cursor pages", () => {
 });
 
 test("public and admin changelog panels navigate server cursors without fixed windows", () => {
-  for (const source of [publicPage, adminPage]) {
-    assert.match(source, /cursorHistory/);
-    assert.match(source, /nextCursor/);
-  }
+  assert.match(adminPage, /cursorHistory/);
+  assert.match(adminPage, /nextCursor/);
+  assert.match(publicPage, /loadSiteChangelogs\(locale, cursor, signal\)/);
 	const changelogList = publicPage.slice(
 		publicPage.indexOf("export function SiteChangelogListPage"),
 		publicPage.indexOf("export function SiteChangelogDetailPage"),

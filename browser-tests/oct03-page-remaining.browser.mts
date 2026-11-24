@@ -25,6 +25,49 @@ const baseWorkspace: APIHandler = ({path}) => {
 const job = (status:string) => ({ id: "private-job", modSiteId:"fixture-mod", packageId:"package-one",targetVersionPublicId:"version01",overwriteExistingImportData:false,status,progress:status==="ready"?100:10,currentStage:status,errorCode:"",errorDetail:{},deduplicated:false,reviewRequired:false,configuredModids:[],detectedModids:[],primaryDetectedModid:"",modidConfirmationRequired:false,createdAt:stamp,updatedAt:stamp });
 // Native browser storage, native PNG/canvas, and shipped React components.
 // API jobs, upload tickets, conflicts and permissions are controlled fixtures.
+for (const section of ["changelogs", "blackroom"] as const) {
+  test(`public ${section} retries the exact failed cursor and retains the displayed page`, async () => {
+    const reads: string[] = [];
+    const browser = await controlled(({ path, url }) => {
+      if (path !== `/api/v1/site-affairs/${section}`) return;
+      const cursor = url.searchParams.get("cursor") || "";
+      const locale = url.searchParams.get("locale") || "";
+      reads.push(cursor);
+      if (reads.length === 2) return { status: 503, error: "Next public page unavailable" };
+      const title = `${cursor ? "Second" : "First"} public result ${locale}`.trim();
+      const item = section === "changelogs"
+        ? { id: "entry", changeDate: stamp, locale, title, bodyMarkdown: "Published" }
+        : { id: "record", userId: "user", username: title, customReason: "Published record", reasonCode: "", status: "released", startsAt: stamp };
+      return { data: { items: [item], limit: 30, hasMore: !cursor, nextCursor: cursor ? "" : "opaque /+cursor" } };
+    });
+    try {
+      const { page } = browser;
+      await page.goto(`${fixture.origin}/site-affairs/${section}`);
+      const first = page.getByRole("heading", { name: /^First public result/ });
+      const next = page.getByRole("button", { name: "Next", exact: true });
+      const previous = page.getByRole("button", { name: "Previous", exact: true });
+      await first.waitFor();
+      await next.click();
+      await page.getByText("Next public page unavailable", { exact: true }).waitFor();
+      assert.equal(await first.isVisible(), true);
+      assert.equal(await previous.isDisabled(), true);
+      await page.getByRole("button", { name: "Retry", exact: true }).click();
+      await page.getByRole("heading", { name: /^Second public result/ }).waitFor();
+      assert.equal(await next.isDisabled(), true);
+      await previous.click();
+      await first.waitFor();
+      assert.deepEqual(reads, ["", "opaque /+cursor", "opaque /+cursor", ""]);
+      if (section === "changelogs") {
+        await next.click();
+        await page.getByRole("heading", { name: "Second public result en-US" }).waitFor();
+        await page.getByRole("combobox", { name: "Language", exact: true }).selectOption("zh-CN");
+        await page.getByRole("heading", { name: "First public result zh-CN" }).waitFor();
+        assert.equal(reads.at(-1), "");
+      }
+    } finally { await browser.close(); }
+  });
+}
+
 test("FP005 BUG062 empty-project fallback exposes only each loader's verified versions and localized picker actions", {timeout:30_000}, async()=>{
   const writes:Array<Record<string,unknown>>=[];
   const browser=await controlled(request=>{
