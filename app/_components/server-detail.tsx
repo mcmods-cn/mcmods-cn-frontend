@@ -202,9 +202,7 @@ function InfoPanel({ record }: { record: ServerDetailRecord }) {
 
 function PlayerHistoryChart({ history, locale }: { history: ServerHistory | null; locale: string }) {
   const { t } = useI18n();
-  const points = useMemo(() => downsampleHistory(history?.points ?? [], 900), [history?.points]);
-  const validPoints = points.filter((point) => point.online && typeof point.playersOnline === "number");
-  const maxPlayers = Math.max(1, ...validPoints.map((point) => Math.max(point.playersOnline ?? 0, point.playersMax ?? 0)));
+  const { points, segments, maxPlayers } = useMemo(() => chartSeries(history?.points ?? [], 900), [history?.points]);
   const chartMax = niceMaximum(maxPlayers);
   const [selected, setSelected] = useState(-1);
   const activeIndex = points.length ? Math.min(selected < 0 ? points.length - 1 : selected, points.length - 1) : -1;
@@ -219,12 +217,11 @@ function PlayerHistoryChart({ history, locale }: { history: ServerHistory | null
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const timestamps = points.map((point) => new Date(point.checkedAt).getTime());
-  const firstTime = Math.min(...timestamps);
-  const lastTime = Math.max(...timestamps);
+  const firstTime = timestamps[0];
+  const lastTime = timestamps[timestamps.length - 1];
   const timeSpan = Math.max(1, lastTime - firstTime);
   const x = (point: ServerHistoryPoint) => margin.left + ((new Date(point.checkedAt).getTime() - firstTime) / timeSpan) * plotWidth;
   const y = (value: number) => margin.top + plotHeight - (value / chartMax) * plotHeight;
-  const segments = historySegments(points);
   const yTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => Math.round(chartMax * ratio));
   const xTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => firstTime + timeSpan * ratio);
 
@@ -258,20 +255,21 @@ function PlayerHistoryChart({ history, locale }: { history: ServerHistory | null
           {yTicks.map((tick) => <g key={tick}><line stroke="var(--line)" strokeWidth="1" x1={margin.left} x2={width - margin.right} y1={y(tick)} y2={y(tick)} /><text fill="var(--muted)" fontSize="12" textAnchor="end" x={margin.left - 9} y={y(tick) + 4}>{tick}</text></g>)}
           {xTicks.map((tick, index) => <text key={tick} fill="var(--muted)" fontSize="11" textAnchor={index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "middle"} x={margin.left + (plotWidth * index) / (xTicks.length - 1)} y={height - 12}>{formatChartTime(tick, locale, history.range)}</text>)}
           {segments.map((segment, index) => {
-            const path = segment.map((point, pointIndex) => `${pointIndex ? "L" : "M"}${x(point).toFixed(2)},${y(point.playersOnline ?? 0).toFixed(2)}`).join(" ");
+            if (segment.length === 1) return <circle key={index} cx={x(segment[0])} cy={y(segment[0].playersOnline)} r="2" fill="var(--accent)" />;
+              const path = segment.map((point, pointIndex) => `${pointIndex ? "L" : "M"}${x(point).toFixed(2)},${y(point.playersOnline).toFixed(2)}`).join(" ");
             return <path key={index} d={path} fill="none" stroke="var(--accent)" strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" />;
           })}
           {active ? (
             <>
               <line stroke="var(--accent)" strokeDasharray="4 4" x1={x(active)} x2={x(active)} y1={margin.top} y2={margin.top + plotHeight} />
-              {active.online && typeof active.playersOnline === "number" ? <circle cx={x(active)} cy={y(active.playersOnline)} fill="var(--panel)" r="5" stroke="var(--accent)" strokeWidth="3" /> : <circle cx={x(active)} cy={margin.top + plotHeight} fill="var(--danger)" r="4" />}
+              {active.online && typeof active.playersOnline === "number" ? <circle cx={x(active)} cy={y(active.playersOnline)} fill="var(--panel)" r="5" stroke="var(--accent)" strokeWidth="3" /> : active.online ? null : <circle cx={x(active)} cy={margin.top + plotHeight} fill="var(--danger)" r="4" />}
             </>
           ) : null}
         </svg>
       </div>
       <div aria-live="polite" className="mt-3 flex flex-wrap items-center justify-between gap-3 text-sm">
         <span className="font-bold">
-          {active ? `${new Date(active.checkedAt).toLocaleString(locale)} · ${active.online && typeof active.playersOnline === "number" ? t("servers.detail.playersAtTime", { count: active.playersOnline, max: active.playersMax ?? "?" }) : t("servers.offline")}` : "—"}
+          {active ? `${new Date(active.checkedAt).toLocaleString(locale)} · ${active.online && typeof active.playersOnline === "number" ? t("servers.detail.playersAtTime", { count: active.playersOnline, max: active.playersMax ?? "?" }) : active.online ? `${t("servers.online")} · ${t("servers.players")} —` : t("servers.offline")}` : "—"}
         </span>
         <span className="text-xs text-[var(--muted)]">{t("servers.detail.updatedAt", { time: new Date(history.generatedAt).toLocaleString(locale) })}</span>
       </div>
@@ -279,32 +277,34 @@ function PlayerHistoryChart({ history, locale }: { history: ServerHistory | null
   );
 }
 
-function historySegments(points: ServerHistoryPoint[]) {
-  const segments: ServerHistoryPoint[][] = [];
-  let current: ServerHistoryPoint[] = [];
-  for (const point of points) {
-    const previous = current[current.length - 1];
-    const gap = previous ? new Date(point.checkedAt).getTime() - new Date(previous.checkedAt).getTime() > 15 * 60 * 1000 : false;
-    if (!point.online || typeof point.playersOnline !== "number" || gap) {
-      if (current.length) segments.push(current);
-      current = [];
-      if (!point.online) continue;
-    }
-    current.push(point);
-  }
-  if (current.length) segments.push(current);
-  return segments;
-}
+// Detect missing data on adjacent source samples. Decimation changes distances between displayed points.
+function chartSeries(samples: ServerHistoryPoint[], target: number) {
+  const points: ServerHistoryPoint[] = [];
+  type MeasuredPoint = ServerHistoryPoint & { playersOnline: number };
+  const segments: MeasuredPoint[][] = [];
+  let segment: MeasuredPoint[] = [];
+  let maxPlayers = 1;
+  const stride = Math.max(1, Math.ceil(samples.length / target));
+  const measured = (sample: ServerHistoryPoint): sample is MeasuredPoint => sample.online && typeof sample.playersOnline === "number";
+  const differentRun = (a: ServerHistoryPoint, b: ServerHistoryPoint) =>
+    a.online !== b.online || measured(a) !== measured(b) || Date.parse(b.checkedAt) - Date.parse(a.checkedAt) > 15 * 60_000;
 
-function downsampleHistory(points: ServerHistoryPoint[], target: number) {
-  if (points.length <= target) return points;
-  const stride = Math.ceil(points.length / target);
-  const result: ServerHistoryPoint[] = [];
-  for (let index = 0; index < points.length; index += 1) {
-    const transition = index > 0 && points[index].online !== points[index - 1].online;
-    if (index === 0 || index === points.length - 1 || index % stride === 0 || transition) result.push(points[index]);
+  for (let i = 0; i < samples.length; i++) {
+    const point = samples[i];
+    const endsRun = i + 1 === samples.length || differentRun(point, samples[i + 1]);
+    const startsRun = i === 0 || differentRun(samples[i - 1], point);
+    const show = startsRun || endsRun || i % stride === 0;
+    if (show) points.push(point);
+    if (measured(point)) {
+      maxPlayers = Math.max(maxPlayers, point.playersOnline, point.playersMax ?? 0);
+      if (show) segment.push(point);
+    }
+    if (endsRun && segment.length) {
+      segments.push(segment);
+      segment = [];
+    }
   }
-  return result;
+  return { points, segments, maxPlayers };
 }
 
 function niceMaximum(value: number) {

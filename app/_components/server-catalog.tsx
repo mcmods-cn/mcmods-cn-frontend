@@ -35,7 +35,7 @@ const serverSortFields: CatalogSortField[] = ["published", "updated", "heat", "v
 
 export function ServerCatalog() {
   const { t } = useI18n();
-  const { token, user, ready } = useAuthSnapshot();
+  const { generation, token, user, ready } = useAuthSnapshot();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -44,6 +44,7 @@ export function ServerCatalog() {
   const [result, setResult] = useState<ServerCatalogResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState("");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const requestGeneration = useRef(0);
@@ -54,8 +55,10 @@ export function ServerCatalog() {
   const sort = serverSortFields.includes(normalizedSort) ? normalizedSort : "heat";
   const sortDirection = normalizeCatalogSortDirection(searchParams.get("order"), "desc", normalizedSort);
 
-  const scope = JSON.stringify([paramsKey, pageSize, sort, sortDirection, token]);
+  const scope = JSON.stringify([paramsKey, pageSize, sort, sortDirection, generation, user?.id, token]);
   const [loadedScope, setLoadedScope] = useState("");
+  const activeResult = ready && loadedScope === scope ? result : null;
+  const moreRequest = useRef<AbortController | null>(null);
 
   const canCreate = ready && hasPermission(user, "server.create");
   const activeFilterCount = useMemo(
@@ -64,6 +67,7 @@ export function ServerCatalog() {
   );
 
   useEffect(() => {
+    if (!ready) return;
     const generation = ++requestGeneration.current;
     let cancelled = false;
     const controller = new AbortController();
@@ -96,8 +100,10 @@ export function ServerCatalog() {
     return () => {
       cancelled = true;
       controller.abort();
+      moreRequest.current?.abort();
+      moreRequest.current = null;
     };
-  }, [pageSize, paramsKey, scope, sort, sortDirection, t, token]);
+  }, [attempt, pageSize, paramsKey, ready, scope, sort, sortDirection, t, token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -121,8 +127,10 @@ export function ServerCatalog() {
   }
 
   async function loadMore() {
-    const cursor = result?.nextCursor ?? "";
-    if (!cursor || loadedScope !== scope || loading || loadingMore) return;
+    const cursor = activeResult?.nextCursor ?? "";
+    if (!cursor || loading || moreRequest.current) return;
+    const controller = new AbortController();
+    moreRequest.current = controller;
     const generation = requestGeneration.current;
     setLoadingMore(true);
     setError("");
@@ -132,18 +140,19 @@ export function ServerCatalog() {
         new URLSearchParams(paramsKey),
         { sort, order: sortDirection, limit: pageSize },
         cursor,
+        controller.signal,
       );
-      if (requestGeneration.current !== generation) return;
+      if (controller.signal.aborted || requestGeneration.current !== generation) return;
       setResult((current) => current ? {
         ...response,
         items: mergeServerCursorItems(current.items, response.items),
       } : response);
     } catch (reason) {
-      if (requestGeneration.current === generation) {
+      if (!controller.signal.aborted && requestGeneration.current === generation) {
         setError(reason instanceof Error ? reason.message : t("servers.loadFailed"));
       }
     } finally {
-      if (requestGeneration.current === generation) setLoadingMore(false);
+      if (moreRequest.current === controller) { moreRequest.current = null; setLoadingMore(false); }
     }
   }
 
@@ -168,7 +177,7 @@ export function ServerCatalog() {
 
   const filters = (onClose?: () => void) => (
     <ServerFilters
-      resultCount={result?.items.length ?? 0}
+      resultCount={activeResult?.items.length ?? 0}
       onClear={clearFilters}
       onClose={onClose}
       onChange={replaceParams}
@@ -203,7 +212,7 @@ export function ServerCatalog() {
             {t("servers.filters.button", { count: activeFilterCount })}
           </button>
           <span className="text-sm font-semibold text-[var(--muted)]">
-            {loading ? t("common.loading") : t("servers.loadedResults", { count: result?.items.length ?? 0 })}
+            {loading ? t("common.loading") : t("servers.loadedResults", { count: activeResult?.items.length ?? 0 })}
           </span>
         </div>
 
@@ -214,8 +223,8 @@ export function ServerCatalog() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-xl font-black">
                   {searchParams.get("q")
-                    ? t("servers.queryLoadedResults", { query: searchParams.get("q") ?? "", count: result?.items.length ?? 0 })
-                    : t("servers.loadedResults", { count: result?.items.length ?? 0 })}
+                    ? t("servers.queryLoadedResults", { query: searchParams.get("q") ?? "", count: activeResult?.items.length ?? 0 })
+                    : t("servers.loadedResults", { count: activeResult?.items.length ?? 0 })}
                 </h2>
                 <div className="flex flex-wrap items-center gap-2">
                   <CatalogSortControl direction={sortDirection} field={sort} fields={serverSortFields} onDirectionChange={(order) => replaceParams({ order })} onFieldChange={(nextSort) => replaceParams({ sort: nextSort })} />
@@ -233,14 +242,16 @@ export function ServerCatalog() {
               </p>
             </div>
 
-            {error ? <div className="mt-4 rounded-lg border border-[var(--danger)] bg-[var(--danger-soft)] p-5 font-bold text-[var(--danger)]">{error}</div> : null}
+            {error ? <div className="surface mt-4 grid gap-2 p-4" role="alert">
+              <p>{error}</p>{!activeResult && <button className="button-secondary focus-ring w-fit" type="button" disabled={loading} onClick={() => setAttempt(value => value + 1)}>{t("common.retry")}</button>}
+            </div> : null}
             {loading ? <div className="mt-4"><ServerListSkeleton /></div> : null}
-            {!loading && result?.items.length ? (
+            {!loading && activeResult?.items.length ? (
               <div className="mt-4 grid gap-4">
-                {result.items.map((server) => <ServerCard key={server.id} server={server} />)}
+                {activeResult.items.map((server) => <ServerCard key={server.id} server={server} />)}
               </div>
             ) : null}
-            {!loading && !error && result?.items.length === 0 ? (
+            {!loading && !error && activeResult?.items.length === 0 ? (
               <CatalogEmptyState
                 clearLabel={t("servers.clearFilters")}
                 description={t("servers.emptyHint")}
@@ -248,7 +259,7 @@ export function ServerCatalog() {
                 onClear={clearFilters}
               />
             ) : null}
-            {result?.nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadedScope !== scope || loading || loadingMore} type="button" onClick={() => void loadMore()}>
+            {activeResult?.nextCursor ? <button className="button-secondary focus-ring mt-5 w-full" disabled={loadedScope !== scope || loading || loadingMore} type="button" onClick={() => void loadMore()}>
               {loadingMore ? t("common.loading") : t("servers.loadMore")}
             </button> : null}
           </section>

@@ -187,3 +187,45 @@ test("server editing requires a settings snapshot and retries unavailable limits
     assert.deepEqual({ reads, writes }, { reads: 2, writes: 0 });
   } finally { await browser.close(); }
 });
+
+test("long server history keeps continuously observed players on one line and separates gaps from missing counts", { timeout: 30_000 }, async () => {
+  const first = Date.UTC(2026, 9, 1);
+  const points = Array.from({ length: 1805 }, (_, index) => ({
+    checkedAt: new Date(first + (index * 8 + (index >= 1400 ? 30 : 0)) * 60_000).toISOString(),
+    online: true, latencyMs: 10, playersOnline: index === 901 || index === 1804 ? null : 2, playersMax: 20,
+  }));
+  const browser = await fixture.page(request => {
+    if (request.path === serverPath) return { data: record() };
+    if (request.path === `${serverPath}/history`) return { data: { range: "30d", generatedAt: points.at(-1)!.checkedAt, points } };
+    return relatedEndpoints(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/servers/${serverID}?range=30d`);
+    const chart = page.locator('svg[role="img"][tabindex="0"]');
+    await chart.waitFor();
+    assert.equal(await chart.locator("path").count(), 3);
+    for (const path of await chart.locator("path").all()) assert.match(await path.getAttribute("d") ?? "", /L/);
+    const readout = page.locator('[aria-live="polite"]').filter({ hasText: /Online · Players —/ });
+    await readout.waitFor();
+    await chart.focus(); await page.keyboard.press("ArrowLeft");
+    assert.equal(await readout.count(), 0);
+  } finally { await browser.close(); }
+});
+
+test("server directory retries its initial read with the current filters", { timeout: 30_000 }, async () => {
+  const queries: string[] = [];
+  const browser = await fixture.page(request => {
+    if (request.path !== "/api/v1/servers") return relatedEndpoints(request);
+    queries.push(request.url.searchParams.get("q") || "");
+    if (queries.length === 1) return { status: 503, error: "Directory briefly unavailable" };
+    return { data: { items: [record()], nextCursor: "" } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/servers?q=lantern`);
+    await page.getByRole("alert").filter({ hasText: "Directory briefly unavailable" }).getByRole("button", { name: "Retry" }).click();
+    await page.getByRole("heading", { name: serverName, exact: true }).waitFor();
+    assert.deepEqual(queries, ["lantern", "lantern"]);
+  } finally { await browser.close(); }
+});
