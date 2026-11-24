@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
+import { fileURLToPath } from "node:url";
 import type { Page } from "playwright";
 import { ProductionBrowserFixture, type APIHandler } from "./fixture.mts";
 
@@ -63,7 +64,8 @@ async function scenario(legacy = false) {
   const context = run.page.context();
   await context.addCookies([{ name: "mcmods-ui-locale", value: "en-US", url: origin }]);
   // Use one secure browser origin for the real pages, API and HttpOnly cookie.
-  // Every document/asset comes from the isolated standalone server on loopback.
+  // Documents come from the loopback server. Serve its immutable build files
+  // directly so a reload never needs a second HTTP socket for every JS chunk.
   let closing = false;
   const forwardedDocuments = new Set<Promise<void>>();
   await context.route(url => url.origin === origin && !url.pathname.startsWith("/api/") && url.pathname !== "/ready", async route => {
@@ -72,8 +74,11 @@ async function scenario(legacy = false) {
       return;
     }
     const url = new URL(route.request().url());
-    const forwarded = route.fetch({ url: fixture.origin + url.pathname + url.search, maxRedirects: 0 })
-      .then(response => route.fulfill({ response }));
+    const staticPrefix = "/_next/static/";
+    const forwarded = url.pathname.startsWith(staticPrefix)
+      ? route.fulfill({ path: fileURLToPath(new URL("../.next/standalone/.next/static/" + url.pathname.slice(staticPrefix.length), import.meta.url)) })
+      : route.fetch({ url: fixture.origin + url.pathname + url.search, maxRedirects: 0 })
+        .then(response => route.fulfill({ response }));
     forwardedDocuments.add(forwarded);
     try {
       await forwarded;
@@ -181,9 +186,15 @@ test("a fresh legacy sign-out offers an explicit current-browser choice and a re
     await f.page.getByRole("button", { name: "Check current account" }).waitFor();
     assert.equal(f.writes.length, 0);
     f.mode.failNext = true;
-    await click(f.page, "Sign out the current browser session");
-    await f.page.getByRole("button", { name: "Check current account" }).waitFor();
-    await f.page.reload();
+    const [failed] = await Promise.all([
+      f.page.waitForResponse(response => response.url() === origin + legacyPath && response.request().method() === "POST"),
+      click(f.page, "Sign out the current browser session"),
+    ]);
+    assert.equal(failed.status(), 503);
+    const recovery = f.page.getByRole("button", { name: "Check current account", exact: true });
+    await recovery.waitFor();
+    await f.page.reload({ waitUntil: "commit" });
+    await recovery.waitFor();
     assert.equal(await f.page.getByRole("button", { name: "Sign out the current browser session" }).count(), 0);
     const b = await f.page.context().newPage();
     await login(b, "B");
