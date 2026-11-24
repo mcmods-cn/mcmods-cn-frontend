@@ -74,9 +74,11 @@ npm audit --audit-level=high
 MCMODS_TEST_VANILLA_GEOMETRY_ZIP=/path/to/minecraft.zip npm run test:browser
 ```
 
-### 当前验收记录
+### 版本与验收记录
 
-2026-11-23 的结果对应前端 `a71d99fb30227b5931468e078989b70ace882589`。文档发布沿用此源码与产物的验收记录。`.test` 浏览器产物从 `e3015bb` 构建，之后两条提交仅调整实时消息与退出测试夹具，应用源码与锁文件逐文件一致。标准镜像在 `a71d99f` 单独构建。[GitHub Actions 检查](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/workflows/ci.yml)
+发布前请按目标提交核对 GitHub Actions 中的构建、单元测试和 Chromium 结果。跨仓验收记录另行标注实际使用的前端产物、原始游戏包和外部服务。[前端 CI](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/workflows/ci.yml) · [三仓验收台账](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/docs/governance.md#当前版本与验收)
+
+下表记录 2026-11-23 对前端 `a71d99fb30227b5931468e078989b70ace882589` 的验收。`.test` 浏览器产物从 `e3015bb` 构建，之后两条提交仅调整实时消息与退出测试夹具，应用源码与锁文件逐文件一致。标准镜像在 `a71d99f` 单独构建。
 
 | 检查 | 结果与运行范围 |
 | --- | --- |
@@ -99,7 +101,7 @@ cp -r .next/static .next/standalone/.next/
 HOSTNAME=127.0.0.1 PORT=3000 node .next/standalone/server.js
 ```
 
-生产发布与回滚均按**完整镜像与对应构建配置**切换。先按后端说明安装及核验 PostgreSQL generation 171，再启动 API 与 Worker。确认 API 支持后台面板独立读取、OAuth 按字段 PATCH、AI 配置修订号和显式密钥清除、条件退出和当前导入状态。设置目标域名和代理路径后重新构建前端，检查 `/authentication-write-config` 指向目标 API。回滚时同时核对对应后端与数据库配置。旧 API 的条件退出路由返回 404/405 时，页面允许检查当前账号。OAuth 设置保留未保存的草稿，支持 PATCH 的实例恢复后可重试。[后端安装与恢复](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/README.md#数据库安装发布和恢复)
+生产发布与回滚均按**完整镜像与对应构建配置**切换。先用对应后端版本的 `cmd/db-initialize` 安装或核验 PostgreSQL 结构，再启动 API 与 Worker。确认 API 支持后台面板独立读取、OAuth 按字段 PATCH、AI 配置修订号和显式密钥清除、条件退出和当前导入状态。设置目标域名和代理路径后重新构建前端，检查 `/authentication-write-config` 指向目标 API。回滚时同时核对对应后端与数据库配置。旧 API 的条件退出路由返回 404/405 时，页面允许检查当前账号。OAuth 设置保留未保存的草稿，支持 PATCH 的实例恢复后可重试。[后端安装与恢复](https://github.com/mcmods-cn/mcmods-cn-backend/blob/main/README.md#数据库安装发布和恢复)
 
 登录不保持时核对后端允许的前端 origin 与 Cookie 设置。浏览器上传失败时核对签名地址的 CSP origin。缺少样式或出现静态资源 404 时检查 `public`、`.next/static` 是否和同一次构建的 `server.js` 一同部署。GitHub 镜像发布工作流由 `v*` 标签或手动触发，使用仓库配置的公开变量构建，并同时标记版本和源码 SHA。[容器发布工作流](.github/workflows/release-container.yml)
 
