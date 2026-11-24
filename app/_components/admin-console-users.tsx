@@ -4,6 +4,7 @@ import { aiTranslationTaskTypes, runAITranslationTask } from "../_lib/admin-ai-t
 import { FormEvent, useEffect, useEffectEvent, useRef, useState } from "react";
 import { CatalogPagination } from "./catalog-list-ui";
 import { apiRequest } from "../_lib/api";
+import { apiErrorMessage } from "../_lib/api-error.mts";
 import { hasSameI18nPlaceholders } from "../_lib/i18n-message.mts";
 import { Locale, supportedLocales, useI18n } from "../_lib/i18n-provider";
 import { AdminUserBalance, AdminUserDetails, EmptyState, InlineMessage, PanelShell, PermissionCatalog, User, cleanError, formatDateTime, notifyAdminNotice } from "./admin-console-shared";
@@ -458,7 +459,7 @@ function AdminUserBalanceEditor({ token, userID, canWrite }: { token: string; us
       </div>
       {loading ? <p className="mt-4 text-sm text-[var(--muted)]">{t("common.loading")}</p> : readError ? (
         <div role="alert" className="mt-4 flex items-center gap-3">
-          <span>{cleanError(readError)}</span>
+          <span>{apiErrorMessage(readError, t, t("admin.userBalancesLoadFailed"))}</span>
           <button className="button-secondary focus-ring" type="button" onClick={() => { setLoading(true); setAttempt(value => value + 1); }}>{t("common.retry")}</button>
         </div>
       ) : balances.length === 0 ? <p className="mt-4 text-sm text-[var(--muted)]">{t("admin.noActiveCurrencies")}</p> : (
