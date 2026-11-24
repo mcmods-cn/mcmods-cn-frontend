@@ -93,7 +93,7 @@ for (const collection of ["mods", "modpacks"]) {
     const samples = [
       { name: "Measured project", stats: { downloads: 73, views: 10, favorites: 0, comments: 2, rating: 4.5, ratingCount: 2 } },
       { name: "Unrated project", stats: { downloads: 0, views: 0, favorites: 0, comments: 0, rating: null, ratingCount: 0 } },
-      { name: "Unmeasured project" },
+      { name: "Project without a projection" },
     ];
     const reads: string[] = [];
     const browser = await fixture.page(request => {
