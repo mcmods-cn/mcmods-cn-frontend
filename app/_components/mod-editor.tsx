@@ -122,6 +122,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
     localizedNameInput.current?.scrollIntoView({ block: "center", behavior: "instant" });
   }, [defaultNameValidationAttempt]);
   const formTokenRequest = useRef<AbortController | undefined>(undefined);
+  const pendingFormToken = useRef<Promise<void> | undefined>(undefined);
   const refreshSubmissionFormToken = useCallback(async () => {
     formTokenRequest.current?.abort();
     if (!token) return;
@@ -129,7 +130,8 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
     formTokenRequest.current = controller;
     const object = siteId ? `/api/v1/mods/${encodeURIComponent(siteId)}/revisions` : "/api/v1/mods";
     try {
-      const next = await loadAntiAbuseFormToken("review.submit", object, token, controller.signal);
+      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]);
+      const next = await loadAntiAbuseFormToken("review.submit", object, token, signal);
       if (controller.signal.aborted) return;
       formTokenValue.current = next;
       setAntiAbuseFormToken(next);
@@ -143,7 +145,7 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
     }
   }, [siteId, token]);
   useEffect(() => {
-    const scheduled = window.setTimeout(() => { void refreshSubmissionFormToken(); }, 0);
+    const scheduled = window.setTimeout(() => { pendingFormToken.current = refreshSubmissionFormToken(); }, 0);
     return () => { window.clearTimeout(scheduled); formTokenRequest.current?.abort(); formTokenValue.current = undefined; };
   }, [refreshSubmissionFormToken]);
 
@@ -300,15 +302,18 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
     if (!request) return;
     setSubmitting(true);
     setMessage("");
-    const metadata = formTokenValue.current;
-    const currentFormToken = metadata && Date.parse(metadata.expiresAt) > Date.now() ? metadata.token : "";
-    const headers = {
-      "Idempotency-Key": idempotencyKey,
-      ...(currentFormToken ? { "X-Anti-Abuse-Form": currentFormToken } : {}),
-      ...(honeypot ? { "X-Anti-Abuse-Trap": honeypot } : {}),
-      ...(challengeProof ? { "X-Anti-Abuse-Challenge": challengeProof } : {}),
-    };
     try {
+      await pendingFormToken.current;
+      if (request.signal.aborted) return;
+      const metadata = formTokenValue.current;
+      formTokenValue.current = undefined;
+      const currentFormToken = metadata && Date.parse(metadata.expiresAt) > Date.now() ? metadata.token : "";
+      const headers = {
+        "Idempotency-Key": idempotencyKey,
+        ...(currentFormToken ? { "X-Anti-Abuse-Form": currentFormToken } : {}),
+        ...(honeypot ? { "X-Anti-Abuse-Trap": honeypot } : {}),
+        ...(challengeProof ? { "X-Anti-Abuse-Challenge": challengeProof } : {}),
+      };
       if (siteId) {
         const revision = await apiRequest<BackendModRevision>(
           `/api/v1/mods/${encodeURIComponent(siteId)}/revisions`,
@@ -346,10 +351,10 @@ function ModEditorForm({ siteId, importMethod, importURL }: { siteId?: string; i
       }
       setMessage(error instanceof ApiError ? error.message : t("mods.submission.createFailed"));
     } finally {
+      // Start the single-use replacement before releasing this write. The next
+      // explicit submit waits for it, while the user can still cancel the dialog.
+      if (!request.signal.aborted) pendingFormToken.current = refreshSubmissionFormToken();
       if (submission.finishWrite(request)) setSubmitting(false);
-      // Form metadata is single-use, including a challenge/rejection response.
-      // Refresh only metadata; the user decides whether to submit again.
-      if (!request.signal.aborted) void refreshSubmissionFormToken();
     }
   }
 
