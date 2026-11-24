@@ -30,3 +30,19 @@ test("the report dialog commits successes per file and renders structured failur
   assert.match(dialog, /evidenceFailures\.map/);
   assert.doesNotMatch(dialog, /const uploaded:\s*UploadedEvidence\[\]/);
 });
+
+test("leaving an evidence batch keeps completed files and starts no new upload after cancellation", async () => {
+  const controller = new AbortController();
+  const started: number[] = [];
+  const published: number[] = [];
+  const failed: number[] = [];
+  const result = await processEvidenceUploadBatch([1, 2, 3], async item => {
+    started.push(item);
+    if (item === 2) controller.abort();
+    return item;
+  }, item => published.push(item), item => failed.push(item), controller.signal);
+  assert.deepEqual(started, [1, 2]);
+  assert.deepEqual(published, [1]);
+  assert.deepEqual(failed, []);
+  assert.deepEqual(result, { successes: [1], failures: [] });
+});

@@ -56,7 +56,8 @@ export function CommentMarkdownEditor({
   const textareaRef = inputRef ?? localInputRef;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeAttachments = useRef(attachments);
-  const uploadInFlight = useRef(false);
+  const uploadInFlight = useRef<AbortController | null>(null);
+  useEffect(() => () => uploadInFlight.current?.abort(), []);
   useLayoutEffect(() => { activeAttachments.current = attachments; }, [attachments]);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [dragging, setDragging] = useState(false);
@@ -101,33 +102,37 @@ export function CommentMarkdownEditor({
     const available = Math.max(0, maxCommentAttachments - attachments.length - uploads.filter((item) => !item.error).length);
     const accepted = files.slice(0, available);
     if (accepted.length !== files.length) onError(t("mods.comments.editor.attachmentLimit", { count: maxCommentAttachments }));
-    uploadInFlight.current = true;
+    const request = new AbortController();
+    uploadInFlight.current = request;
     try {
-    for (const file of accepted) {
-      const key = `${file.name}-${file.size}-${file.lastModified}-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`;
-      setUploads((current) => [...current, { key, name: file.name, sizeBytes: file.size, progress: 0 }]);
-      try {
-        const result = await uploadUserFileToOSS(file, token, "comment", (loaded, total) => {
-          const progress = total > 0 ? Math.min(99, Math.round((loaded / total) * 100)) : 0;
-          setUploads((current) => current.map((item) => item.key === key ? { ...item, progress } : item));
-        });
-        const attachment: CommentEditorAttachment = {
-          id: result.id,
-          name: result.sourceOriginalName || result.originalName || file.name,
-          contentType: result.contentType || file.type || "application/octet-stream",
-          sizeBytes: result.sourceSizeBytes || result.sizeBytes || file.size,
-        };
-        const nextAttachments = activeAttachments.current.some((item) => item.id === attachment.id) ? activeAttachments.current : [...activeAttachments.current, attachment];
-        activeAttachments.current = nextAttachments;
-        onAttachmentsChange(nextAttachments);
-        setUploads((current) => current.filter((item) => item.key !== key));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : t("mods.comments.editor.uploadFailed");
-        setUploads((current) => current.map((item) => item.key === key ? { ...item, error: message, progress: 0 } : item));
-        onError(`${file.name}: ${message}`);
+      for (const file of accepted) {
+        if (request.signal.aborted) break;
+        const key = `${file.name}-${file.size}-${file.lastModified}-${globalThis.crypto?.randomUUID?.() ?? Date.now()}`;
+        setUploads((current) => [...current, { key, name: file.name, sizeBytes: file.size, progress: 0 }]);
+        try {
+          const result = await uploadUserFileToOSS(file, token, "comment", (loaded, total) => {
+            const progress = total > 0 ? Math.min(99, Math.round((loaded / total) * 100)) : 0;
+            setUploads((current) => current.map((item) => item.key === key ? { ...item, progress } : item));
+          }, request.signal);
+          if (request.signal.aborted) break;
+          const attachment: CommentEditorAttachment = {
+            id: result.id,
+            name: result.sourceOriginalName || result.originalName || file.name,
+            contentType: result.contentType || file.type || "application/octet-stream",
+            sizeBytes: result.sourceSizeBytes ?? result.sizeBytes ?? file.size,
+          };
+          const nextAttachments = activeAttachments.current.some((item) => item.id === attachment.id) ? activeAttachments.current : [...activeAttachments.current, attachment];
+          activeAttachments.current = nextAttachments;
+          onAttachmentsChange(nextAttachments);
+          setUploads((current) => current.filter((item) => item.key !== key));
+        } catch (error) {
+          if (request.signal.aborted) break;
+          const message = error instanceof Error ? error.message : t("mods.comments.editor.uploadFailed");
+          setUploads((current) => current.map((item) => item.key === key ? { ...item, error: message, progress: 0 } : item));
+          onError(`${file.name}: ${message}`);
+        }
       }
-    }
-    } finally { uploadInFlight.current = false; }
+    } finally { uploadInFlight.current = null; }
   }
 
   function chooseFiles(event: ChangeEvent<HTMLInputElement>) {

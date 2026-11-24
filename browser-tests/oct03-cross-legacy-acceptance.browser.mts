@@ -695,3 +695,44 @@ test("an unconfirmed comment response keeps the draft and its idempotency key fo
     assert.notEqual(keys[2], keys[0]);
   } finally { await browser.close(); }
 });
+
+for (const purpose of ["comment", "report"] as const) test(`switching accounts cancels the open ${purpose} attachment batch`, { timeout: 20_000 }, async () => {
+  let actorId = "account01";
+  const firstTicket = Promise.withResolvers<APIReply>();
+  const started = Promise.withResolvers<void>();
+  const ticketPath = purpose === "comment" ? "/api/v1/users/me/oss/uploads/presign" : "/api/v1/reports/evidence/uploads";
+  const requested: string[] = [];
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/auth/me") return { data: { id: actorId, username: actorId, roleCodes: [], permissionRules: [], permissionVersion: 1, rbacVersion: 1 } };
+    if (request.path === "/api/v1/reports/reasons") return { data: { items: [{ code: "spam", i18nKey: "reports.reasons.spam", requiresCustomText: false }] } };
+    if (request.path === ticketPath) {
+      requested.push(JSON.parse(request.body).originalName);
+      started.resolve();
+      return firstTicket.promise;
+    }
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/discussions/post00001");
+    const editor = page.getByPlaceholder("Write a comment. Markdown is supported.");
+    await editor.waitFor();
+    if (purpose === "report") await page.getByRole("button", { name: "Report", exact: true }).first().click();
+    const input = purpose === "report" ? page.getByRole("dialog").locator('input[type="file"]') : editor.locator("xpath=ancestor::form[1]").locator('input[type="file"]');
+    const cancelled = page.waitForEvent("requestfailed", { predicate: req => new URL(req.url()).pathname === ticketPath, timeout: 6000 });
+    void cancelled.catch(() => {});
+    await input.setInputFiles(["first", "second"].map(suffix => ({ name: suffix + ".txt", mimeType: "text/plain", buffer: Buffer.from("synthetic " + suffix) })));
+    await started.promise;
+    actorId = "account02";
+    const identity = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/me");
+    await page.evaluate(() => dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:attachment-change" })));
+    assert.equal((await (await identity).json()).data.id, actorId);
+    assert.equal((await cancelled).failure()?.errorText, "net::ERR_ABORTED");
+    firstTicket.resolve({ data: { uploadRequired: false, file: { id: "fixture01", originalName: "first.txt", sizeBytes: 7 } } });
+    await settle(page);
+    assert.deepEqual(requested, ["first.txt"]);
+  } finally {
+    firstTicket.resolve({ status: 503, error: "Fixture closed" });
+    await browser.close();
+  }
+});

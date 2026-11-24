@@ -53,6 +53,7 @@ export function UnifiedReportButton({
   targetAuthor,
   className = "button-secondary focus-ring",
   label,
+  onSubmitted,
 }: Omit<ReportDialogProps, "open" | "onClose"> & { className?: string; label?: string }) {
   const { t } = useI18n();
   const { token } = useAuthSnapshot();
@@ -66,6 +67,7 @@ export function UnifiedReportButton({
       targetId={targetId}
       targetSummary={targetSummary}
       targetType={targetType}
+      onSubmitted={onSubmitted}
       onClose={() => setOpen(false)}
     />
   </>;
@@ -92,7 +94,8 @@ function ReportDialogContent({ targetType, targetId, targetSummary, targetAuthor
   const dialogRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const busy = loading || uploading;
-  const mutationInFlight = useRef(false);
+  const mutationInFlight = useRef<AbortController | null>(null);
+  useEffect(() => () => mutationInFlight.current?.abort(), []);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -121,15 +124,18 @@ function ReportDialogContent({ targetType, targetId, targetSummary, targetAuthor
       setMessage(t("reports.maximumEvidence"));
       return;
     }
-    mutationInFlight.current = true;
+    const request = new AbortController();
+    mutationInFlight.current = request;
     setUploading(true);
     setMessage("");
     setEvidenceFailures([]);
     try {
       await processEvidenceUploadBatch(files, async (file) => {
-        const sha256 = await computeFileSHA256(file);
+        const sha256 = await computeFileSHA256(file, { signal: request.signal });
+        request.signal.throwIfAborted();
         const ticket = await apiRequest<OSSDirectUploadTicket>("/api/v1/reports/evidence/uploads", {
           method: "POST",
+          signal: request.signal,
           body: JSON.stringify({
             originalName: file.name,
             contentType: file.type || "application/octet-stream",
@@ -139,32 +145,35 @@ function ReportDialogContent({ targetType, targetId, targetSummary, targetAuthor
             source: "report_evidence",
           }),
         }, token);
-        if (ticket.uploadRequired !== false) await putFileToOSS(ticket, file);
+        request.signal.throwIfAborted();
+        if (ticket.uploadRequired !== false) await putFileToOSS(ticket, file, undefined, { signal: request.signal });
         const completed = ticket.uploadRequired === false && ticket.file?.id
           ? ticket.file
-          : await completeOSSUpload<{ id: string; originalName?: string; sizeBytes?: number }>("/api/v1/reports/evidence/uploads/complete", ticket, token);
+          : await completeOSSUpload<{ id: string; originalName?: string; sizeBytes?: number }>("/api/v1/reports/evidence/uploads/complete", ticket, token, request.signal);
         return { id: completed.id, originalName: completed.originalName || file.name, sizeBytes: completed.sizeBytes ?? file.size };
       }, (uploaded) => {
         setEvidence((current) => current.some((item) => item.id === uploaded.id) ? current : [...current, uploaded]);
       }, (file, error) => {
         setEvidenceFailures((current) => [...current, { message: error instanceof Error ? error.message : t("reports.uploadFailed"), originalName: file.name }]);
         setMessage(t("reports.someEvidenceFailed"));
-      });
+      }, request.signal);
     } finally {
-      mutationInFlight.current = false;
-      setUploading(false);
+      mutationInFlight.current = null;
+      if (!request.signal.aborted) setUploading(false);
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!token || busy || mutationInFlight.current || !reasonCode || selectedReason?.requiresCustomText && !customReason.trim()) return;
-    mutationInFlight.current = true;
+    const request = new AbortController();
+    mutationInFlight.current = request;
     setLoading(true);
     setMessage("");
     try {
       await apiRequest("/api/v1/reports", {
         method: "POST",
+        signal: request.signal,
         body: JSON.stringify({
           targetType,
           targetId,
@@ -174,6 +183,7 @@ function ReportDialogContent({ targetType, targetId, targetSummary, targetAuthor
           evidenceIds: evidence.map((item) => item.id),
         }),
       }, token);
+      if (request.signal.aborted) return;
       setReasonCode("");
       setCustomReason("");
       setDetail("");
@@ -182,10 +192,10 @@ function ReportDialogContent({ targetType, targetId, targetSummary, targetAuthor
       onSubmitted?.();
       onClose();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("reports.submitFailed"));
+      if (!request.signal.aborted) setMessage(error instanceof Error ? error.message : t("reports.submitFailed"));
     } finally {
-      mutationInFlight.current = false;
-      setLoading(false);
+      mutationInFlight.current = null;
+      if (!request.signal.aborted) setLoading(false);
     }
   }
 
