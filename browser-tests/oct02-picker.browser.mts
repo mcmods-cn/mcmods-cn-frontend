@@ -217,13 +217,14 @@ test("Minecraft language selection keeps keyboard focus and search within the re
     const { page } = browser;
     await page.goto(`${fixture.origin}/login`);
     await page.getByRole("button", { name: "Register", exact: true }).click();
-    const trigger = page.getByRole("button", { name: /^Select the first content language/ });
+    const trigger = page.locator("label").filter({ has: page.getByText("Primary content language", { exact: true }) }).getByRole("button");
     await trigger.click();
-    const dialog = page.getByRole("dialog", { name: "Select the first content language", exact: true });
-    const search = dialog.getByRole("searchbox", { name: "Search language name or region" });
+    const dialog = page.getByRole("dialog").filter({ has: page.getByRole("heading", { name: "Select the first content language", exact: true }) });
+    const search = dialog.getByPlaceholder("Search language name or region");
     await search.fill("en_us"); await search.press("Enter");
     const option = dialog.getByRole("button", { name: "English (United States)", exact: true });
     await option.waitFor();
+    assert.equal(await page.getByText("Username must be 1 to 32 characters.", { exact: true }).count(), 0);
     const close = dialog.getByRole("button", { name: "Close", exact: true });
     await close.focus(); await page.keyboard.press("Shift+Tab");
     assert.equal(await dialog.evaluate(element => element.contains(document.activeElement)), true);
