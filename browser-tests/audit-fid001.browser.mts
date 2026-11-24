@@ -80,3 +80,36 @@ test("FID-001 username or email keeps the existing explicitly named text contrac
     assert.deepEqual(requests, [{ recipient: "ordinary@example.invalid", currency: "audit", amount: 1 }]);
   } finally { await browser.close(); }
 });
+
+test("a failed ledger leaves available balances intact and retries only that read before a single transfer", { timeout: 30_000 }, async () => {
+  let ledgerReads = 0, balanceReads = 0, transfers = 0;
+  const submitted = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const browser = await fixture.page(async request => {
+    if (request.path === "/api/v1/users/me/economy") balanceReads++;
+    if (request.path === "/api/v1/users/me/economy/transactions" && ++ledgerReads === 1) return { status: 503, error: "Ledger temporarily unavailable" };
+    if (request.path === "/api/v1/users/me/economy/transfer" && request.method === "POST") {
+      transfers++; submitted.resolve(); await release.promise;
+      return { data: { received: 1, tax: 0 } };
+    }
+    return common(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/user?section=economy");
+    const error = page.getByRole("alert").filter({ hasText: "Failed to load economy and progression data." });
+    await error.waitFor();
+    await page.getByText("100", { exact: true }).waitFor();
+    await error.getByRole("button", { name: "Retry", exact: true }).click();
+    await error.waitFor({ state: "detached" });
+    assert.equal(balanceReads, 1); assert.equal(ledgerReads, 2);
+    await page.getByLabel("Recipient", { exact: true }).fill("ordinary@example.invalid");
+    const submit = page.getByRole("button", { name: "Confirm transfer", exact: true });
+    await submit.evaluate((button: HTMLButtonElement) => { button.form!.requestSubmit(); button.form!.requestSubmit(); });
+    await submitted.promise;
+    assert.equal(await submit.isDisabled(), true);
+    release.resolve();
+    await page.getByText("Transfer complete. The recipient received 1; tax: 0.", { exact: true }).waitFor();
+    assert.equal(transfers, 1);
+  } finally { release.resolve(); await browser.close(); }
+});

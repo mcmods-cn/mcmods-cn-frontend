@@ -43,6 +43,9 @@ type ExperienceTransaction = {
 
 type TransactionPage<T> = { items: T[]; nextCursor: string };
 
+const economySections = ["overview", "currencies", "shop", "tasks", "currencyHistory", "experienceHistory"] as const;
+type EconomySection = (typeof economySections)[number];
+
 export function UserEconomyPanel({
   token,
   onBackgroundChange,
@@ -74,7 +77,12 @@ export function UserEconomyPanel({
   const [usingBackground, setUsingBackground] = useState(false);
   const [refreshingBackground, setRefreshingBackground] = useState(false);
   const [backgroundRefreshFailed, setBackgroundRefreshFailed] = useState(false);
+  const [failedSections, setFailedSections] = useState<EconomySection[]>([]);
   const mounted = useRef(false);
+  const currentLoad = useRef<AbortController | null>(null);
+  const currentTransfer = useRef<AbortController | null>(null);
+  const activeOperation = useRef("");
+  const actionsBusy = Boolean(busy) || usingBackground || loading;
   const backgroundUseInFlight = useRef(false);
   const backgroundPreviewRequest = useRef<AbortController | null>(null);
   const backgroundUseVersion = useRef(0);
@@ -83,37 +91,50 @@ export function UserEconomyPanel({
     mounted.current = true;
     return () => {
       mounted.current = false;
+      currentLoad.current?.abort();
+      currentTransfer.current?.abort();
       backgroundPreviewRequest.current?.abort();
     };
   }, []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (sections: readonly EconomySection[] = economySections) => {
+    currentLoad.current?.abort();
+    const controller = new AbortController();
+    currentLoad.current = controller;
+    const { signal } = controller;
     const shopVersion = backgroundUseVersion.current;
+    const failed: EconomySection[] = [];
     setLoading(true);
-    try {
-      const [nextOverview, currencyResponse, shopResponse, taskResponse, currencyHistory, experienceHistory] = await Promise.all([
-        apiRequest<EconomyOverview>("/api/v1/users/me/economy", {}, token),
-        apiRequest<{ items: Currency[] }>("/api/v1/economy/currencies", {}, token),
-        apiRequest<{ items: ShopItem[] }>("/api/v1/shop/items", {}, token),
-        apiRequest<{ items: TaskDefinition[] }>("/api/v1/users/me/tasks", {}, token),
-        apiRequest<TransactionPage<CurrencyTransaction>>("/api/v1/users/me/economy/transactions", {}, token),
-        apiRequest<TransactionPage<ExperienceTransaction>>("/api/v1/users/me/experience/transactions", {}, token),
-      ]);
-      setOverview(nextOverview);
-      setCurrencies(currencyResponse.items);
-      if (backgroundUseVersion.current === shopVersion) setShopItems(shopResponse.items);
-      setTasks(taskResponse.items);
-      setCurrencyTransactions(currencyHistory.items);
-      setExperienceTransactions(experienceHistory.items);
-      setCurrencyCursor(currencyHistory.nextCursor);
-      setExperienceCursor(experienceHistory.nextCursor);
-      setTransferCurrency((current) => current || nextOverview.balances[0]?.code || "");
-    } catch (error) {
-      notifySite(errorMessage(error, t("user.economyLoadFailed")), t("user.economyAndProgression"), "danger");
-    } finally {
-      setLoading(false);
+    async function read<T>(section: EconomySection, path: string, apply: (value: T) => void) {
+      if (!sections.includes(section)) return;
+      try {
+        const value = await apiRequest<T>(path, { signal }, token);
+        if (!signal.aborted) apply(value);
+      } catch { if (!signal.aborted) failed.push(section); }
     }
-  }, [t, token]);
+    await Promise.all([
+      read<EconomyOverview>("overview", "/api/v1/users/me/economy", value => {
+        setOverview(value);
+        setTransferCurrency(current => value.balances.some(balance => balance.code === current) ? current : value.balances[0]?.code || "");
+      }),
+      read<{ items: Currency[] }>("currencies", "/api/v1/economy/currencies", value => setCurrencies(value.items)),
+      read<{ items: ShopItem[] }>("shop", "/api/v1/shop/items", value => {
+        if (backgroundUseVersion.current === shopVersion) setShopItems(value.items);
+      }),
+      read<{ items: TaskDefinition[] }>("tasks", "/api/v1/users/me/tasks", value => setTasks(value.items)),
+      read<TransactionPage<CurrencyTransaction>>("currencyHistory", "/api/v1/users/me/economy/transactions", value => {
+        setCurrencyTransactions(value.items); setCurrencyCursor(value.nextCursor);
+      }),
+      read<TransactionPage<ExperienceTransaction>>("experienceHistory", "/api/v1/users/me/experience/transactions", value => {
+        setExperienceTransactions(value.items); setExperienceCursor(value.nextCursor);
+      }),
+    ]);
+    if (!signal.aborted) {
+      setFailedSections(previous => [...previous.filter(section => !sections.includes(section)), ...failed]);
+      setLoading(false);
+      currentLoad.current = null;
+    }
+  }, [token]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
@@ -125,50 +146,65 @@ export function UserEconomyPanel({
     [currencies],
   );
 
+  function beginOperation(action: string) {
+    if (activeOperation.current || currentLoad.current || backgroundUseInFlight.current) return false;
+    activeOperation.current = action;
+    setBusy(action);
+    return true;
+  }
+
+  function endOperation() {
+    activeOperation.current = "";
+    if (mounted.current) setBusy("");
+  }
+
   async function loadMoreCurrencyTransactions() {
     if (!currencyCursor) return;
-    setBusy("currency-history");
+    if (!beginOperation("currency-history")) return;
     try {
       const page = await apiRequest<TransactionPage<CurrencyTransaction>>(
         `/api/v1/users/me/economy/transactions?cursor=${encodeURIComponent(currencyCursor)}`,
         {},
         token,
       );
+      if (!mounted.current) return;
       setCurrencyTransactions((current) => [...current, ...page.items]);
       setCurrencyCursor(page.nextCursor);
     } catch (error) {
-      notifySite(errorMessage(error, t("user.transactionHistoryFailed")), t("user.transactionHistory"), "danger");
+      if (mounted.current) notifySite(errorMessage(error, t("user.transactionHistoryFailed")), t("user.transactionHistory"), "danger");
     } finally {
-      setBusy("");
+      endOperation();
     }
   }
 
   async function loadMoreExperienceTransactions() {
     if (!experienceCursor) return;
-    setBusy("experience-history");
+    if (!beginOperation("experience-history")) return;
     try {
       const page = await apiRequest<TransactionPage<ExperienceTransaction>>(
         `/api/v1/users/me/experience/transactions?cursor=${encodeURIComponent(experienceCursor)}`,
         {},
         token,
       );
+      if (!mounted.current) return;
       setExperienceTransactions((current) => [...current, ...page.items]);
       setExperienceCursor(page.nextCursor);
     } catch (error) {
-      notifySite(errorMessage(error, t("user.transactionHistoryFailed")), t("user.experienceHistory"), "danger");
+      if (mounted.current) notifySite(errorMessage(error, t("user.transactionHistoryFailed")), t("user.experienceHistory"), "danger");
     } finally {
-      setBusy("");
+      endOperation();
     }
   }
 
   async function checkIn() {
-    setBusy("checkin");
+    if (!beginOperation("checkin")) return;
     try {
       const result = await apiRequest<{ amount: number; currency: string }>(
         "/api/v1/users/me/economy/checkin",
         { method: "POST" },
         token,
       );
+      if (!mounted.current) return;
       notifySite(
         t("user.checkinSuccess", {
           amount: result.amount,
@@ -179,16 +215,16 @@ export function UserEconomyPanel({
       );
       await load();
     } catch (error) {
-      notifySite(errorMessage(error, t("user.checkinFailed")), t("user.dailyCheckin"), "danger");
+      if (mounted.current) notifySite(errorMessage(error, t("user.checkinFailed")), t("user.dailyCheckin"), "danger");
     } finally {
-      setBusy("");
+      endOperation();
     }
   }
 
   async function transfer(event: FormEvent) {
     event.preventDefault();
-    if (!recipient.trim() || !transferCurrency || transferAmount <= 0) return;
-    setBusy("transfer");
+    if (!recipient.trim() || !currencyByCode.has(transferCurrency) || !Number.isSafeInteger(transferAmount) || transferAmount <= 0) return;
+    if (!beginOperation("transfer")) return;
     try {
       const result = await apiRequest<{ tax: number; received: number }>(
         "/api/v1/users/me/economy/transfer",
@@ -202,6 +238,7 @@ export function UserEconomyPanel({
         },
         token,
       );
+      if (!mounted.current) return;
       notifySite(
         t("user.transferSuccess", { received: result.received, tax: result.tax }),
         t("user.transfer"),
@@ -211,26 +248,27 @@ export function UserEconomyPanel({
       setTransferAmount(1);
       await load();
     } catch (error) {
-      notifySite(error instanceof ApiError && error.code === "TRANSFER_RECIPIENT_AMBIGUOUS" ? t("user.transferRecipientAmbiguous") : errorMessage(error, t("user.transferFailed")), t("user.transfer"), "danger");
+      if (mounted.current) notifySite(error instanceof ApiError && error.code === "TRANSFER_RECIPIENT_AMBIGUOUS" ? t("user.transferRecipientAmbiguous") : errorMessage(error, t("user.transferFailed")), t("user.transfer"), "danger");
     } finally {
-      setBusy("");
+      endOperation();
     }
   }
 
   async function purchase(item: ShopItem) {
-    setBusy(`purchase:${item.code}`);
+    if (!beginOperation(`purchase:${item.code}`)) return;
     try {
       await apiRequest(
         "/api/v1/users/me/shop/purchase",
         { method: "POST", body: JSON.stringify({ itemCode: item.code, quantity: 1 }) },
         token,
       );
+      if (!mounted.current) return;
       notifySite(t("user.purchaseSuccess", { name: localizedName(item, locale) }), t("user.shop"), "success");
       await load();
     } catch (error) {
-      notifySite(errorMessage(error, t("user.purchaseFailed")), t("user.shop"), "danger");
+      if (mounted.current) notifySite(errorMessage(error, t("user.purchaseFailed")), t("user.shop"), "danger");
     } finally {
-      setBusy("");
+      endOperation();
     }
   }
 
@@ -253,11 +291,13 @@ export function UserEconomyPanel({
   }
 
   async function applyProfileBackground(item: ShopItem, file: File) {
-    if (backgroundUseInFlight.current || backgroundPreviewRequest.current || busy || loading || !item.canUse) return;
+    if (backgroundUseInFlight.current || backgroundPreviewRequest.current || activeOperation.current || currentLoad.current || !item.canUse) return;
+    const controller = new AbortController();
+    currentTransfer.current = controller;
     backgroundUseInFlight.current = true;
     setUsingBackground(true);
     try {
-      const uploaded = await uploadUserFileToOSS(file, token, "profile_background");
+      const uploaded = await uploadUserFileToOSS(file, token, "profile_background", undefined, controller.signal);
       if (!mounted.current) return;
       const receipt = await apiRequest<{ remaining: number }>(
         "/api/v1/users/me/shop/use",
@@ -274,13 +314,14 @@ export function UserEconomyPanel({
     } catch (error) {
       if (mounted.current) notifySite(errorMessage(error, t("user.itemUseFailed")), t("user.shop"), "danger");
     } finally {
+      currentTransfer.current = null;
       backgroundUseInFlight.current = false;
       if (mounted.current) setUsingBackground(false);
     }
   }
 
   async function applyHeatBoost(item: ShopItem, target: CatalogResourceRef) {
-    setBusy(`use:${item.code}`);
+    if (!beginOperation(`use:${item.code}`)) return;
     try {
       await apiRequest(
         "/api/v1/users/me/shop/use",
@@ -294,13 +335,14 @@ export function UserEconomyPanel({
         },
         token,
       );
+      if (!mounted.current) return;
       setHeatBoostItem(null);
       notifySite(t("user.heatBoostApplied"), t("user.shop"), "success");
       await load();
     } catch (error) {
-      notifySite(errorMessage(error, t("user.itemUseFailed")), t("user.shop"), "danger");
+      if (mounted.current) notifySite(errorMessage(error, t("user.itemUseFailed")), t("user.shop"), "danger");
     } finally {
-      setBusy("");
+      endOperation();
     }
   }
 
@@ -313,30 +355,36 @@ export function UserEconomyPanel({
 
   const targetCurrency = targetType === "currency" ? currencies.find((item) => item.publicId === targetId) : undefined;
   const targetExists = targetType === "currency" ? Boolean(targetCurrency) : targetType === "task" ? tasks.some((item) => item.publicId === targetId) : targetType === "shop_item" ? shopItems.some((item) => item.publicId === targetId) : false;
-  if (loading && !overview) {
+  const targetSection = targetType === "currency" ? "currencies" : targetType === "task" ? "tasks" : "shop";
+  const sectionLabels: Record<EconomySection, string> = { overview: t("user.economyAndProgression"), currencies: t("user.transferCurrency"), shop: t("user.shop"), tasks: t("user.tasks"), currencyHistory: t("user.transactionHistory"), experienceHistory: t("user.experienceHistory") };
+  if (loading && !overview && !failedSections.length) {
     return <section className="surface rounded-lg p-12 text-center font-bold text-[var(--muted)]">{t("common.loading")}</section>;
   }
 
   return (
     <section className="grid gap-4">
-      {targetDOMId && !loading && !targetExists ? <p className="surface rounded p-4" role="alert">{t("user.economyObjectUnavailable")}</p> : null}
+      {failedSections.length > 0 && <div role="alert" className="surface rounded p-4">
+        <p>{t("user.economyLoadFailed")} {failedSections.map(section => sectionLabels[section]).join(" · ")}</p>
+        <button className="button-secondary focus-ring mt-2" disabled={actionsBusy} type="button" onClick={() => void load(failedSections)}>{t("common.retry")}</button>
+      </div>}
+      {targetDOMId && !loading && !failedSections.includes(targetSection) && !targetExists ? <p className="surface rounded p-4" role="alert">{t("user.economyObjectUnavailable")}</p> : null}
       {targetCurrency ? <article className="surface rounded-lg border-2 border-[var(--accent)] p-5" id={targetDOMId} tabIndex={-1}><h3 className="text-lg font-black">{currencyName(targetCurrency, locale)}</h3><p>{targetCurrency.description}</p><code>{targetCurrency.code}</code></article> : null}
       <div className="surface rounded-lg p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-black">{t("user.economyAndProgression")}</h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              {t("user.economyDescription", { timezone: overview?.timezone || "UTC" })}
+              {overview && t("user.economyDescription", { timezone: overview.timezone || "UTC" })}
             </p>
           </div>
-          <button className="button-secondary focus-ring" disabled={loading || usingBackground} type="button" onClick={() => void load()}>
+          <button className="button-secondary focus-ring" disabled={actionsBusy} type="button" onClick={() => void load()}>
             {t("common.refresh")}
           </button>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Metric label={t("user.currentLevel")} value={String(overview?.level ?? 0)} />
-          <Metric label={t("user.experience")} value={formatNumber(overview?.experience ?? 0, locale)} />
+          {overview && <Metric label={t("user.currentLevel")} value={String(overview.level)} />}
+          {overview && <Metric label={t("user.experience")} value={formatNumber(overview.experience, locale)} />}
           {(overview?.balances ?? []).map((balance) => (
             <Metric
               key={balance.code}
@@ -351,9 +399,9 @@ export function UserEconomyPanel({
       <div className="grid gap-4 xl:grid-cols-2">
         <TransactionHistory
           title={t("user.transactionHistory")}
-          empty={t("user.noTransactions")}
+          empty={loading || failedSections.includes("currencyHistory") ? "" : t("user.noTransactions")}
           hasMore={Boolean(currencyCursor)}
-          loading={busy === "currency-history"}
+          loading={actionsBusy}
           onLoadMore={() => void loadMoreCurrencyTransactions()}
         >
           {currencyTransactions.map((transaction, index) => (
@@ -371,9 +419,9 @@ export function UserEconomyPanel({
         </TransactionHistory>
         <TransactionHistory
           title={t("user.experienceHistory")}
-          empty={t("user.noExperienceTransactions")}
+          empty={loading || failedSections.includes("experienceHistory") ? "" : t("user.noExperienceTransactions")}
           hasMore={Boolean(experienceCursor)}
-          loading={busy === "experience-history"}
+          loading={actionsBusy}
           onLoadMore={() => void loadMoreExperienceTransactions()}
         >
           {experienceTransactions.map((transaction, index) => (
@@ -399,7 +447,7 @@ export function UserEconomyPanel({
                   amount: overview.checkin.amount,
                   currency: currencyName(currencyByCode.get(overview.checkin.currency), locale),
                 })
-              : t("user.checkinDisabled")}
+              : overview ? t("user.checkinDisabled") : null}
           </p>
           {overview?.checkin.eligibleAt && !overview.checkin.checkedInToday ? (
             <p className="mt-2 text-xs text-[var(--muted)]">
@@ -411,7 +459,7 @@ export function UserEconomyPanel({
             disabled={
               !overview?.checkin.enabled ||
               overview.checkin.checkedInToday ||
-              busy === "checkin"
+              actionsBusy || failedSections.includes("overview")
             }
             type="button"
             onClick={() => void checkIn()}
@@ -467,13 +515,13 @@ export function UserEconomyPanel({
               />
             </label>
             <p className="text-xs text-[var(--muted)] sm:col-span-2">
-              {t("user.transferTax", {
+              {currencyByCode.has(transferCurrency) && t("user.transferTax", {
                 rate: ((currencyByCode.get(transferCurrency)?.transferTaxBps ?? 0) / 100).toFixed(2),
               })}
             </p>
             <button
               className="button-primary focus-ring justify-self-start"
-              disabled={!recipient.trim() || !transferCurrency || busy === "transfer"}
+              disabled={!recipient.trim() || !currencyByCode.has(transferCurrency) || !Number.isSafeInteger(transferAmount) || transferAmount <= 0 || actionsBusy || failedSections.includes("overview") || failedSections.includes("currencies")}
               type="submit"
             >
               {t("user.confirmTransfer")}
@@ -514,7 +562,7 @@ export function UserEconomyPanel({
               </article>
             );
           })}
-          {tasks.length === 0 ? <EmptyState>{t("user.noTasks")}</EmptyState> : null}
+          {!loading && !failedSections.includes("tasks") && tasks.length === 0 ? <EmptyState>{t("user.noTasks")}</EmptyState> : null}
         </div>
       </section>
 
@@ -548,7 +596,7 @@ export function UserEconomyPanel({
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       className="button-primary focus-ring"
-                      disabled={!item.canPurchase || busy === `purchase:${item.code}`}
+                      disabled={!item.canPurchase || actionsBusy || failedSections.includes("shop")}
                       type="button"
                       onClick={() => void purchase(item)}
                     >
@@ -560,7 +608,7 @@ export function UserEconomyPanel({
                         <input
                           accept="image/png,image/jpeg,image/webp"
                           className="sr-only"
-                          disabled={!item.canUse || Boolean(busy) || loading || usingBackground || refreshingBackground}
+                          disabled={!item.canUse || actionsBusy || refreshingBackground || failedSections.includes("shop")}
                           type="file"
                           onChange={(event) => {
                             const file = event.target.files?.[0];
@@ -573,7 +621,7 @@ export function UserEconomyPanel({
                     {(item.itemType === "project_heat_boost" || item.itemType === "server_heat_boost") && quantity > 0 ? (
                       <button
                         className="button-secondary focus-ring"
-                        disabled={!item.canUse || busy === `use:${item.code}`}
+                        disabled={!item.canUse || actionsBusy || failedSections.includes("shop")}
                         type="button"
                         onClick={() => setHeatBoostItem(item)}
                       >
@@ -588,7 +636,7 @@ export function UserEconomyPanel({
               </article>
             );
           })}
-          {shopItems.length === 0 ? <EmptyState>{t("user.noShopItems")}</EmptyState> : null}
+          {!loading && !failedSections.includes("shop") && shopItems.length === 0 ? <EmptyState>{t("user.noShopItems")}</EmptyState> : null}
         </div>
       </section>
       <ModResourcePickerDialog
