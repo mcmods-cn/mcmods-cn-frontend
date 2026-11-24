@@ -548,3 +548,35 @@ test("autosaving edits to separate versions of a resource keeps two recoverable 
     assert.equal(await page.locator("aside textarea").inputValue(), "");
   } finally { await browser.close(); }
 });
+
+test("changing resource editors cancels the previous write before draft completion and navigation", { timeout: 20_000 }, async () => {
+  const root = "/api/v1/mods/fixture-mod/content-resources/resource01";
+  const held = Promise.withResolvers<APIReply>();
+  const started = Promise.withResolvers<void>();
+  let actorId = "editor001", completions = 0;
+  const browser = await controlled(({ path, method }) => {
+    if (path === "/api/v1/auth/me") return { data: actor(actorId) };
+    if (path === "/api/v1/mods/fixture-mod/content-templates") return { data: { items: [rangeTemplate] } };
+    if (path === "/api/v1/mods/fixture-mod/content-sections") return { data: { items: [rootSection] } };
+    if (path === root && method === "PUT") { started.resolve(); return held.promise; }
+    if (path === root) return { data: resourceSnapshot("minecraft.item", {}) };
+    if (path === "/api/v1/users/me/drafts/complete") { completions++; return { data: { completed: true } }; }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/mods/fixture-mod/resources/resource01/edit?version=version01&section=section01");
+    const cancelled = page.waitForEvent("requestfailed", { predicate: req => req.method() === "PUT" && new URL(req.url()).pathname === root, timeout: 6000 });
+    void cancelled.catch(() => {});
+    await page.getByRole("button", { name: "Save", exact: true }).first().click();
+    await started.promise;
+    actorId = "editor002";
+    const identity = page.waitForResponse(response => new URL(response.url()).pathname === "/api/v1/auth/me");
+    await page.evaluate(() => dispatchEvent(new StorageEvent("storage", { key: "mcmods-auth-sync", newValue: "login:resource-editor" })));
+    assert.equal((await (await identity).json()).data.id, actorId);
+    assert.equal((await cancelled).failure()?.errorText, "net::ERR_ABORTED");
+    held.resolve({ data: { publicId: "resource01", revisionId: "newrev001", reviewStatus: "approved" } });
+    await page.getByRole("button", { name: "Save", exact: true }).first().waitFor();
+    assert.match(page.url(), /resource01\/edit\?/);
+    assert.equal(completions, 0);
+  } finally { held.resolve({ status: 503, error: "Fixture closed" }); await browser.close(); }
+});

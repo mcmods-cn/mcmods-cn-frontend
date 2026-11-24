@@ -31,6 +31,7 @@ import { useAutoDraft } from "../_lib/use-auto-draft";
 import { supportedLocales, type Locale, useI18n } from "../_lib/i18n-provider";
 import { ContentLanguageSwitcher, contentLanguageTabId } from "./editor/content-language-switcher";
 import { EditorShell } from "./editor/editor-shell";
+import { useEditorWrite } from "./editor/use-editor-write";
 import { ResourcePickerDialog } from "./editor/resource-picker-dialog";
 import { LootTableVisualEditor } from "./editor/loot-table-visual-editor";
 import { ToolsPlayground } from "./tools-playground";
@@ -97,6 +98,7 @@ function ModContentResourceEditorSession({
   sectionId?: string;
 }) {
   const router = useRouter();
+  const { beginWrite, finishWrite } = useEditorWrite();
   const { locale, t } = useI18n();
   const { ready, token, user } = useAuthSnapshot();
   const authenticated = Boolean(token);
@@ -384,7 +386,7 @@ function ModContentResourceEditorSession({
   }
 
   async function uploadCroppedIcon(output: SquareCropOutput) {
-    if (!token || uploadingAsset || busy) return;
+    if (!token || uploadingAsset || busy) { URL.revokeObjectURL(output.previewUrl); return; }
     setError("");
     const icon32 = output.files.get(32);
     const icon128 = output.files.get(128);
@@ -393,6 +395,8 @@ function ModContentResourceEditorSession({
       setError(t("resourceEditor.cropFailed"));
       return;
     }
+    const request = beginWrite();
+    if (!request) { URL.revokeObjectURL(output.previewUrl); return; }
     setIconSmallFilePublicId("");
     setIconFilePublicId("");
     setIconPreview(output.previewUrl);
@@ -402,32 +406,35 @@ function ModContentResourceEditorSession({
       identity: (_file, index) => index === 0 ? "icon-32" : "icon-128",
       validate: () => "",
     });
-    await processIconUploadTasks(tasks);
+    await processIconUploadTasks(tasks, undefined, request);
   }
 
-  async function processIconUploadTasks(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string) {
-    if (!token || uploadingAsset || busy) return;
+  async function processIconUploadTasks(tasks: OSSUploadBatchTask<File, OSSFileRecord>[], retryKey?: string, request = beginWrite()) {
+    if (!request) return;
     setUploadingAsset("icon");
     setError("");
     try {
       const result = await processOSSUploadBatch(tasks, {
-        upload: (file, task) => uploadUserFileToOSS(file, token, `mod_resource:${siteId}:${kindCode.trim() || "resource"}:${task.key.replace("-", "_")}`),
-        shouldProcess: retryKey ? (task) => task.key === retryKey : undefined,
-        onChange: setIconUploadTasks,
+        upload: (file, task) => uploadUserFileToOSS(file, token, `mod_resource:${siteId}:${kindCode.trim() || "resource"}:${task.key.replace("-", "_")}`, undefined, request.signal),
+        shouldProcess: (task) => !request.signal.aborted && (!retryKey || task.key === retryKey),
+        onChange: (next) => { if (!request.signal.aborted) setIconUploadTasks(next); },
         onUploaded: (task, record) => {
+          if (request.signal.aborted) return;
           if (task.key === "icon-32") setIconSmallFilePublicId(record.id);
           if (task.key === "icon-128") setIconFilePublicId(record.id);
         },
       });
       const failed = result.find((task) => task.stage === "failed");
-      if (failed) setError(failed.error || t("resourceEditor.uploadFailed"));
+      if (failed && !request.signal.aborted) setError(failed.error || t("resourceEditor.uploadFailed"));
     } finally {
-      setUploadingAsset("");
+      if (finishWrite(request)) setUploadingAsset("");
     }
   }
 
   async function uploadRenderAsset(file: File) {
     if (!token || uploadingAsset || busy) return;
+    const request = beginWrite();
+    if (!request) return;
     setUploadingAsset("render");
     setError("");
     const previewURL = URL.createObjectURL(file);
@@ -436,14 +443,16 @@ function ModContentResourceEditorSession({
         file,
         token,
         `mod_resource:${siteId}:${kindCode.trim() || "resource"}:render`,
+        undefined, request.signal,
       );
+      request.signal.throwIfAborted();
       setRenderFilePublicId(uploaded.id);
       setRenderPreview(previewURL);
     } catch (cause) {
       URL.revokeObjectURL(previewURL);
-      setError(errorText(cause));
+      if (!request.signal.aborted) setError(errorText(cause));
     } finally {
-      setUploadingAsset("");
+      if (finishWrite(request)) setUploadingAsset("");
     }
   }
 
@@ -452,6 +461,8 @@ function ModContentResourceEditorSession({
       setError(t("resourceEditor.validationRequired"));
       return;
     }
+    const request = beginWrite();
+    if (!request) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -471,12 +482,13 @@ function ModContentResourceEditorSession({
         reason: reason.trim() || t(mode === "create" ? "modContent.sectionActions.addReason" : "modContent.resourceEdit.reason"),
       };
       const result = mode === "create"
-        ? await createModContentResource(siteId, payload, token)
+        ? await createModContentResource(siteId, payload, token, request.signal)
         : await updateModContentResource(siteId, resourceId, {
           ...payload,
           resourcePublicId: resourceId,
           baseRevisionId: publishedRevisionId,
-        }, token);
+        }, token, request.signal);
+      if (request.signal.aborted) return;
       const nextResourceId = mode === "create" ? result.publicId : resourceId;
       const targetUrl = `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(nextResourceId)}?version=${encodeURIComponent(activeVersionId)}&section=${encodeURIComponent(rootSection?.publicId || sectionId)}`;
       await autoDraft.completeDraft({
@@ -484,7 +496,8 @@ function ModContentResourceEditorSession({
         projectTitle: siteId,
         targetUrl,
         changeRequestId: result.changeRequestId,
-      }).catch(() => { window.alert(t("drafts.completionFailed")); });
+      }).catch(() => { if (!request.signal.aborted) window.alert(t("drafts.completionFailed")); });
+      if (request.signal.aborted) return;
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       if (result.reviewStatus === "pending") setSubmittedPending(true);
       if (result.reviewStatus === "approved") {
@@ -492,26 +505,30 @@ function ModContentResourceEditorSession({
         router.refresh();
       }
     } catch (cause) {
-      setError(errorText(cause));
+      if (!request.signal.aborted) setError(errorText(cause));
     } finally {
-      setBusy(false);
+      if (finishWrite(request)) setBusy(false);
     }
   }
 
   async function archive() {
     if (mode !== "edit" || !token || !resourceId || !activeVersionId || busy || deleting || submittedPending) return;
     if (!window.confirm(t("resourceEditor.archiveConfirm"))) return;
+    const request = beginWrite();
+    if (!request) return;
     setDeleting(true);
     setError("");
     setMessage("");
     try {
-      const result = await archiveModContentResource(siteId, resourceId, activeVersionId, token);
+      const result = await archiveModContentResource(siteId, resourceId, activeVersionId, token, request.signal);
+      if (request.signal.aborted) return;
       await autoDraft.completeDraft({
         projectKey: `mod:${siteId}`,
         projectTitle: siteId,
         targetUrl: backHref,
         changeRequestId: result.changeRequestId,
-      }).catch(() => { window.alert(t("drafts.completionFailed")); });
+      }).catch(() => { if (!request.signal.aborted) window.alert(t("drafts.completionFailed")); });
+      if (request.signal.aborted) return;
       setMessage(t(result.reviewStatus === "pending" ? "modContent.reviewPending" : "modContent.saved"));
       if (result.reviewStatus === "pending") setSubmittedPending(true);
       else {
@@ -519,9 +536,9 @@ function ModContentResourceEditorSession({
         router.refresh();
       }
     } catch (cause) {
-      setError(errorText(cause));
+      if (!request.signal.aborted) setError(errorText(cause));
     } finally {
-      setDeleting(false);
+      if (finishWrite(request)) setDeleting(false);
     }
   }
 
