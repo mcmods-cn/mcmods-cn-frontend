@@ -1,5 +1,7 @@
 "use client";
 
+import { useEditorWrite } from "./use-editor-write";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE_URL } from "../../_lib/api";
 import { uploadUserFileToOSS } from "../../_lib/oss-upload";
@@ -99,8 +101,7 @@ export function RecipeTemplateEditor({
   const [uploading, setUploading] = useState(false);
   const [backgroundPreview, setBackgroundPreview] = useState("");
   const [saving, setSaving] = useState(false);
-  const activeRequest = useRef<AbortController | null>(null);
-  useEffect(() => () => activeRequest.current?.abort(), []);
+  const { beginWrite, finishWrite } = useEditorWrite();
   const [deleting, setDeleting] = useState(false);
   const [pendingReview, setPendingReview] = useState(initialValue?.reviewStatus === "pending");
   const [message, setMessage] = useState("");
@@ -220,9 +221,9 @@ export function RecipeTemplateEditor({
   }
 
   async function uploadBackground(file?: File) {
-    if (!file || activeRequest.current) return;
-    const request = new AbortController();
-    activeRequest.current = request;
+    if (!file) return;
+    const request = beginWrite();
+    if (!request) return;
     setUploading(true);
     setFailure("");
     try {
@@ -242,8 +243,7 @@ export function RecipeTemplateEditor({
       setBackgroundPreview("");
       setFailure(reason instanceof Error ? reason.message : labels.uploadFailed);
     } finally {
-      activeRequest.current = null;
-      if (!request.signal.aborted) setUploading(false);
+      if (finishWrite(request)) setUploading(false);
     }
   }
 
@@ -253,9 +253,9 @@ export function RecipeTemplateEditor({
   }
 
   async function submit() {
-    if (activeRequest.current || saving || deleting || validation.length) return;
-    const request = new AbortController();
-    activeRequest.current = request;
+    if (saving || deleting || validation.length) return;
+    const request = beginWrite();
+    if (!request) return;
     setSaving(true);
     setFailure("");
     setMessage("");
@@ -275,15 +275,14 @@ export function RecipeTemplateEditor({
     } catch (reason) {
       if (!request.signal.aborted) setFailure(reason instanceof Error ? reason.message : labels.saveFailed);
     } finally {
-      activeRequest.current = null;
-      if (!request.signal.aborted) setSaving(false);
+      if (finishWrite(request)) setSaving(false);
     }
   }
 
   async function removeTemplate() {
-    if (!draft.publicId || activeRequest.current || saving || deleting || !window.confirm(labels.deleteConfirm)) return;
-    const request = new AbortController();
-    activeRequest.current = request;
+    if (!draft.publicId || saving || deleting || !window.confirm(labels.deleteConfirm)) return;
+    const request = beginWrite();
+    if (!request) return;
     setDeleting(true);
     setFailure("");
     setMessage("");
@@ -296,8 +295,7 @@ export function RecipeTemplateEditor({
     } catch (reason) {
       if (!request.signal.aborted) setFailure(reason instanceof Error ? reason.message : labels.deleteFailed);
     } finally {
-      activeRequest.current = null;
-      if (!request.signal.aborted) setDeleting(false);
+      if (finishWrite(request)) setDeleting(false);
     }
   }
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useEditorWrite } from "./use-editor-write";
+
 import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "../../_lib/api";
 import { catalogResourceIconURL } from "../../_lib/editor-api";
@@ -124,7 +126,7 @@ export function RecipeEditor({
   const [loadingTemplates, setLoadingTemplates] = useState(Boolean(initialValue?.recipeTypePublicId && !initialTemplates.some((item) => item.recipeTypePublicId === initialValue.recipeTypePublicId)));
   const [loadingTemplateDetail, setLoadingTemplateDetail] = useState(Boolean(initialValue?.templatePublicId && !initialTemplates.some((item) => item.publicId === initialValue.templatePublicId && (item.detailLoaded || item.slots.length > 0))));
   const [saving, setSaving] = useState(false);
-  const mutationInFlight = useRef(false);
+  const { beginWrite, finishWrite } = useEditorWrite();
   const [deleting, setDeleting] = useState(false);
   const [pendingReview, setPendingReview] = useState(initialValue?.reviewStatus === "pending");
   const [failure, setFailure] = useState("");
@@ -280,15 +282,17 @@ export function RecipeEditor({
   }
 
   async function submit() {
-    if (mutationInFlight.current || saving || deleting || validation.length || !selectedTemplate) return;
-    mutationInFlight.current = true;
+    if (saving || deleting || validation.length || !selectedTemplate) return;
+    const request = beginWrite();
+    if (!request) return;
     setSaving(true);
     setFailure("");
     setMessage("");
     try {
       const definition = preserveRecipeDefinition(draft.definition);
       const payload = recipeMutation(draft, selectedTemplate, versions, dirtyLocales, contentDefaultLocale, reason, definition, labels.invalidAmount);
-      const result = await saveRecipe(draft.recipeTypePublicId, draft.publicId, payload, token);
+      const result = await saveRecipe(draft.recipeTypePublicId, draft.publicId, payload, token, request.signal);
+      if (request.signal.aborted) return;
       const next = { ...draft, publicId: result.objectPublicId || draft.publicId, definition, publishedRevisionId: result.reviewStatus === "approved" ? result.revisionId : draft.publishedRevisionId };
       setDraft(next);
       setPendingReview(result.reviewStatus === "pending");
@@ -299,29 +303,29 @@ export function RecipeEditor({
       setMessage(result.reviewStatus === "pending" ? labels.reviewPending : labels.saved);
       onSaved?.(result, next);
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : labels.saveFailed);
+      if (!request.signal.aborted) setFailure(reason instanceof Error ? reason.message : labels.saveFailed);
     } finally {
-      mutationInFlight.current = false;
-      setSaving(false);
+      if (finishWrite(request)) setSaving(false);
     }
   }
 
   async function removeRecipe() {
-    if (!draft.publicId || mutationInFlight.current || saving || deleting || !window.confirm(labels.deleteConfirm)) return;
-    mutationInFlight.current = true;
+    if (!draft.publicId || saving || deleting || !window.confirm(labels.deleteConfirm)) return;
+    const request = beginWrite();
+    if (!request) return;
     setDeleting(true);
     setFailure("");
     setMessage("");
     try {
-      const result = await deleteRecipe(draft.publicId, draft.publishedRevisionId, reason, token);
+      const result = await deleteRecipe(draft.publicId, draft.publishedRevisionId, reason, token, request.signal);
+      if (request.signal.aborted) return;
       setPendingReview(true);
       setMessage(result.reviewStatus === "pending" ? labels.reviewPending : labels.deleted);
       onDeleted?.(result);
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : labels.deleteFailed);
+      if (!request.signal.aborted) setFailure(reason instanceof Error ? reason.message : labels.deleteFailed);
     } finally {
-      mutationInFlight.current = false;
-      setDeleting(false);
+      if (finishWrite(request)) setDeleting(false);
     }
   }
 
