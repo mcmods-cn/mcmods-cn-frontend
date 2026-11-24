@@ -152,8 +152,10 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
       }, attachmentFileIds);
       if ("watchOnly" in result) {
         setMessage(t("mods.comments.cyWatched"));
-      } else if ("moderation" in result) {
-        setMessage(t("commentFeedback.moderation"));
+      } else if ("status" in result) {
+        if (result.status === "pending") setMessage(t("commentFeedback.moderation"));
+        else if (result.status === "published") setMessage(t("commentFeedback.publishedWithoutDetails"));
+        else setMessage(t("commentFeedback.noLongerVisible"));
       } else {
         setItems((current) => appendPublishedComment(current, result));
         setTotal((current) => current + 1);
