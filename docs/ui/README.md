@@ -39,6 +39,12 @@ node --test --test-concurrency=1 --test-name-pattern='^FP056|^switching accounts
 
 旧版在下一动画帧把全选范围从 45 个字符缩至 36 个，原来的末行 `trailing` 因此进入保存的草稿，重载后仍可见。新版保留全部 45 个字符的选区，替换后只有新内容。撤销恢复带编号的三行，重做恢复替换结果。连续应用相同的二级标题样式仍选中占位词。保存并重载后，正文只有 `## Heading` 和 `second line` 两行。[编辑器状态处理](../frontend-state-recovery.md#markdown-与可访问操作) · [键盘回归](../../browser-tests/oct03-page-editor-acceptance.browser.mts)
 
+### 评论上限与编辑失败
+
+在同一条合成讨论中输入 9,999 个 `a` 和末尾一个 `X`，选中第一个字符后点击加粗。两次都使用真实 Chromium，将输入框滚到底再截取整个评论表单。旧版 `b84979d` 删掉了末尾的 `X`，界面没有长度提示。新版 `c0a445b` 保留整份草稿与原选区，并提示 10,000 字符上限。两次操作都发出零个评论提交请求。[旧版表单](comment-budget-before.png) · [新版表单](comment-budget-after.png) · [新版镜像构建](https://github.com/mcmods-cn/mcmods-cn-frontend/actions/runs/45406883177)
+
+`840c160` 的 HTTPS 用例已覆盖加粗、贴纸、大段粘贴、补充平面字符、普通编辑返回 503，以及收到 409 后重新确认最新正文。另一次从线程首次出现的编辑按钮立即开始操作时，503 后重新打开显示原文。修复版 `c0a445b` 沿用父组件已确认的会话，这条路径重开后也能读回刚提交的草稿。[评论交互回归](../../browser-tests/oct03-cross-legacy-acceptance.browser.mts) · [编辑器状态](../frontend-state-recovery.md#markdown-与可访问操作)
+
 ## Mod 与整合包目录卡片
 
 同一组匿名目录记录在改前显示下载量 0，改后显示接口返回的站内下载量 73、评分 4.5 和评论数 2。收藏数 0 仍然显示。未提供作者的卡片保留许可证，缺少版本或加载器时省去对应标签。桌面操作区按实际文字宽度换行，手机上的收藏与下载仍可并排。
