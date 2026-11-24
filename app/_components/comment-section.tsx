@@ -68,6 +68,7 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
   const activeReplyBody = useRef(replyBody);
   useLayoutEffect(() => { activeReplyBody.current = replyBody; }, [replyBody]);
   const [submitting, setSubmitting] = useState(false);
+  const submissions = useRef<Partial<Record<"comment.create" | "comment.reply", { payload: string; key: string }>>>({});
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
   const [canCreate, setCanCreate] = useState(false);
@@ -134,7 +135,7 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
     return () => window.clearTimeout(timer);
   }, [load, ready]);
 
-  async function submitComment(content: string, parentId?: string, challengeProof = "", idempotencyKey = globalThis.crypto?.randomUUID?.() || `comment-${Date.now()}-${Math.random()}`, attachmentFileIds: string[] = []) {
+  async function submitComment(content: string, parentId?: string, challengeProof = "", challengeKey?: string, attachmentFileIds: string[] = []) {
     if (submitting) return;
     if (!token) {
       setMessage(t("mods.comments.loginRequired"));
@@ -143,6 +144,11 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
     setSubmitting(true);
     setMessage("");
     const action = parentId ? "comment.reply" : "comment.create";
+    const payload = JSON.stringify([content, parentId, attachmentFileIds]);
+    const previous = submissions.current[action];
+    const idempotencyKey = challengeKey || (previous?.payload === payload ? previous.key : undefined) ||
+      globalThis.crypto?.randomUUID?.() || `comment-${Date.now()}-${Math.random()}`;
+    submissions.current[action] = { payload, key: idempotencyKey };
     try {
       const result = await createComment(targetType, targetKey, content, parentId, token, {
         idempotencyKey,
@@ -150,6 +156,12 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
         honeypot,
         challengeProof,
       }, attachmentFileIds);
+      if (!result) {
+        setChallenge(null);
+        setMessage(t("commentFeedback.unconfirmed"));
+        return;
+      }
+      delete submissions.current[action];
       if ("watchOnly" in result) {
         setMessage(t("mods.comments.cyWatched"));
       } else if ("status" in result) {
@@ -171,6 +183,11 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
       setHoneypot("");
       void refreshFormToken(action);
     } catch (error) {
+      if (error instanceof ApiError && error.code === "API_RESPONSE_EMPTY") {
+        setChallenge(null);
+        setMessage(t("commentFeedback.unconfirmed"));
+        return;
+      }
       if (error instanceof ApiError && error.code === "challenge_required") {
         const value = challengeFromDetails(error.details);
         if (value) {

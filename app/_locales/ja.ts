@@ -3,6 +3,7 @@ const ja = {
   ...en,
   commentFeedback: {
     ...en.commentFeedback,
+    unconfirmed: "送信結果を確認できませんでした。下書きは保持されています。再試行できます。",
     publishedWithoutDetails: "コメントを公開しました。現在、詳細を表示できません。",
     noLongerVisible: "この投稿は処理済みです。コメントは現在表示できません。",
   },

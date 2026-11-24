@@ -3,6 +3,7 @@ const de = {
   ...en,
   commentFeedback: {
     ...en.commentFeedback,
+    unconfirmed: "Die Übermittlung konnte nicht bestätigt werden. Dein Entwurf bleibt erhalten. Du kannst es erneut versuchen.",
     publishedWithoutDetails: "Der Kommentar wurde veröffentlicht. Die Details sind vorübergehend nicht verfügbar.",
     noLongerVisible: "Dieser Beitrag wurde bereits verarbeitet. Der Kommentar ist nicht mehr sichtbar.",
   },

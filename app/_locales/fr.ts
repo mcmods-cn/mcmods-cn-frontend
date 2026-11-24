@@ -3,6 +3,7 @@ const fr = {
   ...en,
   commentFeedback: {
     ...en.commentFeedback,
+    unconfirmed: "L’envoi n’a pas pu être confirmé. Votre brouillon est conservé. Vous pouvez réessayer.",
     publishedWithoutDetails: "Le commentaire a été publié. Les détails sont temporairement indisponibles.",
     noLongerVisible: "Cet envoi a déjà été traité. Le commentaire n’est plus visible.",
   },

@@ -3,6 +3,7 @@ const ru = {
   ...en,
   commentFeedback: {
     ...en.commentFeedback,
+    unconfirmed: "Не удалось подтвердить отправку. Черновик сохранён. Попробуйте ещё раз.",
     publishedWithoutDetails: "Комментарий опубликован. Подробности временно недоступны.",
     noLongerVisible: "Запрос уже обработан. Комментарий больше не виден.",
   },
