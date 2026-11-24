@@ -328,6 +328,8 @@ test("FP056 loot advanced JSON rejects primitive/array roots without erasing its
     const textarea = advanced.locator("textarea");
     const save = page.getByRole("button", { name: "Save", exact: true }).first();
     assert.deepEqual(JSON.parse(await textarea.inputValue()), original);
+    const saveOpacity = () => save.evaluate(button => Number(getComputedStyle(button).opacity));
+    const enabledOpacity = await saveOpacity();
     const saveButton = await save.elementHandle();
     assert.ok(saveButton);
     // Activate the real button as soon as the browser exposes the first invalid edit.
@@ -348,6 +350,7 @@ test("FP056 loot advanced JSON rejects primitive/array roots without erasing its
       assert.equal(await textarea.inputValue(), invalid);
       assert.equal(writes.length, 0, "invalid drafts must never submit the last accepted definition");
     }
+    assert.ok(await saveOpacity() < enabledOpacity, "Save must visibly dim while the draft is invalid");
     const withPool = { ...original, pools: [{ rolls: 1, entries: [] }] };
     await textarea.fill(JSON.stringify(withPool));
     const pool = page.locator("details").filter({ has: page.getByText("Advanced pool JSON", { exact: true }) });
@@ -366,6 +369,7 @@ test("FP056 loot advanced JSON rejects primitive/array roots without erasing its
     await textarea.fill(JSON.stringify(changed));
     assert.notEqual(await textarea.getAttribute("aria-invalid"), "true");
     await save.and(page.locator(":enabled")).waitFor();
+    assert.equal(await saveOpacity(), enabledOpacity, "repairing the draft restores the available action");
     await save.focus();
     await save.press("Enter");
     await page.getByText("Controlled loot write failure", { exact: true }).waitFor();

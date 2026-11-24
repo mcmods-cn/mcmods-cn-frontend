@@ -141,6 +141,6 @@ function EditorActions({
     {busy || deleting
       ? <span aria-disabled="true" className="button-secondary pointer-events-none opacity-60">{labels.cancel ?? t("common.cancel")}</span>
       : <Link className="button-secondary focus-ring" href={cancelHref}>{labels.cancel ?? t("common.cancel")}</Link>}
-    <button className="button-primary focus-ring" disabled={busy || deleting || !canSubmit} type="submit">{submitText}</button>
+    <button className="button-primary focus-ring disabled:cursor-not-allowed disabled:opacity-50" disabled={busy || deleting || !canSubmit} type="submit">{submitText}</button>
   </div>;
 }
