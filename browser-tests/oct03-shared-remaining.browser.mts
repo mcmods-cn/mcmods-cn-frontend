@@ -467,20 +467,21 @@ test("leaving the notification owner cancels polling a queued translation", { ti
   const polls: string[] = [], balanceOwners: string[] = [];
   const pathForTask = "/api/v1/notifications/translations/job00001";
   const release = Promise.withResolvers<void>();
+  const pollStarted = Promise.withResolvers<void>();
   const browser = await fixture.page(async ({ path }) => {
     if (path === "/api/v1/auth/me") return { data: actor(identity) };
     if (path === "/api/v1/messages/conversations") return { data: pageOf([], 30) };
     if (path === "/api/v1/notifications") return { data: pageOf([notice(identity)]) };
     if (path === "/api/v1/notifications/ai-balance") { balanceOwners.push(identity); return { data: balance(500) }; }
     if (path === "/api/v1/notifications/first_actor/translate") return { data: { cached: false, taskId: "job00001" } };
-    if (path === pathForTask) { polls.push(identity); await release.promise; return { data: { status: "completed", translation: { title: "Prior result", body: "Prior body" } } }; }
+    if (path === pathForTask) { polls.push(identity); pollStarted.resolve(); await release.promise; return { data: { status: "completed", translation: { title: "Prior result", body: "Prior body" } } }; }
   });
   try {
     const { page } = browser;
     await page.goto(fixture.origin + "/messages");
     await page.getByText("500", { exact: true }).waitFor();
-    const first = page.waitForRequest(req => new URL(req.url()).pathname === pathForTask);
-    await page.getByRole("button", { name: "AI translate", exact: true }).click(); await first;
+    await page.getByRole("button", { name: "AI translate", exact: true }).click();
+    await pollStarted.promise;
     const cancelled = page.waitForEvent("requestfailed", { predicate: req => new URL(req.url()).pathname === pathForTask, timeout: 4000 });
     void cancelled.catch(() => {});
     identity = "second_actor";

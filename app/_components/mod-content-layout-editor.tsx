@@ -69,7 +69,9 @@ const advancementNodeWidth = 240;
 const advancementNodeHeight = 96;
 
 export function ModContentLayoutEditorPage(props: { siteId: string; sectionId: string }) {
-  const { token, user } = useAuthSnapshot();
+  const { error, ready, token, user } = useAuthSnapshot();
+  const { t } = useI18n();
+  if (!ready && !error) return <main className="grid min-h-screen place-items-center" role="status">{t("common.loading")}</main>;
   return <ModContentLayoutEditorSession key={`${user?.id || "guest"}:${token || "guest"}:${props.siteId}:${props.sectionId}`} {...props} />;
 }
 
