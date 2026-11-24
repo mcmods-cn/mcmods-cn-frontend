@@ -2648,7 +2648,7 @@ const zhCN = {
     submit: "提交外观",
     textureFile: "PNG 贴图文件",
     textureHint: "皮肤使用 64×64 或 64×32 PNG，披风使用 64×32 或 22×17 PNG。可等倍放大至 16 倍，文件最大 2 MiB。",
-    invalidPng: "请选择不超过 2 MB 的有效 PNG 文件。",
+    invalidPng: "请选择不超过 2 MiB 的有效 PNG 文件。",
     invalidSkinSize: "请选择 64×64 或 64×32 的皮肤，可等倍放大至 16 倍。",
     invalidCapeSize: "请选择 64×32 或 22×17 的披风，可等倍放大至 16 倍。",
     noFileSelected: "尚未选择贴图文件",

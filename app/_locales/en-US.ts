@@ -2648,7 +2648,7 @@ const en = {
     submit: "Submit texture",
     textureFile: "PNG texture file",
     textureHint: "Skins support equally scaled 64×64 or 64×32 PNGs; capes support 64×32 or 22×17 layouts. Maximum 16× scale and 2 MiB.",
-    invalidPng: "Choose a valid PNG file no larger than 2 MB.",
+    invalidPng: "Choose a valid PNG file no larger than 2 MiB.",
     invalidSkinSize: "Use a 64×64 or 64×32 skin, scaled equally up to 16×.",
     invalidCapeSize: "Use a 64×32 or 22×17 cape, scaled equally up to 16×.",
     noFileSelected: "No texture selected",
