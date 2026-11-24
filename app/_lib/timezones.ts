@@ -48,7 +48,7 @@ export function supportedTimezones(additional: readonly string[] = []) {
   return [...new Set(["UTC", "Asia/Shanghai", ...discovered, ...additional].filter(Boolean))].sort();
 }
 
-export function timezoneOffsetLabel(timezone: string, locale: string, date = new Date()) {
+function timezoneOffsetLabel(timezone: string, locale: string, date = new Date()) {
   try {
     const part = new Intl.DateTimeFormat(locale, {
       timeZone: timezone,
@@ -60,7 +60,7 @@ export function timezoneOffsetLabel(timezone: string, locale: string, date = new
   }
 }
 
-export function timezoneDisplayName(timezone: string, locale: string, date = new Date()) {
+function timezoneDisplayName(timezone: string, locale: string, date = new Date()) {
   try {
     const part = new Intl.DateTimeFormat(locale, {
       timeZone: timezone,
@@ -78,8 +78,15 @@ export function timezoneLabel(timezone: string, locale: string, date = new Date(
   return `${name} (${timezoneOffsetLabel(timezone, locale, date)})`;
 }
 
-export function timezoneSearchText(timezone: string, locale: string, date = new Date()) {
-  return `${timezone} ${humanizeTimezone(timezone)} ${timezoneDisplayName(timezone, locale, date)} ${timezoneOffsetLabel(timezone, locale, date)}`.toLocaleLowerCase();
+export function timezoneOption(timezone: string, locale: string, date: Date) {
+  const name = timezoneDisplayName(timezone, locale, date);
+  const offset = timezoneOffsetLabel(timezone, locale, date);
+  return {
+    timezone,
+    name,
+    offset,
+    searchText: `${timezone} ${humanizeTimezone(timezone)} ${name} ${offset}`.toLocaleLowerCase(),
+  };
 }
 
 function humanizeTimezone(timezone: string) {

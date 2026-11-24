@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
-import { supportedTimezones, timezoneDisplayName, timezoneLabel, timezoneOffsetLabel, timezoneSearchText } from "../_lib/timezones";
+import { supportedTimezones, timezoneLabel, timezoneOption } from "../_lib/timezones";
 import { useI18n } from "../_lib/i18n-provider";
 
 export function TimezonePicker({
@@ -69,12 +69,8 @@ function OpenTimezonePickerDialog({
   const [submittedSearch, setSubmittedSearch] = useState("");
   const [selected, setSelected] = useState(value || "Asia/Shanghai");
   const now = useMemo(() => new Date(), []);
-  const options = useMemo(() => supportedTimezones(value ? [value] : []).map((timezone) => ({
-    timezone,
-    name: timezoneDisplayName(timezone, locale, now),
-    offset: timezoneOffsetLabel(timezone, locale, now),
-    searchText: timezoneSearchText(timezone, locale, now),
-  })), [locale, now, value]);
+  const options = useMemo(() => supportedTimezones(value ? [value] : [])
+    .map((timezone) => timezoneOption(timezone, locale, now)), [locale, now, value]);
   const filteredOptions = useMemo(() => {
     const query = submittedSearch.trim().toLocaleLowerCase();
     return query ? options.filter((option) => option.searchText.includes(query)) : options;
