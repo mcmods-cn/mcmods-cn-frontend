@@ -162,7 +162,7 @@ export async function uploadModExportPackage(
     });
     if (control.signal?.aborted) throw new DOMException("Upload cancelled", "AbortError");
     onProgress?.({ phase: "confirming", percent: 100 });
-    record = await completeOSSUpload<OSSFileRecord>(`${root}/uploads/complete`, ticket, token);
+    record = await completeOSSUpload<OSSFileRecord>(`${root}/uploads/complete`, ticket, token, control.signal);
   }
   if (!record?.id) throw new Error("mod export upload did not return a file record");
   const job = await apiRequest<ModExportJob>(

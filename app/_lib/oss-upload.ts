@@ -1,4 +1,5 @@
 import { apiRequest } from "./api";
+import { ApiError } from "./api-error.mts";
 import { computeFileSHA256 } from "./oss-file-hash";
 
 export { computeFileSHA256 } from "./oss-file-hash";
@@ -174,20 +175,25 @@ function ossUploadCompletionPayload(ticket: OSSDirectUploadTicket, multipartActi
   };
 }
 
-export async function completeOSSUpload<T = OSSFileRecord>(endpoint: string, ticket: OSSDirectUploadTicket, token: string) {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+export async function completeOSSUpload<T = OSSFileRecord>(
+  endpoint: string,
+  ticket: OSSDirectUploadTicket,
+  token: string,
+  signal?: AbortSignal,
+) {
+  const body = JSON.stringify(ossUploadCompletionPayload(ticket));
+  for (let attempt = 0; ; attempt += 1) {
+    signal?.throwIfAborted();
     try {
-      return await apiRequest<T>(endpoint, {
-        method: "POST",
-        body: JSON.stringify(ossUploadCompletionPayload(ticket)),
-      }, token);
+      return await apiRequest<T>(endpoint, { method: "POST", body, signal }, token);
     } catch (error) {
-      lastError = error;
-      if (attempt < 2) await uploadRetryDelay(500 * 2 ** attempt);
+      signal?.throwIfAborted();
+      const temporary = error instanceof TypeError || error instanceof ApiError
+        && !error.retryAfter && [408, 500, 502, 503, 504].includes(error.status);
+      if (attempt >= 2 || !temporary) throw error;
+      await uploadRetryDelay(500 * 2 ** attempt, signal);
     }
   }
-  throw lastError;
 }
 
 export async function abortMultipartUpload(endpoint: string, ticket: OSSDirectUploadTicket, token: string) {
