@@ -17,7 +17,7 @@ function forms(node: unknown): Element[] {
 
 // Production handlers run here. Hooks, event/FormData and HTTP are controlled
 // boundaries; this does not claim a real browser or backend integration.
-async function harness() {
+async function harness(canWrite = true) {
   const key = `anti-abuse-lifecycle-${crypto.randomUUID()}`;
   const pending = Promise.withResolvers<unknown>();
   const messages: unknown[] = [];
@@ -44,7 +44,7 @@ async function harness() {
   Reflect.set(globalThis, "FormData", class { private form: Form; constructor(form: Form) { this.form = form; } get(name: string) { return this.form.values.get(name) ?? null; } });
   try {
     const { AdminAntiAbusePanel } = await import(moduleURL(compiled));
-    const handlers = forms(AdminAntiAbusePanel({ token: "cookie-session" })).map((form) => form.props.onSubmit!);
+    const handlers = forms(AdminAntiAbusePanel({ token: "cookie-session", canWrite })).map((form) => form.props.onSubmit!);
     return { handlers, pending, messages, mutations: () => mutations, close() { Reflect.set(globalThis, "FormData", original); Reflect.deleteProperty(globalThis, key); } };
   } catch (error) {
     Reflect.set(globalThis, "FormData", original); Reflect.deleteProperty(globalThis, key); throw error;
@@ -77,5 +77,13 @@ test("failed administrator mutations report a stable localized error and keep th
     await operation; // No unhandled rejection escapes the event handler.
     assert.equal(resets, 0);
     assert.ok(fixture.messages.includes("translated:apiErrors.HTTP_403"));
+  } finally { fixture.close(); }
+});
+
+test("read-only anti-abuse access omits restriction, bot-rule and trust mutations", async () => {
+  const fixture = await harness(false);
+  try {
+    assert.equal(fixture.handlers.length, 0);
+    assert.equal(fixture.mutations(), 0);
   } finally { fixture.close(); }
 });

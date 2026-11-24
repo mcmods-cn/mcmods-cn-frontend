@@ -93,3 +93,37 @@ test("STYLE003 anti-abuse admin feedback uses localized validation and success c
     assert.equal(saves,1,"invalid client settings must not be sent");
   } finally {await browser.close();}
 });
+
+test("anti-abuse readers can inspect and refresh without editing rules or user restrictions", { timeout: 30_000 }, async () => {
+  let reads = 0;
+  let writes = 0;
+  const browser = await fixture.page(({ path, method }) => {
+    if (path === "/api/v1/auth/me") return { data: {
+      id: "riskread1", username: "Risk reader", permissionVersion: 1, rbacVersion: 1, roleCodes: [],
+      permissionRules: ["admin.access", "security.anti-abuse.read"].map(code => ({ code, allow: true, priority: 1 })),
+    } };
+    if (!path.startsWith("/api/v1/admin/anti-abuse/")) return;
+    if (method !== "GET") { writes++; return { status: 403, error: "Read only" }; }
+    if (path.endsWith("/overview")) { reads++; return { data: { counts: {}, activeRestrictions: 6, highRiskUsers: 0, trend: [], challengePassed24h: 0, challengeFailed24h: 0, duplicateBlocked24h: 0, verifiedCrawlerReads24h: 0, unknownCrawlerReads24h: 0 } }; }
+    if (path.endsWith("/config")) return { data: { enabled: true, emergencyMode: false, logThreshold: 10, moderationThreshold: 20, challengeThreshold: 30, tempBlockThreshold: 40, denyThreshold: 50, newAccountDays: 7, trustedAccountDays: 30, trustedMinimumLevel: 1, duplicateWindowHours: 24, similarityThreshold: 800, temporaryBlockMinutes: 60, policies: {} } };
+    return { data: { items: [] } };
+  });
+  try {
+    const { page } = browser;
+    await navigateAdminPanel(page, fixture.origin, "Anti-bot and anti-abuse", "User activity monitoring");
+    const threshold = page.getByLabel("Log threshold (1–100)");
+    await threshold.waitFor();
+    assert.equal(await threshold.inputValue(), "10");
+    assert.equal(await threshold.isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Save rules", exact: true }).count(), 0);
+    assert.equal(await page.locator("input[name=botToken]").count(), 0);
+    assert.equal(await page.locator("form").count(), 0);
+    const previousReads = reads;
+    await Promise.all([
+      page.waitForResponse(response => new URL(response.url()).pathname.endsWith("/anti-abuse/config")),
+      page.getByRole("button", { name: "Refresh", exact: true }).click(),
+    ]);
+    assert.ok(reads > previousReads);
+    assert.equal(writes, 0);
+  } finally { await browser.close(); }
+});

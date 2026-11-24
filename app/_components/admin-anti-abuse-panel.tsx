@@ -9,7 +9,7 @@ import { validateAntiAbuseSettings, type AntiAbusePolicy, type AntiAbuseSettings
 type Overview = { counts: Record<string, Record<string, number>>; activeRestrictions: number; highRiskUsers: number; trend: Array<Record<string, unknown>>; challengePassed24h: number; challengeFailed24h: number; duplicateBlocked24h: number; verifiedCrawlerReads24h: number; unknownCrawlerReads24h: number };
 type RiskEvent = { id: string; username: string; action: string; objectKey: string; outcome: string; riskScore: number; rules: string[]; crawlerClass: string; disposition: string; createdAt: string };
 
-export function AdminAntiAbusePanel({ token }: { token: string }) {
+export function AdminAntiAbusePanel({ token, canWrite }: { token: string; canWrite: boolean }) {
   const { locale, t } = useI18n();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [settings, setSettings] = useState<AntiAbuseSettings | null>(null);
@@ -43,7 +43,7 @@ export function AdminAntiAbusePanel({ token }: { token: string }) {
   }, [load]);
 
   async function runMutation(work: () => Promise<void>) {
-    if (mutationPending.current) return;
+    if (!canWrite || mutationPending.current) return;
     mutationPending.current = true;
     setBusy(true);
     setMessage("");
@@ -136,20 +136,20 @@ export function AdminAntiAbusePanel({ token }: { token: string }) {
     {message ? <p className="rounded-lg border border-[var(--line)] bg-[var(--panel)] p-3 text-sm font-bold" role="status">{message}</p> : null}
     <section className="surface rounded-xl p-5">
       <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">{t("antiAbuse.overview")}</h2><p className="text-sm text-[var(--muted)]">{t("antiAbuse.privacyHint")}</p></div><button className="button-secondary" disabled={busy} onClick={() => void load()} type="button">{t("common.refresh")}</button></div>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <Metric label={t("antiAbuse.riskEvents24h")} value={sumCounts(overview?.counts?.["24h"])} />
-        <Metric label={t("antiAbuse.rateLimits24h")} value={overview?.counts?.["24h"]?.delay || 0} />
-        <Metric label={t("antiAbuse.challenges24h")} value={overview?.counts?.["24h"]?.challenge || 0} />
-        <Metric label={t("antiAbuse.activeRestrictions")} value={overview?.activeRestrictions || 0} />
-        <Metric label={t("antiAbuse.highRiskUsers")} value={overview?.highRiskUsers || 0} />
-        <Metric label={t("antiAbuse.challengeOutcomes")} value={(overview?.challengePassed24h || 0) + (overview?.challengeFailed24h || 0)} />
-        <Metric label={t("antiAbuse.duplicateBlocked")} value={overview?.duplicateBlocked24h || 0} />
-        <Metric label={t("antiAbuse.verifiedCrawler")} value={overview?.verifiedCrawlerReads24h || 0} />
-        <Metric label={t("antiAbuse.unknownCrawler")} value={overview?.unknownCrawlerReads24h || 0} />
-      </div>
+      {overview ? <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <Metric label={t("antiAbuse.riskEvents24h")} value={sumCounts(overview.counts?.["24h"])} />
+        <Metric label={t("antiAbuse.rateLimits24h")} value={overview.counts?.["24h"]?.delay || 0} />
+        <Metric label={t("antiAbuse.challenges24h")} value={overview.counts?.["24h"]?.challenge || 0} />
+        <Metric label={t("antiAbuse.activeRestrictions")} value={overview.activeRestrictions} />
+        <Metric label={t("antiAbuse.highRiskUsers")} value={overview.highRiskUsers} />
+        <Metric label={t("antiAbuse.challengeOutcomes")} value={overview.challengePassed24h + overview.challengeFailed24h} />
+        <Metric label={t("antiAbuse.duplicateBlocked")} value={overview.duplicateBlocked24h} />
+        <Metric label={t("antiAbuse.verifiedCrawler")} value={overview.verifiedCrawlerReads24h} />
+        <Metric label={t("antiAbuse.unknownCrawler")} value={overview.unknownCrawlerReads24h} />
+      </div> : !message && <p role="status">{t("common.loading")}</p>}
     </section>
 
-    {settings ? <fieldset disabled={busy} className="surface rounded-xl p-5">
+    {settings ? <fieldset disabled={!canWrite || busy} className="surface rounded-xl p-5">
       <h2 className="text-xl font-black">{t("antiAbuse.rules")}</h2>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <Check label={t("antiAbuse.enabled")} checked={settings.enabled} onChange={(enabled) => setSettings({ ...settings, enabled })} />
@@ -178,17 +178,17 @@ export function AdminAntiAbusePanel({ token }: { token: string }) {
       <div className="mt-3 overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr><th>{t("antiAbuse.action")}</th>{policyFields.map((field) => <th className="min-w-32" key={field.key}>{t(`antiAbuse.policy.${field.key}`)}</th>)}</tr></thead><tbody>
         {Object.entries(settings.policies).map(([action, policy]) => <tr className="border-t border-[var(--line)]" key={action}><td className="py-2 pr-3 font-mono">{action}</td>{policyFields.map((field) => <td className="pr-2" key={field.key}><input className="field w-28 py-1" min={field.min} max={field.max} step={1} type="number" value={policy[field.key]} onChange={(event) => setSettings({ ...settings, policies: { ...settings.policies, [action]: { ...policy, [field.key]: Number(event.target.value) } } })} /></td>)}</tr>)}
       </tbody></table></div>
-      <div className="mt-4 flex gap-2"><button className="button-primary" disabled={busy} onClick={() => void saveSettings()} type="button">{t("antiAbuse.saveRules")}</button><button className="button-secondary" disabled={busy} onClick={() => void resetSettings()} type="button">{t("antiAbuse.resetRules")}</button></div>
+      {canWrite && <div className="mt-4 flex gap-2"><button className="button-primary" disabled={busy} onClick={() => void saveSettings()} type="button">{t("antiAbuse.saveRules")}</button><button className="button-secondary" disabled={busy} onClick={() => void resetSettings()} type="button">{t("antiAbuse.resetRules")}</button></div>}
     </fieldset> : null}
 
-    <section className="surface rounded-xl p-5"><h2 className="text-xl font-black">{t("antiAbuse.recentEvents")}</h2><div className="mt-4 overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr><th>{t("antiAbuse.time")}</th><th>{t("antiAbuse.userAction")}</th><th>{t("antiAbuse.outcome")}</th><th>{t("antiAbuse.scoreRules")}</th><th>{t("antiAbuse.disposition")}</th></tr></thead><tbody>{events.map((item) => <tr className="border-t border-[var(--line)] align-top" key={item.id}><td className="whitespace-nowrap py-3">{new Date(item.createdAt).toLocaleString(locale)}</td><td><b>{item.username || t("antiAbuse.anonymous")}</b><div className="font-mono text-xs">{item.action}</div></td><td>{item.outcome}<div className="text-xs text-[var(--muted)]">{item.crawlerClass}</div></td><td>{item.riskScore}<div className="max-w-md text-xs text-[var(--muted)]">{item.rules?.join(", ")}</div></td><td><div className="flex flex-wrap gap-1"><button className="button-secondary px-2 py-1" disabled={busy} onClick={() => void reviewEvent(item.id, "false_positive")}>{t("antiAbuse.falsePositive")}</button><button className="button-secondary px-2 py-1" disabled={busy} onClick={() => void reviewEvent(item.id, "confirmed_malicious")}>{t("antiAbuse.malicious")}</button></div><small>{item.disposition}</small></td></tr>)}</tbody></table></div></section>
+    <section className="surface rounded-xl p-5"><h2 className="text-xl font-black">{t("antiAbuse.recentEvents")}</h2><div className="mt-4 overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr><th>{t("antiAbuse.time")}</th><th>{t("antiAbuse.userAction")}</th><th>{t("antiAbuse.outcome")}</th><th>{t("antiAbuse.scoreRules")}</th><th>{t("antiAbuse.disposition")}</th></tr></thead><tbody>{events.map((item) => <tr className="border-t border-[var(--line)] align-top" key={item.id}><td className="whitespace-nowrap py-3">{new Date(item.createdAt).toLocaleString(locale)}</td><td><b>{item.username || t("antiAbuse.anonymous")}</b><div className="font-mono text-xs">{item.action}</div></td><td>{item.outcome}<div className="text-xs text-[var(--muted)]">{item.crawlerClass}</div></td><td>{item.riskScore}<div className="max-w-md text-xs text-[var(--muted)]">{item.rules?.join(", ")}</div></td><td>{canWrite && <div className="flex flex-wrap gap-1"><button className="button-secondary px-2 py-1" disabled={busy} onClick={() => void reviewEvent(item.id, "false_positive")}>{t("antiAbuse.falsePositive")}</button><button className="button-secondary px-2 py-1" disabled={busy} onClick={() => void reviewEvent(item.id, "confirmed_malicious")}>{t("antiAbuse.malicious")}</button></div>}<small>{item.disposition}</small></td></tr>)}</tbody></table></div></section>
 
-    <section className="grid gap-6 xl:grid-cols-2">
+    {canWrite && <section className="grid gap-6 xl:grid-cols-2">
       <form className="surface rounded-xl p-5" onSubmit={createRestriction}><fieldset disabled={busy} className="contents"><h2 className="text-xl font-black">{t("antiAbuse.manualRestriction")}</h2><div className="mt-4 grid gap-3"><input className="field" name="userId" placeholder={t("antiAbuse.userId")} required /><select className="field" name="mode"><option value="cooldown">{t("antiAbuse.restrictionModes.cooldown")}</option><option value="challenge">{t("antiAbuse.restrictionModes.challenge")}</option><option value="moderation">{t("antiAbuse.restrictionModes.moderation")}</option><option value="no_comment">{t("antiAbuse.restrictionModes.no_comment")}</option><option value="no_review">{t("antiAbuse.restrictionModes.no_review")}</option><option value="read_only">{t("antiAbuse.restrictionModes.read_only")}</option><option value="temporary_ban">{t("antiAbuse.restrictionModes.temporary_ban")}</option><option value="permanent_ban">{t("antiAbuse.restrictionModes.permanent_ban")}</option></select><input className="field" name="actions" placeholder={t("antiAbuse.actions")} /><input className="field" defaultValue={60} min={1} name="durationMinutes" type="number" /><textarea className="field" minLength={3} name="reason" placeholder={t("antiAbuse.reason")} required /><label><input defaultChecked name="appealAllowed" type="checkbox" /> {t("antiAbuse.appealAllowed")}</label><button className="button-primary" type="submit">{t("antiAbuse.addRestriction")}</button></div></fieldset></form>
       <form className="surface rounded-xl p-5" onSubmit={createBotRule}><fieldset disabled={busy} className="contents"><h2 className="text-xl font-black">{t("antiAbuse.botRules")}</h2><div className="mt-4 grid gap-3"><select className="field" name="kind"><option value="allowed_bot">{t("antiAbuse.botKinds.allowed_bot")}</option><option value="monitoring_bot">{t("antiAbuse.botKinds.monitoring_bot")}</option><option value="blocked_bot">{t("antiAbuse.botKinds.blocked_bot")}</option><option value="ip_allow">{t("antiAbuse.botKinds.ip_allow")}</option><option value="ip_block">{t("antiAbuse.botKinds.ip_block")}</option></select><input className="field" name="label" placeholder={t("antiAbuse.botRuleName")} required /><input className="field" name="matcher" placeholder={t("antiAbuse.botMatcher")} /><input className="field" name="botToken" type="password" autoComplete="off" placeholder={t("antiAbuse.botToken")} /><button className="button-primary" type="submit">{t("antiAbuse.saveBotRule")}</button></div></fieldset></form>
       <form className="surface rounded-xl p-5" onSubmit={updateUserState}><fieldset disabled={busy} className="contents"><h2 className="text-xl font-black">{t("antiAbuse.trust")}</h2><div className="mt-4 grid gap-3"><input className="field" name="userId" placeholder={t("antiAbuse.userId")} required /><select className="field" name="trustLevel"><option value="normal">{t("antiAbuse.trustLevels.normal")}</option><option value="new">{t("antiAbuse.trustLevels.new")}</option><option value="trusted">{t("antiAbuse.trustLevels.trusted")}</option><option value="high_risk">{t("antiAbuse.trustLevels.high_risk")}</option><option value="restricted">{t("antiAbuse.trustLevels.restricted")}</option></select><input className="field" defaultValue={0} max={1000} min={0} name="riskScore" type="number" /><label><input name="manuallyTrusted" type="checkbox" /> {t("antiAbuse.manualTrust")}</label><button className="button-primary" type="submit">{t("antiAbuse.updateTrust")}</button></div></fieldset></form>
-    </section>
-    <section className="surface rounded-xl p-5"><h2 className="text-xl font-black">{t("antiAbuse.restrictionsAndBots")}</h2><div className="mt-3 grid gap-2">{restrictions.map((item) => <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--line)] p-3" key={String(item.public_id)}><span>{String(item.username || item.user_id)} · {String(item.mode)} · {String(item.reason)}</span>{!item.lifted_at ? <button className="button-secondary" disabled={busy} onClick={() => void liftRestriction(String(item.public_id))}>{t("antiAbuse.lift")}</button> : null}</div>)}{botRules.map((item) => <div className="flex items-center justify-between gap-2 rounded border border-[var(--line)] p-3" key={String(item.public_id)}><span>{String(item.label)} · {String(item.kind)} · {t("antiAbuse.readOnly")}</span><button className="button-secondary" disabled={busy} onClick={() => void deleteBotRule(String(item.public_id))}>{t("common.delete")}</button></div>)}</div></section>
+    </section>}
+    <section className="surface rounded-xl p-5"><h2 className="text-xl font-black">{t("antiAbuse.restrictionsAndBots")}</h2><div className="mt-3 grid gap-2">{restrictions.map((item) => <div className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--line)] p-3" key={String(item.public_id)}><span>{String(item.username || item.user_id)} · {String(item.mode)} · {String(item.reason)}</span>{canWrite && !item.lifted_at ? <button className="button-secondary" disabled={busy} onClick={() => void liftRestriction(String(item.public_id))}>{t("antiAbuse.lift")}</button> : null}</div>)}{botRules.map((item) => <div className="flex items-center justify-between gap-2 rounded border border-[var(--line)] p-3" key={String(item.public_id)}><span>{String(item.label)} · {String(item.kind)} · {t("antiAbuse.readOnly")}</span>{canWrite && <button className="button-secondary" disabled={busy} onClick={() => void deleteBotRule(String(item.public_id))}>{t("common.delete")}</button>}</div>)}</div></section>
   </div>;
 }
 

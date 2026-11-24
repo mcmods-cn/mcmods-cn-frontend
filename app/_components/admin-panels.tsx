@@ -221,8 +221,8 @@ const definitions = {
   },
   "anti-abuse": {
     group: "monitoring", title: "antiAbuse.navTitle", description: "antiAbuse.navDescription",
-    read: "security.anti-abuse.read",
-    render: ({ token }) => <AdminAntiAbusePanel token={token} />,
+    read: "security.anti-abuse.read", write: "security.anti-abuse.write",
+    render: ({ token, access }) => <AdminAntiAbusePanel token={token} canWrite={access.write} />,
   },
   "oss-config": {
     group: "oss", title: "admin.panels.ossConfig", description: "admin.nav.ossConfigDesc",
