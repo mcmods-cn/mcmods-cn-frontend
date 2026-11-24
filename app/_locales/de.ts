@@ -4,6 +4,7 @@ const de = {
   importReceipt: { statusUnavailable: "Der Import {id} wurde angenommen. Sein Status ist vorübergehend nicht verfügbar.", refresh: "Importstatus prüfen" },
   commentFeedback: {
     ...en.commentFeedback,
+    bodyLimit: "Kommentare dürfen höchstens {count} Zeichen enthalten. Kürze den Text, um fortzufahren.",
     unconfirmed: "Die Übermittlung konnte nicht bestätigt werden. Dein Entwurf bleibt erhalten. Du kannst es erneut versuchen.",
     publishedWithoutDetails: "Der Kommentar wurde veröffentlicht. Die Details sind vorübergehend nicht verfügbar.",
     noLongerVisible: "Dieser Beitrag wurde bereits verarbeitet. Der Kommentar ist nicht mehr sichtbar.",

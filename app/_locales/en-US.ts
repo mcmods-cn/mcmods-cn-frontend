@@ -230,6 +230,7 @@ const en = {
     "next": "Next chunk"
   },
   "commentFeedback": {
+    bodyLimit: "Comments can contain up to {count} characters. Shorten the text to continue.",
     unconfirmed: "The submission could not be confirmed. Your draft is still here. You can retry.",
     publishedWithoutDetails: "Comment published. Its details are temporarily unavailable.",
     noLongerVisible: "This submission has already been processed. The comment is no longer visible.",

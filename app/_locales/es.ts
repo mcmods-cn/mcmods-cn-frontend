@@ -4,6 +4,7 @@ const es = {
   importReceipt: { statusUnavailable: "La importación {id} se ha aceptado. Su estado no está disponible por el momento.", refresh: "Consultar el estado de la importación" },
   commentFeedback: {
     ...en.commentFeedback,
+    bodyLimit: "Los comentarios pueden tener hasta {count} caracteres. Acorta el texto para continuar.",
     unconfirmed: "No se ha podido confirmar el envío. El borrador se ha conservado. Puedes volver a intentarlo.",
     publishedWithoutDetails: "El comentario se ha publicado. Los detalles no están disponibles por el momento.",
     noLongerVisible: "El envío ya se ha procesado. El comentario ya no está visible.",

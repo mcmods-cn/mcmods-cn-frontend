@@ -1,7 +1,8 @@
 "use client";
 
-import { ChangeEvent, DragEvent, ReactNode, RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, ReactNode, RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "../_lib/i18n-provider";
+import { exceedsCommentTextLimit, maxCommentCharacters, maxCommentDraftUnits } from "../_lib/comment-text-limit.mts";
 import { useTextareaSelection } from "../_lib/use-textarea-selection";
 import { formatBytes, uploadUserFileToOSS } from "../_lib/oss-upload";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
@@ -34,7 +35,6 @@ type CommentMarkdownEditorProps = {
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   placeholder?: string;
   disabled?: boolean;
-  maxLength?: number;
 };
 
 const maxCommentAttachments = 5;
@@ -50,7 +50,6 @@ export function CommentMarkdownEditor({
   inputRef,
   placeholder,
   disabled = false,
-  maxLength = 10000,
 }: CommentMarkdownEditorProps) {
   const { t } = useI18n();
   const localInputRef = useRef<HTMLTextAreaElement>(null);
@@ -62,6 +61,11 @@ export function CommentMarkdownEditor({
   useEffect(() => () => uploadInFlight.current?.abort(), []);
   useLayoutEffect(() => { activeAttachments.current = attachments; }, [attachments]);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
+  const [rejectedInsertion, setRejectedInsertion] = useState(false);
+  const lengthMessageID = useId();
+  const previousSelection = useRef({ start: 0, end: 0 });
+  const overLimit = exceedsCommentTextLimit(value);
+  const showLengthMessage = overLimit || rejectedInsertion;
   const [dragging, setDragging] = useState(false);
   const [uploads, setUploads] = useState<PendingUpload[]>([]);
   const uploading = uploads.some((item) => !item.error && item.progress < 100);
@@ -69,9 +73,30 @@ export function CommentMarkdownEditor({
   useEffect(() => onUploadingChange?.(uploading), [onUploadingChange, uploading]);
 
   function updateText(next: string, selectionStart: number, selectionEnd = selectionStart) {
-    const nextValue = next.slice(0, maxLength);
-    selectAfterChange(nextValue, Math.min(selectionStart, maxLength), Math.min(selectionEnd, maxLength));
-    onChange(nextValue);
+    if (next.length > maxCommentDraftUnits || exceedsCommentTextLimit(next)) {
+      setRejectedInsertion(true);
+      const input = textareaRef.current;
+      if (input) selectAfterChange(value, input.selectionStart, input.selectionEnd);
+      return;
+    }
+    setRejectedInsertion(false);
+    selectAfterChange(next, selectionStart, selectionEnd);
+    onChange(next);
+  }
+
+  function rememberSelection(input: HTMLTextAreaElement) {
+    previousSelection.current = { start: input.selectionStart, end: input.selectionEnd };
+  }
+
+  function changeDraft(input: HTMLTextAreaElement) {
+    if (input.value.length > maxCommentDraftUnits) {
+      input.value = value;
+      input.setSelectionRange(previousSelection.current.start, previousSelection.current.end);
+      setRejectedInsertion(true);
+      return;
+    }
+    setRejectedInsertion(false);
+    onChange(input.value);
   }
 
   function wrapSelection(prefix: string, suffix: string, fallback: string) {
@@ -156,7 +181,7 @@ export function CommentMarkdownEditor({
     >
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--line)] p-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          <StickerPicker selectAfterChange={selectAfterChange} disabled={disabled || mode === "preview"} inputRef={textareaRef} value={value} onChange={onChange} />
+          <StickerPicker disabled={disabled || mode === "preview"} inputRef={textareaRef} value={value} onInsert={updateText} />
           <select
             aria-label={t("mods.comments.editor.fontSize")}
             className="field w-auto min-w-24 py-2 text-sm"
@@ -179,7 +204,7 @@ export function CommentMarkdownEditor({
         </div>
         <div className="flex rounded-md border border-[var(--line)] bg-[var(--panel)] p-0.5" role="group" aria-label={t("mods.comments.editor.mode")}>
           <button className={`focus-ring rounded px-3 py-1.5 text-xs font-bold ${mode === "edit" ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setMode("edit")}>{t("mods.comments.editor.edit")}</button>
-          <button className={`focus-ring rounded px-3 py-1.5 text-xs font-bold ${mode === "preview" ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" onClick={() => setMode("preview")}>{t("mods.comments.editor.preview")}</button>
+          <button className={`focus-ring rounded px-3 py-1.5 text-xs font-bold ${mode === "preview" ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "text-[var(--muted)]"}`} type="button" disabled={overLimit} onClick={() => setMode("preview")}>{t("mods.comments.editor.preview")}</button>
         </div>
       </div>
 
@@ -189,11 +214,22 @@ export function CommentMarkdownEditor({
             ref={textareaRef}
             className="min-h-32 w-full resize-y bg-transparent p-4 outline-none placeholder:text-[var(--muted)]"
             disabled={disabled}
-            maxLength={maxLength}
+            aria-describedby={showLengthMessage ? lengthMessageID : undefined}
+            aria-invalid={overLimit || undefined}
             placeholder={placeholder}
             required
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onSelect={(event) => rememberSelection(event.currentTarget)}
+            onBeforeInput={(event) => rememberSelection(event.currentTarget)}
+            onPaste={(event) => {
+              const input = event.currentTarget;
+              const available = maxCommentDraftUnits - (value.length - (input.selectionEnd - input.selectionStart));
+              if (event.clipboardData.getData("text/plain").length > available) {
+                event.preventDefault();
+                setRejectedInsertion(true);
+              }
+            }}
+            onChange={(event) => changeDraft(event.currentTarget)}
           />
           {dragging ? <div className="pointer-events-none absolute inset-2 grid place-items-center rounded-md border-2 border-dashed border-[var(--accent)] bg-[var(--panel)]/95 text-sm font-black text-[var(--accent)]">{t("mods.comments.editor.dropFiles")}</div> : null}
         </div>
@@ -202,6 +238,8 @@ export function CommentMarkdownEditor({
           <MarkdownRenderer commentFloorLinks config={defaultMarkdownConfig} emptyText={t("mods.comments.editor.previewEmpty")} markdown={value} />
         </div>
       )}
+
+      {showLengthMessage ? <p className="px-4 py-2 text-sm text-[var(--red)]" id={lengthMessageID} role="alert">{t("commentFeedback.bodyLimit", { count: maxCommentCharacters })}</p> : null}
 
       {(attachments.length > 0 || uploads.length > 0) ? (
         <div className="grid gap-2 border-t border-[var(--line)] p-3" aria-live="polite">

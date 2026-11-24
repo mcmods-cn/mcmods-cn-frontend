@@ -24,6 +24,7 @@ import {
   updateComment,
   targetCommentsPath,
 } from "../_lib/comment-api";
+import { exceedsCommentTextLimit, maxCommentCharacters, maxCommentDraftUnits, trimCommentBody } from "../_lib/comment-text-limit.mts";
 import { useI18n } from "../_lib/i18n-provider";
 import { defaultMarkdownConfig } from "../_lib/markdown-config";
 import { formatBytes } from "../_lib/oss-upload";
@@ -136,7 +137,11 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
   }, [load, ready]);
 
   async function submitComment(content: string, parentId?: string, challengeProof = "", challengeKey?: string, attachmentFileIds: string[] = []) {
-    if (submitting) return;
+    if (submitting || !trimCommentBody(content)) return;
+    if (exceedsCommentTextLimit(content)) {
+      setMessage(t("commentFeedback.bodyLimit", { count: maxCommentCharacters }));
+      return;
+    }
     if (!token) {
       setMessage(t("mods.comments.loginRequired"));
       return;
@@ -263,11 +268,11 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
 
       {user && canCreate ? (
         <form className="mt-5 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => void publish(event, body, undefined, attachments.map((item) => item.id))}>
-          <CommentMarkdownEditor attachments={attachments} inputRef={commentInput} maxLength={10000} onAttachmentsChange={setAttachments} onChange={setBody} onError={setMessage} onUploadingChange={setUploadingAttachments} placeholder={t("mods.comments.placeholder")} token={token} value={body} />
+          <CommentMarkdownEditor attachments={attachments} inputRef={commentInput} onAttachmentsChange={setAttachments} onChange={setBody} onError={setMessage} onUploadingChange={setUploadingAttachments} placeholder={t("mods.comments.placeholder")} token={token} value={body} />
           <input aria-hidden="true" autoComplete="off" className="absolute -left-[10000px] h-px w-px opacity-0" name={formTokens["comment.create"]?.fieldName || "contact_reference"} tabIndex={-1} value={honeypot} onChange={(event) => setHoneypot(event.target.value)} />
           <div className="mt-3 flex items-center justify-between gap-3">
             <span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span>
-            <button className="button-primary focus-ring" disabled={!body.trim() || submitting || uploadingAttachments || cooldown > 0} type="submit">{uploadingAttachments ? t("mods.comments.editor.uploading") : cooldown > 0 ? t("commentFeedback.retryAfter", { seconds: cooldown }) : t("mods.comments.publish")}</button>
+            <button className="button-primary focus-ring" disabled={!trimCommentBody(body) || exceedsCommentTextLimit(body) || submitting || uploadingAttachments || cooldown > 0} type="submit">{uploadingAttachments ? t("mods.comments.editor.uploading") : cooldown > 0 ? t("commentFeedback.retryAfter", { seconds: cooldown }) : t("mods.comments.publish")}</button>
           </div>
         </form>
       ) : !user ? (
@@ -320,6 +325,7 @@ type CommentTreeProps = {
 };
 
 function CommentTree(props: CommentTreeProps) {
+  const editDraft = useRef<{ id: string; version: string; body: string } | null>(null);
   const router = useRouter();
   const replyInput = useRef<HTMLTextAreaElement>(null);
   const { t } = useI18n();
@@ -410,10 +416,24 @@ function CommentTree(props: CommentTreeProps) {
 
   async function edit(comment: CommentItem) {
     if (!props.token) return;
-    const nextBody = window.prompt(t("mods.comments.editPrompt"), comment.body);
-    if (!nextBody?.trim() || nextBody.trim() === comment.body) return;
+    const previous = editDraft.current;
+    const initialBody = previous?.id === comment.id && previous.version === comment.updatedAt ? previous.body : comment.body;
+    const nextBody = window.prompt(t("mods.comments.editPrompt"), initialBody);
+    if (nextBody == null) { editDraft.current = null; return; }
+    if (nextBody.length > maxCommentDraftUnits) {
+      props.onMessage(t("commentFeedback.bodyLimit", { count: maxCommentCharacters }));
+      return;
+    }
+    const normalized = trimCommentBody(nextBody);
+    if (!normalized || normalized === comment.body) { editDraft.current = null; return; }
+    if (exceedsCommentTextLimit(nextBody)) {
+      editDraft.current = { id: comment.id, version: comment.updatedAt, body: nextBody };
+      props.onMessage(t("commentFeedback.bodyLimit", { count: maxCommentCharacters }));
+      return;
+    }
     try {
-      const result = await updateComment(comment.id, nextBody.trim(), comment.updatedAt, props.token);
+      const result = await updateComment(comment.id, normalized, comment.updatedAt, props.token);
+      editDraft.current = null;
       props.onItemsChange((items) => items.map((item) => {
         if (item.id !== result.id) return item;
         return "detailsUnavailable" in result ? { ...item, body: result.body, updatedAt: result.updatedAt } : result;
@@ -530,13 +550,13 @@ function CommentTree(props: CommentTreeProps) {
             {item.canReply && props.replyTo?.id === item.id ? (
               <form className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => props.onReplySubmit(event, item, replyAttachments.map((attachment) => attachment.id))}>
                 <p className="mb-2 text-sm font-bold text-[var(--muted)]">{t("mods.comments.replyingTo", { name: item.author.username })}</p>
-                <CommentMarkdownEditor attachments={replyAttachments} inputRef={replyInput} maxLength={10000} onAttachmentsChange={setReplyAttachments} onChange={props.onReplyBodyChange} onError={props.onMessage} onUploadingChange={setUploadingReplyAttachments} placeholder={t("mods.comments.placeholder")} token={props.token} value={props.replyBody} />
+                <CommentMarkdownEditor attachments={replyAttachments} inputRef={replyInput} onAttachmentsChange={setReplyAttachments} onChange={props.onReplyBodyChange} onError={props.onMessage} onUploadingChange={setUploadingReplyAttachments} placeholder={t("mods.comments.placeholder")} token={props.token} value={props.replyBody} />
                 <p className="mt-2 text-xs text-[var(--muted)]">{t("mods.comments.cyHint")}</p>
                 <div className="mt-2 flex justify-between gap-2">
                   <span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span>
                   <div className="flex gap-2">
                   <button className="button-secondary focus-ring" type="button" onClick={() => { setReplyAttachments([]); setUploadingReplyAttachments(false); props.onReplyCancel(); }}>{t("common.cancel")}</button>
-                  <button className="button-primary focus-ring" disabled={!props.replyBody.trim() || props.submitting || uploadingReplyAttachments} type="submit">{uploadingReplyAttachments ? t("mods.comments.editor.uploading") : t("mods.comments.reply")}</button>
+                  <button className="button-primary focus-ring" disabled={!trimCommentBody(props.replyBody) || exceedsCommentTextLimit(props.replyBody) || props.submitting || uploadingReplyAttachments} type="submit">{uploadingReplyAttachments ? t("mods.comments.editor.uploading") : t("mods.comments.reply")}</button>
                   </div>
                 </div>
               </form>

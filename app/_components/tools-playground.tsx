@@ -362,7 +362,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
     setEditorMessage(t("tools.playground.serverDraftLoaded"));
   }, [draftConflict, replaceMarkdownState, t]);
 
-  const replaceSelection = useCallback((nextValue: string, selectionStart: number, selectionEnd: number) => {
+  const replaceSelection = useCallback((nextValue: string, selectionStart: number, selectionEnd = selectionStart) => {
     selectAfterChange(nextValue, selectionStart, selectionEnd);
     commitMarkdown(nextValue);
     setCursorPosition(selectionStart);
@@ -739,7 +739,7 @@ function ToolsPlaygroundSession({ documentId, embedded = false, editorDescriptio
               onUploadBlueprint={() => blueprintInputRef.current?.click()}
             />
             <div className="flex items-center border-b border-[var(--line)] px-3 py-2">
-              <StickerPicker selectAfterChange={selectAfterChange} inputRef={textareaRef} value={markdown} onChange={commitMarkdown} />
+              <StickerPicker inputRef={textareaRef} value={markdown} onInsert={replaceSelection} />
             </div>
             <input
               ref={blueprintInputRef}

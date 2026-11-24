@@ -191,6 +191,70 @@ const postReads: APIHandler = ({ path }) => {
   if (path === "/api/v1/comment-targets/community_post/post00001/comments") return { data: comments() };
 };
 
+test("comment edits respect the Unicode budget without dropping the existing draft or its selection", async () => {
+  const writes: string[] = [];
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/stickers") {
+      return { data: { locale: "en-US", packs: [{
+        code: "test", name: "Test", stickers: [{ code: "leaf", name: "Leaf", imageURL: "/favicon.ico", mimeType: "image/png", width: 16, height: 16 }],
+      }] } };
+    }
+    if (request.method === "POST" && request.path === "/api/v1/comment-targets/community_post/post00001/comments") {
+      writes.push(JSON.parse(request.body).body);
+      return { status: 202, data: { id: "budget01", status: "pending", moderation: true } };
+    }
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/discussions/post00001");
+    const editor = page.getByPlaceholder("Write a comment. Markdown is supported.");
+    const form = editor.locator("xpath=ancestor::form[1]");
+    const submit = form.getByRole("button", { name: "Comment", exact: true });
+    const error = form.getByRole("alert").filter({ hasText: "10000" });
+    const full = "a".repeat(9999) + "X";
+    const selectFirst = () => editor.evaluate((input: HTMLTextAreaElement) => input.setSelectionRange(0, 1));
+    const assertOriginal = async () => {
+      assert.equal(await editor.inputValue(), full);
+      assert.deepEqual(await editor.evaluate((input: HTMLTextAreaElement) => [input.selectionStart, input.selectionEnd]), [0, 1]);
+    };
+    await editor.fill(full);
+    await selectFirst();
+    await form.getByRole("button", { name: "Bold", exact: true }).click();
+    await error.waitFor();
+    await assertOriginal();
+    await form.getByRole("button", { name: "Stickers", exact: true }).click();
+    await form.getByRole("button", { name: "Leaf", exact: true }).click();
+    await assertOriginal();
+
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: fixture.origin });
+    await page.evaluate(text => navigator.clipboard.writeText(text), "b".repeat(30_000));
+    await editor.press("ControlOrMeta+v");
+    await assertOriginal();
+    await editor.fill(full + "a");
+    assert.equal(await editor.inputValue(), full + "a");
+    assert.equal(await submit.isDisabled(), true);
+    assert.equal(await form.getByRole("button", { name: "Preview", exact: true }).isDisabled(), true);
+    assert.deepEqual(writes, []);
+
+    const supplementary = "𠮷".repeat(9999);
+    await editor.fill(supplementary);
+    // Use the browser's composition path to commit the final emoji.
+    const session = await page.context().newCDPSession(page);
+    try {
+      await session.send("Input.imeSetComposition", { text: "🌿", selectionStart: 2, selectionEnd: 2 });
+      await session.send("Input.insertText", { text: "🌿" });
+    } finally { await session.detach(); }
+    const final = supplementary + "🌿";
+    assert.equal(await editor.inputValue(), final);
+    assert.equal(await submit.isEnabled(), true);
+    assert.equal(await error.count(), 0);
+    await submit.click();
+    await page.getByText("The comment was submitted for review and will be public after approval.", { exact: true }).waitFor();
+    assert.deepEqual(writes, [final]);
+  } finally { await browser.close(); }
+});
+
 test("OCT03 LEGACY016 actual post and comment report buttons share reasons and unified POST", { timeout: 30_000 }, async () => {
   const reports: Array<Record<string, unknown>> = [];
   const reasonTypes: string[] = [];
