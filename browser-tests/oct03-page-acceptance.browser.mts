@@ -244,6 +244,9 @@ test("Leaving the template editor cancels its pending save and keeps the selecte
         recipes: [], total: 0, limit: 24, offset: 0,
       } };
     }
+    if (request.path === "/api/v1/comment-targets/recipe_type/recipetype1/comments" && request.method === "GET") {
+      return { data: { items: [], total: 0, nextCursor: "", capabilities: { canCreate: false } } };
+    }
     if (request.path === path && request.method === "GET") return { data: { items: [] } };
     if (request.path === path && request.method === "POST") {
       writes++;
