@@ -204,6 +204,12 @@ test("FP060 FP058 template slots can be created and moved by keyboard while writ
     await page.getByRole("button", { name: "Output", exact: true }).click();
     await page.getByRole("button", { name: "Add · Output", exact: true }).focus();
     await page.keyboard.press("Enter");
+    const outputIndex = page.getByLabel("Output index", { exact: true });
+    assert.equal(await outputIndex.inputValue(), "0");
+    await outputIndex.fill("-1");
+    assert.equal(await page.getByRole("button", { name: "Save", exact: true }).isDisabled(), true);
+    await outputIndex.fill("");
+    assert.equal(await outputIndex.inputValue(), "");
     await page.getByRole("button", { name: "Catalyst", exact: true }).click();
     await page.getByRole("button", { name: "Add · Catalyst", exact: true }).focus();
     await page.keyboard.press("Enter");
@@ -216,6 +222,7 @@ test("FP060 FP058 template slots can be created and moved by keyboard while writ
     await page.locator("fieldset button.button-primary").last().evaluate(node => { (node as HTMLButtonElement).click(); (node as HTMLButtonElement).click(); });
     assert.equal(writes.length, 1);
     assert.deepEqual((writes[0].slots as Array<{role:string}>).map(item => item.role), ["input", "output", "catalyst"]);
+    assert.equal(Object.hasOwn((writes[0].slots as object[])[1], "outputIndex"), false);
     assert.deepEqual(writes[0].definition, { protectedExtension: { a: [1, 2] } });
     write.resolve({ status: 503, error: "Controlled template write failure" });
     await page.getByText("Controlled template write failure", { exact: true }).waitFor();

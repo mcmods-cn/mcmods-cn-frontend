@@ -1162,7 +1162,7 @@ const en = {
     invalidCanvas: "Canvas width and height must be positive numbers.",
     slotOutsideCanvas: "Every slot must stay within the canvas bounds.",
     invalidSlotSize: "Every slot must have a positive width and height.",
-    invalidOutputIndex: "Output indexes must be non-negative integers and unique.",
+    invalidOutputIndex: "Use a non-negative integer for the output index or leave it blank.",
     outputIndexOnly: "Only output slots may define an output index.",
     uploadFailed: "The background upload failed. Try again.",
     saveFailed: "The change could not be submitted. Try again.",

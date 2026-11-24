@@ -382,7 +382,7 @@ export function RecipeTemplateEditor({
       {!activeSlot ? <p className="mt-4 rounded-lg border border-dashed border-[var(--line)] p-6 text-center text-sm text-[var(--muted)]">{labels.emptySlots}</p> : <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <label className="grid gap-2 text-sm font-bold md:col-span-2">{labels.slotKey}<input className="field font-mono" value={activeSlot.slotKey} onChange={(event) => updateSlot(selectedSlot, { slotKey: event.target.value })} /></label>
         <label className="grid gap-2 text-sm font-bold">{labels.slotRole}<select className="field" value={activeSlot.role} onChange={(event) => changeRole(selectedSlot, event.target.value as RecipeSlotRole)}><option value="input">{labels.roleInput}</option><option value="output">{labels.roleOutput}</option><option value="catalyst">{labels.roleCatalyst}</option></select></label>
-        <label className="grid gap-2 text-sm font-bold">{labels.outputIndex}<input className="field" disabled={activeSlot.role !== "output"} min={0} type="number" value={activeSlot.outputIndex ?? ""} onChange={(event) => updateSlot(selectedSlot, { outputIndex: nonNegativeIntegerOrUndefined(event.target.value) })} /></label>
+        <label className="grid gap-2 text-sm font-bold">{labels.outputIndex}<input className="field" disabled={activeSlot.role !== "output"} min={0} type="number" value={activeSlot.outputIndex ?? ""} onChange={(event) => updateSlot(selectedSlot, { outputIndex: event.target.value === "" ? undefined : Number(event.target.value) })} /></label>
         <NumberField label={labels.x} value={activeSlot.rect.x} onChange={(value) => updateSlotRect(selectedSlot, "x", value)} />
         <NumberField label={labels.y} value={activeSlot.rect.y} onChange={(value) => updateSlotRect(selectedSlot, "y", value)} />
         <NumberField label={labels.width} min={1} value={activeSlot.rect.width} onChange={(value) => updateSlotRect(selectedSlot, "width", value)} />
@@ -472,7 +472,7 @@ function validateTemplate(
     keys.add(key);
     if (!Number.isFinite(slot.rect.width) || !Number.isFinite(slot.rect.height) || slot.rect.width <= 0 || slot.rect.height <= 0) errors.push(`${slot.slotKey || labels.slotKey}: ${labels.invalidSlotSize}`);
     if (![slot.rect.x, slot.rect.y, slot.rect.width, slot.rect.height].every(Number.isFinite) || slot.rect.x < 0 || slot.rect.y < 0 || slot.rect.x + slot.rect.width > draft.canvas.width || slot.rect.y + slot.rect.height > draft.canvas.height) errors.push(`${slot.slotKey || labels.slotKey}: ${labels.slotOutsideCanvas}`);
-    if (slot.role === "output" && (!Number.isInteger(slot.outputIndex) || Number(slot.outputIndex) < 0)) errors.push(`${slot.slotKey || labels.slotKey}: ${labels.invalidOutputIndex}`);
+    if (slot.role === "output" && slot.outputIndex !== undefined && (!Number.isInteger(slot.outputIndex) || slot.outputIndex < 0)) errors.push(`${slot.slotKey || labels.slotKey}: ${labels.invalidOutputIndex}`);
     if (slot.role !== "output" && slot.outputIndex !== undefined) errors.push(`${slot.slotKey || labels.slotKey}: ${labels.outputIndexOnly}`);
   }
   return [...new Set(errors)];
@@ -519,11 +519,6 @@ function roleButtonClass(role: RecipeSlotRole) {
 
 function roleLabel(role: RecipeSlotRole, labels: RecipeTemplateEditorLabels) {
   return role === "output" ? labels.roleOutput : role === "catalyst" ? labels.roleCatalyst : labels.roleInput;
-}
-
-function nonNegativeIntegerOrUndefined(value: string) {
-  const number = Number(value);
-  return Number.isInteger(number) && number >= 0 ? number : undefined;
 }
 
 function safeImageURL(value?: string) {

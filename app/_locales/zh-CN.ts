@@ -1162,7 +1162,7 @@ const zhCN = {
     invalidCanvas: "画布宽度和高度必须为正数。",
     slotOutsideCanvas: "所有槽位都必须位于画布范围内。",
     invalidSlotSize: "每个槽位的宽度和高度都必须为正数。",
-    invalidOutputIndex: "输出序号必须是非负整数且不能重复。",
+    invalidOutputIndex: "输出序号可留空；填写时请输入非负整数。",
     outputIndexOnly: "只有输出槽位可以设置输出序号。",
     uploadFailed: "背景图片上传失败，请重试。",
     saveFailed: "修改提交失败，请重试。",
