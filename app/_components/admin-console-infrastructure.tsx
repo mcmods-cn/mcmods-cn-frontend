@@ -964,9 +964,31 @@ function MarkdownConfigPanel({ initialConfig, token }: { initialConfig: Markdown
   );
 }
 
+function sameMailDestination(left: { host: string; port: string | number; username: string }, right: { host: string; port: string | number; username: string }) {
+  const host = (value: string) => value.trim().replace(/[A-Z]/g, letter => letter.toLowerCase());
+  return host(left.host) === host(right.host) && Number(left.port) === Number(right.port) && left.username === right.username;
+}
+
 function MailPanelV2({ config: initialConfig, token }: { config: MailConfig; token: string }) {
   const [config, setConfig] = useState(initialConfig);
   const { t } = useI18n();
+  const [destination, setDestination] = useState({ host: initialConfig.host, port: String(initialConfig.port), username: initialConfig.username });
+  const [password, setPassword] = useState("");
+  const [clearPassword, setClearPassword] = useState(false);
+  const [serverDecision, setServerDecision] = useState(false);
+  const saveInFlight = useRef(false);
+  const needsDecision = serverDecision || config.hasPassword && !sameMailDestination(destination, config);
+  const missingDecision = needsDecision && !password.trim() && !clearPassword;
+
+  function changeDestination(field: keyof typeof destination, value: string) {
+    const next = { ...destination, [field]: value };
+    if (!sameMailDestination(next, destination)) {
+      setPassword("");
+      setClearPassword(false);
+    }
+    setDestination(next);
+  }
+
   const [message, setMessage] = useState("");
   const [testTo, setTestTo] = useState("");
   const [saving, setSaving] = useState(false);
@@ -974,28 +996,36 @@ function MailPanelV2({ config: initialConfig, token }: { config: MailConfig; tok
 
   async function saveMail(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saveInFlight.current || missingDecision) return;
+    saveInFlight.current = true;
     setSaving(true);
     setMessage("");
     const formElement = event.currentTarget;
     const form = new FormData(formElement);
     const payload = {
       enabled: form.get("enabled") === "on",
-      host: String(form.get("host") ?? ""),
-      port: Number(form.get("port") ?? 587),
-      username: String(form.get("username") ?? ""),
-      password: String(form.get("password") ?? ""),
+      host: destination.host.trim(),
+      port: Number(destination.port),
+      username: destination.username,
+      ...(clearPassword ? { clearPassword: true } : password.trim() ? { password } : {}),
       from: String(form.get("from") ?? ""),
       useTLS: form.get("useTLS") === "on",
     };
     try {
       const saved = await apiRequest<MailConfig>("/api/v1/admin/config/mail", { method: "PUT", body: JSON.stringify(payload) }, token);
       setConfig(saved);
-      const password = formElement.elements.namedItem("password");
-      if (password instanceof HTMLInputElement) password.value = "";
+      setDestination({ host: saved.host, port: String(saved.port), username: saved.username });
+      setPassword("");
+      setClearPassword(false);
+      setServerDecision(false);
       setMessage(t("admin.saveSuccess"));
     } catch (error) {
-      setMessage(cleanError(error));
+      if (error instanceof ApiError && error.code === "MAIL_PASSWORD_DECISION_REQUIRED") {
+        setServerDecision(true);
+        setMessage(t("admin.mailPasswordDecision"));
+      } else setMessage(cleanError(error));
     } finally {
+      saveInFlight.current = false;
       setSaving(false);
     }
   }
@@ -1024,12 +1054,12 @@ function MailPanelV2({ config: initialConfig, token }: { config: MailConfig; tok
           </label>
           <label className="text-sm font-semibold">
             {t("admin.server")}
-            <input className="field mt-2" defaultValue={config.host} name="host" />
+            <input className="field mt-2" value={destination.host} onChange={event => changeDestination("host", event.target.value)} name="host" />
           </label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-semibold">
               {t("admin.port")}
-              <input className="field mt-2" defaultValue={config.port} min={1} name="port" type="number" />
+              <input className="field mt-2" value={destination.port} onChange={event => changeDestination("port", event.target.value)} min={1} max={65535} required name="port" type="number" />
             </label>
             <label className="text-sm font-semibold">
               {t("admin.sender")}
@@ -1038,17 +1068,22 @@ function MailPanelV2({ config: initialConfig, token }: { config: MailConfig; tok
           </div>
           <label className="text-sm font-semibold">
             {t("admin.username")}
-            <input className="field mt-2" defaultValue={config.username} name="username" />
+            <input className="field mt-2" value={destination.username} onChange={event => changeDestination("username", event.target.value)} name="username" />
           </label>
           <label className="text-sm font-semibold">
             {t("login.password")}
-            <input className="field mt-2" name="password" placeholder={config.hasPassword ? t("admin.clientSecretSaved") : ""} type="password" />
+            <input className="field mt-2" autoComplete="new-password" name="password" disabled={clearPassword} value={password} onChange={event => setPassword(event.target.value)} placeholder={!needsDecision && config.hasPassword && !clearPassword ? t("admin.clientSecretSaved") : ""} type="password" />
           </label>
+          {(config.hasPassword || serverDecision) && <label className="flex items-center gap-2 text-sm font-semibold">
+            <input name="clearPassword" type="checkbox" checked={clearPassword} onChange={event => { setClearPassword(event.target.checked); if (event.target.checked) setPassword(""); }} />
+            {t("admin.nats.clearPassword")}
+          </label>}
+          {needsDecision && <p role="status" className="text-sm">{t("admin.mailPasswordDecision")}</p>}
           <label className="flex items-center gap-2 text-sm font-semibold">
             <input defaultChecked={config.useTLS} name="useTLS" type="checkbox" />
             TLS / STARTTLS
           </label>
-          <button className="button-primary focus-ring" disabled={saving} type="submit">
+          <button className="button-primary focus-ring" disabled={saving || missingDecision} type="submit">
             {saving ? t("admin.saving") : t("admin.saveMail")}
           </button>
           </fieldset>

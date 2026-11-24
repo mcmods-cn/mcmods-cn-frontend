@@ -1796,6 +1796,8 @@ const activityObjectTypes = [
   "addon",
   "community_post",
   "review",
+  "changelog",
+  "rating",
   "skin",
   "player_profile",
 ] as const;

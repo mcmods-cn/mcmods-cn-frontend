@@ -3400,6 +3400,8 @@ const zhCN = {
         addon: "附属资源",
         community_post: "社区内容",
         review: "审核",
+        changelog: "更新日志",
+        rating: "评分",
         player_profile: "玩家档案",
       },
       metrics: {
@@ -4028,6 +4030,7 @@ const zhCN = {
     sending: "发送中",
     configured: "已配置",
     notConfigured: "未配置",
+    mailPasswordDecision: "更换邮件服务器、端口或用户名后，请重新输入密码，或选择清除已保存的密码。",
     saveMail: "保存邮件配置",
     saving: "保存中",
     featureFlags: "已接入功能",

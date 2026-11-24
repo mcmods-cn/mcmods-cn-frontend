@@ -847,6 +847,7 @@ test("activity monitor shows the latest filter, retries failures and omits empty
         initialStarted.resolve(); await initialRelease.promise;
         return { data: { items: [{ id: "old", username: "Previous filter", action: "view", objectType: "mod", markdownAddedBytes: 0, occurredAt: "2026-10-03T00:00:00Z" }] } };
       }
+      assert.equal(url.searchParams.get("objectType"), "rating");
       if (reads === 2) return { status: 503, error: "Activity read unavailable" };
       return { data: { items: [] } };
     }
@@ -855,6 +856,10 @@ test("activity monitor shows the latest filter, retries failures and omits empty
     const page = browser.page;
     await panel(page, "activity-monitor", "monitoring");
     await initialStarted.promise;
+    const object = page.locator("select").filter({ has: page.locator('option[value="rating"]') });
+    assert.equal(await object.locator('option[value="rating"]').textContent(), "Rating");
+    assert.equal(await object.locator('option[value="changelog"]').textContent(), "Changelog");
+    await object.selectOption("rating");
     await page.getByRole("textbox", { name: "User ID", exact: true }).fill("sample");
     await page.getByRole("button", { name: "Search", exact: true }).click();
     await page.getByRole("alert").waitFor();

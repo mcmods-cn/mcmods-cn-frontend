@@ -148,6 +148,57 @@ test("mail settings preserve disabled delivery on edit and confirm the saved sta
   } finally { await browser.close(); }
 });
 
+test("SMTP destination changes require an explicit saved password decision", { timeout: 30_000 }, async () => {
+  let config = { enabled: false, host: "mail.example.invalid", port: 587, username: "Sender", from: "", useTLS: true, hasPassword: true };
+  const writes: Array<Record<string, unknown>> = [];
+  let mail = 0;
+  const browser = await fixture.page(({ path, method, body }) => {
+    if (path === "/api/v1/admin/mail/test") { mail++; return { data: {} }; }
+    if (path !== "/api/v1/admin/config/mail") return;
+    if (method === "GET") return { data: config };
+    const input = JSON.parse(body);
+    writes.push(input);
+    if (writes.length === 1) return { status: 400, code: "MAIL_PASSWORD_DECISION_REQUIRED", error: "Destination changed" };
+    config = { ...config, host: input.host, port: input.port, username: input.username, hasPassword: !input.clearPassword };
+    return { data: config };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/admin");
+    await page.locator('[data-admin-group="system"]').click();
+    await page.locator('[data-admin-panel="mail"]').click();
+    const save = page.getByRole("button", { name: "Save mail config", exact: true });
+    const host = page.locator('[name="host"]'), username = page.locator('[name="username"]'), password = page.locator('[name="password"]');
+    await host.fill("MAIL.EXAMPLE.INVALID");
+    assert.equal(await save.isEnabled(), true);
+    await password.fill("only-for-original-destination");
+    await host.fill("new.example.invalid");
+    assert.equal(await password.inputValue(), "");
+    assert.equal(await save.isDisabled(), true);
+    await password.fill("replacement-for-new-destination");
+    await save.click();
+    const notices = page.getByRole("alertdialog");
+    await notices.filter({ hasText: "For a different mail server" }).getByRole("button", { name: "Close" }).click();
+    await page.waitForFunction(() => document.querySelector<HTMLButtonElement>('form button[type="submit"]')?.disabled === false);
+    assert.equal(await password.inputValue(), "replacement-for-new-destination");
+    await save.click();
+    await page.waitForFunction(() => document.querySelector<HTMLInputElement>('[name="password"]')?.value === "");
+    await notices.getByRole("button", { name: "Close" }).click();
+    await username.fill("Sender ");
+    assert.equal(await save.isDisabled(), true);
+    await page.getByRole("checkbox", { name: "Clear the saved password" }).check();
+    assert.equal(await password.isDisabled(), true);
+    await save.click();
+    await page.getByRole("checkbox", { name: "Clear the saved password" }).waitFor({ state: "detached" });
+    assert.deepEqual(writes.map(value => [value.host, value.username, value.password, value.clearPassword]), [
+      ["new.example.invalid","Sender","replacement-for-new-destination",undefined],
+      ["new.example.invalid","Sender","replacement-for-new-destination",undefined],
+      ["new.example.invalid","Sender ",undefined,true],
+    ]);
+    assert.equal(mail, 0);
+  } finally { await browser.close(); }
+});
+
 test("partial Markdown settings cannot populate a writable form; a read-only account can inspect the saved mail settings", { timeout: 30_000 }, async () => {
   const reads: string[] = [];
   let writes = 0;

@@ -3401,6 +3401,8 @@ const en = {
         addon: "Addon",
         community_post: "Community post",
         review: "Review",
+        changelog: "Changelog",
+        rating: "Rating",
         player_profile: "Player profile",
       },
       metrics: {
@@ -4029,6 +4031,7 @@ const en = {
     sending: "Sending",
     configured: "Configured",
     notConfigured: "Not configured",
+    mailPasswordDecision: "For a different mail server, port or username, enter a replacement password or choose to clear the saved password.",
     saveMail: "Save mail config",
     saving: "Saving",
     featureFlags: "Connected features",
