@@ -697,6 +697,52 @@ test("comment edits send the rendered version and require a new action after a c
   } finally { await browser.close(); }
 });
 
+test("a failed edit from the first visible thread action retains the authorized user's draft", { timeout: 20_000 }, async () => {
+  const original = "Original thread comment";
+  const attempt = "First visible action draft";
+  let writes = 0;
+  const browser = await controlled(request => {
+    if (request.path === "/api/v1/comments/comment01/thread") {
+      const { target, items } = comments([{ ...comment("comment01", original), canEdit: true }]);
+      return { data: { target, items, focusId: "comment01", nextCursor: "", pathTruncated: false } };
+    }
+    if (request.path === "/api/v1/comments/comment01" && request.method === "PATCH") {
+      writes++;
+      return { status: 503, code: "HTTP_503", error: "Temporary failure" };
+    }
+    return postReads(request);
+  });
+  try {
+    const { page } = browser;
+    const initial = Promise.withResolvers<string>();
+    page.once("dialog", async dialog => {
+      const current = dialog.defaultValue();
+      await dialog.accept(attempt);
+      initial.resolve(current);
+    });
+    // Activate the real action as soon as the authorized thread renders.
+    await page.addInitScript(() => {
+      const observer = new MutationObserver(() => {
+        const card = document.querySelector('[data-comment-id="comment01"]');
+        const action = Array.from(card?.querySelectorAll("button") ?? []).find(button => button.textContent?.trim() === "Edit" && !button.disabled);
+        if (action) { observer.disconnect(); action.click(); }
+      });
+      observer.observe(document, { childList: true, subtree: true });
+    });
+    await page.goto(fixture.origin + "/comments/comment01");
+    assert.equal(await initial.promise, original);
+    await page.getByText("This service is temporarily unavailable. Try again later.", { exact: true }).waitFor();
+    const next = page.waitForEvent("dialog");
+    const click = page.locator('[data-comment-id="comment01"]').getByRole("button", { name: "Edit", exact: true }).click();
+    const dialog = await next;
+    const retained = dialog.defaultValue();
+    await dialog.dismiss();
+    await click;
+    assert.equal(retained, attempt);
+    assert.equal(writes, 1);
+  } finally { await browser.close(); }
+});
+
 test("a failed comment edit keeps the latest corrected draft for its original version", async () => {
   const original = "Published comment";
   const corrected = "Corrected comment draft";

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CSSProperties, Dispatch, FormEvent, SetStateAction, useLayoutEffect, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuthSnapshot } from "../_lib/auth";
+import { type AuthSnapshot, useAuthSnapshot } from "../_lib/auth";
 import { API_BASE_URL, ApiError } from "../_lib/api";
 import { apiErrorMessage } from "../_lib/api-error.mts";
 import { challengeFromDetails, loadAntiAbuseFormToken, type AntiAbuseChallenge, type AntiAbuseFormToken } from "../_lib/anti-abuse-api";
@@ -50,13 +50,14 @@ type CommentSectionProps = {
 };
 
 export function CommentSection(props: CommentSectionProps) {
-  const { token, user } = useAuthSnapshot();
-  return <CommentSectionSession key={`${user?.id || "guest"}:${token || "guest"}:${props.targetType}:${props.targetKey}`} {...props} />;
+  const auth = useAuthSnapshot();
+  const { token, user } = auth;
+  return <CommentSectionSession auth={auth} key={`${user?.id || "guest"}:${token || "guest"}:${props.targetType}:${props.targetKey}`} {...props} />;
 }
 
-function CommentSectionSession({ targetType, targetKey, className = "", acceptedCommentId = "", canAcceptAnswer = false, onAcceptAnswer }: CommentSectionProps) {
+function CommentSectionSession({ auth, targetType, targetKey, className = "", acceptedCommentId = "", canAcceptAnswer = false, onAcceptAnswer }: CommentSectionProps & { auth: AuthSnapshot }) {
   const { t } = useI18n();
-  const { ready, token, user } = useAuthSnapshot();
+  const { ready, token, user } = auth;
   const [items, setItems] = useState<CommentItem[]>([]);
   const [total, setTotal] = useState(0);
   const [nextCursor, setNextCursor] = useState("");
@@ -284,7 +285,7 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
       <CommentTree
         items={items}
         loading={loading}
-        token={token}
+        auth={auth}
         sort={sort}
         replyTo={replyTo}
         replyBody={replyBody}
@@ -308,7 +309,7 @@ function CommentSectionSession({ targetType, targetKey, className = "", accepted
 type CommentTreeProps = {
   items: CommentItem[];
   loading: boolean;
-  token: string;
+  auth: AuthSnapshot;
   sort: string;
   replyTo: CommentItem | null;
   replyBody: string;
@@ -329,7 +330,7 @@ function CommentTree(props: CommentTreeProps) {
   const router = useRouter();
   const replyInput = useRef<HTMLTextAreaElement>(null);
   const { t } = useI18n();
-  const { user, generation } = useAuthSnapshot();
+  const { user, token, generation } = props.auth;
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [highlighted, setHighlighted] = useState("");
   const [returnTo, setReturnTo] = useState("");
@@ -370,7 +371,7 @@ function CommentTree(props: CommentTreeProps) {
   }
 
   async function react(comment: CommentItem, reaction: string) {
-    if (!props.token) {
+    if (!token) {
       props.onMessage(t("mods.comments.loginRequired"));
       return;
     }
@@ -379,7 +380,7 @@ function CommentTree(props: CommentTreeProps) {
     mutationsInFlight.current.add(mutationKey);
     const active = !comment.userReactions.includes(reaction);
     try {
-      await setCommentReaction(comment.id, reaction, active, props.token);
+      await setCommentReaction(comment.id, reaction, active, token);
       props.onItemsChange((items) => items.map((item) => item.id === comment.id ? {
         ...item,
         reactions: { ...item.reactions, [reaction]: Math.max(0, (item.reactions[reaction] || 0) + (active ? 1 : -1)) },
@@ -393,7 +394,7 @@ function CommentTree(props: CommentTreeProps) {
   }
 
   async function watch(comment: CommentItem) {
-    if (!props.token) {
+    if (!token) {
       props.onMessage(t("mods.comments.loginRequired"));
       return;
     }
@@ -402,7 +403,7 @@ function CommentTree(props: CommentTreeProps) {
     mutationsInFlight.current.add(mutationKey);
     const active = !comment.currentUserWatch?.active;
     try {
-      const state = await setCommentWatch(comment.id, active, props.token);
+      const state = await setCommentWatch(comment.id, active, token);
       props.onItemsChange((items) => items.map((item) => item.id === comment.id
         ? { ...item, currentUserWatch: active ? state : { active: false, mutedForever: false, unreadCount: 0, watchedReplies: 0 } }
         : item));
@@ -415,7 +416,7 @@ function CommentTree(props: CommentTreeProps) {
   }
 
   async function edit(comment: CommentItem) {
-    if (!props.token) return;
+    if (!token) return;
     const previous = editDraft.current;
     const actor = user?.id || "";
     const sameDraft = previous?.actor === actor && previous.generation === generation
@@ -439,7 +440,7 @@ function CommentTree(props: CommentTreeProps) {
       return;
     }
     try {
-      const result = await updateComment(comment.id, normalized, comment.updatedAt, props.token);
+      const result = await updateComment(comment.id, normalized, comment.updatedAt, token);
       if (editDraft.current === draft) editDraft.current = null;
       props.onItemsChange((items) => items.map((item) => {
         if (item.id !== result.id) return item;
@@ -461,9 +462,9 @@ function CommentTree(props: CommentTreeProps) {
   }
 
   async function remove(comment: CommentItem) {
-    if (!props.token || !window.confirm(t("mods.comments.deleteConfirm"))) return;
+    if (!token || !window.confirm(t("mods.comments.deleteConfirm"))) return;
     try {
-      await deleteComment(comment.id, props.token);
+      await deleteComment(comment.id, token);
       props.onItemsChange((items) => applyCommentDeletion(items, comment.id));
     } catch (error) {
       props.onMessage(apiErrorMessage(error, t, t("mods.comments.deleteFailed")));
@@ -471,9 +472,9 @@ function CommentTree(props: CommentTreeProps) {
   }
 
   async function pin(comment: CommentItem) {
-    if (!props.token) return;
+    if (!token) return;
     try {
-      const result = await setCommentPinned(comment.id, !comment.pinned, props.token);
+      const result = await setCommentPinned(comment.id, !comment.pinned, token);
       props.onItemsChange((items) => items.map((item) => item.id === result.id ? result : item));
       props.onMessage(t(result.pinned ? "mods.comments.pinned" : "mods.comments.unpinned"));
     } catch (error) {
@@ -483,7 +484,7 @@ function CommentTree(props: CommentTreeProps) {
 
   async function loadChildren(comment: CommentItem) {
     try {
-      const result = await loadCommentReplies(comment.id, replyCursors[comment.id], props.token || undefined);
+      const result = await loadCommentReplies(comment.id, replyCursors[comment.id], token || undefined);
       setReplyCursors((current) => ({ ...current, [comment.id]: result.nextCursor || "" }));
       props.onItemsChange((items) => mergeComments(items, result.items).map((item) => item.id === comment.id ? { ...item, hasMoreReplies: Boolean(result.nextCursor) } : item));
     } catch (error) {
@@ -557,7 +558,7 @@ function CommentTree(props: CommentTreeProps) {
             {item.canReply && props.replyTo?.id === item.id ? (
               <form className="mt-2 rounded-lg border border-[var(--line)] bg-[var(--panel)] p-4" onSubmit={(event) => props.onReplySubmit(event, item, replyAttachments.map((attachment) => attachment.id))}>
                 <p className="mb-2 text-sm font-bold text-[var(--muted)]">{t("mods.comments.replyingTo", { name: item.author.username })}</p>
-                <CommentMarkdownEditor attachments={replyAttachments} inputRef={replyInput} onAttachmentsChange={setReplyAttachments} onChange={props.onReplyBodyChange} onError={props.onMessage} onUploadingChange={setUploadingReplyAttachments} placeholder={t("mods.comments.placeholder")} token={props.token} value={props.replyBody} />
+                <CommentMarkdownEditor attachments={replyAttachments} inputRef={replyInput} onAttachmentsChange={setReplyAttachments} onChange={props.onReplyBodyChange} onError={props.onMessage} onUploadingChange={setUploadingReplyAttachments} placeholder={t("mods.comments.placeholder")} token={token} value={props.replyBody} />
                 <p className="mt-2 text-xs text-[var(--muted)]">{t("mods.comments.cyHint")}</p>
                 <div className="mt-2 flex justify-between gap-2">
                   <span className="text-xs text-[var(--muted)]">{t("mods.comments.markdownHint")}</span>
@@ -654,7 +655,8 @@ function CommentCard({
 
 export function CommentThread({ commentId }: { commentId: string }) {
   const { t } = useI18n();
-  const { ready, token, user } = useAuthSnapshot();
+  const auth = useAuthSnapshot();
+  const { ready, token, user } = auth;
   const [items, setItems] = useState<CommentItem[]>([]);
   const [target, setTarget] = useState<CommentTarget | null>(null);
   const [nextCursor, setNextCursor] = useState("");
@@ -726,7 +728,7 @@ export function CommentThread({ commentId }: { commentId: string }) {
     {visibleTarget ? <><Link className="font-bold text-[var(--accent)] hover:underline" href={visibleTarget.url}>← {visibleTarget.title}</Link><h1 className="mt-4 text-3xl font-black">{t("mods.comments.branchTitle")}</h1></> : null}
     {threadLoaded && pathTruncated ? <p className="mt-4 text-sm text-[var(--muted)]">{t("mods.comments.pathTruncated")}</p> : null}
     {visibleError ? <p className="surface mt-5 p-5">{visibleError}</p> : null}
-    {visibleItems.length ? <CommentTree items={visibleItems} loading={false} token={token} sort="oldest" replyTo={null} replyBody="" submitting={false} acceptedCommentId="" canAcceptAnswer={false} onItemsChange={setItems} onMessage={setError} onReply={() => setError(t("mods.comments.replyOnOriginal"))} onReplyBodyChange={() => undefined} onReplyCancel={() => undefined} onReplySubmit={() => undefined} /> : !visibleError ? <p className="mt-5 text-[var(--muted)]">{t("common.loading")}</p> : null}
+    {visibleItems.length ? <CommentTree items={visibleItems} loading={false} auth={auth} sort="oldest" replyTo={null} replyBody="" submitting={false} acceptedCommentId="" canAcceptAnswer={false} onItemsChange={setItems} onMessage={setError} onReply={() => setError(t("mods.comments.replyOnOriginal"))} onReplyBodyChange={() => undefined} onReplyCancel={() => undefined} onReplySubmit={() => undefined} /> : !visibleError ? <p className="mt-5 text-[var(--muted)]">{t("common.loading")}</p> : null}
     {visibleNextCursor ? <button className="button-secondary focus-ring mt-5" disabled={loadingMore} type="button" onClick={() => void loadMoreThread()}>{loadingMore ? t("common.loading") : t("mods.comments.loadMore")}</button> : null}
   </section></main>;
 }
