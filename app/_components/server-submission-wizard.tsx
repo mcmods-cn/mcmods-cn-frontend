@@ -473,7 +473,7 @@ export function ServerSubmissionWizard({
         {settings ? <footer className="flex items-center justify-between gap-3 border-t border-[var(--line)] px-4 py-4 sm:px-6">
           <button className="button-secondary focus-ring" disabled={busy || step === 1 || editing} type="button" onClick={() => { setMessage(""); setStep((current) => Math.max(1, current - 1)); }}>{t("common.previous")}</button>
           {step === 2 && !editing && reviewRequired ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={goToProof}>{t("common.next")}</button> : null}
-          {step === 2 && !editing && !reviewRequired ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.submitting") : t("servers.wizard.submit")}</button> : null}
+          {step === 2 && !editing && !reviewRequired ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.submitting") : t("common.submit")}</button> : null}
           {step === 2 && editing ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.saving") : t("servers.wizard.save")}</button> : null}
           {step === 3 ? <button className="button-primary focus-ring" disabled={busy} type="button" onClick={() => void submit()}>{busy ? t("servers.wizard.submitting") : t("servers.wizard.submit")}</button> : null}
           {step === 1 ? <span /> : null}

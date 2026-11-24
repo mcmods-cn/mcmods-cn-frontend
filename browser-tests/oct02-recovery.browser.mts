@@ -332,7 +332,7 @@ test("OCT02 server submission freezes its snapshot and retains it after a failed
     await page.goto(`${fixture.origin}/servers/new`);
     await page.getByLabel("Server address", { exact: true }).fill("play.example.invalid:25565");
     await page.getByRole("button", { name: "Connect and check", exact: true }).click();
-    const submit = page.getByRole("button", { name: "Submit for review", exact: true });
+    const submit = page.getByRole("button", { name: "Submit", exact: true });
     await submit.waitFor();
     await submit.evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
     await started.promise;

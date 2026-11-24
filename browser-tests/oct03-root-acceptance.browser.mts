@@ -372,7 +372,7 @@ test("OCT02-FP-066: successful server creation still reaches its result when dra
     await page.goto(`${fixture.origin}/servers/new`);
     await page.getByLabel("Server address", { exact: true }).fill(server.address);
     await page.getByRole("button", { name: "Connect and check", exact: true }).click();
-    const submit = page.getByRole("button", { name: "Submit for review", exact: true });
+    const submit = page.getByRole("button", { name: "Submit", exact: true });
     await submit.waitFor();
     await submit.evaluate(button => { (button as HTMLButtonElement).click(); (button as HTMLButtonElement).click(); });
     await page.waitForURL(url => url.pathname === `/servers/${server.id}`);
