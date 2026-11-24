@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
 import test from "node:test";
-import { buildModContentLayoutRenderIndex } from "./mod-content-layout-render-index.mts";
+import { buildModContentLayoutRenderIndex, createAdvancementLayouts } from "./mod-content-layout-render-index.mts";
 
 type Resource = {
   resourcePublicId: string;
@@ -63,4 +63,19 @@ test("layout editor memoizes the production index and has no render-time resourc
   assert.match(editor, /positionByResourceID\.get\(resource\.resourcePublicId\)/);
   assert.doesNotMatch(editor, /const entries = resources\.filter/);
   assert.doesNotMatch(editor, /entries\.findIndex/);
+});
+
+test("default advancement coordinates remain distinct and writable for a full 20,000-resource layout", () => {
+  const resources = Array.from({ length: 20_000 }, (_, ordinal) => ({ resourcePublicId: String(ordinal) }));
+  const defaults = createAdvancementLayouts(resources);
+  const positions = new Set<string>();
+  for (const { x, y } of Object.values(defaults)) {
+    assert.ok(x >= 0 && x <= 1000 && y >= 0 && y <= 1000);
+    positions.add(`${x},${y}`);
+  }
+  assert.equal(positions.size, resources.length);
+  assert.deepEqual([defaults["5004"].x, defaults["5004"].y], [4, 1000]);
+  assert.deepEqual([defaults["5005"].x, defaults["5005"].y], [5, 0]);
+  const authored = { groupId: "custom", parentResourcePublicId: "parent", x: -20, y: 0 };
+  assert.deepEqual(createAdvancementLayouts([{ resourcePublicId: "child", advancement: authored }]).child, authored);
 });

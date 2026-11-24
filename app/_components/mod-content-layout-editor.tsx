@@ -15,7 +15,7 @@ import { useAuthSnapshot } from "../_lib/auth";
 import { normalizeContentLanguage } from "../_lib/content-language";
 import { createModContentCategoryTree, normalizeCategoryOrdinals } from "../_lib/mod-content-category-tree.mts";
 import { normalizeSimilarResourceGroups } from "../_lib/mod-content-layout-groups.mts";
-import { buildModContentLayoutRenderIndex } from "../_lib/mod-content-layout-render-index.mts";
+import { buildModContentLayoutRenderIndex, createAdvancementLayouts, type AdvancementLayouts, type AdvancementNodeLayout } from "../_lib/mod-content-layout-render-index.mts";
 import {
   loadModContentLayoutSnapshot,
   patchModContentLayout,
@@ -23,15 +23,6 @@ import {
   type ModContentSection,
 } from "../_lib/mod-content-api";
 import { supportedLocales, useI18n } from "../_lib/i18n-provider";
-
-type AdvancementNodeLayout = {
-  parentResourcePublicId: string;
-  groupId: string;
-  x: number;
-  y: number;
-};
-
-type AdvancementLayouts = Record<string, AdvancementNodeLayout>;
 
 type DraggedAdvancement = {
   resourcePublicId: string;
@@ -1123,20 +1114,6 @@ function ResourceChip({ resource, locale, categories, dragged, selected, canMove
       <button aria-label={t("modContent.sectionActions.moveDown")} className="button-secondary px-2 py-1" disabled={!canMoveDown} type="button" onClick={() => onMove(1)}>↓</button>
     </div>
   </div>;
-}
-
-function createAdvancementLayouts(resources: ModContentLayoutSummary[]): AdvancementLayouts {
-  const layouts: AdvancementLayouts = {};
-  resources.forEach((resource, index) => {
-    const advancement = resource.advancement;
-    layouts[resource.resourcePublicId] = {
-      parentResourcePublicId: advancement?.parentResourcePublicId || "",
-      groupId: advancement?.groupId || `advancement:${resource.resourcePublicId}`,
-      x: advancement?.x ?? index % 5,
-      y: advancement?.y ?? Math.floor(index / 5),
-    };
-  });
-  return layouts;
 }
 
 function advancementLayoutGroups(positions: AdvancementPosition[]) {

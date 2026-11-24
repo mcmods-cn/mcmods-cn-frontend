@@ -1,3 +1,5 @@
+import { clusterSimilarResources } from "./similar-resource-groups.ts";
+
 export type ModContentLayoutIndexResource = {
   resourcePublicId: string;
   sectionPublicId?: string;
@@ -47,4 +49,27 @@ export function buildModContentLayoutRenderIndex<Resource extends ModContentLayo
   }
   return { sections, resourceByID };
 }
-import { clusterSimilarResources } from "./similar-resource-groups.ts";
+
+export type AdvancementNodeLayout = {
+  parentResourcePublicId: string;
+  groupId: string;
+  x: number;
+  y: number;
+};
+
+export type AdvancementLayouts = Record<string, AdvancementNodeLayout>;
+
+export function createAdvancementLayouts(resources: readonly { resourcePublicId: string; advancement?: AdvancementNodeLayout }[]): AdvancementLayouts {
+  const layouts: AdvancementLayouts = {};
+  // Keep five columns per band; the API accepts grid coordinates through 1000.
+  resources.forEach((resource, index) => {
+    const advancement = resource.advancement;
+    layouts[resource.resourcePublicId] = {
+      parentResourcePublicId: advancement?.parentResourcePublicId || "",
+      groupId: advancement?.groupId || `advancement:${resource.resourcePublicId}`,
+      x: advancement?.x ?? (index % 5) + 5 * Math.floor(index / 5005),
+      y: advancement?.y ?? Math.floor(index / 5) % 1001,
+    };
+  });
+  return layouts;
+}
