@@ -1522,7 +1522,7 @@ const zhCN = {
       tutorials: "包含教程",
       items: "包含物品资料",
       gallery: "包含画廊",
-      downloads: "包含下载文件",
+      downloads: "有下载来源",
       reviewed: "经过站内审核",
       claimed: "存在已认证作者",
       serverSupport: "支持服务端",

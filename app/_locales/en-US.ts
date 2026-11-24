@@ -1522,7 +1522,7 @@ const en = {
       tutorials: "Includes tutorials",
       items: "Includes item documentation",
       gallery: "Includes a gallery",
-      downloads: "Has downloadable files",
+      downloads: "Has a download source",
       reviewed: "Reviewed on this site",
       claimed: "Has a verified author",
       serverSupport: "Supports servers",
