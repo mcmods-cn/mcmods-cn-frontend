@@ -389,3 +389,27 @@ test("a rejected community submission shows the review decision to its author", 
     assert.equal(await header.getByText("Pending review", { exact: true }).count(), 0);
   } finally { await browser.close(); }
 });
+
+test("recipe shopping quantities preserve range text and case-sensitive units when combining matching inputs", async () => {
+  const quantities = [
+    { amount_text: "1–3" }, { amount_text: "1–3" }, { amount: 2, unit: "mB" }, { amount: 3, unit: "mB" }, { amount: 1, unit: "MB" }, { amount: 0 }, {},
+  ];
+  const browser = await controlled(({ path }) => {
+    if (path === "/api/v1/catalog/recipes/ingredient/render") return { data: {
+      publicId: "ingredient", recipeId: "fixture:amounts", revisionId: "revision1",
+      layout: { canvas: { width: 150, height: 18 }, slots: quantities.map((quantity, index) => ({
+        role: "input", slot_id: String(index), rect: { x: index * 18, y: 0, width: 18, height: 18 },
+        alternatives: [{ id: "fixture:material", kind: "item", ...quantity }],
+      })) },
+    } };
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/recipe-types?recipePublicId=ingredient");
+    const rows = page.locator("#recipe-ingredient aside li");
+    await rows.first().waitFor();
+    assert.deepEqual(await rows.locator(".truncate.font-bold").allTextContents(), [
+      "fixture:material× 1–3", "fixture:material× 1–3", "fixture:material× 5mB", "fixture:material× 1MB", "fixture:material× 0", "fixture:material",
+    ]);
+  } finally { await browser.close(); }
+});

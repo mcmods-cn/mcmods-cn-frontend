@@ -6,10 +6,10 @@ import { useAuthSnapshot } from "../_lib/auth";
 import { catalogAssetURL, type GlobalRecipe, localizedCatalogName } from "../_lib/global-catalog-api";
 import { useI18n } from "../_lib/i18n-provider";
 import { RecipeEditLink } from "./recipe-edit-link";
-import { recipeMaterialAmount } from "../_lib/recipe-slot-amount.mts";
+import { recipeMaterialMeasure, type RecipeMaterial } from "../_lib/recipe-slot-amount.mts";
 import { RecipeCandidateChanceLabel, RecipeResourceVisual, recipeSlotAmountLabel, recipeSlotPresentation } from "./recipe-resource-slot";
 import { useRotatingValue } from "./rotating-resource";
-import { recipeIngredientMergeKey, UnifiedRecipeCard, type UnifiedRecipeMaterial } from "./unified-recipe-card";
+import { recipeIngredientMergeKey, UnifiedRecipeCard } from "./unified-recipe-card";
 
 export function GlobalRecipeCard({ recipe, editHref }: { recipe: GlobalRecipe; editHref?: string }) {
   const { locale, t } = useI18n();
@@ -25,13 +25,13 @@ export function GlobalRecipeCard({ recipe, editHref }: { recipe: GlobalRecipe; e
   const sourceMod = typeof layout.source_mod_id === "string" ? layout.source_mod_id : "";
   const sourceVersion = typeof layout.source_mod_version === "string" ? layout.source_mod_version : "";
   const inputs = slots.filter((slot) => slot.role === "input");
-  const materials: UnifiedRecipeMaterial[] = inputs.map((slot) => {
+  const materials: RecipeMaterial[] = inputs.map((slot) => {
     const item = record((Array.isArray(slot.alternatives) ? slot.alternatives : [])[0]);
     const id = String(item.id || slot.tag || "?");
     return {
       id: typeof slot.tag === "string" ? `#${slot.tag}` : id,
       name: localizedCatalogName(recordStrings(item.names), locale, id),
-      amount: recipeMaterialAmount(item),
+      ...recipeMaterialMeasure(item),
       href: globalRecipeMaterialHref(slot, item),
       mergeKey: recipeIngredientMergeKey(slot, item),
     };
@@ -40,7 +40,7 @@ export function GlobalRecipeCard({ recipe, editHref }: { recipe: GlobalRecipe; e
   const recipeType = typeof layout.underlying_recipe_type_id === "string" ? layout.underlying_recipe_type_id : "";
   const templateID = typeof layout.template_id === "string" ? layout.template_id : "";
   const visual = <div className="relative mx-auto" style={{ width, height }}>{background ? <Image unoptimized fill alt="" className="object-contain [image-rendering:pixelated]" sizes={`${width}px`} src={catalogAssetURL(recipe.revisionId, background)} /> : null}{slots.map((slot, index) => <RecipeSlot key={index} locale={locale} scale={displayScale} showVisual={!contains} slot={slot} />)}</div>;
-  return <UnifiedRecipeCard badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)} editAction={user && editHref ? <RecipeEditLink className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</RecipeEditLink> : undefined} labels={unifiedRecipeLabels(t)} materials={materials} note={recipe.note} recipeId={recipe.recipeId} recipeType={recipeType} recipeTypeHref={recipe.recipeTypePublicId ? `/recipe-types?publicId=${encodeURIComponent(recipe.recipeTypePublicId)}` : undefined} source={sourceMod ? `${sourceMod}${sourceVersion ? `@${sourceVersion}` : ""}` : ""} sourceHref={recipe.modSiteId ? `/mods/${encodeURIComponent(recipe.modSiteId)}` : undefined} technicalInfo={{ recipeIdSource: recipe.recipeIdSource, templateId: templateID, fingerprint: recipe.semanticFingerprint }} visual={visual} />;
+  return <UnifiedRecipeCard badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)} editAction={user && editHref ? <RecipeEditLink className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</RecipeEditLink> : undefined} materials={materials} note={recipe.note} recipeId={recipe.recipeId} recipeType={recipeType} recipeTypeHref={recipe.recipeTypePublicId ? `/recipe-types?publicId=${encodeURIComponent(recipe.recipeTypePublicId)}` : undefined} source={sourceMod ? `${sourceMod}${sourceVersion ? `@${sourceVersion}` : ""}` : ""} sourceHref={recipe.modSiteId ? `/mods/${encodeURIComponent(recipe.modSiteId)}` : undefined} technicalInfo={{ recipeIdSource: recipe.recipeIdSource, templateId: templateID, fingerprint: recipe.semanticFingerprint }} visual={visual} />;
 }
 
 function RecipeSlot({ slot, scale, locale, showVisual }: { slot: Record<string, unknown>; scale: number; locale: string; showVisual: boolean }) {
@@ -83,10 +83,6 @@ function canonicalRecipeResourceHref(item: Record<string, unknown>) {
   const resourceId = typeof item.publicId === "string" ? item.publicId : "";
   if (!siteId || !versionId || !resourceId) return "";
   return `/mods/${encodeURIComponent(siteId)}/resources/${encodeURIComponent(resourceId)}?version=${encodeURIComponent(versionId)}`;
-}
-
-function unifiedRecipeLabels(t: (key: string, params?: Record<string, string | number>) => string) {
-  return { materials: t("globalCatalog.materials"), note: t("globalCatalog.recipeNote"), noNote: t("globalCatalog.noNote"), technical: t("globalCatalog.technicalInfo"), recipeId: t("globalCatalog.recipeIdLabel"), recipeType: t("globalCatalog.recipeTypeLabel"), source: t("globalCatalog.sourceLabel") };
 }
 
 function record(value: unknown): Record<string, unknown> { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}; }

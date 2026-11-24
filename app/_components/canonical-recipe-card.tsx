@@ -2,26 +2,27 @@
 
 /* eslint-disable @next/next/no-img-element */
 
+import { recipeMaterialMeasure, type RecipeMaterial } from "../_lib/recipe-slot-amount.mts";
 import { catalogResourceIconURL } from "../_lib/editor-api";
 import { localizedCatalogName } from "../_lib/global-catalog-api";
 import { useI18n } from "../_lib/i18n-provider";
 import type { RecipeCandidate, RecipeRecord, RecipeTemplateRecord, RecipeTemplateSlot } from "../_lib/recipe-editor-types";
 import { RecipeCandidateChanceLabel } from "./recipe-resource-slot";
 import { useRotatingValue } from "./rotating-resource";
-import { UnifiedRecipeCard, type UnifiedRecipeMaterial } from "./unified-recipe-card";
+import { UnifiedRecipeCard } from "./unified-recipe-card";
 
 export function CanonicalRecipeCard({ recipe, template }: { recipe: RecipeRecord; template: RecipeTemplateRecord }) {
   const { locale, t } = useI18n();
   const inputs = template.slots.filter((slot) => slot.role === "input");
-  const materials: UnifiedRecipeMaterial[] = inputs.flatMap((slot) => {
+  const materials: RecipeMaterial[] = inputs.flatMap((slot) => {
     const candidates = recipe.bindings[slot.slotKey]?.candidates ?? [];
     const candidate = candidates[0];
     if (!candidate) return [];
     return [{
       id: candidate.resource.id || candidate.resource.rawIdentifier || candidate.resource.publicId,
       name: localizedCatalogName(candidate.resource.names, locale, candidate.resource.id || candidate.resource.rawIdentifier || "?"),
-      amount: String(candidate.amount),
-      mergeKey: candidate.resource.publicId || candidate.resource.id || candidate.resource.rawIdentifier,
+      ...recipeMaterialMeasure(candidate),
+      mergeKey: candidates.length > 1 ? JSON.stringify(["choice", slot.slotKey]) : candidate.resource.publicId || candidate.resource.id || candidate.resource.rawIdentifier,
     }];
   });
   const localization = recipe.localizations?.find((item) => item.locale === locale)
@@ -31,7 +32,7 @@ export function CanonicalRecipeCard({ recipe, template }: { recipe: RecipeRecord
   const width = Math.max(1, template.canvas.width) * scale;
   const height = Math.max(1, template.canvas.height) * scale;
   const visual = <div className="relative mx-auto bg-[#8b8b8b] bg-contain bg-center bg-no-repeat [image-rendering:pixelated]" style={{ width, height, backgroundImage: template.backgroundUrl ? `url(${JSON.stringify(template.backgroundUrl)})` : undefined }}>{template.slots.map((slot) => <CanonicalRecipeSlot locale={locale} binding={recipe.bindings[slot.slotKey]?.candidates ?? []} key={slot.slotKey} scale={scale} slot={slot} />)}</div>;
-  return <UnifiedRecipeCard applicableVersions={recipe.applicableVersionIds} badge={t("globalCatalog.recipeLayoutKinds.manual")} labels={{ materials: t("globalCatalog.materials"), note: t("globalCatalog.recipeNote"), noNote: t("globalCatalog.noNote"), technical: t("globalCatalog.technicalInfo"), recipeId: t("globalCatalog.recipeIdLabel"), recipeType: t("globalCatalog.recipeTypeLabel"), source: t("globalCatalog.sourceLabel") }} materials={materials} note={localization?.fields.contentMarkdown} recipeId={recipe.canonicalSourceId} recipeType={recipe.recipeTypePublicId} recipeTypeHref={`/recipe-types?publicId=${encodeURIComponent(recipe.recipeTypePublicId)}`} source={recipe.sourceVersion?.modName || ""} sourceHref={recipe.sourceVersion?.modSiteId ? `/mods/${encodeURIComponent(recipe.sourceVersion.modSiteId)}` : undefined} technicalInfo={{ templateId: template.publicId || template.templateKey, publicId: recipe.publicId || "" }} visual={visual} />;
+  return <UnifiedRecipeCard applicableVersions={recipe.applicableVersionIds} badge={t("globalCatalog.recipeLayoutKinds.manual")} materials={materials} note={localization?.fields.contentMarkdown} recipeId={recipe.canonicalSourceId} recipeType={recipe.recipeTypePublicId} recipeTypeHref={`/recipe-types?publicId=${encodeURIComponent(recipe.recipeTypePublicId)}`} source={recipe.sourceVersion?.modName || ""} sourceHref={recipe.sourceVersion?.modSiteId ? `/mods/${encodeURIComponent(recipe.sourceVersion.modSiteId)}` : undefined} technicalInfo={{ templateId: template.publicId || template.templateKey, publicId: recipe.publicId || "" }} visual={visual} />;
 }
 
 function CanonicalRecipeSlot({ binding, locale, scale, slot }: { binding: RecipeCandidate[]; locale: string; scale: number; slot: RecipeTemplateSlot }) {

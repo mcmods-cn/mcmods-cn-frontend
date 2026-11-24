@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { recipeCandidateChance } from "./recipe-slot-chance.mts";
-import { recipeMaterialAmount, recipeSlotAmountLabel } from "./recipe-slot-amount.mts";
+import { recipeMaterialMeasure, recipeSlotAmountLabel } from "./recipe-slot-amount.mts";
 
 // The global and project cards use the same projection. The production browser
 // spec also checks the rendered label beside each output and its quantity.
@@ -52,9 +52,9 @@ test("legacy textual chances and numeric probability are both supported without 
 });
 
 test("materials with missing quantity never count as one, and known counts keep their units", () => {
-  assert.equal(recipeMaterialAmount({ amount: null }), "");
-  assert.equal(recipeMaterialAmount({ amount: 0 }), "0");
-  assert.equal(recipeMaterialAmount({ count: 1 }), "1");
-  assert.equal(recipeMaterialAmount({ amount: 250, amount_unit: "mB" }), "250mB");
-  assert.equal(recipeMaterialAmount({ amount_text: "1–3" }), "1–3");
+  assert.equal(recipeMaterialMeasure({ amount: null }).amount, "");
+  assert.equal(recipeMaterialMeasure({ amount: 0 }).amount, "0");
+  assert.equal(recipeMaterialMeasure({ count: 1 }).amount, "1");
+  assert.equal(recipeMaterialMeasure({ amount: 250, amount_unit: "mB" }).amount, "250mB");
+  assert.equal(recipeMaterialMeasure({ amount_text: "1–3" }).amount, "1–3");
 });

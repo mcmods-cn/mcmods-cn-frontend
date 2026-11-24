@@ -18,12 +18,11 @@ import {
 import { minecraftLocale, modExportAssetURL } from "../_lib/mod-export-api";
 import { useI18n } from "../_lib/i18n-provider";
 import type { ModContentEntryField, ModContentEntryType } from "../_lib/mod-content-api";
-import { recipeMaterialAmount } from "../_lib/recipe-slot-amount.mts";
+import { recipeMaterialMeasure, type RecipeMaterial } from "../_lib/recipe-slot-amount.mts";
 import { RecipeCandidateChanceLabel, RecipeResourceVisual, recipeSlotAmountLabel, recipeSlotPresentation } from "./recipe-resource-slot";
 import {
   recipeIngredientMergeKey,
   UnifiedRecipeCard,
-  type UnifiedRecipeMaterial,
 } from "./unified-recipe-card";
 import { RecipeEditLink } from "./recipe-edit-link";
 import { useRotatingValue } from "./rotating-resource";
@@ -553,7 +552,7 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
   const layoutKind = stringValue(layout.layout_kind) || "unknown";
   const sourceMod = stringValue(layout.source_mod_id);
   const sourceVersion = stringValue(layout.source_mod_version);
-  const materials: UnifiedRecipeMaterial[] = slots.filter((slot) => slot.role === "input").map((slot) => {
+  const materials: RecipeMaterial[] = slots.filter((slot) => slot.role === "input").map((slot) => {
     const item = record((Array.isArray(slot.alternatives) ? slot.alternatives : [])[0]);
     const id = stringValue(item.item)
       || stringValue(item.resource_location)
@@ -561,7 +560,7 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
     return {
       id,
       name: localizedRecordValue(item.names, minecraftLocale(locale)) || id,
-      amount: recipeMaterialAmount(item),
+      ...recipeMaterialMeasure(item),
       href: modRecipeMaterialHref(slot, item),
       mergeKey: recipeIngredientMergeKey(slot, item),
     };
@@ -587,15 +586,6 @@ function RecipeLayoutCard({ recipe, revisionId }: { recipe: Record<string, unkno
   return <UnifiedRecipeCard
     badge={t(`globalCatalog.recipeLayoutKinds.${layoutKind}`)}
     editAction={editHref ? <RecipeEditLink className="button-secondary focus-ring px-3 py-1.5 text-sm" href={editHref}>{t("common.edit")}</RecipeEditLink> : undefined}
-    labels={{
-      materials: t("globalCatalog.materials"),
-      note: t("globalCatalog.recipeNote"),
-      noNote: t("globalCatalog.noNote"),
-      technical: t("globalCatalog.technicalInfo"),
-      recipeId: t("globalCatalog.recipeIdLabel"),
-      recipeType: t("globalCatalog.recipeTypeLabel"),
-      source: t("globalCatalog.sourceLabel"),
-    }}
     materials={materials}
     note={stringValue(recipe.note)}
     recipeId={recipeID}
