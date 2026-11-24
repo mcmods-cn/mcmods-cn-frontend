@@ -22,12 +22,13 @@ for (const [type, route, providers] of [
   ["resource_pack", "resource-packs", ["modrinth", "curseforge"]], ["shader_pack", "shaders", ["modrinth", "curseforge"]],
   ["datapack", "datapacks", ["modrinth", "curseforge"]], ["addon", "addons", ["modrinth", "curseforge"]],
 ] as const) for (const provider of providers) test(`TP-008 ${type}/${provider} edits and submits null collections safely`, { timeout: 30_000 }, async () => {
+  const selector = type === "resource_pack" ? ["resolution", "Resolution", "32x"] : type === "shader_pack" ? ["performance", "Performance requirement", "high"] : type === "map" ? ["mapSize", "Map size", "large"] : undefined;
   let submitted: Record<string, unknown> | undefined;
   const browser = await fixture.page(request => {
     const { path, method, body } = request;
     if (path === `/api/v1/content-project-imports/${type}`) return { data: { id: "nulljob", status: "completed", progress: 100, result: {
       projectType: type, siteId: "nullimport", defaultLocale: "en-US", localizations: [{ locale: "en-US", name: "Imported project", summary: "", bodyMarkdown: "" }],
-      abbreviation: "", minecraftVersions: ["1.20.1"], loaders: [], categories: [], features: [], resolution: "16x", performance: "low", mapSize: "small",
+      abbreviation: "", minecraftVersions: ["1.20.1"], loaders: [], categories: [], features: [], resolution: "", performance: "", mapSize: "", ...(selector && provider === "curseforge" ? { [selector[0]]: selector[2] } : {}),
       officialStatus: "active", sourceStatus: "open", license: "MIT", curseforgeProjectId: "", modrinthProjectId: "", iconUrl: "", searchKeywords: null,
       submissionMethod: provider, authors: null, links: null, galleryImages: null, parentProjects: null,
     } } };
@@ -38,10 +39,16 @@ for (const [type, route, providers] of [
     const { page } = browser;
     await page.goto(`${fixture.origin}/${route}/new?method=${provider}&url=${encodeURIComponent("https://provider.example.test/project")}`);
     await page.locator('input[value="Imported project"]').waitFor();
+    if (selector) {
+      const field = page.getByRole("combobox", { name: selector[1], exact: true });
+      assert.equal(await field.inputValue(), provider === "curseforge" ? selector[2] : "");
+      assert.equal(await field.locator('option[value=""]').innerText(), "Not provided");
+    }
     await page.locator('input[value="Imported project"]').fill("Edited imported project");
     await page.getByRole("button", { name: "Save", exact: true }).first().click();
     await page.getByText("Synthetic write barrier", { exact: true }).waitFor();
     assert(submitted);
+    if (selector) assert.equal(submitted[selector[0]], provider === "curseforge" ? selector[2] : "");
     assert.deepEqual(submitted.galleryImages, []);
     assert.deepEqual(submitted.parentProjects, []);
     assert.deepEqual(submitted.authors, []);
@@ -552,5 +559,22 @@ test("CMP-004 moderation keyset pagination retains failed pages and does not ski
     await page.getByRole("combobox", { name: "Queue status", exact: true }).selectOption("hidden");
     await page.getByText("No version history yet.", { exact: true }).waitFor();
     assert.deepEqual(requests.at(-1), { status: "hidden", cursor: "" });
+  } finally { await browser.close(); }
+});
+
+
+test("manual map, shader and resource-pack forms start with no unreported attribute", { timeout: 30_000 }, async () => {
+  const browser = await fixture.page(common);
+  try {
+    for (const [route, label, known] of [["maps", "Map size", "large"], ["shaders", "Performance requirement", "high"], ["resource-packs", "Resolution", "32x"]]) {
+      await browser.page.goto(`${fixture.origin}/${route}/new`);
+      const field = browser.page.getByRole("combobox", { name: label, exact: true });
+      await field.waitFor();
+      assert.equal(await field.inputValue(), "");
+      await field.selectOption(known);
+      assert.equal(await field.inputValue(), known);
+      await field.selectOption({ label: "Not provided" });
+      assert.equal(await field.inputValue(), "");
+    }
   } finally { await browser.close(); }
 });
