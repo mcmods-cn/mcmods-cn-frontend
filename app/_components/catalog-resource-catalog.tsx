@@ -30,7 +30,7 @@ export function CatalogResourceCatalog({ basePath = "/admin/global-resources" }:
   if (!ready) return <PageFeedback title={t("common.loading")} />;
   if (!user || !token) return <LoginRequiredState nextPath={basePath} />;
   if (!hasPermission(user, "global_resource.list")) return <PageFeedback title={t("admin.permissionDeniedBody")} tone="danger" />;
-  return <CatalogResourceList key={JSON.stringify([user.id, token, user.permissionVersion, user.rbacVersion, searchParams.toString()])} basePath={basePath} />;
+  return <CatalogResourceList key={JSON.stringify([user.id, token, user.permissionVersion, user.rbacVersion, searchParams.toString()])} basePath={basePath} token={token} canCreate={hasPermission(user, "content.write")} />;
 }
 
 function CatalogResourceDetail({ basePath, publicId }: { basePath: string; publicId: string }) {
@@ -125,11 +125,10 @@ function CatalogResourceDetail({ basePath, publicId }: { basePath: string; publi
   </CatalogResourceFrame>;
 }
 
-function CatalogResourceList({ basePath }: { basePath: string }) {
+function CatalogResourceList({ basePath, token, canCreate }: { basePath: string; token: string; canCreate: boolean }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { locale, t } = useI18n();
-  const { token, user } = useAuthSnapshot();
   const page = positivePage(searchParams.get("page"));
   const [query, setQuery] = useState(searchParams.get("q") ?? "");
   const [kind, setKind] = useState(searchParams.get("kind") ?? "");
@@ -175,7 +174,7 @@ function CatalogResourceList({ basePath }: { basePath: string }) {
 
   return <CatalogResourceFrame>
     <div className="mt-5 flex flex-wrap items-end gap-3">
-      {hasPermission(user, "content.write") ? <Link className="button-secondary" href={`${basePath}?editor=create`}>{t("catalogEditor.resourceCreate")}</Link> : null}
+      {canCreate ? <Link className="button-secondary" href={`${basePath}?editor=create`}>{t("catalogEditor.resourceCreate")}</Link> : null}
       <form className="grid min-w-0 flex-1 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(220px,1fr)_180px_160px_140px_150px_auto]" onSubmit={search}>
         <label className="grid gap-1.5 text-sm font-bold">
           <span>{t("resourceEditor.search")}</span>
