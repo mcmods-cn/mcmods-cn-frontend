@@ -150,21 +150,23 @@ export async function saveRecipeTemplate(
   publicId: string | undefined,
   payload: RecipeTemplateMutation,
   token: string,
+  signal?: AbortSignal,
 ) {
   const path = publicId
     ? `/api/v1/recipe-templates/${encodeURIComponent(publicId)}`
     : `/api/v1/recipe-types/${encodeURIComponent(recipeTypePublicId)}/templates`;
   const result = await apiRequest<RawMutationResult>(path, {
     method: publicId ? "PUT" : "POST",
+    signal,
     body: JSON.stringify(payload),
   }, token);
   return normalizeMutationResult(result, publicId);
 }
 
-export async function deleteRecipeTemplate(publicId: string, baseRevisionId: string | undefined, reason: string, token: string) {
+export async function deleteRecipeTemplate(publicId: string, baseRevisionId: string | undefined, reason: string, token: string, signal?: AbortSignal) {
   const result = await apiRequest<RawMutationResult>(
     `/api/v1/recipe-templates/${encodeURIComponent(publicId)}`,
-    { method: "DELETE", body: JSON.stringify({ baseRevisionId, reason }) },
+    { method: "DELETE", signal, body: JSON.stringify({ baseRevisionId, reason }) },
     token,
   );
   return normalizeMutationResult(result, publicId);

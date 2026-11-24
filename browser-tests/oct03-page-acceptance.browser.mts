@@ -224,6 +224,49 @@ test("FP060 FP058 template slots can be created and moved by keyboard while writ
   } finally { write.resolve({ data: {} }); await browser.close(); }
 });
 
+test("Leaving the template editor cancels its pending save and keeps the selected page", { timeout: 30_000 }, async () => {
+  const started = Promise.withResolvers<void>();
+  const reply = Promise.withResolvers<APIReply>();
+  const path = "/api/v1/recipe-types/recipetype1/templates";
+  let writes = 0;
+  const browser = await controlled(request => {
+    if (request.path === path && request.method === "POST") {
+      writes++;
+      started.resolve();
+      return reply.promise;
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.addInitScript(path => {
+      const originalFetch = window.fetch;
+      window.fetch = (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (new URL(url, location.href).pathname === path && init?.method === "POST") {
+          init.signal?.addEventListener("abort", () => {
+            document.documentElement.dataset.templateSave = "cancelled";
+          }, { once: true });
+        }
+        return originalFetch(input, init);
+      };
+    }, path);
+    await page.goto(`${fixture.origin}/recipe-types?editor=template-create&publicId=recipetype1`);
+    await page.getByLabel("Template key", { exact: true }).fill("navigation_template");
+    await page.getByLabel("Localized name", { exact: true }).fill("Navigation template");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await started.promise;
+    await page.getByRole("link", { name: "Back to recipe methods", exact: true }).click();
+    await page.waitForURL(url => url.search === "?publicId=recipetype1");
+    await page.waitForFunction(() => document.documentElement.dataset.templateSave === "cancelled");
+    reply.resolve({ data: { objectPublicId: "template1", reviewStatus: "approved" } });
+    assert.equal(new URL(page.url()).search, "?publicId=recipetype1");
+    assert.equal(writes, 1);
+  } finally {
+    reply.resolve({ data: {} });
+    await browser.close();
+  }
+});
+
 test("BUG047 conversation switches reject late initial and older-page bodies within one account", { timeout: 40_000 }, async () => {
   for (const mode of ["initial", "older"] as const) {
     const held = Promise.withResolvers<APIReply>();

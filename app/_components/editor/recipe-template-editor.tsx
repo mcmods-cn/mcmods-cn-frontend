@@ -99,8 +99,8 @@ export function RecipeTemplateEditor({
   const [uploading, setUploading] = useState(false);
   const [backgroundPreview, setBackgroundPreview] = useState("");
   const [saving, setSaving] = useState(false);
-  const mutationInFlight = useRef(false);
-  const uploadInFlight = useRef(false);
+  const activeRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => activeRequest.current?.abort(), []);
   const [deleting, setDeleting] = useState(false);
   const [pendingReview, setPendingReview] = useState(initialValue?.reviewStatus === "pending");
   const [message, setMessage] = useState("");
@@ -220,26 +220,30 @@ export function RecipeTemplateEditor({
   }
 
   async function uploadBackground(file?: File) {
-    if (!file || mutationInFlight.current || uploadInFlight.current) return;
-    uploadInFlight.current = true;
-    const preview = URL.createObjectURL(file);
-    setBackgroundPreview(preview);
+    if (!file || activeRequest.current) return;
+    const request = new AbortController();
+    activeRequest.current = request;
     setUploading(true);
     setFailure("");
     try {
+      setBackgroundPreview(URL.createObjectURL(file));
       const uploaded = await uploadUserFileToOSS(
         file,
         token,
         `recipe_gui:${recipeTypePublicId}:${draft.publicId || "staging"}`,
+        undefined,
+        request.signal,
       );
+      if (request.signal.aborted) return;
       if (!uploaded.id) throw new Error(labels.uploadFailed);
       setDraft((current) => ({ ...current, backgroundFileId: uploaded.id, backgroundUrl: uploaded.accessUrl || uploaded.url || current.backgroundUrl }));
     } catch (reason) {
+      if (request.signal.aborted) return;
       setBackgroundPreview("");
       setFailure(reason instanceof Error ? reason.message : labels.uploadFailed);
     } finally {
-      uploadInFlight.current = false;
-      setUploading(false);
+      activeRequest.current = null;
+      if (!request.signal.aborted) setUploading(false);
     }
   }
 
@@ -249,14 +253,16 @@ export function RecipeTemplateEditor({
   }
 
   async function submit() {
-    if (mutationInFlight.current || uploadInFlight.current || saving || deleting || validation.length) return;
-    mutationInFlight.current = true;
+    if (activeRequest.current || saving || deleting || validation.length) return;
+    const request = new AbortController();
+    activeRequest.current = request;
     setSaving(true);
     setFailure("");
     setMessage("");
     try {
       const payload = templateMutation(draft, versions, dirtyLocales, contentDefaultLocale, reason);
-      const result = await saveRecipeTemplate(recipeTypePublicId, draft.publicId, payload, token);
+      const result = await saveRecipeTemplate(recipeTypePublicId, draft.publicId, payload, token, request.signal);
+      if (request.signal.aborted) return;
       const next = { ...draft, publicId: result.objectPublicId || draft.publicId, publishedRevisionId: result.reviewStatus === "approved" ? result.revisionId : draft.publishedRevisionId };
       setDraft(next);
       setPendingReview(result.reviewStatus === "pending");
@@ -267,29 +273,31 @@ export function RecipeTemplateEditor({
       setMessage(result.reviewStatus === "pending" ? labels.reviewPending : labels.saved);
       onSaved?.(result, next);
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : labels.saveFailed);
+      if (!request.signal.aborted) setFailure(reason instanceof Error ? reason.message : labels.saveFailed);
     } finally {
-      mutationInFlight.current = false;
-      setSaving(false);
+      activeRequest.current = null;
+      if (!request.signal.aborted) setSaving(false);
     }
   }
 
   async function removeTemplate() {
-    if (!draft.publicId || mutationInFlight.current || uploadInFlight.current || saving || deleting || !window.confirm(labels.deleteConfirm)) return;
-    mutationInFlight.current = true;
+    if (!draft.publicId || activeRequest.current || saving || deleting || !window.confirm(labels.deleteConfirm)) return;
+    const request = new AbortController();
+    activeRequest.current = request;
     setDeleting(true);
     setFailure("");
     setMessage("");
     try {
-      const result = await deleteRecipeTemplate(draft.publicId, draft.publishedRevisionId, reason, token);
+      const result = await deleteRecipeTemplate(draft.publicId, draft.publishedRevisionId, reason, token, request.signal);
+      if (request.signal.aborted) return;
       setPendingReview(true);
       setMessage(result.reviewStatus === "pending" ? labels.reviewPending : labels.deleted);
       onDeleted?.(result);
     } catch (reason) {
-      setFailure(reason instanceof Error ? reason.message : labels.deleteFailed);
+      if (!request.signal.aborted) setFailure(reason instanceof Error ? reason.message : labels.deleteFailed);
     } finally {
-      mutationInFlight.current = false;
-      setDeleting(false);
+      activeRequest.current = null;
+      if (!request.signal.aborted) setDeleting(false);
     }
   }
 
