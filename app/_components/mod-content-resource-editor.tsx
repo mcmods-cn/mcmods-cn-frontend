@@ -283,14 +283,16 @@ function ModContentResourceEditorSession({
   }, [baselineDefinition]);
   const handleDefinitionFieldValidity = useCallback((fieldId: string, valid: boolean) => {
     setInvalidDefinitionFields((current) => {
+      const invalid = !valid;
+      if (current.has(fieldId) === invalid) return current;
       const next = new Set(current);
       if (valid) next.delete(fieldId);
       else next.add(fieldId);
       return next;
     });
   }, []);
-  const handleLootTableValidity = useCallback((valid: boolean) => {
-    handleDefinitionFieldValidity("loot-table-visual-editor", valid);
+  const handleLootTableValidity = useCallback((editorID: string, valid: boolean) => {
+    handleDefinitionFieldValidity(`loot:${editorID}`, valid);
   }, [handleDefinitionFieldValidity]);
   const backHref = rootSection
     ? `/mods/${encodeURIComponent(siteId)}/data/sections/${encodeURIComponent(rootSection.publicId)}`
@@ -588,7 +590,8 @@ function ModContentResourceEditorSession({
               setDefinition(definitionOverrides(baselineDefinition, migrated));
             }
             setEntryTypeCode(nextCode);
-            setInvalidDefinitionFields(new Set());
+            // Template fields change with the entry type. The loot editor stays mounted.
+            setInvalidDefinitionFields(current => new Set([...current].filter(id => id.startsWith("loot:"))));
           }}>
             {entryTypes.map((item) => <option key={item.code} value={item.code}>{localizedSchemaName(item.names, locale, item.code)}</option>)}
           </select>

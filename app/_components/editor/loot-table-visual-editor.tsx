@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { catalogRegistryForKind } from "../../_lib/catalog-resource-identifiers";
 import type { CatalogResourceRef } from "../../_lib/editor-types";
 import {
@@ -29,24 +29,11 @@ export function LootTableVisualEditor({
   definition: LootTableRecord;
   token: string;
   onChange: (definition: LootTableRecord) => void;
-  onValidityChange: (valid: boolean) => void;
+  onValidityChange: (editorID: string, valid: boolean) => void;
 }) {
   const { t } = useI18n();
   const pools = lootTablePools(definition);
   const sources = record(definition.resourceSources);
-  const [invalidEditors, setInvalidEditors] = useState<Set<string>>(() => new Set());
-  const reportEditorValidity = useCallback((editorID: string, valid: boolean) => {
-    setInvalidEditors((current) => {
-      const next = new Set(current);
-      if (valid) next.delete(editorID);
-      else next.add(editorID);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => onValidityChange(invalidEditors.size === 0), [invalidEditors, onValidityChange]);
-  useEffect(() => () => onValidityChange(true), [onValidityChange]);
-
   function setField(key: string, value: unknown) {
     const next = { ...definition };
     if (value === undefined || value === "") delete next[key];
@@ -88,7 +75,7 @@ export function LootTableVisualEditor({
         onRemove={() => updatePools(pools.filter((_, index) => index !== poolIndex))}
         onMove={(direction) => updatePools(moveItem(pools, poolIndex, direction))}
         onUpdate={(nextPool) => updatePools(replaceItem(pools, poolIndex, nextPool))}
-        onValidityChange={reportEditorValidity}
+        onValidityChange={onValidityChange}
       />)}
       {!pools.length ? <div className="grid min-h-32 place-items-center rounded-lg border border-dashed border-[var(--line)] text-sm font-bold text-[var(--muted)]">{t("resourceEditor.lootEditor.noPools")}</div> : null}
       <button className="button-primary focus-ring" type="button" onClick={() => updatePools([...pools, defaultLootPool()])}>+ {t("resourceEditor.lootEditor.addPool")}</button>
@@ -100,7 +87,7 @@ export function LootTableVisualEditor({
         editorID="loot-table:json"
         value={definition}
         onChange={(value) => onChange(record(value))}
-        onValidityChange={reportEditorValidity}
+        onValidityChange={onValidityChange}
       />
     </details>
   </section>;

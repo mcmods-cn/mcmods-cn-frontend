@@ -320,11 +320,58 @@ test("FP056 loot advanced JSON rejects primitive/array roots without erasing its
       if(method==="PUT"){writes.push(JSON.parse(body));return {status:503,error:"Controlled loot write failure"};}return {data:resourceSnapshot("minecraft.loot_table",original)};
     }
   });
-  try{
-    const {page}=browser;await page.goto(`${fixture.origin}/mods/fixture-mod/resources/resource01/edit?version=version01&section=section01`);
-    await page.getByText("Advanced loot table JSON",{exact:true}).click();const textarea=page.locator('details').filter({has:page.getByText("Advanced loot table JSON",{exact:true})}).locator("textarea");
-    for(const invalid of ["null","[]",'"invalid primitive"']){await textarea.fill(invalid);assert.equal(await textarea.getAttribute("aria-invalid"),"true");assert.equal(await page.getByRole("button",{name:"Save",exact:true}).first().isDisabled(),true);assert.equal(writes.length,0);}
-    const changed={...original,custom:{keep:true,edited:true}};await textarea.fill(JSON.stringify(changed));assert.notEqual(await textarea.getAttribute("aria-invalid"),"true");await page.getByRole("button",{name:"Save",exact:true}).first().click();await page.getByText("Controlled loot write failure",{exact:true}).waitFor();assert.deepEqual(writes[0].definition,{custom:{edited:true}},"write uses the real baseline override contract and does not erase imported fields");assert.deepEqual(JSON.parse(await textarea.inputValue()),changed);
+  try {
+    const { page } = browser;
+    await page.goto(`${fixture.origin}/mods/fixture-mod/resources/resource01/edit?version=version01&section=section01`);
+    const advanced = page.locator("details").filter({ has: page.getByText("Advanced loot table JSON", { exact: true }) });
+    await advanced.locator("summary").click();
+    const textarea = advanced.locator("textarea");
+    const save = page.getByRole("button", { name: "Save", exact: true }).first();
+    assert.deepEqual(JSON.parse(await textarea.inputValue()), original);
+    const saveButton = await save.elementHandle();
+    assert.ok(saveButton);
+    // Activate the real button as soon as the browser exposes the first invalid edit.
+    // This checks the same render that marks the input, before a later effect can disable Save.
+    await textarea.evaluate((field, button) => {
+      if (!(button instanceof HTMLButtonElement)) throw new Error("Expected the editor Save button");
+      const observer = new MutationObserver(() => {
+        if (field.getAttribute("aria-invalid") !== "true") return;
+        observer.disconnect();
+        button.click();
+      });
+      observer.observe(field, { attributes: true, attributeFilter: ["aria-invalid"] });
+    }, saveButton);
+    for (const invalid of ["null", "[]", '"invalid primitive"']) {
+      await textarea.fill(invalid);
+      assert.equal(await textarea.getAttribute("aria-invalid"), "true");
+      assert.equal(await save.isDisabled(), true);
+      assert.equal(await textarea.inputValue(), invalid);
+      assert.equal(writes.length, 0, "invalid drafts must never submit the last accepted definition");
+    }
+    const withPool = { ...original, pools: [{ rolls: 1, entries: [] }] };
+    await textarea.fill(JSON.stringify(withPool));
+    const pool = page.locator("details").filter({ has: page.getByText("Advanced pool JSON", { exact: true }) });
+    await pool.locator("summary").click();
+    const poolInput = pool.locator("textarea");
+    await poolInput.fill("false");
+    await textarea.fill("null");
+    await textarea.fill(JSON.stringify(withPool));
+    assert.equal(await textarea.getAttribute("aria-invalid"), "false");
+    assert.equal(await poolInput.getAttribute("aria-invalid"), "true");
+    assert.equal(await poolInput.inputValue(), "false");
+    assert.equal(await save.isDisabled(), true, "correcting the table must not clear the invalid pool");
+    assert.equal(writes.length, 0);
+    // Removing the pool from valid table JSON also removes its field-level error.
+    const changed = { ...original, custom: { keep: true, edited: true } };
+    await textarea.fill(JSON.stringify(changed));
+    assert.notEqual(await textarea.getAttribute("aria-invalid"), "true");
+    await save.and(page.locator(":enabled")).waitFor();
+    await save.focus();
+    await save.press("Enter");
+    await page.getByText("Controlled loot write failure", { exact: true }).waitFor();
+    assert.equal(writes.length, 1);
+    assert.deepEqual(writes[0].definition, { custom: { edited: true } }, "the override preserves imported fields");
+    assert.deepEqual(JSON.parse(await textarea.inputValue()), changed);
   }finally{await browser.close();}
 });
 
