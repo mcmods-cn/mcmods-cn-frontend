@@ -469,7 +469,7 @@ test("a confirmed block with an unavailable profile refresh offers a read-only r
     }
     if (path === "/api/v1/users/testother/block") { operations.push(method); return { data: { blocked: true } }; }
     if (path === "/api/v1/users/testother/player-profiles") return { data: { items: [] } };
-    if (path === "/api/v1/users/testother/showcase") return { data: { claimedAuthors: [], developerProjects: [], editorProjects: [], uploads: [], posts: [] } };
+    if (path === "/api/v1/users/testother/showcase") return { data: { claimedAuthors: [], developerProjects: [], editorProjects: [], uploads: [], posts: [], contributions: { year: 2026, from: "2026-01-01", to: "2026-01-02", years: [2026], total: 0, days: [], recentActivity: [] } } };
     if (path === "/api/v1/users/testother/favorite-collections") return { data: { items: [], hasMore: false, nextCursor: "" } };
   });
   try {
@@ -485,5 +485,38 @@ test("a confirmed block with an unavailable profile refresh offers a read-only r
     await page.waitForFunction(() => [...document.querySelectorAll("button")].some(button => button.textContent?.trim() === "Unblock" && !button.disabled));
     assert.equal(await page.getByRole("link", { name: "Private message", exact: true }).count(), 0);
     assert.deepEqual(operations, ["PUT"]); assert.equal(profileReads, 3);
+  } finally { await browser.close(); }
+});
+
+test("registration measures username code points and lets the backend decide reserved names", async () => {
+  const submissions: string[] = [];
+  const browser = await controlled(({ path, method, body }) => {
+    if (path === "/api/v1/auth/register" && method === "POST") {
+      const value = JSON.parse(body).username as string;
+      submissions.push(value);
+      return { status: 400, error: value === "settings" ? "Reserved by the site" : "Synthetic validation reached" };
+    }
+  });
+  try {
+    const { page } = browser;
+    await page.goto(fixture.origin + "/login");
+    await page.getByRole("button", { name: "Register", exact: true }).click();
+    const form = page.locator("main form");
+    const username = form.getByRole("textbox", { name: "Username", exact: true });
+    await form.locator('input[type=email]').fill("member@example.invalid");
+    await form.locator('input[pattern]').fill("000000");
+    await form.locator('input[type=password]').fill("fixture-password");
+    const submit = form.locator("button[type=submit]");
+    const joined = "🧑‍🔧";
+    for (const value of ["administrator", joined, "🧑".repeat(32), "settings"]) {
+      await username.fill(value);
+      assert.equal(await username.inputValue(), value);
+      const response = page.waitForResponse(reply => new URL(reply.url()).pathname === "/api/v1/auth/register", { timeout: 5000 });
+      await Promise.all([response, submit.click()]);
+      await page.getByText(value === "settings" ? "Reserved by the site" : "Synthetic validation reached", { exact: true }).waitFor();
+    }
+    await username.fill("a".repeat(33));
+    await submit.click();
+    assert.deepEqual(submissions, ["administrator", joined, "🧑".repeat(32), "settings"]);
   } finally { await browser.close(); }
 });

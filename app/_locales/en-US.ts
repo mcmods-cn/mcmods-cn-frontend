@@ -3016,7 +3016,6 @@ const en = {
     validEmailRequired: "Please enter a valid email first.",
     usernameLength: "Username must be 1 to 32 characters.",
     usernamePattern: "Username may contain Unicode and visible special characters, but not whitespace or control characters.",
-    usernameReserved: "This username is reserved.",
     passwordStrength: "Password strength: {level}",
     strengthWeak: "Weak",
     strengthMedium: "Medium",

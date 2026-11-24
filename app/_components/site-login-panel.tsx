@@ -12,7 +12,6 @@ import { normalizeInternalPath } from "../_lib/navigation";
 import { MinecraftLanguagePicker } from "./minecraft-language-picker";
 import { TimezonePicker } from "./timezone-picker";
 
-const reservedUsernames = new Set(["admin", "administrator", "root", "system", "mcmods"]);
 export function SiteLoginPanel() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -171,7 +170,7 @@ export function SiteLoginPanel() {
               </>
             ) : (
               <>
-                <Field label={t("login.username")} maxLength={32} value={username} onChange={setUsername} required />
+                <Field label={t("login.username")} value={username} onChange={setUsername} required />
                 <Field label={t("login.email")} value={email} onChange={setEmail} type="email" required />
                 <label className="block text-sm font-semibold">
                   {t("login.code")}
@@ -238,11 +237,11 @@ export function SiteLoginPanel() {
   );
 }
 
-function Field({ label, value, onChange, placeholder, type = "text", required = false, maxLength }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean; maxLength?: number }) {
+function Field({ label, value, onChange, placeholder, type = "text", required = false }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string; required?: boolean }) {
   return (
     <label className="block text-sm font-semibold">
       {label}
-      <input className="field mt-2" maxLength={maxLength} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} type={type} required={required} />
+      <input className="field mt-2" value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} type={type} required={required} />
     </label>
   );
 }
@@ -259,10 +258,9 @@ function LanguageSelect({ label, value, onChange }: { label: string; value: stri
 }
 
 function validateUsername(username: string, t: (key: string) => string) {
-  const value = username.trim();
+  const value = username.replace(/^\p{White_Space}+|\p{White_Space}+$/gu, "");
   if ([...value].length < 1 || [...value].length > 32) return t("login.usernameLength");
-  if (value !== username || /[\p{C}\s]/u.test(value)) return t("login.usernamePattern");
-  if (reservedUsernames.has(value.toLowerCase())) return t("login.usernameReserved");
+  if (/[\p{Cc}\p{White_Space}]/u.test(value)) return t("login.usernamePattern");
   return "";
 }
 

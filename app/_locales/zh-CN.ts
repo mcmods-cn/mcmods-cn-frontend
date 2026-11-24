@@ -3015,7 +3015,6 @@ const zhCN = {
     validEmailRequired: "请先输入有效邮箱。",
     usernameLength: "用户名长度需要在 1 到 32 个字符之间。",
     usernamePattern: "用户名可以包含中文和可见特殊字符，但不能包含空白或控制字符。",
-    usernameReserved: "该用户名为保留词。",
     passwordStrength: "密码强度：{level}",
     strengthWeak: "弱",
     strengthMedium: "中",
