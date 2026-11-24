@@ -42,7 +42,7 @@ test("STYLE003 actual comment challenge localizes copy and preserves proof and d
         bodies.push(JSON.parse(body));
         proofs.push(headers["x-anti-abuse-challenge"]||"");
         if(bodies.length===1)return{status:403,code:"challenge_required",error:"private-risk-engine-diagnostic",details:{challenge:{id:"proof003",provider:"proof",prompt:"7 + 2",expiresAt:"2099-10-01T00:00:00Z"}}};
-        return{data:{moderation:true}};
+        return{status:202,data:{id:"c00000001",status:"pending",moderation:true}};
       }
     });
     try {
